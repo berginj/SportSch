@@ -1,26 +1,22 @@
 Baseline prompt for future AI work on GameSwap / SportsScheduler (vNext)
 
-You are helping me build and troubleshoot a multi-tenant youth sports “GameSwap” system with a React UI and an Azure Functions backend using Azure Table Storage. Your job is to propose and implement changes without introducing drift in table naming, partition keys, league scoping, API routes, field naming, or workflow state transitions. When you change behavior, update both backend and UI consistently. When I ask for full page/file replacements, give full replacements (not snippets).
+You are helping me build and troubleshoot a multi-tenant youth sports GameSwap system with a React UI and an Azure Functions backend using Azure Table Storage. Your job is to propose and implement changes without introducing drift in table naming, partition keys, league scoping, API routes, field naming, or workflow state transitions. When you change behavior, update both backend and UI consistently. When I ask for full page/file replacements, give full replacements (not snippets).
+
+
+
+Repo layout (single repo):
+- UI (React + Vite): repo root
+- API (Azure Functions isolated): `api/`
+
 
 0) Repos and deployed apps (source of truth)
 
-There are two repos and local copies.
+Single repo: SportSch (this repo).
+Legacy repos are deprecated: gameswap-functions and Sports/softball-ui.
 
-Backend repo (Azure Functions):
-
-Repo: https://github.com/berginj/gameswap-functions
-
-Deployed Function App: gameswap-func-api
-
-Tech: .NET Azure Functions Isolated Worker, Azure.Data.Tables
-
-Frontend repo (React UI):
-
-Repo: https://github.com/berginj/Sports
-
-Deployed Static Web App: sports
-
-Tech: React + Vite
+Deployments:
+- Static Web App: sports (UI + integrated /api)
+- API: Azure Functions isolated (from `api/` in this repo)
 
 Prod calls use relative /api (SWA integrated API proxy). No custom SWA route rules.
 
@@ -37,7 +33,7 @@ attach credentials: "include"
 attach header x-league-id from localStorage.activeLeagueId if present
 
 parse error bodies safely
-(This is already implemented; don’t regress it.) 
+(This is already implemented; don???t regress it.) 
 
 api
 
@@ -103,7 +99,7 @@ Dev/test headers may exist (ex: x-user-id, x-user-email) but production relies o
 
 Future:
 
-Entra integration/hard enforcement later. Don’t block current work by requiring full Entra.
+Entra integration/hard enforcement later. Don???t block current work by requiring full Entra.
 
 3) League scoping (canonical rule)
 
@@ -183,19 +179,19 @@ Legacy compatibility:
 
 Reads may temporarily fall back to legacy PKs (e.g., PartitionKey=division or PartitionKey="Fields") to avoid breaking old data, but all new writes must use canonical PKs. Any legacy support should be clearly labeled and considered temporary.
 
-6) Workflow: Request → Approve (canonical)
+6) Workflow: Request ??? Approve (canonical)
 
-We are implementing Request/Approve as the real swap workflow. Old “Accept slot” is deprecated.
+We are implementing Request/Approve as the real swap workflow. Old ???Accept slot??? is deprecated.
 
 State machine:
 
-Create slot → Status=Open
+Create slot ??? Status=Open
 
-Request slot → create request row Status=Pending, set slot Status=Pending
+Request slot ??? create request row Status=Pending, set slot Status=Pending
 
-Approve one request → slot Status=Confirmed, store ConfirmedRequestId, ConfirmedTeamId; approved request Approved, all other requests under same slot partition Rejected
+Approve one request ??? slot Status=Confirmed, store ConfirmedRequestId, ConfirmedTeamId; approved request Approved, all other requests under same slot partition Rejected
 
-Cancel slot → Status=Cancelled (optionally reject pending requests)
+Cancel slot ??? Status=Cancelled (optionally reject pending requests)
 
 Permissions (current):
 
@@ -223,7 +219,7 @@ GET /api/leagues/{leagueId}/fields (route includes leagueId; backend should stil
 
 Deprecated endpoints:
 
-any “Accept slot” route. UI must not call it.
+any ???Accept slot??? route. UI must not call it.
 
 8) Canonical field naming: FieldName everywhere
 
@@ -253,7 +249,7 @@ PK = UserId
 
 RK = LeagueId
 
-Confirm you’re writing into canonical partitions:
+Confirm you???re writing into canonical partitions:
 
 FIELD#{leagueId}, SLOT#{leagueId}#{division}, SLOTREQ#{leagueId}#{division}#{slotId}
 
