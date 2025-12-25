@@ -109,6 +109,8 @@ the notes for required headers or roles.
 | PATCH | /league | `Functions/LeaguesFunctions.cs` | Update current league (requires `x-league-id`, LeagueAdmin). |
 | GET | /admin/leagues | `Functions/LeaguesFunctions.cs` | Global admin list of leagues. |
 | POST | /admin/leagues | `Functions/LeaguesFunctions.cs` | Global admin create league. |
+| GET | /global/leagues | `Functions/LeaguesFunctions.cs` | Global admin list of leagues (alt route). |
+| POST | /global/leagues | `Functions/LeaguesFunctions.cs` | Global admin create league (alt route). |
 | GET | /admin/globaladmins | `Functions/GlobalAdminsFunctions.cs` | Global admin list. |
 | POST | /admin/globaladmins | `Functions/GlobalAdminsFunctions.cs` | Add global admin. |
 | DELETE | /admin/globaladmins/{userId} | `Functions/GlobalAdminsFunctions.cs` | Remove global admin. |

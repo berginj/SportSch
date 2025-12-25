@@ -26,6 +26,13 @@ export default function AdminPage({ me }) {
   const [teamsOk, setTeamsOk] = useState("");
   const [slotsErrors, setSlotsErrors] = useState([]);
   const [teamsErrors, setTeamsErrors] = useState([]);
+  const [globalErr, setGlobalErr] = useState("");
+  const [globalOk, setGlobalOk] = useState("");
+  const [globalLoading, setGlobalLoading] = useState(false);
+  const [globalLeagues, setGlobalLeagues] = useState([]);
+  const [newLeague, setNewLeague] = useState({ leagueId: "", name: "", timezone: "America/New_York" });
+
+  const isGlobalAdmin = !!me?.isGlobalAdmin;
 
   async function load() {
     setLoading(true);
@@ -81,6 +88,51 @@ export default function AdminPage({ me }) {
     loadMembershipsAndTeams();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!isGlobalAdmin) return;
+    loadGlobalLeagues();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isGlobalAdmin]);
+
+  async function loadGlobalLeagues() {
+    setGlobalErr("");
+    setGlobalLoading(true);
+    try {
+      const list = await apiFetch("/api/global/leagues");
+      setGlobalLeagues(Array.isArray(list) ? list : []);
+    } catch (e) {
+      setGlobalErr(e?.message || "Failed to load leagues");
+      setGlobalLeagues([]);
+    } finally {
+      setGlobalLoading(false);
+    }
+  }
+
+  async function createLeague() {
+    setGlobalErr("");
+    setGlobalOk("");
+    const leagueId = (newLeague.leagueId || "").trim();
+    const name = (newLeague.name || "").trim();
+    const timezone = (newLeague.timezone || "America/New_York").trim();
+    if (!leagueId || !name) return setGlobalErr("leagueId and name are required.");
+
+    setGlobalLoading(true);
+    try {
+      await apiFetch("/api/global/leagues", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leagueId, name, timezone }),
+      });
+      setGlobalOk(`Created league ${leagueId}.`);
+      setNewLeague({ leagueId: "", name: "", timezone });
+      await loadGlobalLeagues();
+    } catch (e) {
+      setGlobalErr(e?.message || "Create league failed");
+    } finally {
+      setGlobalLoading(false);
+    }
+  }
 
   async function approve(req, roleOverride) {
     const userId = req?.userId || "";
@@ -288,6 +340,79 @@ export default function AdminPage({ me }) {
           <li>Deny marks the request Denied.</li>
         </ul>
       </details>
+
+      {isGlobalAdmin ? (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h3 style={{ marginTop: 0 }}>Global admin: leagues</h3>
+          <p className="muted">
+            Create new leagues and review existing ones. This is global admin only.
+          </p>
+          {globalErr ? <div className="callout callout--error">{globalErr}</div> : null}
+          {globalOk ? <div className="callout callout--ok">{globalOk}</div> : null}
+
+          <div className="row" style={{ gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+            <label style={{ flex: 1, minWidth: 160 }}>
+              League ID
+              <input
+                value={newLeague.leagueId}
+                onChange={(e) => setNewLeague((p) => ({ ...p, leagueId: e.target.value }))}
+                placeholder="ARL"
+              />
+            </label>
+            <label style={{ flex: 2, minWidth: 220 }}>
+              League name
+              <input
+                value={newLeague.name}
+                onChange={(e) => setNewLeague((p) => ({ ...p, name: e.target.value }))}
+                placeholder="Arlington"
+              />
+            </label>
+            <label style={{ flex: 2, minWidth: 220 }}>
+              Timezone
+              <input
+                value={newLeague.timezone}
+                onChange={(e) => setNewLeague((p) => ({ ...p, timezone: e.target.value }))}
+                placeholder="America/New_York"
+              />
+            </label>
+            <button className="btn btnPrimary" onClick={createLeague} disabled={globalLoading}>
+              {globalLoading ? "Saving..." : "Create league"}
+            </button>
+            <button className="btn" onClick={loadGlobalLeagues} disabled={globalLoading}>
+              Refresh leagues
+            </button>
+          </div>
+
+          {globalLoading ? (
+            <div className="muted">Loading…</div>
+          ) : globalLeagues.length === 0 ? (
+            <div className="muted">No leagues yet.</div>
+          ) : (
+            <div className="tableWrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>League ID</th>
+                    <th>Name</th>
+                    <th>Timezone</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {globalLeagues.map((l) => (
+                    <tr key={l.leagueId}>
+                      <td><code>{l.leagueId}</code></td>
+                      <td>{l.name}</td>
+                      <td>{l.timezone}</td>
+                      <td>{l.status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : null}
 
       <div className="card" style={{ marginTop: 16 }}>
         <h3 style={{ marginTop: 0 }}>Coach assignments</h3>

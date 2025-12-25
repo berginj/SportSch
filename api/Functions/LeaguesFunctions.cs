@@ -177,6 +177,33 @@ public class LeaguesFunctions
         }
     }
 
+    [Function("ListLeagues_Global")]
+    public async Task<HttpResponseData> ListGlobal(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "global/leagues")] HttpRequestData req)
+    {
+        try
+        {
+            var me = IdentityUtil.GetMe(req);
+            await ApiGuards.RequireGlobalAdminAsync(_svc, me.UserId);
+
+            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Leagues);
+            var list = new List<LeagueDto>();
+            await foreach (var e in table.QueryAsync<TableEntity>(x => x.PartitionKey == Constants.Pk.Leagues))
+                list.Add(ToDto(e));
+
+            return ApiResponses.Ok(req, list.OrderBy(x => x.leagueId));
+        }
+        catch (ApiGuards.HttpError ex)
+        {
+            return ApiResponses.FromHttpError(req, ex);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "ListLeagues_Global failed");
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
+        }
+    }
+
     [Function("CreateLeague_Admin")]
     public async Task<HttpResponseData> CreateAdmin(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/leagues")] HttpRequestData req)
@@ -233,6 +260,66 @@ public class LeaguesFunctions
         catch (Exception ex)
         {
             _log.LogError(ex, "CreateLeague_Admin failed");
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
+        }
+    }
+
+    [Function("CreateLeague_Global")]
+    public async Task<HttpResponseData> CreateGlobal(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "global/leagues")] HttpRequestData req)
+    {
+        try
+        {
+            var me = IdentityUtil.GetMe(req);
+            await ApiGuards.RequireGlobalAdminAsync(_svc, me.UserId);
+
+            var body = await HttpUtil.ReadJsonAsync<CreateLeagueReq>(req);
+            if (body is null)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Invalid JSON body");
+
+            var leagueId = (body.leagueId ?? "").Trim();
+            var name = (body.name ?? "").Trim();
+            var timezone = string.IsNullOrWhiteSpace(body.timezone) ? "America/New_York" : body.timezone!.Trim();
+
+            if (string.IsNullOrWhiteSpace(leagueId))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "leagueId is required");
+            if (string.IsNullOrWhiteSpace(name))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "name is required");
+            ApiGuards.EnsureValidTableKeyPart("leagueId", leagueId);
+
+            var now = DateTimeOffset.UtcNow;
+            var e = new TableEntity(Constants.Pk.Leagues, leagueId)
+            {
+                ["LeagueId"] = leagueId,
+                ["Name"] = name,
+                ["Timezone"] = timezone,
+                ["Status"] = "Active",
+                ["ContactName"] = "",
+                ["ContactEmail"] = "",
+                ["ContactPhone"] = "",
+                ["CreatedUtc"] = now,
+                ["UpdatedUtc"] = now
+            };
+
+            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Leagues);
+            try
+            {
+                await table.AddEntityAsync(e);
+            }
+            catch (RequestFailedException ex) when (ex.Status == 409)
+            {
+                return ApiResponses.Error(req, HttpStatusCode.Conflict, "CONFLICT", $"league already exists: {leagueId}");
+            }
+
+            return ApiResponses.Ok(req, ToDto(e), HttpStatusCode.Created);
+        }
+        catch (ApiGuards.HttpError ex)
+        {
+            return ApiResponses.FromHttpError(req, ex);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "CreateLeague_Global failed");
             return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
         }
     }
