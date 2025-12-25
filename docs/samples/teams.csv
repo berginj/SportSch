@@ -1,0 +1,19 @@
+division,teamId,name,coachName,coachEmail,coachPhone
+10U,T1001,10U Team 1,Coach 10U 1,coach.10u.1@example.com,555-01001
+10U,T1002,10U Team 2,Coach 10U 2,coach.10u.2@example.com,555-01002
+10U,T1003,10U Team 3,Coach 10U 3,coach.10u.3@example.com,555-01003
+10U,T1004,10U Team 4,Coach 10U 4,coach.10u.4@example.com,555-01004
+10U,T1005,10U Team 5,Coach 10U 5,coach.10u.5@example.com,555-01005
+10U,T1006,10U Team 6,Coach 10U 6,coach.10u.6@example.com,555-01006
+12U,T1201,12U Team 1,Coach 12U 1,coach.12u.1@example.com,555-01001
+12U,T1202,12U Team 2,Coach 12U 2,coach.12u.2@example.com,555-01002
+12U,T1203,12U Team 3,Coach 12U 3,coach.12u.3@example.com,555-01003
+12U,T1204,12U Team 4,Coach 12U 4,coach.12u.4@example.com,555-01004
+12U,T1205,12U Team 5,Coach 12U 5,coach.12u.5@example.com,555-01005
+12U,T1206,12U Team 6,Coach 12U 6,coach.12u.6@example.com,555-01006
+14U,T1401,14U Team 1,Coach 14U 1,coach.14u.1@example.com,555-01001
+14U,T1402,14U Team 2,Coach 14U 2,coach.14u.2@example.com,555-01002
+14U,T1403,14U Team 3,Coach 14U 3,coach.14u.3@example.com,555-01003
+14U,T1404,14U Team 4,Coach 14U 4,coach.14u.4@example.com,555-01004
+14U,T1405,14U Team 5,Coach 14U 5,coach.14u.5@example.com,555-01005
+14U,T1406,14U Team 6,Coach 14U 6,coach.14u.6@example.com,555-01006

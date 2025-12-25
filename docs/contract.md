@@ -112,6 +112,7 @@ the notes for required headers or roles.
 | GET | /admin/globaladmins | `Functions/GlobalAdminsFunctions.cs` | Global admin list. |
 | POST | /admin/globaladmins | `Functions/GlobalAdminsFunctions.cs` | Add global admin. |
 | DELETE | /admin/globaladmins/{userId} | `Functions/GlobalAdminsFunctions.cs` | Remove global admin. |
+| POST | /admin/wipe | `Functions/AdminWipe.cs` | Global admin wipe for league-scoped tables (requires `x-league-id`). |
 | GET | /admin/storage/health | `Functions/StorageHealth.cs` | Global admin storage connectivity check. |
 | GET | /storage/health | `Functions/StorageHealth.cs` | Global admin storage connectivity check (alt route). |
 | POST | /accessrequests | `Functions/AccessRequestsFunctions.cs` | Create access request. |
@@ -191,6 +192,19 @@ Body
 ```json
 { "leagueId": "ARL", "name": "Arlington", "timezone": "America/New_York" }
 ```
+
+### Admin: POST /admin/wipe (league-scoped)
+Requires: global admin.
+Header: `x-league-id`
+
+Body
+```json
+{ "tables": ["fields", "slots", "slotrequests"], "confirm": "WIPE" }
+```
+
+Notes
+- `tables` is optional; when omitted, defaults to all supported league tables.
+- Supported table keys: `accessrequests`, `divisions`, `events`, `fields`, `invites`, `memberships`, `slotrequests`, `slots`, `teams`.
 
 ---
 
