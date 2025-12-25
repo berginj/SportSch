@@ -1,4 +1,5 @@
 using System.Net;
+using System.Linq;
 using Azure.Data.Tables;
 using GameSwap.Functions.Storage;
 using Microsoft.Azure.Functions.Worker;
@@ -51,9 +52,10 @@ public class GetSlots
             await ApiGuards.RequireMemberAsync(_svc, me.UserId, leagueId);
 
             var division = (ApiGuards.GetQueryParam(req, "division") ?? "").Trim();
-            var statusFilter = (ApiGuards.GetQueryParam(req, "status") ?? "").Trim();
+            var statusFilterRaw = (ApiGuards.GetQueryParam(req, "status") ?? "").Trim();
             var dateFrom = (ApiGuards.GetQueryParam(req, "dateFrom") ?? "").Trim();
             var dateTo = (ApiGuards.GetQueryParam(req, "dateTo") ?? "").Trim();
+            var statusFilter = ParseStatusList(statusFilterRaw);
 
             var table = await TableClients.GetTableAsync(_svc, SlotsTableName);
             // Partitioning is SLOT|{leagueId}|{division}
@@ -72,8 +74,8 @@ public class GetSlots
                 filter = $"PartitionKey ge '{ApiGuards.EscapeOData(prefix)}' and PartitionKey lt '{ApiGuards.EscapeOData(prefix + "~")}'";
             }
 
-            if (!string.IsNullOrWhiteSpace(statusFilter))
-                filter += $" and Status eq '{ApiGuards.EscapeOData(statusFilter)}'";
+            if (statusFilter.Count == 1)
+                filter += $" and Status eq '{ApiGuards.EscapeOData(statusFilter.First())}'";
 
             if (!string.IsNullOrWhiteSpace(dateFrom))
                 filter += $" and GameDate ge '{ApiGuards.EscapeOData(dateFrom)}'";
@@ -99,10 +101,18 @@ public class GetSlots
                 var gameType = e.GetString("GameType") ?? "Swap";
                 var status = e.GetString("Status") ?? Constants.Status.SlotOpen;
 
-                // Default behavior (when no explicit status filter is provided):
-                // return Open + Confirmed only. Cancelled is only returned when explicitly requested.
-                if (string.IsNullOrWhiteSpace(statusFilter) && status == Constants.Status.SlotCancelled)
-                    continue;
+                if (statusFilter.Count > 1)
+                {
+                    if (!statusFilter.Contains(status, StringComparer.OrdinalIgnoreCase))
+                        continue;
+                }
+                else if (statusFilter.Count == 0)
+                {
+                    // Default behavior (when no explicit status filter is provided):
+                    // return Open + Confirmed only. Cancelled is only returned when explicitly requested.
+                    if (status == Constants.Status.SlotCancelled)
+                        continue;
+                }
                 var notes = e.GetString("Notes") ?? "";
                 var confirmedTeamId = e.GetString("ConfirmedTeamId") ?? "";
 
@@ -136,5 +146,15 @@ public class GetSlots
             _log.LogError(ex, "GetSlots failed");
             return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
         }
+    }
+
+    private static List<string> ParseStatusList(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return new List<string>();
+        return raw
+            .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 }

@@ -10,7 +10,7 @@ import { useSession } from "./lib/useSession";
 
 export default function App() {
   const { me, memberships, activeLeagueId, setActiveLeagueId, refreshMe } = useSession();
-  const [tab, setTab] = useState("offers");
+  const [tab, setTab] = useState("calendar");
 
   const isSignedIn = !!me && me.userId && me.userId !== "UNKNOWN";
   const isGlobalAdmin = !!me?.isGlobalAdmin;

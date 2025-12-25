@@ -167,6 +167,38 @@ button:disabled {
   margin: 12px 0;
 }
 
+/* Calendar timeline */
+.timelineItem {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 14px;
+  background: rgba(0,0,0,0.18);
+  margin: 0;
+}
+
+.timelineItem--event { border-left: 4px solid rgba(59, 130, 246, 0.8); }
+.timelineItem--slot { border-left: 4px solid rgba(45, 212, 191, 0.6); }
+.timelineItem--slot.status-open { border-left-color: rgba(45, 212, 191, 0.9); }
+.timelineItem--slot.status-confirmed { border-left-color: rgba(52, 211, 153, 0.9); }
+.timelineItem--slot.status-cancelled { border-left-color: rgba(255, 107, 107, 0.9); }
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--muted);
+  background: rgba(0,0,0,0.25);
+  text-transform: capitalize;
+}
+
+.statusBadge.status-open { color: var(--accent); border-color: rgba(45, 212, 191, 0.35); }
+.statusBadge.status-confirmed { color: var(--ok); border-color: rgba(52, 211, 153, 0.35); }
+.statusBadge.status-cancelled { color: var(--danger); border-color: rgba(255, 107, 107, 0.35); }
+.statusBadge.status-scheduled { color: rgba(96, 165, 250, 0.9); border-color: rgba(96, 165, 250, 0.35); }
+
 /* Top nav */
 /* Support both older classnames (.topNav...) and normalized (.topnav...). */
 .topNav, .topnav {
@@ -284,6 +316,11 @@ button:disabled {
 .btn.btn--danger {
   border-color: rgba(239,68,68,0.6);
   background: rgba(239,68,68,0.16);
+}
+
+.btn.btn--ghost {
+  background: transparent;
+  border-color: rgba(255,255,255,0.12);
 }
 
 .tableWrap { overflow-x: auto; }

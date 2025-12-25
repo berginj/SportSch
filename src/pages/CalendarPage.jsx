@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
+import { SLOT_STATUS } from "../lib/constants";
 
 function toDateInputValue(d) {
   const yyyy = d.getFullYear();
@@ -35,7 +36,13 @@ export default function CalendarPage({ me, leagueId }) {
   const today = useMemo(() => new Date(), []);
   const [dateFrom, setDateFrom] = useState(toDateInputValue(today));
   const [dateTo, setDateTo] = useState(toDateInputValue(new Date(today.getTime() + 1000 * 60 * 60 * 24 * 30)));
-  const [showCancelled, setShowCancelled] = useState(false);
+  const [showSlots, setShowSlots] = useState(true);
+  const [showEvents, setShowEvents] = useState(true);
+  const [slotStatusFilter, setSlotStatusFilter] = useState({
+    [SLOT_STATUS.OPEN]: true,
+    [SLOT_STATUS.CONFIRMED]: true,
+    [SLOT_STATUS.CANCELLED]: false,
+  });
 
   const [events, setEvents] = useState([]);
   const [slots, setSlots] = useState([]);
@@ -51,24 +58,25 @@ export default function CalendarPage({ me, leagueId }) {
     setErr("");
     setLoading(true);
     try {
-      const q = new URLSearchParams();
-      if (division) q.set("division", division);
-      if (dateFrom) q.set("dateFrom", dateFrom);
-      if (dateTo) q.set("dateTo", dateTo);
+      const baseQuery = new URLSearchParams();
+      if (division) baseQuery.set("division", division);
+      if (dateFrom) baseQuery.set("dateFrom", dateFrom);
+      if (dateTo) baseQuery.set("dateTo", dateTo);
 
-      // Slots default to Open + Confirmed. Cancelled is fetched only when explicitly requested.
-      const qCancelled = new URLSearchParams(q);
-      qCancelled.set("status", "Cancelled");
+      const activeStatuses = Object.entries(slotStatusFilter)
+        .filter(([, on]) => on)
+        .map(([k]) => k);
+      const shouldLoadSlots = showSlots && activeStatuses.length > 0;
 
-      const [ev, sl, slCancelled] = await Promise.all([
-        apiFetch(`/api/events?${q.toString()}`),
-        apiFetch(`/api/slots?${q.toString()}`),
-        showCancelled ? apiFetch(`/api/slots?${qCancelled.toString()}`) : Promise.resolve([]),
+      const slotsQuery = new URLSearchParams(baseQuery);
+      if (activeStatuses.length) slotsQuery.set("status", activeStatuses.join(","));
+
+      const [ev, sl] = await Promise.all([
+        showEvents ? apiFetch(`/api/events?${baseQuery.toString()}`) : Promise.resolve([]),
+        shouldLoadSlots ? apiFetch(`/api/slots?${slotsQuery.toString()}`) : Promise.resolve([]),
       ]);
       setEvents(Array.isArray(ev) ? ev : []);
-      const base = Array.isArray(sl) ? sl : [];
-      const canc = Array.isArray(slCancelled) ? slCancelled : [];
-      setSlots(showCancelled ? [...base, ...canc] : base);
+      setSlots(Array.isArray(sl) ? sl : []);
     } catch (e) {
       setErr(e?.message || String(e));
     } finally {
@@ -249,6 +257,56 @@ export default function CalendarPage({ me, leagueId }) {
     if (slot.status === "Confirmed") return my === offering || (confirmed && my === confirmed);
     return false;
   }
+
+  function toggleSlotStatus(status) {
+    setSlotStatusFilter((prev) => ({ ...prev, [status]: !prev[status] }));
+  }
+
+  const activeSlotStatuses = useMemo(
+    () => Object.entries(slotStatusFilter).filter(([, on]) => on).map(([k]) => k),
+    [slotStatusFilter]
+  );
+
+  const subscribeInfo = useMemo(() => {
+    if (!leagueId) return { url: "", webcal: "" };
+    const params = new URLSearchParams();
+    params.set("leagueId", leagueId);
+    if (division) params.set("division", division);
+    if (dateFrom) params.set("dateFrom", dateFrom);
+    if (dateTo) params.set("dateTo", dateTo);
+    const shouldIncludeSlots = showSlots && activeSlotStatuses.length > 0;
+    params.set("includeSlots", String(shouldIncludeSlots));
+    params.set("includeEvents", String(showEvents));
+    if (shouldIncludeSlots && activeSlotStatuses.length) params.set("status", activeSlotStatuses.join(","));
+
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const url = origin ? `${origin}/api/calendar/ics?${params.toString()}` : "";
+    const webcal = url ? url.replace(/^https?:\/\//i, "webcal://") : "";
+    return { url, webcal };
+  }, [leagueId, division, dateFrom, dateTo, showSlots, showEvents, activeSlotStatuses]);
+
+  async function copySubscribeUrl() {
+    if (!subscribeInfo.url) return;
+    try {
+      await navigator.clipboard.writeText(subscribeInfo.url);
+      alert("Subscribe link copied.");
+    } catch {
+      prompt("Copy the subscribe link:", subscribeInfo.url);
+    }
+  }
+
+  function statusClassForItem(item) {
+    const raw = (item?.raw?.status || "").toLowerCase();
+    if (item.kind === "event") return "timelineItem timelineItem--event";
+    if (!raw) return "timelineItem timelineItem--slot";
+    return `timelineItem timelineItem--slot status-${raw}`;
+  }
+
+  function statusLabelForItem(item) {
+    if (item.kind === "event") return item.raw?.status || "Scheduled";
+    return item.raw?.status || "Open";
+  }
+
   if (loading) return <div className="card">Loading…</div>;
 
   return (
@@ -256,8 +314,8 @@ export default function CalendarPage({ me, leagueId }) {
       {err ? <div className="card error">{err}</div> : null}
 
       <div className="card">
-        <div className="cardTitle">Calendar</div>
-        <div className="row" style={{ flexWrap: "wrap" }}>
+        <div className="cardTitle">Calendar filters</div>
+        <div className="row" style={{ flexWrap: "wrap", alignItems: "center" }}>
           <label>
             Division
             <select value={division} onChange={(e) => setDivision(e.target.value)}>
@@ -278,82 +336,63 @@ export default function CalendarPage({ me, leagueId }) {
             <input value={dateTo} onChange={(e) => setDateTo(e.target.value)} placeholder="YYYY-MM-DD" />
           </label>
           <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 18 }}>
-            <input type="checkbox" checked={showCancelled} onChange={(e) => setShowCancelled(e.target.checked)} />
-            Show cancelled
+            <input type="checkbox" checked={showSlots} onChange={(e) => setShowSlots(e.target.checked)} />
+            Slots
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 18 }}>
+            <input type="checkbox" checked={showEvents} onChange={(e) => setShowEvents(e.target.checked)} />
+            Events
           </label>
           <button className="btn" onClick={loadData}>
             Refresh
           </button>
         </div>
-        <div className="muted" style={{ marginTop: 8 }}>
-          Showing slots + events for <b>{leagueId || "(no league)"}</b>.
+        <div className="row" style={{ marginTop: 10 }}>
+          <div className="pill">Slot status</div>
+          {[SLOT_STATUS.OPEN, SLOT_STATUS.CONFIRMED, SLOT_STATUS.CANCELLED].map((status) => (
+            <label key={status} className="pill" style={{ cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={!!slotStatusFilter[status]}
+                onChange={() => toggleSlotStatus(status)}
+                style={{ marginRight: 6 }}
+                disabled={!showSlots}
+              />
+              {status}
+            </label>
+          ))}
+          {showSlots && activeSlotStatuses.length === 0 ? (
+            <div className="muted">Select at least one status to show slots.</div>
+          ) : null}
+        </div>
+        <div className="row" style={{ marginTop: 10, justifyContent: "space-between" }}>
+          <div className="muted">
+            Showing calendar items for <b>{leagueId || "(no league)"}</b>.
+          </div>
+          <div className="row">
+            {subscribeInfo.webcal ? (
+              <a className="btn" href={subscribeInfo.webcal}>
+                Subscribe
+              </a>
+            ) : null}
+            {subscribeInfo.url ? (
+              <button className="btn btn--ghost" onClick={copySubscribeUrl}>
+                Copy link
+              </button>
+            ) : null}
+          </div>
+        </div>
+        <div className="muted" style={{ marginTop: 6 }}>
+          Subscribe link reflects the current filters and date range.
         </div>
       </div>
 
-      {canCreateEvents ? (
-        <div className="card">
-          <div className="cardTitle">{role === "Coach" ? "Request a game" : "Add an event"}</div>
-          <div className="grid2">
-            {role === "LeagueAdmin" ? (
-              <label>
-                Type
-                <select value={newType} onChange={(e) => setNewType(e.target.value)}>
-                  <option value="Practice">Practice</option>
-                  <option value="Meeting">Meeting</option>
-                  <option value="Clinic">Clinic</option>
-                  <option value="Other">Other</option>
-                </select>
-              </label>
-            ) : null}
-            <label>
-              Title
-              <input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} />
-            </label>
-            <label>
-              Location
-              <input value={newLocation} onChange={(e) => setNewLocation(e.target.value)} />
-            </label>
-            <label>
-              EventDate (YYYY-MM-DD)
-              <input value={newDate} onChange={(e) => setNewDate(e.target.value)} placeholder="2026-04-05" />
-            </label>
-            <label>
-              StartTime (HH:MM)
-              <input value={newStart} onChange={(e) => setNewStart(e.target.value)} placeholder="18:00" />
-            </label>
-            <label>
-              EndTime (HH:MM)
-              <input value={newEnd} onChange={(e) => setNewEnd(e.target.value)} placeholder="19:30" />
-            </label>
-            <label>
-              Notes
-              <input value={newNotes} onChange={(e) => setNewNotes(e.target.value)} />
-            </label>
-            {role === "LeagueAdmin" ? (
-              <>
-                <label>
-                  Division (optional)
-                  <input value={newDivision} onChange={(e) => setNewDivision(e.target.value)} placeholder="10U" />
-                </label>
-                <label>
-                  Team ID (optional)
-                  <input value={newTeamId} onChange={(e) => setNewTeamId(e.target.value)} placeholder="TIGERS" />
-                </label>
-              </>
-            ) : null}
-          </div>
-          <div className="row">
-            <button className="btn primary" onClick={createEvent}>Create Event</button>
-          </div>
-        </div>
-      ) : null}
-
       <div className="card">
-        <div className="cardTitle">Upcoming</div>
+        <div className="cardTitle">Calendar</div>
         {timeline.length === 0 ? <div className="muted">No items in this range.</div> : null}
         <div className="stack">
           {timeline.map((it) => (
-            <div key={`${it.kind}:${it.id}`} className="card" style={{ margin: 0 }}>
+            <div key={`${it.kind}:${it.id}`} className={statusClassForItem(it)}>
               <div className="row" style={{ justifyContent: "space-between" }}>
                 <div>
                   <div style={{ fontWeight: 700 }}>
@@ -363,6 +402,9 @@ export default function CalendarPage({ me, leagueId }) {
                   {it.kind === "event" && it.raw?.notes ? <div style={{ marginTop: 6 }}>{it.raw.notes}</div> : null}
                 </div>
                 <div className="row">
+                  <span className={`statusBadge status-${(statusLabelForItem(it) || "").toLowerCase()}`}>
+                    {statusLabelForItem(it)}
+                  </span>
                   {it.kind === "slot" && role !== "Viewer" && (it.raw?.status || "") === "Open" && (it.raw?.offeringTeamId || "") !== myCoachTeamId ? (
                     <button className="btn primary" onClick={() => requestSlot(it.raw)}>
                       Accept
@@ -384,6 +426,70 @@ export default function CalendarPage({ me, leagueId }) {
           ))}
         </div>
       </div>
+
+      {canCreateEvents ? (
+        <div className="card">
+          <details>
+            <summary style={{ cursor: "pointer", fontWeight: 700 }}>
+              {role === "Coach" ? "Request a game" : "Add an event"}
+            </summary>
+            <div className="grid2" style={{ marginTop: 12 }}>
+              {role === "LeagueAdmin" ? (
+                <label>
+                  Type
+                  <select value={newType} onChange={(e) => setNewType(e.target.value)}>
+                    <option value="Practice">Practice</option>
+                    <option value="Meeting">Meeting</option>
+                    <option value="Clinic">Clinic</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </label>
+              ) : null}
+              <label>
+                Title
+                <input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} />
+              </label>
+              <label>
+                Location
+                <input value={newLocation} onChange={(e) => setNewLocation(e.target.value)} />
+              </label>
+              <label>
+                EventDate (YYYY-MM-DD)
+                <input value={newDate} onChange={(e) => setNewDate(e.target.value)} placeholder="2026-04-05" />
+              </label>
+              <label>
+                StartTime (HH:MM)
+                <input value={newStart} onChange={(e) => setNewStart(e.target.value)} placeholder="18:00" />
+              </label>
+              <label>
+                EndTime (HH:MM)
+                <input value={newEnd} onChange={(e) => setNewEnd(e.target.value)} placeholder="19:30" />
+              </label>
+              <label>
+                Notes
+                <input value={newNotes} onChange={(e) => setNewNotes(e.target.value)} />
+              </label>
+              {role === "LeagueAdmin" ? (
+                <>
+                  <label>
+                    Division (optional)
+                    <input value={newDivision} onChange={(e) => setNewDivision(e.target.value)} placeholder="10U" />
+                  </label>
+                  <label>
+                    Team ID (optional)
+                    <input value={newTeamId} onChange={(e) => setNewTeamId(e.target.value)} placeholder="TIGERS" />
+                  </label>
+                </>
+              ) : null}
+            </div>
+            <div className="row" style={{ marginTop: 10 }}>
+              <button className="btn primary" onClick={createEvent}>
+                Create Event
+              </button>
+            </div>
+          </details>
+        </div>
+      ) : null}
     </div>
   );
 }

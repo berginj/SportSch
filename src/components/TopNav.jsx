@@ -45,18 +45,18 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
 
           <nav className="tabs" aria-label="Primary">
             <button
-              className={tab === "offers" ? "tab tab--active" : "tab"}
-              onClick={() => setTab("offers")}
-              disabled={!hasLeagues}
-            >
-              Offers
-            </button>
-            <button
               className={tab === "calendar" ? "tab tab--active" : "tab"}
               onClick={() => setTab("calendar")}
               disabled={!hasLeagues}
             >
               Calendar
+            </button>
+            <button
+              className={tab === "offers" ? "tab tab--active" : "tab"}
+              onClick={() => setTab("offers")}
+              disabled={!hasLeagues}
+            >
+              Offers
             </button>
             <button
               className={tab === "manage" ? "tab tab--active" : "tab"}

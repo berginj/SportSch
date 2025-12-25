@@ -148,6 +148,7 @@ the notes for required headers or roles.
 | GET | /slots/{division}/{slotId}/requests | `Functions/GetSlotRequests.cs` | List requests for slot (requires `x-league-id`). |
 | POST | /slots/{division}/{slotId}/requests | `Functions/CreateSlotRequest.cs` | Request slot (requires `x-league-id`, Coach). |
 | PATCH | /slots/{division}/{slotId}/requests/{requestId}/approve | `Functions/ApproveSlotRequest.cs` | Approve slot request (requires `x-league-id`, offering coach, LeagueAdmin, or global admin). |
+| GET | /calendar/ics | `Functions/CalendarFeed.cs` | Calendar subscription feed (requires `x-league-id` or leagueId query). |
 | GET | /events | `Functions/GetEvents.cs` | List events (requires `x-league-id`). |
 | POST | /events | `Functions/CreateEvent.cs` | Create event (requires `x-league-id`, LeagueAdmin). |
 | PATCH | /events/{eventId} | `Functions/PatchEvent.cs` | Update event (requires `x-league-id`, LeagueAdmin). |
@@ -543,7 +544,7 @@ Import behavior:
 - `fieldKey` must match an imported field.
 
 ### GET /slots (league-scoped)
-Query (all optional): division, status, dateFrom (YYYY-MM-DD), dateTo (YYYY-MM-DD)  
+Query (all optional): division, status (comma-separated), dateFrom (YYYY-MM-DD), dateTo (YYYY-MM-DD)  
 Requires: member (Viewer allowed).
 
 Visibility:
@@ -657,6 +658,25 @@ Response
 
 ### PATCH /slots/{division}/{slotId}/cancel (league-scoped)
 Requires: offering team OR accepting team (confirmedTeamId) OR LeagueAdmin OR global admin.
+
+---
+
+## 8b) Calendar feed
+
+### GET /calendar/ics (league-scoped)
+Requires: member (Viewer allowed).  
+Header: x-league-id (or query param `leagueId`).
+
+Query (all optional):
+- `division`
+- `dateFrom` (YYYY-MM-DD)
+- `dateTo` (YYYY-MM-DD)
+- `includeSlots` (true/false, default true)
+- `includeEvents` (true/false, default true)
+- `status` (slot status list, comma-separated)
+- `includeCancelled` (true/false, default false when `status` omitted)
+
+Returns iCalendar (ICS) with slots + events.
 
 ---
 
