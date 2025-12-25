@@ -20,8 +20,16 @@ public class AdminMigrateFields
     }
 
     [Function("AdminMigrateFields")]
-    public async Task<HttpResponseData> Run(
+    public Task<HttpResponseData> Run(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/migrate/fields")] HttpRequestData req)
+        => RunInternalAsync(req);
+
+    [Function("GlobalMigrateFields")]
+    public Task<HttpResponseData> RunGlobal(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "global/migrate/fields")] HttpRequestData req)
+        => RunInternalAsync(req);
+
+    private async Task<HttpResponseData> RunInternalAsync(HttpRequestData req)
     {
         try
         {
