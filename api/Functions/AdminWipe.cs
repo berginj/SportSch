@@ -62,8 +62,8 @@ public class AdminWipe
             {
                 try
                 {
-                    var result = await WipeTableAsync(key, leagueId);
-                    results.Add(new { table = key, deleted = result.deleted, skipped = false });
+                    var deleted = await WipeTableAsync(key, leagueId);
+                    results.Add(new { table = key, deleted, skipped = false });
                 }
                 catch (InvalidOperationException ex)
                 {
