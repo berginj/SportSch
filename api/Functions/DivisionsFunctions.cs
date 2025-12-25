@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using System.Linq;
 using Azure;
 using Azure.Data.Tables;
 using GameSwap.Functions.Storage;
@@ -71,6 +72,9 @@ public class DivisionsFunctions
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
             await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+            if (HasInvalidTableKeyChars(leagueId))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST",
+                    $"Invalid leagueId. Table keys cannot contain: {InvalidTableKeyCharsMessage()}");
 
             var body = await HttpUtil.ReadJsonAsync<CreateReq>(req);
             if (body is null)
@@ -84,6 +88,9 @@ public class DivisionsFunctions
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "code is required");
             if (string.IsNullOrWhiteSpace(name))
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "name is required");
+            if (HasInvalidTableKeyChars(code))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST",
+                    $"Invalid code. Table keys cannot contain: {InvalidTableKeyCharsMessage()}");
 
             var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Divisions);
             var e = new TableEntity(DivPk(leagueId), code)
@@ -102,6 +109,17 @@ public class DivisionsFunctions
             catch (RequestFailedException ex) when (ex.Status == 409)
             {
                 return ApiResponses.Error(req, HttpStatusCode.Conflict, "CONFLICT", $"division already exists: {code}");
+            }
+            catch (RequestFailedException ex)
+            {
+                var requestId = req.FunctionContext.InvocationId.ToString();
+                _log.LogError(ex, "CreateDivision storage request failed. requestId={requestId}", requestId);
+                return ApiResponses.Error(
+                    req,
+                    HttpStatusCode.BadGateway,
+                    "STORAGE_ERROR",
+                    "Storage request failed. This usually means a key contains invalid characters.",
+                    new { requestId, status = ex.Status, code = ex.ErrorCode });
             }
 
             return ApiResponses.Ok(req, new DivisionDto(code, name, isActive), HttpStatusCode.Created);
@@ -124,10 +142,16 @@ public class DivisionsFunctions
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
             await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+            if (HasInvalidTableKeyChars(leagueId))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST",
+                    $"Invalid leagueId. Table keys cannot contain: {InvalidTableKeyCharsMessage()}");
 
             var body = await HttpUtil.ReadJsonAsync<UpdateReq>(req);
             if (body is null)
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Invalid JSON body");
+            if (HasInvalidTableKeyChars(code))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST",
+                    $"Invalid code. Table keys cannot contain: {InvalidTableKeyCharsMessage()}");
 
             var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Divisions);
             TableEntity e;
@@ -149,6 +173,17 @@ public class DivisionsFunctions
             return ApiResponses.Ok(req, new DivisionDto(code, (e.GetString("Name") ?? "").Trim(), e.GetBoolean("IsActive") ?? true));
         }
         catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
+        catch (RequestFailedException ex)
+        {
+            var requestId = req.FunctionContext.InvocationId.ToString();
+            _log.LogError(ex, "UpdateDivision storage request failed. requestId={requestId}", requestId);
+            return ApiResponses.Error(
+                req,
+                HttpStatusCode.BadGateway,
+                "STORAGE_ERROR",
+                "Storage request failed. This usually means a key contains invalid characters.",
+                new { requestId, status = ex.Status, code = ex.ErrorCode });
+        }
         catch (Exception ex)
         {
             _log.LogError(ex, "UpdateDivision failed");
@@ -196,6 +231,9 @@ public class DivisionsFunctions
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
             await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+            if (HasInvalidTableKeyChars(leagueId))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST",
+                    $"Invalid leagueId. Table keys cannot contain: {InvalidTableKeyCharsMessage()}");
 
             var body = await HttpUtil.ReadJsonAsync<PatchTemplatesReq>(req);
             if (body is null)
@@ -208,6 +246,9 @@ public class DivisionsFunctions
             {
                 if (string.IsNullOrWhiteSpace(t.code) || string.IsNullOrWhiteSpace(t.name))
                     return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Each template needs code and name");
+                if (HasInvalidTableKeyChars(t.code))
+                    return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST",
+                        $"Invalid template code. Table keys cannot contain: {InvalidTableKeyCharsMessage()}");
             }
 
             var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Divisions);
@@ -223,10 +264,27 @@ public class DivisionsFunctions
             return ApiResponses.Ok(req, templates);
         }
         catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
+        catch (RequestFailedException ex)
+        {
+            var requestId = req.FunctionContext.InvocationId.ToString();
+            _log.LogError(ex, "PatchDivisionTemplates storage request failed. requestId={requestId}", requestId);
+            return ApiResponses.Error(
+                req,
+                HttpStatusCode.BadGateway,
+                "STORAGE_ERROR",
+                "Storage request failed. This usually means a key contains invalid characters.",
+                new { requestId, status = ex.Status, code = ex.ErrorCode });
+        }
         catch (Exception ex)
         {
             _log.LogError(ex, "PatchDivisionTemplates failed");
             return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
         }
     }
+
+    private static bool HasInvalidTableKeyChars(string value)
+        => !string.IsNullOrEmpty(value) && value.Any(c => c < 0x20 || c == '/' || c == '\\' || c == '#' || c == '?');
+
+    private static string InvalidTableKeyCharsMessage()
+        => "/, \\\\, #, ?, or control characters";
 }
