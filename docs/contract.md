@@ -113,6 +113,7 @@ the notes for required headers or roles.
 | POST | /admin/globaladmins | `Functions/GlobalAdminsFunctions.cs` | Add global admin. |
 | DELETE | /admin/globaladmins/{userId} | `Functions/GlobalAdminsFunctions.cs` | Remove global admin. |
 | GET | /admin/storage/health | `Functions/StorageHealth.cs` | Global admin storage connectivity check. |
+| GET | /storage/health | `Functions/StorageHealth.cs` | Global admin storage connectivity check (alt route). |
 | POST | /accessrequests | `Functions/AccessRequestsFunctions.cs` | Create access request. |
 | GET | /accessrequests/mine | `Functions/AccessRequestsFunctions.cs` | Current user's access requests. |
 | GET | /accessrequests | `Functions/AccessRequestsFunctions.cs` | League access requests (requires `x-league-id`, LeagueAdmin). |
