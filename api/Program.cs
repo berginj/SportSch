@@ -7,7 +7,10 @@ var host = new HostBuilder()
     {
         var tableServiceClient = GameSwap.Functions.Storage.TableClients.CreateServiceClient(context.Configuration);
         services.AddSingleton(tableServiceClient);
-        services.AddHostedService<GameSwap.Functions.Storage.TableStartup>();
+        if (context.Configuration.GetValue<bool>("GAMESWAP_CREATE_TABLES"))
+        {
+            services.AddHostedService<GameSwap.Functions.Storage.TableStartup>();
+        }
     })
     .Build();
 
