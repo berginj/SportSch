@@ -86,7 +86,7 @@ public class AdminWipe
         }
     }
 
-    private async Task<(int deleted)> WipeTableAsync(string key, string leagueId)
+    private async Task<int> WipeTableAsync(string key, string leagueId)
     {
         return key switch
         {
@@ -111,7 +111,7 @@ public class AdminWipe
     private static string PrefixFilter(string prefix)
         => $"PartitionKey ge '{ApiGuards.EscapeOData(prefix)}' and PartitionKey lt '{ApiGuards.EscapeOData(prefix + "~")}'";
 
-    private async Task<(int deleted)> DeleteByFilterAsync(string tableName, string filter)
+    private async Task<int> DeleteByFilterAsync(string tableName, string filter)
     {
         var table = await TableClients.GetTableAsync(_svc, tableName);
         int deleted = 0;
@@ -122,6 +122,6 @@ public class AdminWipe
             deleted++;
         }
 
-        return (deleted);
+        return deleted;
     }
 }
