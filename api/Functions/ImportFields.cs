@@ -55,7 +55,7 @@ public class ImportFields
                 // Helpful debug: show what the importer thought the header row was
                 var headerPreview = string.Join(",", header.Select(x => (x ?? "").Trim()).Take(12));
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST",
-                    "Missing required columns. Required: fieldKey, parkName, fieldName. Optional: displayName, address, notes, status (Active/Inactive).",
+                    "Missing required columns. Required: fieldKey, parkName, fieldName. Optional: displayName, address, city, state, notes, status (Active/Inactive).",
                     new { headerPreview });
             }
 
@@ -76,6 +76,8 @@ public class ImportFields
 
                 var displayName = CsvMini.Get(r, idx, "displayname").Trim();
                 var address = CsvMini.Get(r, idx, "address").Trim();
+                var city = CsvMini.Get(r, idx, "city").Trim();
+                var state = CsvMini.Get(r, idx, "state").Trim();
                 var notes = CsvMini.Get(r, idx, "notes").Trim();
 
                 var statusRaw = CsvMini.Get(r, idx, "status").Trim();
@@ -126,6 +128,8 @@ public class ImportFields
                     ["FieldName"] = fieldName,
                     ["DisplayName"] = displayName,
                     ["Address"] = address,
+                    ["City"] = city,
+                    ["State"] = state,
                     ["Notes"] = notes,
                     ["IsActive"] = isActive,
                     ["UpdatedUtc"] = DateTimeOffset.UtcNow
