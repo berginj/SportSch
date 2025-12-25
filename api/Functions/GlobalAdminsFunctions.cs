@@ -78,6 +78,7 @@ public class GlobalAdminsFunctions
 
             if (string.IsNullOrWhiteSpace(userId))
                 return await Err(req, "userId is required", HttpStatusCode.BadRequest);
+            ApiGuards.EnsureValidTableKeyPart("userId", userId);
 
             var table = await TableClients.GetTableAsync(_svc, TableName);
             var now = DateTimeOffset.UtcNow;
@@ -135,6 +136,7 @@ public class GlobalAdminsFunctions
             userId = (userId ?? "").Trim();
             if (string.IsNullOrWhiteSpace(userId))
                 return await Err(req, "userId is required", HttpStatusCode.BadRequest);
+            ApiGuards.EnsureValidTableKeyPart("userId", userId);
 
             var table = await TableClients.GetTableAsync(_svc, TableName);
             string? email = null;

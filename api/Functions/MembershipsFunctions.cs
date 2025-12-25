@@ -88,6 +88,9 @@ public class MembershipsFunctions
             var me = IdentityUtil.GetMe(req);
             await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
 
+            userId = (userId ?? "").Trim();
+            ApiGuards.EnsureValidTableKeyPart("userId", userId);
+
             var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Memberships);
             TableEntity mem;
             try
@@ -118,6 +121,8 @@ public class MembershipsFunctions
                 var teamId = (body.team.teamId ?? "").Trim();
                 if (string.IsNullOrWhiteSpace(division) || string.IsNullOrWhiteSpace(teamId))
                     return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "team.division and team.teamId are required");
+                ApiGuards.EnsureValidTableKeyPart("division", division);
+                ApiGuards.EnsureValidTableKeyPart("teamId", teamId);
 
                 mem["Division"] = division;
                 mem["TeamId"] = teamId;

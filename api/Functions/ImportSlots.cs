@@ -33,10 +33,10 @@ public class ImportSlots
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
             await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
-            if (HasInvalidTableKeyChars(leagueId))
+            if (ApiGuards.HasInvalidTableKeyChars(leagueId))
                 return HttpUtil.Json(req, HttpStatusCode.BadRequest, new
                 {
-                    error = $"Invalid leagueId. Table keys cannot contain: {InvalidTableKeyCharsMessage()}"
+                    error = $"Invalid leagueId. Table keys cannot contain: {ApiGuards.InvalidTableKeyCharsMessage}"
                 });
 
             var csvText = await CsvUpload.ReadCsvTextAsync(req);
@@ -123,23 +123,23 @@ public class ImportSlots
                     errors.Add(new { row = i + 1, error = "Invalid FieldKey. Use parkCode/fieldCode." });
                     continue;
                 }
-                if (HasInvalidTableKeyChars(division))
+                if (ApiGuards.HasInvalidTableKeyChars(division))
                 {
                     rejected++;
                     errors.Add(new
                     {
                         row = i + 1,
-                        error = $"Invalid division. Table keys cannot contain: {InvalidTableKeyCharsMessage()}"
+                        error = $"Invalid division. Table keys cannot contain: {ApiGuards.InvalidTableKeyCharsMessage}"
                     });
                     continue;
                 }
-                if (HasInvalidTableKeyChars(parkCode) || HasInvalidTableKeyChars(fieldCode))
+                if (ApiGuards.HasInvalidTableKeyChars(parkCode) || ApiGuards.HasInvalidTableKeyChars(fieldCode))
                 {
                     rejected++;
                     errors.Add(new
                     {
                         row = i + 1,
-                        error = $"Invalid fieldKey. Table keys cannot contain: {InvalidTableKeyCharsMessage()}",
+                        error = $"Invalid fieldKey. Table keys cannot contain: {ApiGuards.InvalidTableKeyCharsMessage}",
                         fieldKey = fieldKeyRaw
                     });
                     continue;
@@ -307,11 +307,6 @@ public class ImportSlots
         return sb.ToString();
     }
 
-    private static bool HasInvalidTableKeyChars(string value)
-        => !string.IsNullOrEmpty(value) && value.Any(c => c < 0x20 || c == '/' || c == '\\' || c == '#' || c == '?');
-
-    private static string InvalidTableKeyCharsMessage()
-        => "/, \\\\, #, ?, or control characters";
 
     private static bool TryParseFieldKey(string raw, out string parkCode, out string fieldCode)
     {

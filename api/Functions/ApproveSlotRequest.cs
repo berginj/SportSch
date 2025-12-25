@@ -37,6 +37,13 @@ public class ApproveSlotRequest
             var me = IdentityUtil.GetMe(req);
             await ApiGuards.RequireNotViewerAsync(_svc, me.UserId, leagueId);
 
+            division = (division ?? "").Trim();
+            slotId = (slotId ?? "").Trim();
+            requestId = (requestId ?? "").Trim();
+            ApiGuards.EnsureValidTableKeyPart("division", division);
+            ApiGuards.EnsureValidTableKeyPart("slotId", slotId);
+            ApiGuards.EnsureValidTableKeyPart("requestId", requestId);
+
             // Authorization: offering coach OR LeagueAdmin OR global admin.
             var isGlobalAdmin = await ApiGuards.IsGlobalAdminAsync(_svc, me.UserId);
             var mem = isGlobalAdmin ? null : await ApiGuards.GetMembershipAsync(_svc, me.UserId, leagueId);

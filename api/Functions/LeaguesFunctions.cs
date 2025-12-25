@@ -198,6 +198,7 @@ public class LeaguesFunctions
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "leagueId is required");
             if (string.IsNullOrWhiteSpace(name))
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "name is required");
+            ApiGuards.EnsureValidTableKeyPart("leagueId", leagueId);
 
             var now = DateTimeOffset.UtcNow;
             var e = new TableEntity(Constants.Pk.Leagues, leagueId)

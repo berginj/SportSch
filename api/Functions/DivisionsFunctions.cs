@@ -1,6 +1,5 @@
 using System.Net;
 using System.Text.Json;
-using System.Linq;
 using Azure;
 using Azure.Data.Tables;
 using GameSwap.Functions.Storage;
@@ -72,10 +71,6 @@ public class DivisionsFunctions
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
             await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
-            if (HasInvalidTableKeyChars(leagueId))
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST",
-                    $"Invalid leagueId. Table keys cannot contain: {InvalidTableKeyCharsMessage()}");
-
             var body = await HttpUtil.ReadJsonAsync<CreateReq>(req);
             if (body is null)
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Invalid JSON body");
@@ -88,9 +83,7 @@ public class DivisionsFunctions
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "code is required");
             if (string.IsNullOrWhiteSpace(name))
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "name is required");
-            if (HasInvalidTableKeyChars(code))
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST",
-                    $"Invalid code. Table keys cannot contain: {InvalidTableKeyCharsMessage()}");
+            ApiGuards.EnsureValidTableKeyPart("code", code);
 
             var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Divisions);
             var e = new TableEntity(DivPk(leagueId), code)
@@ -142,16 +135,10 @@ public class DivisionsFunctions
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
             await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
-            if (HasInvalidTableKeyChars(leagueId))
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST",
-                    $"Invalid leagueId. Table keys cannot contain: {InvalidTableKeyCharsMessage()}");
-
             var body = await HttpUtil.ReadJsonAsync<UpdateReq>(req);
             if (body is null)
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Invalid JSON body");
-            if (HasInvalidTableKeyChars(code))
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST",
-                    $"Invalid code. Table keys cannot contain: {InvalidTableKeyCharsMessage()}");
+            ApiGuards.EnsureValidTableKeyPart("code", code);
 
             var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Divisions);
             TableEntity e;
@@ -231,10 +218,6 @@ public class DivisionsFunctions
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
             await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
-            if (HasInvalidTableKeyChars(leagueId))
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST",
-                    $"Invalid leagueId. Table keys cannot contain: {InvalidTableKeyCharsMessage()}");
-
             var body = await HttpUtil.ReadJsonAsync<PatchTemplatesReq>(req);
             if (body is null)
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Invalid JSON body");
@@ -246,9 +229,7 @@ public class DivisionsFunctions
             {
                 if (string.IsNullOrWhiteSpace(t.code) || string.IsNullOrWhiteSpace(t.name))
                     return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Each template needs code and name");
-                if (HasInvalidTableKeyChars(t.code))
-                    return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST",
-                        $"Invalid template code. Table keys cannot contain: {InvalidTableKeyCharsMessage()}");
+                ApiGuards.EnsureValidTableKeyPart("template code", t.code);
             }
 
             var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Divisions);
@@ -282,9 +263,4 @@ public class DivisionsFunctions
         }
     }
 
-    private static bool HasInvalidTableKeyChars(string value)
-        => !string.IsNullOrEmpty(value) && value.Any(c => c < 0x20 || c == '/' || c == '\\' || c == '#' || c == '?');
-
-    private static string InvalidTableKeyCharsMessage()
-        => "/, \\\\, #, ?, or control characters";
 }

@@ -74,6 +74,7 @@ public class CreateSlot
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST",
                     "division, offeringTeamId, gameDate, startTime, endTime, fieldKey are required");
             }
+            ApiGuards.EnsureValidTableKeyPart("division", division);
 
             // Validate date/time formats (times are interpreted as US/Eastern per contract; stored as strings)
             if (!DateOnly.TryParseExact(gameDate, "yyyy-MM-dd", out _))

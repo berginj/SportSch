@@ -35,6 +35,11 @@ public class GetSlotRequests
             var me = IdentityUtil.GetMe(req);
             await ApiGuards.RequireMemberAsync(_svc, me.UserId, leagueId);
 
+            division = (division ?? "").Trim();
+            slotId = (slotId ?? "").Trim();
+            ApiGuards.EnsureValidTableKeyPart("division", division);
+            ApiGuards.EnsureValidTableKeyPart("slotId", slotId);
+
             // Validate slot exists (cheap guardrail)
             var slots = await TableClients.GetTableAsync(_svc, SlotsTableName);
             var slotPk = $"SLOT|{leagueId}|{division}";

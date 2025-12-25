@@ -133,6 +133,8 @@ public class FieldsFunctions
             fieldCode = (fieldCode ?? "").Trim();
             if (string.IsNullOrWhiteSpace(parkCode) || string.IsNullOrWhiteSpace(fieldCode))
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "parkCode and fieldCode are required");
+            ApiGuards.EnsureValidTableKeyPart("parkCode", parkCode);
+            ApiGuards.EnsureValidTableKeyPart("fieldCode", fieldCode);
 
             var pk = Constants.Pk.Fields(leagueId, parkCode);
             var rk = fieldCode;

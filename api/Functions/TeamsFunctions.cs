@@ -56,6 +56,7 @@ public class TeamsFunctions
 
             if (!string.IsNullOrWhiteSpace(division))
             {
+                ApiGuards.EnsureValidTableKeyPart("division", division);
                 await foreach (var e in table.QueryAsync<TableEntity>(x => x.PartitionKey == TeamPk(leagueId, division)))
                     list.Add(ToDto(e));
             }
@@ -98,6 +99,8 @@ public class TeamsFunctions
 
             if (string.IsNullOrWhiteSpace(division) || string.IsNullOrWhiteSpace(teamId) || string.IsNullOrWhiteSpace(name))
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "division, teamId, and name are required");
+            ApiGuards.EnsureValidTableKeyPart("division", division);
+            ApiGuards.EnsureValidTableKeyPart("teamId", teamId);
 
             var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Teams);
             var e = new TableEntity(TeamPk(leagueId, division), teamId)
@@ -146,6 +149,8 @@ public class TeamsFunctions
             var body = await HttpUtil.ReadJsonAsync<UpsertTeamReq>(req);
             if (body is null)
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Invalid JSON body");
+            ApiGuards.EnsureValidTableKeyPart("division", division);
+            ApiGuards.EnsureValidTableKeyPart("teamId", teamId);
 
             var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Teams);
             TableEntity e;
@@ -192,6 +197,8 @@ public class TeamsFunctions
             var me = IdentityUtil.GetMe(req);
             await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
 
+            ApiGuards.EnsureValidTableKeyPart("division", division);
+            ApiGuards.EnsureValidTableKeyPart("teamId", teamId);
             var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Teams);
             await table.DeleteEntityAsync(TeamPk(leagueId, division), teamId, ETag.All);
             return ApiResponses.Ok(req, new { ok = true });

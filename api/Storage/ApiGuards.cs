@@ -34,6 +34,7 @@ public static class ApiGuards
         if (string.IsNullOrWhiteSpace(headerLeagueId))
             throw new HttpError((int)HttpStatusCode.BadRequest,
                 $"Missing league scope header. Send {Constants.LEAGUE_HEADER_NAME}: <leagueId>.");
+        EnsureValidTableKeyPart("leagueId", headerLeagueId);
 
         return headerLeagueId;
     }
@@ -169,6 +170,19 @@ public static class ApiGuards
         }
 
         return null;
+    }
+
+    // ==== Table key validation ====
+    public static bool HasInvalidTableKeyChars(string value)
+        => !string.IsNullOrEmpty(value) && value.Any(c => c < 0x20 || c == '/' || c == '\\' || c == '#' || c == '?');
+
+    public static string InvalidTableKeyCharsMessage => "/, \\\\, #, ?, or control characters";
+
+    public static void EnsureValidTableKeyPart(string name, string value)
+    {
+        if (HasInvalidTableKeyChars(value))
+            throw new HttpError((int)HttpStatusCode.BadRequest,
+                $"{name} contains invalid characters. Table keys cannot contain: {InvalidTableKeyCharsMessage}.");
     }
 
     // Back-compat alias (some of your funcs referenced GetQueryValue earlier)

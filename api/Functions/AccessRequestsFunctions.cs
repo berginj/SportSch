@@ -198,6 +198,9 @@ public class AccessRequestsFunctions
             var me = IdentityUtil.GetMe(req);
             await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
 
+            userId = (userId ?? "").Trim();
+            ApiGuards.EnsureValidTableKeyPart("userId", userId);
+
             var table = await TableClients.GetTableAsync(_svc, Constants.Tables.AccessRequests);
             var pk = ReqPk(leagueId);
             var rk = ReqRk(userId);
@@ -223,6 +226,10 @@ public class AccessRequestsFunctions
 
             var division = (body.team?.division ?? "").Trim();
             var teamId = (body.team?.teamId ?? "").Trim();
+            if (!string.IsNullOrWhiteSpace(division))
+                ApiGuards.EnsureValidTableKeyPart("division", division);
+            if (!string.IsNullOrWhiteSpace(teamId))
+                ApiGuards.EnsureValidTableKeyPart("teamId", teamId);
 
             // Upsert membership (PK=userId, RK=leagueId)
             var memTable = await TableClients.GetTableAsync(_svc, Constants.Tables.Memberships);
@@ -265,6 +272,9 @@ public class AccessRequestsFunctions
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
             await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+
+            userId = (userId ?? "").Trim();
+            ApiGuards.EnsureValidTableKeyPart("userId", userId);
 
             var table = await TableClients.GetTableAsync(_svc, Constants.Tables.AccessRequests);
             var pk = ReqPk(leagueId);

@@ -37,10 +37,12 @@ public class CreateSlotRequest
             var divisionNorm = (division ?? "").Trim().ToUpperInvariant();
             if (string.IsNullOrWhiteSpace(divisionNorm))
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Division is required.");
+            ApiGuards.EnsureValidTableKeyPart("division", divisionNorm);
 
             var slotIdNorm = (slotId ?? "").Trim();
             if (string.IsNullOrWhiteSpace(slotIdNorm))
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "slotId is required.");
+            ApiGuards.EnsureValidTableKeyPart("slotId", slotIdNorm);
 
             var me = IdentityUtil.GetMe(req);
 

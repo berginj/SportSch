@@ -61,6 +61,7 @@ public class GetSlots
             var filter = "";
             if (!string.IsNullOrWhiteSpace(division))
             {
+                ApiGuards.EnsureValidTableKeyPart("division", division);
                 var pk = $"SLOT|{leagueId}|{division}";
                 filter = $"PartitionKey eq '{ApiGuards.EscapeOData(pk)}'";
             }
