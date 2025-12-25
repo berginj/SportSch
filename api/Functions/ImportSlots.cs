@@ -33,6 +33,11 @@ public class ImportSlots
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
             await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+            if (HasInvalidTableKeyChars(leagueId))
+                return HttpUtil.Json(req, HttpStatusCode.BadRequest, new
+                {
+                    error = $"Invalid leagueId. Table keys cannot contain: {InvalidTableKeyCharsMessage()}"
+                });
 
             var csvText = await CsvUpload.ReadCsvTextAsync(req);
             if (string.IsNullOrWhiteSpace(csvText))
@@ -116,6 +121,27 @@ public class ImportSlots
                 {
                     rejected++;
                     errors.Add(new { row = i + 1, error = "Invalid FieldKey. Use parkCode/fieldCode." });
+                    continue;
+                }
+                if (HasInvalidTableKeyChars(division))
+                {
+                    rejected++;
+                    errors.Add(new
+                    {
+                        row = i + 1,
+                        error = $"Invalid division. Table keys cannot contain: {InvalidTableKeyCharsMessage()}"
+                    });
+                    continue;
+                }
+                if (HasInvalidTableKeyChars(parkCode) || HasInvalidTableKeyChars(fieldCode))
+                {
+                    rejected++;
+                    errors.Add(new
+                    {
+                        row = i + 1,
+                        error = $"Invalid fieldKey. Table keys cannot contain: {InvalidTableKeyCharsMessage()}",
+                        fieldKey = fieldKeyRaw
+                    });
                     continue;
                 }
 
@@ -217,7 +243,7 @@ public class ImportSlots
                 req,
                 HttpStatusCode.BadGateway,
                 "STORAGE_ERROR",
-                "Storage request failed.",
+                "Storage request failed. This usually means a key contains invalid characters.",
                 new { requestId, status = ex.Status, code = ex.ErrorCode });
         }
         catch (Exception ex)
@@ -280,6 +306,12 @@ public class ImportSlots
         foreach (var c in input) sb.Append(bad.Contains(c) ? '_' : c);
         return sb.ToString();
     }
+
+    private static bool HasInvalidTableKeyChars(string value)
+        => !string.IsNullOrEmpty(value) && value.Any(c => c < 0x20 || c == '/' || c == '\\' || c == '#' || c == '?');
+
+    private static string InvalidTableKeyCharsMessage()
+        => "/, \\\\, #, ?, or control characters";
 
     private static bool TryParseFieldKey(string raw, out string parkCode, out string fieldCode)
     {

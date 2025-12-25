@@ -32,6 +32,9 @@ public class ImportFields
             var me = IdentityUtil.GetMe(req);
 
             await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+            if (HasInvalidTableKeyChars(leagueId))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST",
+                    $"Invalid leagueId. Table keys cannot contain: {InvalidTableKeyCharsMessage()}");
 
             var csvText = await CsvUpload.ReadCsvTextAsync(req);
             if (string.IsNullOrWhiteSpace(csvText))
@@ -89,6 +92,17 @@ public class ImportFields
                 {
                     rejected++;
                     errors.Add(new { row = i + 1, fieldKey = fieldKeyRaw, error = "Invalid fieldKey. Use parkCode/fieldCode or parkCode_fieldCode, or valid parkName/fieldName." });
+                    continue;
+                }
+                if (HasInvalidTableKeyChars(parkCode) || HasInvalidTableKeyChars(fieldCode))
+                {
+                    rejected++;
+                    errors.Add(new
+                    {
+                        row = i + 1,
+                        fieldKey = fieldKeyRaw,
+                        error = $"Invalid fieldKey. Table keys cannot contain: {InvalidTableKeyCharsMessage()}"
+                    });
                     continue;
                 }
 
@@ -151,7 +165,7 @@ public class ImportFields
                 req,
                 HttpStatusCode.BadGateway,
                 "STORAGE_ERROR",
-                "Storage request failed.",
+                "Storage request failed. This usually means a key contains invalid characters.",
                 new { requestId, status = ex.Status, code = ex.ErrorCode });
         }
         catch (Exception ex)
@@ -206,6 +220,12 @@ public class ImportFields
 
     private static string NormalizeNewlines(string s)
         => (s ?? "").Replace("\r\n", "\n").Replace("\r", "\n");
+
+    private static bool HasInvalidTableKeyChars(string value)
+        => !string.IsNullOrEmpty(value) && value.Any(c => c < 0x20 || c == '/' || c == '\\' || c == '#' || c == '?');
+
+    private static string InvalidTableKeyCharsMessage()
+        => "/, \\\\, #, ?, or control characters";
 
     private static bool TryParseFieldKeyFlexible(string raw, string parkName, string fieldName,
         out string parkCode, out string fieldCode, out string normalizedFieldKey)
