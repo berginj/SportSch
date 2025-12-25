@@ -1,6 +1,7 @@
 using System.Net;
 using Azure;
 using Azure.Data.Tables;
+using Azure.Data.Tables.Models;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
@@ -29,7 +30,7 @@ public class StorageHealth
             await ApiGuards.RequireGlobalAdminAsync(_svc, me);
 
             var tables = new List<string>();
-            await foreach (var table in _svc.QueryAsync<TableItem>(maxPerPage: 5))
+            await foreach (var table in _svc.QueryAsync(maxPerPage: 5))
             {
                 tables.Add(table.Name);
             }
