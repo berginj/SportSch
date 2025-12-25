@@ -60,7 +60,7 @@ public class ImportFields
 
             int upserted = 0, rejected = 0, skipped = 0;
             var errors = new List<object>();
-            var actions = new List<TableTransactionAction>();
+            var actionsByPartition = new Dictionary<string, List<TableTransactionAction>>();
 
             for (int i = 1; i < rows.Count; i++)
             {
@@ -117,6 +117,12 @@ public class ImportFields
                     ["UpdatedUtc"] = DateTimeOffset.UtcNow
                 };
 
+                if (!actionsByPartition.TryGetValue(pk, out var actions))
+                {
+                    actions = new List<TableTransactionAction>(capacity: 100);
+                    actionsByPartition[pk] = actions;
+                }
+
                 actions.Add(new TableTransactionAction(TableTransactionActionType.UpsertMerge, entity));
 
                 if (actions.Count == 100)
@@ -127,8 +133,9 @@ public class ImportFields
                 }
             }
 
-            if (actions.Count > 0)
+            foreach (var actions in actionsByPartition.Values)
             {
+                if (actions.Count == 0) continue;
                 var result = await table.SubmitTransactionAsync(actions);
                 upserted += result.Value.Count;
             }
