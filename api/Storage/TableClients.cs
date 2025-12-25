@@ -7,9 +7,11 @@ public static class TableClients
 {
     public static TableServiceClient CreateServiceClient(IConfiguration config)
     {
-        var conn = config["AzureWebJobsStorage"];
+        var conn = config["GameSwapStorage"];
         if (string.IsNullOrWhiteSpace(conn))
-            throw new InvalidOperationException("Missing AzureWebJobsStorage setting.");
+            conn = config["AzureWebJobsStorage"];
+        if (string.IsNullOrWhiteSpace(conn))
+            throw new InvalidOperationException("Missing GameSwapStorage/AzureWebJobsStorage setting.");
         return new TableServiceClient(conn);
     }
 
