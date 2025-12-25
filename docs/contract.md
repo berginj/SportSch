@@ -135,6 +135,7 @@ the notes for required headers or roles.
 | GET | /fields | `Functions/FieldsFunctions.cs` | List fields (requires `x-league-id`). |
 | PATCH | /fields/{parkCode}/{fieldCode} | `Functions/FieldsFunctions.cs` | Update field address details (requires `x-league-id`, LeagueAdmin). |
 | POST | /import/fields | `Functions/ImportFields.cs` | CSV field import (requires `x-league-id`, LeagueAdmin). |
+| POST | /import/teams | `Functions/ImportTeams.cs` | CSV teams import (requires `x-league-id`, LeagueAdmin). |
 | POST | /import/slots | `Functions/ImportSlots.cs` | CSV slot import (requires `x-league-id`, LeagueAdmin). |
 | GET | /slots | `Functions/GetSlots.cs` | List slots (requires `x-league-id`). |
 | POST | /slots | `Functions/CreateSlot.cs` | Create slot (requires `x-league-id`, Coach or LeagueAdmin). |
@@ -431,6 +432,25 @@ Optional columns:
 Import behavior:
 - Upserts by `fieldKey`.
 - `status=Inactive` deactivates the field (it will not appear in slot creation pickers when `activeOnly=true`).
+
+### POST /import/teams (league-scoped)
+Requires: LeagueAdmin or global admin.
+
+Body: raw CSV (`Content-Type: text/csv`)
+
+Required columns:
+- `division`
+- `teamId`
+- `name`
+
+Optional columns:
+- `coachName`
+- `coachEmail`
+- `coachPhone`
+
+Import behavior:
+- Upserts by `division + teamId`.
+- Coach contact fields populate the team’s primary contact info.
 
 ### PATCH /fields/{parkCode}/{fieldCode} (league-scoped)
 Requires: LeagueAdmin or global admin.

@@ -16,6 +16,16 @@ export default function AdminPage({ me }) {
   const [divisions, setDivisions] = useState([]);
   const [teams, setTeams] = useState([]);
   const [coachDraft, setCoachDraft] = useState({});
+  const [slotsFile, setSlotsFile] = useState(null);
+  const [teamsFile, setTeamsFile] = useState(null);
+  const [slotsBusy, setSlotsBusy] = useState(false);
+  const [teamsBusy, setTeamsBusy] = useState(false);
+  const [slotsErr, setSlotsErr] = useState("");
+  const [teamsErr, setTeamsErr] = useState("");
+  const [slotsOk, setSlotsOk] = useState("");
+  const [teamsOk, setTeamsOk] = useState("");
+  const [slotsErrors, setSlotsErrors] = useState([]);
+  const [teamsErrors, setTeamsErrors] = useState([]);
 
   async function load() {
     setLoading(true);
@@ -155,6 +165,47 @@ export default function AdminPage({ me }) {
   async function clearCoachAssignment(userId) {
     setDraftForCoach(userId, { division: "", teamId: "" });
     await saveCoachAssignment(userId);
+  }
+
+  async function importSlotsCsv() {
+    setSlotsErr("");
+    setSlotsOk("");
+    setSlotsErrors([]);
+    if (!slotsFile) return setSlotsErr("Choose a CSV file to upload.");
+
+    setSlotsBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", slotsFile);
+      const res = await apiFetch("/api/import/slots", { method: "POST", body: fd });
+      setSlotsOk(`Imported. Upserted: ${res?.upserted ?? 0}, Rejected: ${res?.rejected ?? 0}, Skipped: ${res?.skipped ?? 0}`);
+      if (Array.isArray(res?.errors) && res.errors.length) setSlotsErrors(res.errors);
+    } catch (e) {
+      setSlotsErr(e?.message || "Import failed");
+    } finally {
+      setSlotsBusy(false);
+    }
+  }
+
+  async function importTeamsCsv() {
+    setTeamsErr("");
+    setTeamsOk("");
+    setTeamsErrors([]);
+    if (!teamsFile) return setTeamsErr("Choose a CSV file to upload.");
+
+    setTeamsBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", teamsFile);
+      const res = await apiFetch("/api/import/teams", { method: "POST", body: fd });
+      setTeamsOk(`Imported. Upserted: ${res?.upserted ?? 0}, Rejected: ${res?.rejected ?? 0}, Skipped: ${res?.skipped ?? 0}`);
+      if (Array.isArray(res?.errors) && res.errors.length) setTeamsErrors(res.errors);
+      await loadMembershipsAndTeams();
+    } catch (e) {
+      setTeamsErr(e?.message || "Import failed");
+    } finally {
+      setTeamsBusy(false);
+    }
   }
 
   return (
@@ -328,6 +379,106 @@ export default function AdminPage({ me }) {
             </table>
           </div>
         )}
+      </div>
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <h3 style={{ marginTop: 0 }}>League admin uploads</h3>
+        <p className="muted">
+          Upload CSVs for schedules (slots) and teams. Team imports can prefill coach contact info.
+        </p>
+
+        <div className="card" style={{ marginTop: 12 }}>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>Schedule (slots) CSV upload</div>
+          <div className="subtle" style={{ marginBottom: 8 }}>
+            Required columns: <code>division</code>, <code>offeringTeamId</code>, <code>gameDate</code>,{" "}
+            <code>startTime</code>, <code>endTime</code>, <code>fieldKey</code>. Optional:{" "}
+            <code>offeringEmail</code>, <code>gameType</code>, <code>notes</code>, <code>status</code>.
+          </div>
+          {slotsErr ? <div className="callout callout--error">{slotsErr}</div> : null}
+          {slotsOk ? <div className="callout callout--ok">{slotsOk}</div> : null}
+          <div className="row" style={{ alignItems: "end", gap: 12 }}>
+            <label style={{ flex: 1 }}>
+              CSV file
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(e) => setSlotsFile(e.target.files?.[0] || null)}
+                disabled={slotsBusy}
+              />
+            </label>
+            <button className="btn" onClick={importSlotsCsv} disabled={slotsBusy || !slotsFile}>
+              {slotsBusy ? "Importing..." : "Upload & Import"}
+            </button>
+          </div>
+          {slotsErrors.length ? (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Rejected rows ({slotsErrors.length})</div>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Row</th>
+                    <th>Error</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {slotsErrors.slice(0, 50).map((x, idx) => (
+                    <tr key={idx}>
+                      <td>{x.row}</td>
+                      <td>{x.error}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {slotsErrors.length > 50 ? <div className="subtle">Showing first 50.</div> : null}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="card" style={{ marginTop: 12 }}>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>Teams CSV upload</div>
+          <div className="subtle" style={{ marginBottom: 8 }}>
+            Required columns: <code>division</code>, <code>teamId</code>, <code>name</code>. Optional:{" "}
+            <code>coachName</code>, <code>coachEmail</code>, <code>coachPhone</code>.
+          </div>
+          {teamsErr ? <div className="callout callout--error">{teamsErr}</div> : null}
+          {teamsOk ? <div className="callout callout--ok">{teamsOk}</div> : null}
+          <div className="row" style={{ alignItems: "end", gap: 12 }}>
+            <label style={{ flex: 1 }}>
+              CSV file
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(e) => setTeamsFile(e.target.files?.[0] || null)}
+                disabled={teamsBusy}
+              />
+            </label>
+            <button className="btn" onClick={importTeamsCsv} disabled={teamsBusy || !teamsFile}>
+              {teamsBusy ? "Importing..." : "Upload & Import"}
+            </button>
+          </div>
+          {teamsErrors.length ? (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Rejected rows ({teamsErrors.length})</div>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Row</th>
+                    <th>Error</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {teamsErrors.slice(0, 50).map((x, idx) => (
+                    <tr key={idx}>
+                      <td>{x.row}</td>
+                      <td>{x.error}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {teamsErrors.length > 50 ? <div className="subtle">Showing first 50.</div> : null}
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   );
