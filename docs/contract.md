@@ -115,6 +115,7 @@ the notes for required headers or roles.
 | POST | /admin/globaladmins | `Functions/GlobalAdminsFunctions.cs` | Add global admin. |
 | DELETE | /admin/globaladmins/{userId} | `Functions/GlobalAdminsFunctions.cs` | Remove global admin. |
 | POST | /admin/wipe | `Functions/AdminWipe.cs` | Global admin wipe for league-scoped tables (requires `x-league-id`). |
+| POST | /admin/migrate/fields | `Functions/AdminMigrateFields.cs` | Global admin migrate fields PKs from legacy format (requires `x-league-id`). |
 | GET | /admin/storage/health | `Functions/StorageHealth.cs` | Global admin storage connectivity check. |
 | GET | /storage/health | `Functions/StorageHealth.cs` | Global admin storage connectivity check (alt route). |
 | POST | /accessrequests | `Functions/AccessRequestsFunctions.cs` | Create access request. |
@@ -207,6 +208,12 @@ Body
 Notes
 - `tables` is optional; when omitted, defaults to all supported league tables.
 - Supported table keys: `accessrequests`, `divisions`, `events`, `fields`, `invites`, `memberships`, `slotrequests`, `slots`, `teams`.
+
+### Admin: POST /admin/migrate/fields (league-scoped)
+Requires: global admin.
+Header: `x-league-id`
+
+Migrates legacy field rows with PK `FIELD#<leagueId>#<parkCode>` into the new PK format `FIELD|<leagueId>|<parkCode>`.
 
 ---
 
