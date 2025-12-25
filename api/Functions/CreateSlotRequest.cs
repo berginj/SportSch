@@ -229,8 +229,8 @@ public class CreateSlotRequest
         string? excludeSlotId)
     {
         // Scan confirmed slots in this league (all divisions) for same date.
-        // PK prefix: SLOT#{leagueId}#{division}
-        var pkPrefix = $"SLOT#{leagueId}#";
+        // PK prefix: SLOT|{leagueId}|{division}
+        var pkPrefix = $"SLOT|{leagueId}|";
         var next = pkPrefix + "\uffff";
 
         var filter =
@@ -280,7 +280,7 @@ public class CreateSlotRequest
 
     private static string ExtractDivision(string pk, string leagueId)
     {
-        var prefix = $"SLOT#{leagueId}#";
+        var prefix = $"SLOT|{leagueId}|";
         if (!pk.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return "";
         return pk[prefix.Length..];
     }

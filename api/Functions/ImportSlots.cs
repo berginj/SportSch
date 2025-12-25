@@ -134,7 +134,7 @@ public class ImportSlots
                     continue;
                 }
 
-                var pk = $"SLOT#{leagueId}#{division}";
+                var pk = $"SLOT|{leagueId}|{division}";
                 var slotId = SafeKey($"{offeringTeamId}|{gameDate}|{startTime}|{endTime}|{parkCode}|{fieldCode}");
                 var now = DateTimeOffset.UtcNow;
 
@@ -238,8 +238,8 @@ public class ImportSlots
     {
         var map = new Dictionary<string, FieldMeta>(StringComparer.OrdinalIgnoreCase);
 
-        // PK = FIELD#{leagueId}#{parkCode}
-        var pkPrefix = $"FIELD#{leagueId}#";
+        // PK = FIELD|{leagueId}|{parkCode}
+        var pkPrefix = $"FIELD|{leagueId}|";
         var next = pkPrefix + "\uffff";
         var filter = $"PartitionKey ge '{ApiGuards.EscapeOData(pkPrefix)}' and PartitionKey lt '{ApiGuards.EscapeOData(next)}'";
 
@@ -268,7 +268,7 @@ public class ImportSlots
 
     private static string ExtractParkCodeFromPk(string pk, string leagueId)
     {
-        var prefix = $"FIELD#{leagueId}#";
+        var prefix = $"FIELD|{leagueId}|";
         if (!pk.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return "";
         return pk[prefix.Length..];
     }

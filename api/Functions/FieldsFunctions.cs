@@ -43,8 +43,8 @@ public class FieldsFunctions
             var activeOnly = GetBoolQuery(req, "activeOnly", defaultValue: true);
 
             var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Fields);
-            // PK convention: FIELD#{leagueId}#{parkCode}, RK = fieldCode
-            var pkPrefix = $"FIELD#{leagueId}#";
+            // PK convention: FIELD|{leagueId}|{parkCode}, RK = fieldCode
+            var pkPrefix = $"FIELD|{leagueId}|";
             var next = pkPrefix + "\uffff";
             var filter = $"PartitionKey ge '{ApiGuards.EscapeOData(pkPrefix)}' and PartitionKey lt '{ApiGuards.EscapeOData(next)}'";
 
@@ -85,7 +85,7 @@ public class FieldsFunctions
 
     private static string ExtractParkCodeFromPk(string pk, string leagueId)
     {
-        var prefix = $"FIELD#{leagueId}#";
+        var prefix = $"FIELD|{leagueId}|";
         if (!pk.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return "";
         return pk[prefix.Length..];
     }

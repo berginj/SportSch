@@ -37,7 +37,7 @@ public class GetSlotRequests
 
             // Validate slot exists (cheap guardrail)
             var slots = await TableClients.GetTableAsync(_svc, SlotsTableName);
-            var slotPk = $"SLOT#{leagueId}#{division}";
+            var slotPk = $"SLOT|{leagueId}|{division}";
             try { _ = (await slots.GetEntityAsync<TableEntity>(slotPk, slotId)).Value; }
             catch (RequestFailedException ex) when (ex.Status == 404)
             {
@@ -45,7 +45,7 @@ public class GetSlotRequests
             }
 
             var table = await TableClients.GetTableAsync(_svc, RequestsTableName);
-            var pk = $"SLOTREQ#{leagueId}#{division}#{slotId}";
+            var pk = $"SLOTREQ|{leagueId}|{division}|{slotId}";
             var filter = $"PartitionKey eq '{ApiGuards.EscapeOData(pk)}'";
 
             var list = new List<object>();

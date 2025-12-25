@@ -47,7 +47,7 @@ public class ApproveSlotRequest
 
             var slots = await TableClients.GetTableAsync(_svc, SlotsTableName);
             var requests = await TableClients.GetTableAsync(_svc, RequestsTableName);
-            var slotPk = $"SLOT#{leagueId}#{division}";
+            var slotPk = $"SLOT|{leagueId}|{division}";
             TableEntity slot;
             try { slot = (await slots.GetEntityAsync<TableEntity>(slotPk, slotId)).Value; }
             catch (RequestFailedException ex) when (ex.Status == 404)
@@ -85,7 +85,7 @@ public class ApproveSlotRequest
                 return ApiResponses.Error(req, HttpStatusCode.Conflict, "CONFLICT", "Slot already confirmed");
             }
 
-            var reqPk = $"SLOTREQ#{leagueId}#{division}#{slotId}";
+            var reqPk = $"SLOTREQ|{leagueId}|{division}|{slotId}";
             TableEntity request;
             try { request = (await requests.GetEntityAsync<TableEntity>(reqPk, requestId)).Value; }
             catch (RequestFailedException ex) when (ex.Status == 404)

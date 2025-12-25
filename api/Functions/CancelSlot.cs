@@ -33,7 +33,7 @@ public class CancelSlot
             var me = IdentityUtil.GetMe(req);
             await ApiGuards.RequireMemberAsync(_svc, me.UserId, leagueId);
 
-            var pk = $"SLOT#{leagueId}#{division}";
+            var pk = $"SLOT|{leagueId}|{division}";
             var table = await TableClients.GetTableAsync(_svc, SlotsTableName);
             TableEntity slot;
             try

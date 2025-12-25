@@ -28,7 +28,7 @@ public class DivisionsFunctions
     public record PatchTemplatesReq(List<DivisionTemplateItem>? templates);
 
     private static string DivPk(string leagueId) => Constants.Pk.Divisions(leagueId);
-    private static string TemplatesPk(string leagueId) => $"DIVTEMPLATE#{leagueId}";
+    private static string TemplatesPk(string leagueId) => $"DIVTEMPLATE|{leagueId}";
     private const string TemplatesRk = "CATALOG";
 
     [Function("GetDivisions")]

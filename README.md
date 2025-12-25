@@ -145,7 +145,7 @@ Fields:
 
 Table: GameSwapFields
 
-PK: FIELD#{leagueId}
+PK: FIELD|{leagueId}|{parkCode}
 
 RK: <fieldIdSafeKey>
 
@@ -157,7 +157,7 @@ Slots:
 
 Table: GameSwapSlots
 
-PK: SLOT#{leagueId}#{division}
+PK: SLOT|{leagueId}|{division}
 
 RK: deterministic <slotIdSafeKey> based on identity:
 
@@ -169,7 +169,7 @@ Slot Requests:
 
 Table: GameSwapSlotRequests
 
-PK: SLOTREQ#{leagueId}#{division}#{slotId}
+PK: SLOTREQ|{leagueId}|{division}|{slotId}
 
 RK: <requestId> GUID
 
@@ -251,7 +251,7 @@ RK = LeagueId
 
 Confirm you???re writing into canonical partitions:
 
-FIELD#{leagueId}, SLOT#{leagueId}#{division}, SLOTREQ#{leagueId}#{division}#{slotId}
+FIELD|{leagueId}|{parkCode}, SLOT|{leagueId}|{division}, SLOTREQ|{leagueId}|{division}|{slotId}
 
 10) Output expectations for future AI changes
 

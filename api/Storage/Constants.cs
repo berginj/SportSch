@@ -41,15 +41,15 @@ public static class Constants
         public const string Leagues = "LEAGUE"; // RK = leagueId
         public const string GlobalAdmins = "GLOBAL"; // RK = userId
 
-        public static string AccessRequests(string leagueId) => $"ACCESSREQ#{leagueId}"; // RK = userId
-        public static string Divisions(string leagueId) => $"DIV#{leagueId}"; // RK = divisionCode
+        public static string AccessRequests(string leagueId) => $"ACCESSREQ|{leagueId}"; // RK = userId
+        public static string Divisions(string leagueId) => $"DIV|{leagueId}"; // RK = divisionCode
 
-        public static string Fields(string leagueId, string parkCode) => $"FIELD#{leagueId}#{parkCode}"; // RK = fieldCode
-        public static string Slots(string leagueId, string division) => $"SLOT#{leagueId}#{division}"; // RK = slotId
-        public static string SlotRequests(string leagueId, string division, string slotId) => $"SLOTREQ#{leagueId}#{division}#{slotId}"; // RK = requestId
+        public static string Fields(string leagueId, string parkCode) => $"FIELD|{leagueId}|{parkCode}"; // RK = fieldCode
+        public static string Slots(string leagueId, string division) => $"SLOT|{leagueId}|{division}"; // RK = slotId
+        public static string SlotRequests(string leagueId, string division, string slotId) => $"SLOTREQ|{leagueId}|{division}|{slotId}"; // RK = requestId
 
-        // Calendar events (non-slot): PK = EVENT#{leagueId}, RK = eventId
-        public static string Events(string leagueId) => $"EVENT#{leagueId}";
+        // Calendar events (non-slot): PK = EVENT|{leagueId}, RK = eventId
+        public static string Events(string leagueId) => $"EVENT|{leagueId}";
     }
 
     public static class Status

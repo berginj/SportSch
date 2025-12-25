@@ -56,17 +56,17 @@ public class GetSlots
             var dateTo = (ApiGuards.GetQueryParam(req, "dateTo") ?? "").Trim();
 
             var table = await TableClients.GetTableAsync(_svc, SlotsTableName);
-            // Partitioning is SLOT#{leagueId}#{division}
+            // Partitioning is SLOT|{leagueId}|{division}
             // If division is omitted, query all slot partitions for this league by prefix range.
             var filter = "";
             if (!string.IsNullOrWhiteSpace(division))
             {
-                var pk = $"SLOT#{leagueId}#{division}";
+                var pk = $"SLOT|{leagueId}|{division}";
                 filter = $"PartitionKey eq '{ApiGuards.EscapeOData(pk)}'";
             }
             else
             {
-                var prefix = $"SLOT#{leagueId}#";
+                var prefix = $"SLOT|{leagueId}|";
                 // lexicographic prefix range: [prefix, prefix + '~')
                 filter = $"PartitionKey ge '{ApiGuards.EscapeOData(prefix)}' and PartitionKey lt '{ApiGuards.EscapeOData(prefix + "~")}'";
             }

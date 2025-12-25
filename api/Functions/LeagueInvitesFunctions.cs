@@ -47,7 +47,7 @@ public class LeagueInvitesFunctions
             var inviteId = Guid.NewGuid().ToString("N");
             var expires = DateTimeOffset.UtcNow.AddHours(body.expiresHours ?? 168); // default 7 days
 
-            var pk = $"LEAGUEINVITE#{leagueId}";
+            var pk = $"LEAGUEINVITE|{leagueId}";
             var entity = new TableEntity(pk, inviteId)
             {
                 ["LeagueId"] = leagueId,
@@ -95,7 +95,7 @@ public class LeagueInvitesFunctions
             if (string.IsNullOrWhiteSpace(leagueId) || string.IsNullOrWhiteSpace(inviteId))
                 return HttpUtil.Json(req, HttpStatusCode.BadRequest, new { error = "leagueId and inviteId are required" });
 
-            var pk = $"LEAGUEINVITE#{leagueId}";
+            var pk = $"LEAGUEINVITE|{leagueId}";
             var table = await TableClients.GetTableAsync(_svc, InvitesTableName);
             TableEntity e;
             try { e = (await table.GetEntityAsync<TableEntity>(pk, inviteId)).Value; }

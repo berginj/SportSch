@@ -23,7 +23,7 @@ public class TeamsFunctions
     public record TeamDto(string division, string teamId, string name, ContactDto primaryContact);
     public record UpsertTeamReq(string? division, string? teamId, string? name, ContactDto? primaryContact);
 
-    private static string TeamPk(string leagueId, string division) => $"TEAM#{leagueId}#{division}";
+    private static string TeamPk(string leagueId, string division) => $"TEAM|{leagueId}|{division}";
 
     private static TeamDto ToDto(TableEntity e)
     {
@@ -61,7 +61,7 @@ public class TeamsFunctions
             }
             else
             {
-                var prefix = $"TEAM#{leagueId}#";
+                var prefix = $"TEAM|{leagueId}|";
                 var next = prefix + "~";
                 var filter = $"PartitionKey ge '{ApiGuards.EscapeOData(prefix)}' and PartitionKey lt '{ApiGuards.EscapeOData(next)}'";
                 await foreach (var e in table.QueryAsync<TableEntity>(filter: filter))

@@ -34,8 +34,8 @@ public static class AuditLog
 
         var table = await TableClients.GetTableAsync(svc, TableName);
         var now = DateTimeOffset.UtcNow;
-        var pk = $"AUDIT#{now:yyyy-MM-dd}";
-        var rk = $"{now:HHmmss.fffffff}#{Guid.NewGuid():N}";
+        var pk = $"AUDIT|{now:yyyy-MM-dd}";
+        var rk = $"{now:HHmmss.fffffff}-{Guid.NewGuid():N}";
 
         var entity = new TableEntity(pk, rk)
         {

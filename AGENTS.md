@@ -16,9 +16,9 @@ These are the operating rules for work in this repo.
 
 ## PartitionKey and RowKey conventions
 - Memberships: PK = <userId>, RK = <leagueId>
-- Fields: PK = FIELD#{leagueId}, RK = <fieldIdSafeKey>, display name FieldName
-- Slots: PK = SLOT#{leagueId}#{division}, RK = SafeKey("{offeringTeamId}|{gameDate}|{start}|{end}|{fieldKey}")
-- Slot Requests: PK = SLOTREQ#{leagueId}#{division}#{slotId}, RK = <requestId GUID>
+- Fields: PK = FIELD|{leagueId}|{parkCode}, RK = <fieldCode>, display name FieldName
+- Slots: PK = SLOT|{leagueId}|{division}, RK = SafeKey("{offeringTeamId}|{gameDate}|{start}|{end}|{fieldKey}")
+- Slot Requests: PK = SLOTREQ|{leagueId}|{division}|{slotId}, RK = <requestId GUID>
 - New writes must use canonical PKs; legacy reads can fall back only when needed.
 
 ## League scoping
