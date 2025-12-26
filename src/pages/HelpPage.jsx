@@ -28,7 +28,7 @@ export default function HelpPage({ me, leagueId }) {
         return (
           <div className="layoutPreview layoutPreview--mobile">
             <div className="layoutPhone">
-              <div className="layoutPhone__bar">GameSwap</div>
+              <div className="layoutPhone__bar">Sports Scheduler</div>
               <div className="layoutPhone__section">
                 <div className="layoutTitle">Today</div>
                 <div className="layoutPill">Open offers</div>

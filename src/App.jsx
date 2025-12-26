@@ -11,6 +11,8 @@ import TopNav from "./components/TopNav";
 import { useSession } from "./lib/useSession";
 import { trackPageView } from "./lib/telemetry";
 
+const VALID_TABS = new Set(["home", "calendar", "offers", "manage", "admin", "help"]);
+
 function readInviteFromUrl() {
   if (typeof window === "undefined") return null;
   const params = new URLSearchParams(window.location.search);
@@ -20,9 +22,15 @@ function readInviteFromUrl() {
   return { inviteId, leagueId };
 }
 
+function readTabFromHash() {
+  if (typeof window === "undefined") return "home";
+  const hash = (window.location.hash || "").replace("#", "").trim();
+  return VALID_TABS.has(hash) ? hash : "home";
+}
+
 export default function App() {
   const { me, memberships, activeLeagueId, setActiveLeagueId, refreshMe } = useSession();
-  const [tab, setTab] = useState("home");
+  const [tab, setTab] = useState(() => readTabFromHash());
   const [invite, setInvite] = useState(() => readInviteFromUrl());
 
   const isSignedIn = !!me && me.userId && me.userId !== "UNKNOWN";
@@ -41,6 +49,24 @@ export default function App() {
     const uri = `${window.location.pathname}#${effectiveTab}`;
     trackPageView(name, uri);
   }, [effectiveTab, me]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const nextHash = `#${effectiveTab}`;
+    if (window.location.hash !== nextHash) {
+      window.history.replaceState({}, "", `${window.location.pathname}${window.location.search}${nextHash}`);
+    }
+  }, [effectiveTab]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onHashChange = () => {
+      const next = readTabFromHash();
+      setTab((prev) => (prev === next ? prev : next));
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
 
   if (!me) {
     return (
@@ -79,7 +105,7 @@ export default function App() {
     return (
       <div className="appShell">
         <div className="card">
-          <h1>GameSwap</h1>
+          <h1>Sports Scheduler</h1>
           <p>You're not signed in yet.</p>
           <a className="btn" href="/.auth/login/aad">
             Sign in with Microsoft
@@ -97,7 +123,7 @@ export default function App() {
     return (
       <div className="appShell">
         <div className="card">
-          <h1>GameSwap</h1>
+          <h1>Sports Scheduler</h1>
           <p>You're signed in, but you don't have access to any leagues yet.</p>
         </div>
         <AccessPage
