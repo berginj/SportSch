@@ -90,6 +90,35 @@ function downloadCsv(csv, filename) {
   URL.revokeObjectURL(url);
 }
 
+function parseIsoDate(value) {
+  const parts = (value || "").split("-");
+  if (parts.length !== 3) return null;
+  const year = Number(parts[0]);
+  const month = Number(parts[1]);
+  const day = Number(parts[2]);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, day);
+}
+
+function toIsoDate(d) {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function addDays(d, days) {
+  const next = new Date(d.getTime());
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function startOfWeek(d) {
+  const date = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const day = date.getDay();
+  return addDays(date, -day);
+}
+
 export default function SchedulerManager({ leagueId }) {
   const [divisions, setDivisions] = useState([]);
   const [division, setDivision] = useState("");
@@ -123,6 +152,7 @@ export default function SchedulerManager({ leagueId }) {
   const [overlayEvents, setOverlayEvents] = useState([]);
   const [overlayDivisions, setOverlayDivisions] = useState([]);
   const [overlayLoading, setOverlayLoading] = useState(false);
+  const [overlayView, setOverlayView] = useState("list");
 
   useEffect(() => {
     if (!leagueId) return;
@@ -313,6 +343,31 @@ export default function SchedulerManager({ leagueId }) {
       .filter((i) => i.date)
       .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
   }, [overlaySlots, overlayEvents, overlayDivisions]);
+
+  const overlayByDate = useMemo(() => {
+    const map = new Map();
+    for (const item of overlayItems) {
+      const list = map.get(item.date) || [];
+      list.push(item);
+      map.set(item.date, list);
+    }
+    return map;
+  }, [overlayItems]);
+
+  const overlayWeeks = useMemo(() => {
+    const start = parseIsoDate(dateFrom || seasonRange.from);
+    const end = parseIsoDate(dateTo || seasonRange.to);
+    if (!start || !end) return [];
+    const weeks = [];
+    let cursor = startOfWeek(start);
+    const last = startOfWeek(end);
+    while (cursor <= last) {
+      const days = Array.from({ length: 7 }, (_, i) => addDays(cursor, i));
+      weeks.push(days);
+      cursor = addDays(cursor, 7);
+    }
+    return weeks;
+  }, [dateFrom, dateTo, seasonRange]);
 
   async function previewSlotGeneration() {
     setErr("");
@@ -688,6 +743,22 @@ export default function SchedulerManager({ leagueId }) {
         </div>
         <div className="card__body">
           <div className="row row--wrap gap-2 mb-3">
+            <button
+              className={`btn btn--ghost ${overlayView === "list" ? "is-active" : ""}`}
+              type="button"
+              onClick={() => setOverlayView("list")}
+            >
+              List view
+            </button>
+            <button
+              className={`btn btn--ghost ${overlayView === "grid" ? "is-active" : ""}`}
+              type="button"
+              onClick={() => setOverlayView("grid")}
+            >
+              Calendar view
+            </button>
+          </div>
+          <div className="row row--wrap gap-2 mb-3">
             {divisions.map((d) => {
               const code = d.code || d.division;
               const color = divisionColors.get(code) || "#333";
@@ -710,7 +781,7 @@ export default function SchedulerManager({ leagueId }) {
           </div>
           {overlayItems.length === 0 ? (
             <div className="muted">No items to display for the selected range.</div>
-          ) : (
+          ) : overlayView === "list" ? (
             <div className="tableWrap">
               <table className="table">
                 <thead>
@@ -746,6 +817,53 @@ export default function SchedulerManager({ leagueId }) {
                       </tr>
                     );
                   })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="tableWrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+                      <th key={d}>{d}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {overlayWeeks.map((week, wIdx) => (
+                    <tr key={`week-${wIdx}`}>
+                      {week.map((day) => {
+                        const key = toIsoDate(day);
+                        const items = overlayByDate.get(key) || [];
+                        return (
+                          <td key={key} className="align-top">
+                            <div className="text-xs font-semibold mb-1">{key}</div>
+                            {items.length === 0 ? (
+                              <div className="muted text-xs">-</div>
+                            ) : (
+                              <div className="stack gap-1">
+                                {items.map((i, idx) => {
+                                  const color = divisionColors.get(i.division) || "#333";
+                                  const typeLabel = i.kind === "event"
+                                    ? "Event"
+                                    : i.isExternal
+                                      ? (i.status === "Confirmed" ? "External (filled)" : "External (open)")
+                                      : "Matchup";
+                                  return (
+                                    <div key={`${key}-${idx}`} className="subtle" style={{ borderLeft: `4px solid ${color}`, paddingLeft: 6 }}>
+                                      <div className="text-xs">{i.time} {typeLabel}</div>
+                                      <div className="text-xs">{i.label}</div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
