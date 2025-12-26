@@ -153,6 +153,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
         body: JSON.stringify({ leagueId, name, timezone }),
       });
       setGlobalOk(`Created league ${leagueId}.`);
+      setToast({ tone: "success", message: `Created league ${leagueId}.` });
       setNewLeague({ leagueId: "", name: "", timezone });
       await loadGlobalLeagues();
     } catch (e) {
@@ -173,6 +174,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
         body: JSON.stringify({ role }),
       });
       await load();
+      setToast({ tone: "success", message: "Access request approved." });
     } catch (e) {
       setToast({ tone: "error", message: e?.message || "Approve failed" });
     }
@@ -195,6 +197,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
         body: JSON.stringify({ reason }),
       });
       await load();
+      setToast({ tone: "success", message: "Access request denied." });
     } catch (e) {
       setToast({ tone: "error", message: e?.message || "Deny failed" });
     }
@@ -243,6 +246,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
         body: JSON.stringify(body),
       });
       await loadMembershipsAndTeams();
+      setToast({ tone: "success", message: "Coach assignment updated." });
     } catch (e) {
       setToast({ tone: "error", message: e?.message || "Failed to update coach assignment" });
     }

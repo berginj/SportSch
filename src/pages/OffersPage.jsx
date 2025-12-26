@@ -168,6 +168,7 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
       setFieldKey("");
       setNotes("");
       await reloadSlots(division);
+      setToast({ tone: "success", message: "Offer created." });
     } catch (e) {
       setErr(e?.message || String(e));
     }
@@ -199,6 +200,7 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
         }),
       });
       await reloadSlots(division);
+      setToast({ tone: "success", message: "Offer accepted." });
     } catch (e) {
       setErr(e?.message || String(e));
     }
