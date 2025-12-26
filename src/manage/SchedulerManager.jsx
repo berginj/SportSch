@@ -119,6 +119,14 @@ function startOfWeek(d) {
   return addDays(date, -day);
 }
 
+function startOfMonth(d) {
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+
+function endOfMonth(d) {
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0);
+}
+
 function formatWeekRange(start) {
   const end = addDays(start, 6);
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -127,24 +135,21 @@ function formatWeekRange(start) {
   return `${startLabel} - ${endLabel}`;
 }
 
-function formatMonthRange(start) {
-  const end = addDays(start, 6);
+function formatMonthLabel(date) {
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const startMonth = `${months[start.getMonth()]} ${start.getFullYear()}`;
-  const endMonth = `${months[end.getMonth()]} ${end.getFullYear()}`;
-  return startMonth === endMonth ? startMonth : `${startMonth} / ${endMonth}`;
+  return `${months[date.getMonth()]} ${date.getFullYear()}`;
 }
 
-function buildWeekOptions(from, to) {
-  if (!from || !to) return [];
-  const options = [];
-  let cursor = startOfWeek(from);
-  const last = startOfWeek(to);
+function buildMonthWeeks(monthStart) {
+  if (!monthStart) return [];
+  const weeks = [];
+  let cursor = startOfWeek(monthStart);
+  const last = startOfWeek(endOfMonth(monthStart));
   while (cursor <= last) {
-    options.push({ start: toIsoDate(cursor), label: formatWeekRange(cursor) });
+    weeks.push(Array.from({ length: 7 }, (_, i) => addDays(cursor, i)));
     cursor = addDays(cursor, 7);
   }
-  return options;
+  return weeks;
 }
 
 export default function SchedulerManager({ leagueId }) {
@@ -182,6 +187,7 @@ export default function SchedulerManager({ leagueId }) {
   const [overlayLoading, setOverlayLoading] = useState(false);
   const [overlayView, setOverlayView] = useState("list");
   const [overlayWeekStart, setOverlayWeekStart] = useState("");
+  const [overlayMonthStart, setOverlayMonthStart] = useState("");
 
   useEffect(() => {
     if (!leagueId) return;
@@ -230,7 +236,11 @@ export default function SchedulerManager({ leagueId }) {
   useEffect(() => {
     if (overlayWeekStart) return;
     const base = parseIsoDate(dateFrom || seasonRange.from);
-    if (base) setOverlayWeekStart(toIsoDate(startOfWeek(base)));
+    if (base) {
+      const weekStart = startOfWeek(base);
+      setOverlayWeekStart(toIsoDate(weekStart));
+      setOverlayMonthStart(toIsoDate(startOfMonth(weekStart)));
+    }
   }, [dateFrom, overlayWeekStart, seasonRange]);
 
   useEffect(() => {
@@ -395,18 +405,11 @@ export default function SchedulerManager({ leagueId }) {
     return Array.from({ length: 7 }, (_, i) => addDays(start, i));
   }, [overlayWeekStart]);
 
-  const overlayWeekOptions = useMemo(() => {
-    const start = parseIsoDate(dateFrom || seasonRange.from);
-    const end = parseIsoDate(dateTo || seasonRange.to);
-    return buildWeekOptions(start, end);
-  }, [dateFrom, dateTo, seasonRange]);
-
-  useEffect(() => {
-    if (!overlayWeekOptions.length) return;
-    if (!overlayWeekStart || !overlayWeekOptions.find((opt) => opt.start === overlayWeekStart)) {
-      setOverlayWeekStart(overlayWeekOptions[0].start);
-    }
-  }, [overlayWeekOptions, overlayWeekStart]);
+  const overlayMonthWeeks = useMemo(() => {
+    const base = parseIsoDate(overlayMonthStart || overlayWeekStart);
+    if (!base) return [];
+    return buildMonthWeeks(startOfMonth(base));
+  }, [overlayMonthStart, overlayWeekStart]);
 
   async function previewSlotGeneration() {
     setErr("");
@@ -866,26 +869,15 @@ export default function SchedulerManager({ leagueId }) {
                   {overlayWeek.length ? formatWeekRange(overlayWeek[0]) : "Week view"}
                 </div>
                 <div className="row gap-2">
-                  <label className="min-w-[220px]">
-                    Jump to week
-                    <select
-                      value={overlayWeekStart}
-                      onChange={(e) => setOverlayWeekStart(e.target.value)}
-                    >
-                      {overlayWeekOptions.map((opt) => (
-                        <option key={opt.start} value={opt.start}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
                   <button
                     className="btn btn--ghost"
                     type="button"
                     onClick={() => {
                       const current = parseIsoDate(overlayWeekStart);
                       if (!current) return;
-                      setOverlayWeekStart(toIsoDate(addDays(current, -7)));
+                      const next = addDays(current, -7);
+                      setOverlayWeekStart(toIsoDate(next));
+                      setOverlayMonthStart(toIsoDate(startOfMonth(next)));
                     }}
                   >
                     Prev week
@@ -894,9 +886,23 @@ export default function SchedulerManager({ leagueId }) {
                     className="btn btn--ghost"
                     type="button"
                     onClick={() => {
+                      const current = parseIsoDate(overlayMonthStart || overlayWeekStart);
+                      if (!current) return;
+                      const prev = new Date(current.getFullYear(), current.getMonth() - 1, 1);
+                      setOverlayMonthStart(toIsoDate(prev));
+                    }}
+                  >
+                    Prev month
+                  </button>
+                  <button
+                    className="btn btn--ghost"
+                    type="button"
+                    onClick={() => {
                       const base = parseIsoDate(dateFrom || seasonRange.from);
                       if (!base) return;
-                      setOverlayWeekStart(toIsoDate(startOfWeek(base)));
+                      const weekStart = startOfWeek(base);
+                      setOverlayWeekStart(toIsoDate(weekStart));
+                      setOverlayMonthStart(toIsoDate(startOfMonth(weekStart)));
                     }}
                   >
                     Reset
@@ -905,23 +911,76 @@ export default function SchedulerManager({ leagueId }) {
                     className="btn btn--ghost"
                     type="button"
                     onClick={() => {
+                      const current = parseIsoDate(overlayMonthStart || overlayWeekStart);
+                      if (!current) return;
+                      const next = new Date(current.getFullYear(), current.getMonth() + 1, 1);
+                      setOverlayMonthStart(toIsoDate(next));
+                    }}
+                  >
+                    Next month
+                  </button>
+                  <button
+                    className="btn btn--ghost"
+                    type="button"
+                    onClick={() => {
                       const current = parseIsoDate(overlayWeekStart);
                       if (!current) return;
-                      setOverlayWeekStart(toIsoDate(addDays(current, 7)));
+                      const next = addDays(current, 7);
+                      setOverlayWeekStart(toIsoDate(next));
+                      setOverlayMonthStart(toIsoDate(startOfMonth(next)));
                     }}
                   >
                     Next week
                   </button>
                 </div>
               </div>
+              <div className="tableWrap mb-3">
+                <table className="table text-xs">
+                  <thead>
+                    <tr>
+                      <th colSpan={7} className="text-left">
+                        {overlayMonthWeeks.length ? formatMonthLabel(overlayMonthWeeks[0][0]) : "Month"}
+                      </th>
+                    </tr>
+                    <tr>
+                      {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+                        <th key={d}>{d}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {overlayMonthWeeks.map((week, wIdx) => (
+                      <tr key={`mini-${wIdx}`}>
+                        {week.map((day) => {
+                          const key = toIsoDate(day);
+                          const monthBase = overlayMonthWeeks[0][0];
+                          const inMonth = day.getMonth() === monthBase.getMonth();
+                          const isCurrentWeek = overlayWeekStart === toIsoDate(startOfWeek(day));
+                          return (
+                            <td key={key}>
+                              <button
+                                className={`btn btn--ghost ${isCurrentWeek ? "is-active" : ""}`}
+                                type="button"
+                                onClick={() => {
+                                  const weekStart = startOfWeek(day);
+                                  setOverlayWeekStart(toIsoDate(weekStart));
+                                  setOverlayMonthStart(toIsoDate(startOfMonth(weekStart)));
+                                }}
+                                title="Jump to week"
+                              >
+                                <span className={inMonth ? "" : "muted"}>{day.getDate()}</span>
+                              </button>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             <div className="tableWrap">
               <table className="table">
                 <thead>
-                  <tr>
-                    <th colSpan={7} className="text-left">
-                      {overlayWeek.length ? formatMonthRange(overlayWeek[0]) : "Month"}
-                    </th>
-                  </tr>
                   <tr>
                     {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
                       <th key={d}>{d}</th>
