@@ -546,11 +546,11 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
               <div key={`${it.kind}:${it.id}`} className={statusClassForItem(it)}>
                 <div className="row row--between">
                   <div>
-                    <div style={{ fontWeight: 700 }}>
+                    <div className="font-strong">
                       {it.date} {it.start ? `${it.start}${it.end ? `-${it.end}` : ""}` : ""} - {it.title}
                     </div>
                     {it.subtitle ? <div className="muted">{it.subtitle}</div> : null}
-                    {it.kind === "event" && it.raw?.notes ? <div style={{ marginTop: 6 }}>{it.raw.notes}</div> : null}
+                    {it.kind === "event" && it.raw?.notes ? <div className="mt-2">{it.raw.notes}</div> : null}
                   </div>
                   <div className="row">
                     {it.kind === "slot" ? (

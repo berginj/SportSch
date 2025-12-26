@@ -109,7 +109,7 @@ export default function App() {
           <a className="btn" href="/.auth/login/aad">
             Sign in with Microsoft
           </a>
-          <div className="muted" style={{ marginTop: 12 }}>
+          <div className="muted mt-3">
             After signing in, come right back here.
           </div>
         </div>

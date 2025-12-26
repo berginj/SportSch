@@ -267,11 +267,11 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
             </div>
           </label>
           <div className="layoutRow">
-            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <label className="inlineCheck">
               <input type="checkbox" checked={showSlots} onChange={(e) => setShowSlots(e.target.checked)} />
               Slots
             </label>
-            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <label className="inlineCheck">
               <input type="checkbox" checked={showEvents} onChange={(e) => setShowEvents(e.target.checked)} />
               Events
             </label>

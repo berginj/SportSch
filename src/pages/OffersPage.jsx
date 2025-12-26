@@ -220,7 +220,7 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
             Refresh
           </button>
         </div>
-        <div className="muted" style={{ marginTop: 8 }}>
+        <div className="muted mt-2">
           Create offers for <b>{leagueId || "(no league)"}</b>.
         </div>
       </div>
@@ -294,7 +294,7 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
                     <td>{s.displayName || s.fieldKey}</td>
                     <td>{s.offeringTeamId}</td>
                     <td>{s.status}</td>
-                    <td style={{ textAlign: "right" }}>
+                    <td className="text-right">
                       {s.status === "Open" ? (
                         canPickTeam ? (
                           (() => {
@@ -302,7 +302,7 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
                             const teamsForDivision = teamsByDivision.get(divisionKey) || [];
                             const selectedTeamId = acceptTeamBySlot[s.slotId] || "";
                             return (
-                              <div className="row" style={{ justifyContent: "flex-end" }}>
+                              <div className="row row--end">
                                 <select
                                   value={selectedTeamId}
                                   onChange={(e) => setAcceptTeam(s.slotId, e.target.value)}
