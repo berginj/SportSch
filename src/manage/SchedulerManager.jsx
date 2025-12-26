@@ -953,9 +953,18 @@ export default function SchedulerManager({ leagueId }) {
                       <tr key={`mini-${wIdx}`}>
                         {week.map((day) => {
                           const key = toIsoDate(day);
+                          const dayItems = overlayByDate.get(key) || [];
+                          const matchups = dayItems.filter((i) => i.kind === "slot" && !i.isExternal).length;
+                          const externals = dayItems.filter((i) => i.kind === "slot" && i.isExternal).length;
+                          const events = dayItems.filter((i) => i.kind === "event").length;
                           const monthBase = overlayMonthWeeks[0][0];
                           const inMonth = day.getMonth() === monthBase.getMonth();
                           const isCurrentWeek = overlayWeekStart === toIsoDate(startOfWeek(day));
+                          const badges = [
+                            matchups ? `M${matchups}` : "",
+                            externals ? `X${externals}` : "",
+                            events ? `E${events}` : "",
+                          ].filter(Boolean).join(" ");
                           return (
                             <td key={key}>
                               <button
@@ -970,6 +979,7 @@ export default function SchedulerManager({ leagueId }) {
                               >
                                 <span className={inMonth ? "" : "muted"}>{day.getDate()}</span>
                               </button>
+                              {badges ? <div className="text-[10px] mt-1">{badges}</div> : null}
                             </td>
                           );
                         })}
