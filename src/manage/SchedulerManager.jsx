@@ -127,6 +127,26 @@ function formatWeekRange(start) {
   return `${startLabel} - ${endLabel}`;
 }
 
+function formatMonthRange(start) {
+  const end = addDays(start, 6);
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const startMonth = `${months[start.getMonth()]} ${start.getFullYear()}`;
+  const endMonth = `${months[end.getMonth()]} ${end.getFullYear()}`;
+  return startMonth === endMonth ? startMonth : `${startMonth} / ${endMonth}`;
+}
+
+function buildWeekOptions(from, to) {
+  if (!from || !to) return [];
+  const options = [];
+  let cursor = startOfWeek(from);
+  const last = startOfWeek(to);
+  while (cursor <= last) {
+    options.push({ start: toIsoDate(cursor), label: formatWeekRange(cursor) });
+    cursor = addDays(cursor, 7);
+  }
+  return options;
+}
+
 export default function SchedulerManager({ leagueId }) {
   const [divisions, setDivisions] = useState([]);
   const [division, setDivision] = useState("");
@@ -374,6 +394,19 @@ export default function SchedulerManager({ leagueId }) {
     if (!start) return [];
     return Array.from({ length: 7 }, (_, i) => addDays(start, i));
   }, [overlayWeekStart]);
+
+  const overlayWeekOptions = useMemo(() => {
+    const start = parseIsoDate(dateFrom || seasonRange.from);
+    const end = parseIsoDate(dateTo || seasonRange.to);
+    return buildWeekOptions(start, end);
+  }, [dateFrom, dateTo, seasonRange]);
+
+  useEffect(() => {
+    if (!overlayWeekOptions.length) return;
+    if (!overlayWeekStart || !overlayWeekOptions.find((opt) => opt.start === overlayWeekStart)) {
+      setOverlayWeekStart(overlayWeekOptions[0].start);
+    }
+  }, [overlayWeekOptions, overlayWeekStart]);
 
   async function previewSlotGeneration() {
     setErr("");
@@ -833,6 +866,19 @@ export default function SchedulerManager({ leagueId }) {
                   {overlayWeek.length ? formatWeekRange(overlayWeek[0]) : "Week view"}
                 </div>
                 <div className="row gap-2">
+                  <label className="min-w-[220px]">
+                    Jump to week
+                    <select
+                      value={overlayWeekStart}
+                      onChange={(e) => setOverlayWeekStart(e.target.value)}
+                    >
+                      {overlayWeekOptions.map((opt) => (
+                        <option key={opt.start} value={opt.start}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   <button
                     className="btn btn--ghost"
                     type="button"
@@ -871,6 +917,11 @@ export default function SchedulerManager({ leagueId }) {
             <div className="tableWrap">
               <table className="table">
                 <thead>
+                  <tr>
+                    <th colSpan={7} className="text-left">
+                      {overlayWeek.length ? formatMonthRange(overlayWeek[0]) : "Month"}
+                    </th>
+                  </tr>
                   <tr>
                     {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
                       <th key={d}>{d}</th>
