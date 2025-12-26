@@ -202,6 +202,11 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
   }
 
   const nextItems = useMemo(() => {
+    const todayKey = toDateInputValue(today);
+    const windowEnd = new Date(today);
+    windowEnd.setDate(windowEnd.getDate() + 30);
+    const windowEndKey = toDateInputValue(windowEnd);
+
     const items = [
       ...events.map((e) => ({
         kind: "event",
@@ -215,10 +220,10 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
       })),
     ];
     return items
-      .filter((i) => i.date)
+      .filter((i) => i.date && i.date >= todayKey && i.date <= windowEndKey)
       .sort((a, b) => a.date.localeCompare(b.date))
       .slice(0, 5);
-  }, [events, confirmedSlots]);
+  }, [events, confirmedSlots, today]);
 
   const layoutKey = isMobile ? "mobile" : isAdmin ? "admin" : role === "Coach" ? "filters" : "coach";
 
@@ -337,7 +342,7 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
             </div>
           </div>
           <div className="layoutPanel">
-            <div className="layoutPanel__title">Next 7 days</div>
+            <div className="layoutPanel__title">Next 30 days</div>
             <div className="layoutList">
               {nextItems.map((i, idx) => (
                 <div className="layoutItem" key={idx}>

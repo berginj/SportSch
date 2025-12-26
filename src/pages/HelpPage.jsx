@@ -107,7 +107,7 @@ export default function HelpPage({ me, leagueId }) {
                 </div>
               </div>
               <div className="layoutPanel">
-                <div className="layoutPanel__title">Next 7 days</div>
+                <div className="layoutPanel__title">Next 30 days</div>
                 <div className="layoutList">
                   <div className="layoutItem">Apr 12 - Open: Tigers @ Field 1</div>
                   <div className="layoutItem">Apr 13 - Confirmed: Sharks vs Owls</div>
