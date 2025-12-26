@@ -317,8 +317,8 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
                     </select>
                     <div className="muted text-xs">{r.updatedUtc || r.createdUtc || ""}</div>
                   </td>
-                  <td className="max-w-320">
-                    <div className="whitespace-prewrap">{r.notes || ""}</div>
+                  <td className="max-w-[320px]">
+                    <div className="whitespace-pre-wrap">{r.notes || ""}</div>
                   </td>
                   <td>
                     <div className="row gap-2 row--wrap">
@@ -347,7 +347,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
 
       {isGlobalAdmin ? (
         <div className="card mt-4">
-          <h3 className="no-margin">Global admin: leagues</h3>
+          <h3 className="m-0">Global admin: leagues</h3>
           <p className="muted">
             Create new leagues and review existing ones. This is global admin only.
           </p>
@@ -355,7 +355,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
           {globalOk ? <div className="callout callout--ok">{globalOk}</div> : null}
 
           <div className="row gap-3 row--wrap mb-3">
-            <label className="flex-1 min-w-160">
+            <label className="flex-1 min-w-[160px]">
               League ID
               <input
                 value={newLeague.leagueId}
@@ -363,7 +363,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
                 placeholder="ARL"
               />
             </label>
-            <label className="flex-2 min-w-220">
+            <label className="flex-[2] min-w-[220px]">
               League name
               <input
                 value={newLeague.name}
@@ -371,7 +371,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
                 placeholder="Arlington"
               />
             </label>
-            <label className="flex-2 min-w-220">
+            <label className="flex-[2] min-w-[220px]">
               Timezone
               <input
                 value={newLeague.timezone}
@@ -419,7 +419,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
       ) : null}
 
       <div className="card mt-4">
-        <h3 className="no-margin">Coach assignments</h3>
+        <h3 className="m-0">Coach assignments</h3>
         <p className="muted">
           Coaches can be approved without a team. Assign teams here when you're ready.
         </p>
@@ -511,7 +511,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
       </div>
 
       <div className="card mt-4">
-        <h3 className="no-margin">League admin uploads</h3>
+        <h3 className="m-0">League admin uploads</h3>
         <p className="muted">
           Upload CSVs for schedules (slots) and teams. Team imports can prefill coach contact info.
         </p>

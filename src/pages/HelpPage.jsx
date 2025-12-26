@@ -264,19 +264,19 @@ export default function HelpPage({ me, leagueId }) {
             <p>
               Use the league dropdown in the top bar. Your selection is saved in your browser and sent to the API as <code>x-league-id</code> on every request.
             </p>
-            <p className="muted no-margin">
+            <p className="muted m-0">
               Current league: <code>{leagueId || "(none selected)"}</code>
             </p>
           </Section>
 
           <Section title="What this app is for">
-            <p className="no-margin">
+            <p className="m-0">
               Coaches post <b>Open</b> game offers ("slots") to the calendar. Other coaches can <b>accept</b> an open slot, and the game becomes <b>Confirmed</b> immediately on the calendar.
             </p>
           </Section>
 
           <Section title="Request access to a league">
-            <ol className="no-margin pl-4">
+            <ol className="m-0 pl-4">
               <li>Sign in (Azure AD) via the login link.</li>
               <li>Go to the Access page and pick the league you want.</li>
               <li>Select your role (Coach or Viewer) and submit.</li>
@@ -294,19 +294,19 @@ export default function HelpPage({ me, leagueId }) {
             <p>
               When you see an open slot that works for your team, click <b>Accept</b> (Calendar) or <b>Accept</b> (Create Game Offer). Add notes if helpful.
             </p>
-            <p className="muted no-margin">
+            <p className="muted m-0">
               Acceptance immediately confirms the game and shows it as <b>Confirmed</b> on the calendar.
             </p>
           </Section>
 
           <Section title="Cancel a slot or confirmed game">
-            <p className="no-margin">
+            <p className="m-0">
               If plans change, either the <b>offering</b> team or the <b>accepting</b> team can cancel a confirmed game. LeagueAdmins and global admins can cancel too.
             </p>
           </Section>
 
           <Section title="Approve/deny an access request (admins)">
-            <p className="no-margin">
+            <p className="m-0">
               LeagueAdmins and global admins approve or deny <b>league access</b> requests on the Admin page.
             </p>
           </Section>
@@ -321,13 +321,13 @@ export default function HelpPage({ me, leagueId }) {
             <p>
               LeagueAdmins can import/manage fields, manage divisions, manage teams, and update league contact info. Global admins are higher-level across all leagues.
             </p>
-            <p className="muted no-margin">
+            <p className="muted m-0">
               Use League Management &gt; Fields for CSV import (fieldKey is required). Use League Management &gt; Teams &amp; Coaches to keep the league organized.
             </p>
           </Section>
 
           <Section title="Common issues + fixes">
-            <ul className="no-margin pl-4">
+            <ul className="m-0 pl-4">
               <li>
                 <b>Forbidden / 403</b>: wrong league selected, or you don't have membership for that league.
               </li>
@@ -349,7 +349,7 @@ export default function HelpPage({ me, leagueId }) {
             </ul>
             <details className="mt-3">
               <summary className="cursor-pointer">Show my memberships (from /api/me)</summary>
-              <pre className="mt-3 whitespace-prewrap">{JSON.stringify(memberships, null, 2)}</pre>
+              <pre className="mt-3 whitespace-pre-wrap">{JSON.stringify(memberships, null, 2)}</pre>
             </details>
           </Section>
         </div>

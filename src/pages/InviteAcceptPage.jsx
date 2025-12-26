@@ -43,7 +43,7 @@ export default function InviteAcceptPage({ invite, me, refreshMe, setLeagueId, o
 
   return (
     <div className="appShell">
-      <div className="card max-w-640 mx-auto mt-10">
+      <div className="card max-w-[640px] mx-auto mt-10">
         <h2>Accept invite</h2>
         <div className="subtle mb-3">
           League: <b>{invite.leagueId}</b>

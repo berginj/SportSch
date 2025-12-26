@@ -45,7 +45,7 @@ export default function ManagePage({ leagueId, me, setLeagueId }) {
               {t.label}
             </Pill>
           ))}
-          <div className="min-w-220">
+          <div className="min-w-[220px]">
             <LeaguePicker leagueId={leagueId} setLeagueId={setLeagueId} me={me} label="Switch league" />
           </div>
         </div>
@@ -115,7 +115,7 @@ export default function ManagePage({ leagueId, me, setLeagueId }) {
             <div className="subtle">Admin-ish reminders (not secret; just pragmatic).</div>
           </div>
           <div className="card__body leading-relaxed">
-            <ul className="no-margin pl-4">
+            <ul className="m-0 pl-4">
               <li>
                 <b>League selection persists</b> via <code>gameswap_leagueId</code> in localStorage. Every API call sends <code>x-league-id</code>.
               </li>

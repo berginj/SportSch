@@ -76,7 +76,7 @@ export default function DivisionsManager({ leagueId }) {
       <div className="card">
         <div className="font-bold mb-3">Create division</div>
         <div className="row">
-          <label className="flex-2">
+          <label className="flex-[2]">
             Name
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ponytail (4th Grade)" />
           </label>
