@@ -17,6 +17,66 @@ function buildCsv(assignments, division) {
   return [header, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
 }
 
+function buildSportsEngineCsv(assignments, fieldsByKey) {
+  const header = [
+    "Event Type",
+    "Event Name (Events Only)",
+    "Description (Events Only)",
+    "Date",
+    "Start Time",
+    "End Time",
+    "Duration (minutes)",
+    "All Day Event (Events Only)",
+    "Home Team",
+    "Away Team",
+    "Teams (Events Only)",
+    "Venue",
+    "Status",
+  ];
+
+  const rows = (assignments || []).map((a) => {
+    const start = (a.startTime || "").trim();
+    const end = (a.endTime || "").trim();
+    const duration = start && end ? calcDurationMinutes(start, end) : "";
+    const venue = fieldsByKey.get(a.fieldKey || "") || a.fieldKey || "";
+    return [
+      "Game",
+      "",
+      "",
+      a.gameDate || "",
+      start,
+      end,
+      duration ? String(duration) : "",
+      "",
+      a.homeTeamId || "",
+      a.awayTeamId || "",
+      "",
+      venue,
+      "Scheduled",
+    ];
+  });
+
+  return [header, ...rows]
+    .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+}
+
+function calcDurationMinutes(start, end) {
+  const s = parseTimeMinutes(start);
+  const e = parseTimeMinutes(end);
+  if (s == null || e == null || e <= s) return null;
+  return e - s;
+}
+
+function parseTimeMinutes(raw) {
+  const parts = (raw || "").split(":");
+  if (parts.length < 2) return null;
+  const h = Number(parts[0]);
+  const m = Number(parts[1]);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  return h * 60 + m;
+}
+
 function downloadCsv(csv, filename) {
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -32,6 +92,7 @@ function downloadCsv(csv, filename) {
 export default function SchedulerManager({ leagueId }) {
   const [divisions, setDivisions] = useState([]);
   const [division, setDivision] = useState("");
+  const [fields, setFields] = useState([]);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [maxGamesPerWeek, setMaxGamesPerWeek] = useState(2);
@@ -47,16 +108,26 @@ export default function SchedulerManager({ leagueId }) {
     if (!leagueId) return;
     (async () => {
       try {
-        const divs = await apiFetch("/api/divisions");
+        const [divs, flds] = await Promise.all([apiFetch("/api/divisions"), apiFetch("/api/fields")]);
         const list = Array.isArray(divs) ? divs : [];
         setDivisions(list);
+        setFields(Array.isArray(flds) ? flds : []);
         if (!division && list.length) setDivision(list[0].code || list[0].division || "");
       } catch (e) {
         setErr(e?.message || "Failed to load divisions");
         setDivisions([]);
+        setFields([]);
       }
     })();
   }, [leagueId]);
+
+  const fieldsByKey = useMemo(() => {
+    const map = new Map();
+    for (const f of fields || []) {
+      if (f?.fieldKey && f?.displayName) map.set(f.fieldKey, f.displayName);
+    }
+    return map;
+  }, [fields]);
 
   const payload = useMemo(() => {
     return {
@@ -113,6 +184,13 @@ export default function SchedulerManager({ leagueId }) {
     const csv = buildCsv(preview.assignments, division);
     const safeDivision = (division || "division").replace(/[^a-z0-9_-]+/gi, "_");
     downloadCsv(csv, `schedule_${safeDivision}.csv`);
+  }
+
+  function exportSportsEngineCsv() {
+    if (!preview?.assignments?.length) return;
+    const csv = buildSportsEngineCsv(preview.assignments, fieldsByKey);
+    const safeDivision = (division || "division").replace(/[^a-z0-9_-]+/gi, "_");
+    downloadCsv(csv, `sportsengine_${safeDivision}.csv`);
   }
 
   return (
@@ -185,6 +263,9 @@ export default function SchedulerManager({ leagueId }) {
           </button>
           <button className="btn" onClick={exportCsv} disabled={!preview?.assignments?.length}>
             Export CSV
+          </button>
+          <button className="btn" onClick={exportSportsEngineCsv} disabled={!preview?.assignments?.length}>
+            Export SportsEngine CSV
           </button>
         </div>
       </div>

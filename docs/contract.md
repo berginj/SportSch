@@ -784,6 +784,10 @@ Response
 }
 ```
 
+Scheduler export formats
+- Internal CSV: division, gameDate, startTime, endTime, fieldKey, homeTeamId, awayTeamId, isExternalOffer
+- SportsEngine CSV template (`docs/sportsenginetemplate.csv`): Event Type, Date, Start Time, End Time, Duration (minutes), Home Team, Away Team, Venue, Status (other event-only columns left blank)
+
 ---
 
 ## 8b) Calendar feed
