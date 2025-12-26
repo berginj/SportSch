@@ -37,7 +37,7 @@ export default function App() {
     return (
       <div className="appShell">
         <div className="card">
-          <h2>Loading…</h2>
+          <h2>Loading...</h2>
         </div>
       </div>
     );
@@ -71,7 +71,7 @@ export default function App() {
       <div className="appShell">
         <div className="card">
           <h1>GameSwap</h1>
-          <p>You’re not signed in yet.</p>
+          <p>You're not signed in yet.</p>
           <a className="btn" href="/.auth/login/aad">
             Sign in with Microsoft
           </a>
@@ -89,7 +89,7 @@ export default function App() {
       <div className="appShell">
         <div className="card">
           <h1>GameSwap</h1>
-          <p>You’re signed in, but you don’t have access to any leagues yet.</p>
+          <p>You're signed in, but you don't have access to any leagues yet.</p>
         </div>
         <AccessPage
           me={me}
@@ -115,11 +115,19 @@ export default function App() {
       />
 
       <main className="main">
-        {effectiveTab === "offers" && <OffersPage me={me} leagueId={activeLeagueId} />}
-        {effectiveTab === "calendar" && <CalendarPage me={me} leagueId={activeLeagueId} />}
-        {effectiveTab === "manage" && <ManagePage me={me} leagueId={activeLeagueId} />}
+        {effectiveTab === "offers" && (
+          <OffersPage me={me} leagueId={activeLeagueId} setLeagueId={setActiveLeagueId} />
+        )}
+        {effectiveTab === "calendar" && (
+          <CalendarPage me={me} leagueId={activeLeagueId} setLeagueId={setActiveLeagueId} />
+        )}
+        {effectiveTab === "manage" && (
+          <ManagePage me={me} leagueId={activeLeagueId} setLeagueId={setActiveLeagueId} />
+        )}
         {effectiveTab === "help" && <HelpPage />}
-        {effectiveTab === "admin" && <AdminPage me={me} />}
+        {effectiveTab === "admin" && (
+          <AdminPage me={me} leagueId={activeLeagueId} setLeagueId={setActiveLeagueId} />
+        )}
       </main>
     </div>
   );

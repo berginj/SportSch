@@ -297,6 +297,11 @@ button:disabled {
   align-items: center;
 }
 
+.stack {
+  display: grid;
+  gap: 12px;
+}
+
 .btn {
   padding: 8px 12px;
   border-radius: 10px;
@@ -321,6 +326,20 @@ button:disabled {
 .btn.btn--ghost {
   background: transparent;
   border-color: rgba(255,255,255,0.12);
+}
+
+.hint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
+  cursor: help;
 }
 
 .tableWrap { overflow-x: auto; }

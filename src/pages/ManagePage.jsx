@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import FieldsImport from "../manage/FieldsImport";
 import DivisionsManager from "../manage/DivisionsManager";
 import InvitesManager from "../manage/InvitesManager";
+import TeamsManager from "../manage/TeamsManager";
+import LeaguePicker from "../components/LeaguePicker";
 
 function Pill({ active, children, onClick }) {
   return (
@@ -15,23 +17,24 @@ function Pill({ active, children, onClick }) {
   );
 }
 
-export default function ManagePage({ leagueId, me }) {
+export default function ManagePage({ leagueId, me, setLeagueId }) {
   const tabs = useMemo(
     () => [
-      { id: "fields", label: "Fields" },
-      { id: "divisions", label: "Divisions" },
+      { id: "teams", label: "Teams & Coaches" },
       { id: "invites", label: "Invites" },
-      { id: "notes", label: "Notes" }
+      { id: "notes", label: "Notes" },
+      { id: "divisions", label: "Divisions" },
+      { id: "fields", label: "Fields" }
     ],
     []
   );
-  const [active, setActive] = useState("fields");
+  const [active, setActive] = useState("teams");
 
   return (
     <div className="container">
       <div className="card" style={{ marginBottom: 14 }}>
         <div className="card__header">
-          <div className="h2">Manage</div>
+          <div className="h2">League Management</div>
           <div className="subtle">
             League: <b>{leagueId || "(none selected)"}</b>
           </div>
@@ -42,8 +45,23 @@ export default function ManagePage({ leagueId, me }) {
               {t.label}
             </Pill>
           ))}
+          <div style={{ minWidth: 220 }}>
+            <LeaguePicker leagueId={leagueId} setLeagueId={setLeagueId} me={me} label="Switch league" />
+          </div>
         </div>
       </div>
+
+      {active === "teams" && (
+        <div className="card">
+          <div className="card__header">
+            <div className="h2">Teams & Coaches</div>
+            <div className="subtle">Upload teams and manage coach assignments.</div>
+          </div>
+          <div className="card__body">
+            <TeamsManager leagueId={leagueId} />
+          </div>
+        </div>
+      )}
 
       {active === "fields" && (
         <div className="card">
@@ -70,7 +88,7 @@ export default function ManagePage({ leagueId, me }) {
         <div className="card">
           <div className="card__header">
             <div className="h2">Divisions</div>
-            <div className="subtle">Divisions are used to group slots and requests (e.g., “Ponytail 4th Grade”).</div>
+            <div className="subtle">Divisions are used to group slots and requests (e.g., "Ponytail 4th Grade").</div>
           </div>
           <div className="card__body">
             <DivisionsManager leagueId={leagueId} />

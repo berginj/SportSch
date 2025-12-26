@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { SLOT_STATUS } from "../lib/constants";
+import LeaguePicker from "../components/LeaguePicker";
 
 function toDateInputValue(d) {
   const yyyy = d.getFullYear();
@@ -13,7 +14,7 @@ function normalizeRole(role) {
   return (role || "").trim();
 }
 
-export default function CalendarPage({ me, leagueId }) {
+export default function CalendarPage({ me, leagueId, setLeagueId }) {
   const isGlobalAdmin = !!me?.isGlobalAdmin;
   const memberships = Array.isArray(me?.memberships) ? me.memberships : [];
   const role = useMemo(() => {
@@ -34,8 +35,9 @@ export default function CalendarPage({ me, leagueId }) {
   const [division, setDivision] = useState("");
 
   const today = useMemo(() => new Date(), []);
+  const seasonEnd = useMemo(() => new Date(today.getFullYear(), 6, 30), [today]);
   const [dateFrom, setDateFrom] = useState(toDateInputValue(today));
-  const [dateTo, setDateTo] = useState(toDateInputValue(new Date(today.getTime() + 1000 * 60 * 60 * 24 * 30)));
+  const [dateTo, setDateTo] = useState(toDateInputValue(seasonEnd));
   const [showSlots, setShowSlots] = useState(true);
   const [showEvents, setShowEvents] = useState(true);
   const [slotStatusFilter, setSlotStatusFilter] = useState({
@@ -107,9 +109,15 @@ export default function CalendarPage({ me, leagueId }) {
         start: e.startTime || "",
         end: e.endTime || "",
         title: `${e.type ? `${e.type}: ` : ""}${e.title || "(Untitled event)"}`,
-        subtitle: [e.status ? `Status: ${e.status}` : "", e.opponentTeamId ? `Opponent: ${e.opponentTeamId}` : "", e.location, e.division ? `Division: ${e.division}` : "", e.teamId ? `Team: ${e.teamId}` : ""]
+        subtitle: [
+          e.status ? `Status: ${e.status}` : "",
+          e.opponentTeamId ? `Opponent: ${e.opponentTeamId}` : "",
+          e.location,
+          e.division ? `Division: ${e.division}` : "",
+          e.teamId ? `Team: ${e.teamId}` : "",
+        ]
           .filter(Boolean)
-          .join(" • "),
+          .join(" | "),
         raw: e,
       });
     }
@@ -129,7 +137,7 @@ export default function CalendarPage({ me, leagueId }) {
           s.confirmedTeamId ? `Confirmed: ${s.confirmedTeamId}` : "",
         ]
           .filter(Boolean)
-          .join(" • "),
+          .join(" | "),
         raw: s,
       });
     }
@@ -144,8 +152,6 @@ export default function CalendarPage({ me, leagueId }) {
   }, [events, slots]);
 
   // --- Create events ---
-  // Events are non-game calendar items managed by LeagueAdmin.
-  // Game requests/offers live under Slots.
   const canCreateEvents = role === "LeagueAdmin";
   const canDeleteAnyEvent = role === "LeagueAdmin";
 
@@ -210,7 +216,6 @@ export default function CalendarPage({ me, leagueId }) {
       setErr(e?.message || String(e));
     }
   }
-
 
   async function requestSlot(slot) {
     if (!slot?.slotId || !slot?.division) return;
@@ -307,16 +312,20 @@ export default function CalendarPage({ me, leagueId }) {
     return item.raw?.status || "Open";
   }
 
-  if (loading) return <div className="card">Loading…</div>;
+  if (loading) return <div className="card">Loading...</div>;
 
   return (
     <div className="stack">
       {err ? <div className="card error">{err}</div> : null}
 
       <div className="card">
-        <div className="cardTitle">Calendar filters</div>
+        <div className="cardTitle">
+          Calendar filters
+          <span className="hint" title="Filter what appears on the calendar and subscription link.">?</span>
+        </div>
         <div className="row" style={{ flexWrap: "wrap", alignItems: "center" }}>
-          <label>
+          <LeaguePicker leagueId={leagueId} setLeagueId={setLeagueId} me={me} label="League" />
+          <label title="Limit the calendar to one division, or show all.">
             Division
             <select value={division} onChange={(e) => setDivision(e.target.value)}>
               <option value="">All</option>
@@ -327,30 +336,30 @@ export default function CalendarPage({ me, leagueId }) {
               ))}
             </select>
           </label>
-          <label>
+          <label title="Start date for the calendar view.">
             From
             <input value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} placeholder="YYYY-MM-DD" />
           </label>
-          <label>
+          <label title="End date for the calendar view.">
             To
             <input value={dateTo} onChange={(e) => setDateTo(e.target.value)} placeholder="YYYY-MM-DD" />
           </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 18 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 18 }} title="Show or hide slot offers.">
             <input type="checkbox" checked={showSlots} onChange={(e) => setShowSlots(e.target.checked)} />
             Slots
           </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 18 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 18 }} title="Show or hide league events.">
             <input type="checkbox" checked={showEvents} onChange={(e) => setShowEvents(e.target.checked)} />
             Events
           </label>
-          <button className="btn" onClick={loadData}>
+          <button className="btn" onClick={loadData} title="Refresh the calendar list with the current filters.">
             Refresh
           </button>
         </div>
         <div className="row" style={{ marginTop: 10 }}>
           <div className="pill">Slot status</div>
           {[SLOT_STATUS.OPEN, SLOT_STATUS.CONFIRMED, SLOT_STATUS.CANCELLED].map((status) => (
-            <label key={status} className="pill" style={{ cursor: "pointer" }}>
+            <label key={status} className="pill" style={{ cursor: "pointer" }} title={`Show ${status.toLowerCase()} offers on the calendar.`}>
               <input
                 type="checkbox"
                 checked={!!slotStatusFilter[status]}
@@ -371,12 +380,12 @@ export default function CalendarPage({ me, leagueId }) {
           </div>
           <div className="row">
             {subscribeInfo.webcal ? (
-              <a className="btn" href={subscribeInfo.webcal}>
+              <a className="btn" href={subscribeInfo.webcal} title="Open the subscription link in your calendar app.">
                 Subscribe
               </a>
             ) : null}
             {subscribeInfo.url ? (
-              <button className="btn btn--ghost" onClick={copySubscribeUrl}>
+              <button className="btn btn--ghost" onClick={copySubscribeUrl} title="Copy the filtered calendar link.">
                 Copy link
               </button>
             ) : null}
@@ -396,7 +405,7 @@ export default function CalendarPage({ me, leagueId }) {
               <div className="row" style={{ justifyContent: "space-between" }}>
                 <div>
                   <div style={{ fontWeight: 700 }}>
-                    {it.date} {it.start ? `${it.start}${it.end ? `–${it.end}` : ""}` : ""} — {it.title}
+                    {it.date} {it.start ? `${it.start}${it.end ? `-${it.end}` : ""}` : ""} - {it.title}
                   </div>
                   {it.subtitle ? <div className="muted">{it.subtitle}</div> : null}
                   {it.kind === "event" && it.raw?.notes ? <div style={{ marginTop: 6 }}>{it.raw.notes}</div> : null}
@@ -406,17 +415,17 @@ export default function CalendarPage({ me, leagueId }) {
                     {statusLabelForItem(it)}
                   </span>
                   {it.kind === "slot" && role !== "Viewer" && (it.raw?.status || "") === "Open" && (it.raw?.offeringTeamId || "") !== myCoachTeamId ? (
-                    <button className="btn primary" onClick={() => requestSlot(it.raw)}>
+                    <button className="btn primary" onClick={() => requestSlot(it.raw)} title="Accept this open offer and confirm the game.">
                       Accept
                     </button>
                   ) : null}
                   {it.kind === "slot" && canCancelSlot(it.raw) && (it.raw?.status || "") !== "Cancelled" ? (
-                    <button className="btn" onClick={() => cancelSlot(it.raw)}>
+                    <button className="btn" onClick={() => cancelSlot(it.raw)} title="Cancel this game/slot.">
                       Cancel
                     </button>
                   ) : null}
                   {it.kind === "event" && canDeleteAnyEvent ? (
-                    <button className="btn" onClick={() => deleteEvent(it.id)}>
+                    <button className="btn" onClick={() => deleteEvent(it.id)} title="Delete this event from the calendar.">
                       Delete
                     </button>
                   ) : null}
