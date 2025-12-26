@@ -130,6 +130,13 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
   }, [isGlobalAdmin]);
 
   useEffect(() => {
+    if (!isGlobalAdmin || !accessAll) return;
+    if (accessLeagueFilter) return;
+    const current = (leagueId || "").trim();
+    if (current) setAccessLeagueFilter(current);
+  }, [accessAll, accessLeagueFilter, isGlobalAdmin, leagueId]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     if (isGlobalAdmin && accessAll) params.set("accessScope", "all");
