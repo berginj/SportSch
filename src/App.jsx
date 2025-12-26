@@ -6,6 +6,7 @@ import HelpPage from "./pages/HelpPage";
 import AccessPage from "./pages/AccessPage";
 import AdminPage from "./pages/AdminPage";
 import InviteAcceptPage from "./pages/InviteAcceptPage";
+import PublicLanding from "./pages/PublicLanding";
 import TopNav from "./components/TopNav";
 import { useSession } from "./lib/useSession";
 
@@ -65,7 +66,7 @@ export default function App() {
     );
   }
 
-  // Not signed in: show a hard login gate.
+  // Not signed in: show public landing with recent offers + sign-up.
   if (!isSignedIn) {
     return (
       <div className="appShell">
