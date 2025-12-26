@@ -49,10 +49,10 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
               className={tab === "offers" ? "tab tab--active" : "tab"}
               onClick={() => setTab("offers")}
               disabled={!hasLeagues}
-              title="Create a new game offer."
+              title="Create a new game offer or request."
               aria-current={tab === "offers" ? "page" : undefined}
             >
-              Create Game Offer
+              Create Offer/Request
             </button>
             <button
               className={tab === "manage" ? "tab tab--active" : "tab"}

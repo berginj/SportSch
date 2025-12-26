@@ -10,6 +10,27 @@ function fmtDate(d) {
   return d || "";
 }
 
+function addDaysToDate(isoDate, days) {
+  const parts = (isoDate || "").split("-");
+  if (parts.length !== 3) return "";
+  const year = Number(parts[0]);
+  const month = Number(parts[1]);
+  const day = Number(parts[2]);
+  if (!year || !month || !day) return "";
+  const base = Date.UTC(year, month - 1, day);
+  const next = new Date(base + days * 24 * 60 * 60 * 1000);
+  const yyyy = String(next.getUTCFullYear());
+  const mm = String(next.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(next.getUTCDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function formatGameType(gameType) {
+  const raw = (gameType || "").trim().toLowerCase();
+  if (raw === "request") return "Request";
+  return "Offer";
+}
+
 export default function OffersPage({ me, leagueId, setLeagueId }) {
   const email = me?.email || "";
   const isGlobalAdmin = !!me?.isGlobalAdmin;
@@ -125,6 +146,10 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
   }, [division]);
 
   // --- Create slot ---
+  const [entryType, setEntryType] = useState("Offer");
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [repeatEveryWeeks, setRepeatEveryWeeks] = useState(1);
+  const [repeatCount, setRepeatCount] = useState(1);
   const [offeringTeamId, setOfferingTeamId] = useState("");
   const [gameDate, setGameDate] = useState("");
   const [startTime, setStartTime] = useState("");
@@ -136,10 +161,26 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
     setErr("");
     const f = fieldByKey.get(fieldKey);
     if (!division) return setErr("Select a division first.");
-    if (!offeringTeamId.trim()) return setErr("Offering Team ID is required.");
+    if (!offeringTeamId.trim()) return setErr("Team ID is required.");
     if (!gameDate.trim()) return setErr("GameDate is required.");
     if (!startTime.trim() || !endTime.trim()) return setErr("StartTime/EndTime are required.");
     if (!f) return setErr("Select a field.");
+
+    const repeatEvery = Math.max(1, Number.parseInt(repeatEveryWeeks, 10) || 1);
+    const repeatTotal = Math.max(1, Number.parseInt(repeatCount, 10) || 1);
+    const maxOccurrences = 26;
+    if (isRecurring && repeatTotal > maxOccurrences) {
+      return setErr(`Recurring posts are limited to ${maxOccurrences} occurrences at a time.`);
+    }
+
+    const occurrenceDates = [];
+    const occurrences = isRecurring ? repeatTotal : 1;
+    const stepDays = 7 * repeatEvery;
+    for (let i = 0; i < occurrences; i += 1) {
+      const nextDate = addDaysToDate(gameDate.trim(), i * stepDays);
+      if (!nextDate) return setErr("GameDate must be YYYY-MM-DD.");
+      occurrenceDates.push(nextDate);
+    }
 
     const body = {
       division,
@@ -152,23 +193,31 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
       fieldName: f.fieldName,
       displayName: f.displayName,
       fieldKey: f.fieldKey,
+      gameType: entryType === "Request" ? "Request" : "Swap",
       notes: notes.trim(),
     };
 
     try {
-      await apiFetch(`/api/slots`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      for (const date of occurrenceDates) {
+        await apiFetch(`/api/slots`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...body, gameDate: date }),
+        });
+      }
       setOfferingTeamId("");
       setGameDate("");
       setStartTime("");
       setEndTime("");
       setFieldKey("");
       setNotes("");
+      setIsRecurring(false);
+      setRepeatEveryWeeks(1);
+      setRepeatCount(1);
       await reloadSlots(division);
-      setToast({ tone: "success", message: "Offer created." });
+      const verb = entryType === "Request" ? "Request" : "Offer";
+      const countLabel = occurrenceDates.length > 1 ? ` (${occurrenceDates.length})` : "";
+      setToast({ tone: "success", message: `${verb} posted${countLabel}.` });
     } catch (e) {
       setErr(e?.message || String(e));
     }
@@ -200,7 +249,7 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
         }),
       });
       await reloadSlots(division);
-      setToast({ tone: "success", message: "Offer accepted." });
+      setToast({ tone: "success", message: "Slot accepted." });
     } catch (e) {
       setErr(e?.message || String(e));
     }
@@ -232,8 +281,8 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
 
       <div className="card">
         <div className="cardTitle">
-          Create game offer
-          <span className="hint" title="Post an open game offer that other teams can accept.">?</span>
+          Create game offer or request
+          <span className="hint" title="Post an open offer or request that other teams can accept.">?</span>
         </div>
         <div className="row filterRow">
           <LeaguePicker leagueId={leagueId} setLeagueId={setLeagueId} me={me} label="League" />
@@ -252,15 +301,22 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
           </button>
         </div>
         <div className="muted mt-2">
-          Create offers for <b>{leagueId || "(no league)"}</b>.
+          Create offers or requests for <b>{leagueId || "(no league)"}</b>.
         </div>
       </div>
 
       <div className="card">
-        <div className="cardTitle">Offer details</div>
+        <div className="cardTitle">Offer/request details</div>
         <div className="grid2">
-          <label title="Team making the offer (must match your coach assignment).">
-            Offering Team ID
+          <label title="Offer or request." className="min-w-[160px]">
+            Type
+            <select value={entryType} onChange={(e) => setEntryType(e.target.value)}>
+              <option value="Offer">Offer</option>
+              <option value="Request">Request</option>
+            </select>
+          </label>
+          <label title="Team making the offer/request (must match your coach assignment).">
+            {entryType === "Request" ? "Requesting Team ID" : "Offering Team ID"}
             <input value={offeringTeamId} onChange={(e) => setOfferingTeamId(e.target.value)} />
           </label>
           <label title="Field for this game.">
@@ -286,6 +342,39 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
             EndTime (HH:MM)
             <input value={endTime} onChange={(e) => setEndTime(e.target.value)} placeholder="10:15" />
           </label>
+          <label className="row row--wrap gap-2 items-end" title="Post as a recurring offer or request.">
+            <span>Recurring</span>
+            <input
+              type="checkbox"
+              checked={isRecurring}
+              onChange={(e) => setIsRecurring(e.target.checked)}
+              aria-label="Toggle recurring posting"
+            />
+          </label>
+          {isRecurring ? (
+            <label title="Repeat every N weeks.">
+              Repeat every (weeks)
+              <input
+                type="number"
+                min="1"
+                max="8"
+                value={repeatEveryWeeks}
+                onChange={(e) => setRepeatEveryWeeks(e.target.value)}
+              />
+            </label>
+          ) : null}
+          {isRecurring ? (
+            <label title="Number of occurrences.">
+              Occurrences
+              <input
+                type="number"
+                min="1"
+                max="26"
+                value={repeatCount}
+                onChange={(e) => setRepeatCount(e.target.value)}
+              />
+            </label>
+          ) : null}
           <label title="Optional notes visible to other teams.">
             Notes
             <input value={notes} onChange={(e) => setNotes(e.target.value)} />
@@ -293,15 +382,15 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
         </div>
         <div className="row">
           <button className="btn btn--primary" onClick={createSlot} title="Post this offer to the calendar.">
-            Create Game Offer
+            {entryType === "Request" ? "Post Game Request" : "Post Game Offer"}
           </button>
         </div>
       </div>
 
       <div className="card">
-        <div className="cardTitle">Open offers</div>
+        <div className="cardTitle">Open offers & requests</div>
         {slots.length === 0 ? (
-          <div className="muted">No offers found for this division.</div>
+          <div className="muted">No offers or requests found for this division.</div>
         ) : (
           <div className="tableWrap">
             <table className="table">
@@ -310,7 +399,8 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
                   <th>Date</th>
                   <th>Time</th>
                   <th>Field</th>
-                  <th>Offering Team</th>
+                  <th>Type</th>
+                  <th>Team</th>
                   <th>Status</th>
                   <th></th>
                 </tr>
@@ -323,6 +413,7 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
                       {s.startTime}-{s.endTime}
                     </td>
                     <td>{s.displayName || s.fieldKey}</td>
+                    <td>{formatGameType(s.gameType)}</td>
                     <td>{s.offeringTeamId}</td>
                     <td>{s.status}</td>
                     <td className="text-right">

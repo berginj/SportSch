@@ -52,7 +52,7 @@ export default function HelpPage({ me, leagueId }) {
               </div>
               <div className="layoutPhone__nav">
                 <button className="btn btn--ghost">Calendar</button>
-                <button className="btn btn--ghost">Offer</button>
+                <button className="btn btn--ghost">Offer/Request</button>
                 <button className="btn btn--ghost">Teams</button>
                 <button className="btn btn--ghost">More</button>
               </div>
@@ -70,7 +70,7 @@ export default function HelpPage({ me, leagueId }) {
               <div className="layoutRow">
                 <button className="btn">Invite coach</button>
                 <button className="btn">Import teams</button>
-                <button className="btn">Create offer</button>
+                <button className="btn">Create offer/request</button>
               </div>
             </div>
             <div className="layoutGrid">
@@ -192,10 +192,10 @@ export default function HelpPage({ me, leagueId }) {
             <div className="layoutHero">
               <div>
                 <div className="layoutTitle">Coach hub</div>
-                <div className="layoutMeta">Find open offers, accept, and confirm in seconds.</div>
+                <div className="layoutMeta">Find open offers or requests, accept, and confirm in seconds.</div>
               </div>
               <div className="layoutRow">
-                <button className="btn">Create offer</button>
+                <button className="btn">Create offer/request</button>
                 <button className="btn btn--ghost">Subscribe</button>
               </div>
             </div>
@@ -239,7 +239,7 @@ export default function HelpPage({ me, leagueId }) {
         Help
       </div>
       <div className="muted mb-4">
-        This app helps leagues coordinate open game offers ("slots") and get them scheduled (all times are US/Eastern). Coaches offer slots and accept each other's offers. League admins manage setup.
+        This app helps leagues coordinate open game offers and requests ("slots") and get them scheduled (all times are US/Eastern). Coaches post slots and accept each other's offers or requests. League admins manage setup.
       </div>
 
       <Section title="Layout options (preview)">
@@ -271,7 +271,7 @@ export default function HelpPage({ me, leagueId }) {
 
           <Section title="What this app is for">
             <p className="m-0">
-              Coaches post <b>Open</b> game offers ("slots") to the calendar. Other coaches can <b>accept</b> an open slot, and the game becomes <b>Confirmed</b> immediately on the calendar.
+              Coaches post <b>Open</b> game offers or requests ("slots") to the calendar. Other coaches can <b>accept</b> an open slot, and the game becomes <b>Confirmed</b> immediately on the calendar.
             </p>
           </Section>
 
@@ -284,15 +284,15 @@ export default function HelpPage({ me, leagueId }) {
             </ol>
           </Section>
 
-          <Section title="Offer a slot">
+          <Section title="Post an offer or request">
             <p>
-              Go to <b>Create Game Offer</b>, choose your division, then create an open slot with date/time/field. Open slots appear to other teams.
+              Go to <b>Create Offer/Request</b>, choose your division, then create an open slot with date/time/field. Open slots appear to other teams. You can also post recurring offers or requests.
             </p>
           </Section>
 
           <Section title="Request a swap">
             <p>
-              When you see an open slot that works for your team, click <b>Accept</b> (Calendar) or <b>Accept</b> (Create Game Offer). Add notes if helpful.
+              When you see an open slot that works for your team, click <b>Accept</b> (Calendar) or <b>Accept</b> (Create Offer/Request). Add notes if helpful.
             </p>
             <p className="muted m-0">
               Acceptance immediately confirms the game and shows it as <b>Confirmed</b> on the calendar.

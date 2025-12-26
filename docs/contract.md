@@ -533,6 +533,10 @@ Slot status strings
 - Confirmed (accepted + scheduled)
 - Cancelled
 
+Game type strings
+- Swap (offer)
+- Request
+
 ### POST /import/slots (league-scoped)
 Requires: LeagueAdmin or global admin.
 
@@ -584,9 +588,9 @@ Response
       "fieldName": "Turf",
       "displayName": "Gunston > Turf",
       "fieldKey": "gunston/turf",
-      "gameType": "Swap",
-      "status": "Open",
-      "notes": "Open game offer"
+  "gameType": "Swap",
+  "status": "Open",
+  "notes": "Open game offer"
     }
   ]
 }

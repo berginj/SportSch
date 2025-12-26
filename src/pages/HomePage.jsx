@@ -319,7 +319,7 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
           </div>
           <div className="layoutRow">
             <button className="btn" onClick={() => setTab("manage")}>League Management</button>
-            <button className="btn" onClick={() => setTab("offers")}>Create offer</button>
+            <button className="btn" onClick={() => setTab("offers")}>Create offer/request</button>
             <button className="btn" onClick={() => setTab("admin")}>Access requests</button>
           </div>
         </div>
@@ -390,7 +390,7 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
             <div className="layoutMeta">Find open offers, accept, and confirm quickly.</div>
           </div>
           <div className="layoutRow">
-            <button className="btn" onClick={() => setTab("offers")}>Create offer</button>
+            <button className="btn" onClick={() => setTab("offers")}>Create offer/request</button>
             <button className="btn btn--ghost" onClick={() => setTab("calendar")}>Calendar</button>
           </div>
         </div>
@@ -450,7 +450,7 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
           </div>
           <div className="layoutPhone__nav">
             <button className="btn btn--ghost" onClick={() => setTab("calendar")}>Calendar</button>
-            <button className="btn btn--ghost" onClick={() => setTab("offers")}>Offer</button>
+            <button className="btn btn--ghost" onClick={() => setTab("offers")}>Offer/Request</button>
             <button className="btn btn--ghost" onClick={() => setTab("manage")}>Teams</button>
             <button className="btn btn--ghost" onClick={() => setTab("help")}>Help</button>
           </div>
