@@ -6,7 +6,6 @@ import HelpPage from "./pages/HelpPage";
 import AccessPage from "./pages/AccessPage";
 import AdminPage from "./pages/AdminPage";
 import InviteAcceptPage from "./pages/InviteAcceptPage";
-import PublicLanding from "./pages/PublicLanding";
 import HomePage from "./pages/HomePage";
 import TopNav from "./components/TopNav";
 import { useSession } from "./lib/useSession";
