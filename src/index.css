@@ -101,6 +101,11 @@
   .callout--error { @apply border-red-400/40 text-red-200; }
   .callout--ok { @apply border-emerald-400/40 text-emerald-200; }
 
+  .statusCard { @apply grid gap-2; }
+  .statusCard--error { @apply border-red-400/40 text-red-200; }
+  .statusCard__title { @apply text-sm font-semibold; }
+  .statusCard__message { @apply text-sm text-muted; }
+
   .muted { @apply text-muted; }
   .subtle { @apply text-muted text-sm; }
   .ok { @apply text-emerald-300; }

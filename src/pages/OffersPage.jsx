@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
 import LeaguePicker from "../components/LeaguePicker";
+import StatusCard from "../components/StatusCard";
 
 function fmtDate(d) {
   return d || "";
@@ -192,11 +193,11 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
     }
   }
 
-  if (loading) return <div className="card">Loading...</div>;
+  if (loading) return <StatusCard title="Loading" message="Loading offers..." />;
 
   return (
     <div className="stack">
-      {err ? <div className="card error">{err}</div> : null}
+      {err ? <StatusCard tone="error" title="Unable to load offers" message={err} /> : null}
 
       <div className="card">
         <div className="cardTitle">

@@ -8,6 +8,7 @@ import AdminPage from "./pages/AdminPage";
 import InviteAcceptPage from "./pages/InviteAcceptPage";
 import HomePage from "./pages/HomePage";
 import TopNav from "./components/TopNav";
+import StatusCard from "./components/StatusCard";
 import { useSession } from "./lib/useSession";
 import { trackPageView } from "./lib/telemetry";
 
@@ -71,9 +72,7 @@ export default function App() {
   if (!me) {
     return (
       <div className="appShell">
-        <div className="card">
-          <h2>Loading...</h2>
-        </div>
+        <StatusCard title="Loading" message="Loading your session..." />
       </div>
     );
   }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
 import LeaguePicker from "../components/LeaguePicker";
+import StatusCard from "../components/StatusCard";
 import { SLOT_STATUS } from "../lib/constants";
 
 function toDateInputValue(d) {
@@ -448,11 +449,11 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
   }
 
   if (loading) {
-    return <div className="card">Loading...</div>;
+    return <StatusCard title="Loading" message="Loading dashboard..." />;
   }
 
   if (err) {
-    return <div className="card error">{err}</div>;
+    return <StatusCard tone="error" title="Unable to load dashboard" message={err} />;
   }
 
   if (layoutKey === "mobile") return renderMobile();

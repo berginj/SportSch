@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { SLOT_STATUS } from "../lib/constants";
 import LeaguePicker from "../components/LeaguePicker";
+import StatusCard from "../components/StatusCard";
 
 function toDateInputValue(d) {
   const yyyy = d.getFullYear();
@@ -438,11 +439,11 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     return item.raw?.status || "Open";
   }
 
-  if (loading) return <div className="card">Loading...</div>;
+  if (loading) return <StatusCard title="Loading" message="Loading calendar..." />;
 
   return (
     <div className="stack">
-      {err ? <div className="card error">{err}</div> : null}
+      {err ? <StatusCard tone="error" title="Unable to load calendar" message={err} /> : null}
 
       <div className="calendarSplit">
         <div className="card">
