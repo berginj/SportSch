@@ -6,6 +6,7 @@ import HelpPage from "./pages/HelpPage";
 import AccessPage from "./pages/AccessPage";
 import AdminPage from "./pages/AdminPage";
 import InviteAcceptPage from "./pages/InviteAcceptPage";
+import PublicLanding from "./pages/PublicLanding";
 import TopNav from "./components/TopNav";
 import { useSession } from "./lib/useSession";
 
@@ -65,22 +66,9 @@ export default function App() {
     );
   }
 
-  // Not signed in: show a hard login gate.
+  // Not signed in: show public landing with recent offers + sign-up.
   if (!isSignedIn) {
-    return (
-      <div className="appShell">
-        <div className="card">
-          <h1>GameSwap</h1>
-          <p>You’re not signed in yet.</p>
-          <a className="btn" href="/.auth/login/aad">
-            Sign in with Microsoft
-          </a>
-          <div className="muted" style={{ marginTop: 12 }}>
-            After signing in, come right back here.
-          </div>
-        </div>
-      </div>
-    );
+    return <PublicLanding />;
   }
 
   // Signed in but no memberships: show access request workflow.

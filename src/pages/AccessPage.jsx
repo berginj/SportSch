@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { LEAGUE_HEADER_NAME } from "../lib/constants";
 
@@ -18,6 +18,16 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
 
   const signedIn = (me?.userId || "UNKNOWN") !== "UNKNOWN";
   const email = me?.email || "";
+  const autoSubmitted = useRef(false);
+
+  const accessIntent = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    const params = new URLSearchParams(window.location.search);
+    const desiredLeague = (params.get("leagueId") || "").trim();
+    const requestedRole = (params.get("requestRole") || "").trim();
+    const autoSubmit = ["1", "true", "yes"].includes((params.get("autoSubmit") || "").toLowerCase());
+    return { desiredLeague, requestedRole, autoSubmit };
+  }, []);
 
   const selectedLeague = useMemo(() => {
     const id = (leagueId || "").trim();
@@ -45,11 +55,22 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
   }, [signedIn]);
 
   useEffect(() => {
+    if (!accessIntent) return;
+    if (accessIntent.desiredLeague && !leagueId) {
+      setLeagueId(accessIntent.desiredLeague);
+    }
+    if (accessIntent.requestedRole) {
+      const normalized = accessIntent.requestedRole === "Viewer" ? "Viewer" : "Coach";
+      setRole(normalized);
+    }
+  }, [accessIntent, leagueId, setLeagueId]);
+
+  useEffect(() => {
     // Pick the first active league if none selected and we have a list.
     if (!leagueId && leagues.length > 0) setLeagueId(leagues[0].leagueId);
   }, [leagueId, leagues, setLeagueId]);
 
-  async function submitRequest() {
+  async function submitRequest(roleOverride) {
     setErr("");
     setOk("");
     if (!signedIn) {
@@ -63,12 +84,14 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
       return;
     }
 
+    const requestedRole = roleOverride || role;
+
     setBusy(true);
     try {
       await apiFetch("/api/accessrequests", {
         method: "POST",
         headers: { "Content-Type": "application/json", [LEAGUE_HEADER_NAME]: id },
-        body: JSON.stringify({ requestedRole: role, notes }),
+        body: JSON.stringify({ requestedRole, notes }),
       });
       setOk("Request submitted. An admin will review it.");
       setNotes("");
@@ -79,6 +102,23 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    if (!accessIntent || autoSubmitted.current) return;
+    if (!accessIntent.autoSubmit || !signedIn) return;
+    if (!leagueId) return;
+
+    const requestedRole = accessIntent.requestedRole === "Viewer" ? "Viewer" : "Coach";
+    autoSubmitted.current = true;
+    submitRequest(requestedRole).catch(() => {});
+
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("autoSubmit");
+      url.searchParams.delete("requestRole");
+      window.history.replaceState({}, "", url.pathname + url.search);
+    }
+  }, [accessIntent, leagueId, signedIn]);
 
   return (
     <div className="page">
