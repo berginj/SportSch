@@ -267,11 +267,11 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
       <p className="muted">
         Approve or deny access requests for the currently selected league.
       </p>
-      <div className="row" style={{ gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
+      <div className="row gap-3 row--wrap mb-2">
         <LeaguePicker leagueId={leagueId} setLeagueId={setLeagueId} me={me} label="League" />
       </div>
 
-      <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
+      <div className="row gap-3 row--wrap">
         <button className="btn" onClick={load} disabled={loading} title="Refresh access requests.">
           Refresh
         </button>
@@ -300,8 +300,8 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
               {sorted.map((r) => (
                 <tr key={r.userId}>
                   <td>
-                    <div style={{ fontWeight: 600 }}>{r.email || r.userId}</div>
-                    <div className="muted" style={{ fontSize: 12 }}>{r.userId}</div>
+                    <div className="font-semibold">{r.email || r.userId}</div>
+                    <div className="muted text-xs">{r.userId}</div>
                   </td>
                   <td>
                     <select
@@ -315,13 +315,13 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
                         </option>
                       ))}
                     </select>
-                    <div className="muted" style={{ fontSize: 12 }}>{r.updatedUtc || r.createdUtc || ""}</div>
+                    <div className="muted text-xs">{r.updatedUtc || r.createdUtc || ""}</div>
                   </td>
-                  <td style={{ maxWidth: 320 }}>
-                    <div style={{ whiteSpace: "pre-wrap" }}>{r.notes || ""}</div>
+                  <td className="max-w-320">
+                    <div className="whitespace-prewrap">{r.notes || ""}</div>
                   </td>
                   <td>
-                    <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                    <div className="row gap-2 row--wrap">
                       <button className="btn btnPrimary" onClick={() => approve(r)}>
                         Approve
                       </button>
@@ -337,7 +337,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
         </div>
       )}
 
-      <details style={{ marginTop: 16 }}>
+      <details className="mt-4">
         <summary>Notes</summary>
         <ul>
           <li>Approving creates (or updates) a membership record for this league and marks the request Approved.</li>
@@ -346,16 +346,16 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
       </details>
 
       {isGlobalAdmin ? (
-        <div className="card" style={{ marginTop: 16 }}>
-          <h3 style={{ marginTop: 0 }}>Global admin: leagues</h3>
+        <div className="card mt-4">
+          <h3 className="no-margin">Global admin: leagues</h3>
           <p className="muted">
             Create new leagues and review existing ones. This is global admin only.
           </p>
           {globalErr ? <div className="callout callout--error">{globalErr}</div> : null}
           {globalOk ? <div className="callout callout--ok">{globalOk}</div> : null}
 
-          <div className="row" style={{ gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
-            <label style={{ flex: 1, minWidth: 160 }}>
+          <div className="row gap-3 row--wrap mb-3">
+            <label className="flex-1 min-w-160">
               League ID
               <input
                 value={newLeague.leagueId}
@@ -363,7 +363,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
                 placeholder="ARL"
               />
             </label>
-            <label style={{ flex: 2, minWidth: 220 }}>
+            <label className="flex-2 min-w-220">
               League name
               <input
                 value={newLeague.name}
@@ -371,7 +371,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
                 placeholder="Arlington"
               />
             </label>
-            <label style={{ flex: 2, minWidth: 220 }}>
+            <label className="flex-2 min-w-220">
               Timezone
               <input
                 value={newLeague.timezone}
@@ -418,8 +418,8 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
         </div>
       ) : null}
 
-      <div className="card" style={{ marginTop: 16 }}>
-        <h3 style={{ marginTop: 0 }}>Coach assignments</h3>
+      <div className="card mt-4">
+        <h3 className="no-margin">Coach assignments</h3>
         <p className="muted">
           Coaches can be approved without a team. Assign teams here when you're ready.
         </p>
@@ -452,8 +452,8 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
                   return (
                     <tr key={c.userId}>
                       <td>
-                        <div style={{ fontWeight: 600 }}>{c.email || c.userId}</div>
-                        <div className="muted" style={{ fontSize: 12 }}>{c.userId}</div>
+                        <div className="font-semibold">{c.email || c.userId}</div>
+                        <div className="muted text-xs">{c.userId}</div>
                       </td>
                       <td>
                         <select
@@ -489,7 +489,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
                         </select>
                       </td>
                       <td>
-                        <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                        <div className="row gap-2 row--wrap">
                           <button className="btn btnPrimary" onClick={() => saveCoachAssignment(c.userId)}>
                             Save
                           </button>
@@ -510,23 +510,23 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
         )}
       </div>
 
-      <div className="card" style={{ marginTop: 16 }}>
-        <h3 style={{ marginTop: 0 }}>League admin uploads</h3>
+      <div className="card mt-4">
+        <h3 className="no-margin">League admin uploads</h3>
         <p className="muted">
           Upload CSVs for schedules (slots) and teams. Team imports can prefill coach contact info.
         </p>
 
-        <div className="card" style={{ marginTop: 12 }}>
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>Schedule (slots) CSV upload</div>
-          <div className="subtle" style={{ marginBottom: 8 }}>
+        <div className="card mt-3">
+          <div className="font-bold mb-2">Schedule (slots) CSV upload</div>
+          <div className="subtle mb-2">
             Required columns: <code>division</code>, <code>offeringTeamId</code>, <code>gameDate</code>,{" "}
             <code>startTime</code>, <code>endTime</code>, <code>fieldKey</code>. Optional:{" "}
             <code>offeringEmail</code>, <code>gameType</code>, <code>notes</code>, <code>status</code>.
           </div>
           {slotsErr ? <div className="callout callout--error">{slotsErr}</div> : null}
           {slotsOk ? <div className="callout callout--ok">{slotsOk}</div> : null}
-          <div className="row" style={{ alignItems: "end", gap: 12 }}>
-            <label style={{ flex: 1 }}>
+          <div className="row items-end gap-3">
+            <label className="flex-1">
               CSV file
               <input
                 type="file"
@@ -540,8 +540,8 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
             </button>
           </div>
           {slotsErrors.length ? (
-            <div style={{ marginTop: 12 }}>
-              <div style={{ fontWeight: 700, marginBottom: 6 }}>Rejected rows ({slotsErrors.length})</div>
+            <div className="mt-3">
+              <div className="font-bold mb-2">Rejected rows ({slotsErrors.length})</div>
               <table className="table">
                 <thead>
                   <tr>
@@ -563,16 +563,16 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
           ) : null}
         </div>
 
-        <div className="card" style={{ marginTop: 12 }}>
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>Teams CSV upload</div>
-          <div className="subtle" style={{ marginBottom: 8 }}>
+        <div className="card mt-3">
+          <div className="font-bold mb-2">Teams CSV upload</div>
+          <div className="subtle mb-2">
             Required columns: <code>division</code>, <code>teamId</code>, <code>name</code>. Optional:{" "}
             <code>coachName</code>, <code>coachEmail</code>, <code>coachPhone</code>.
           </div>
           {teamsErr ? <div className="callout callout--error">{teamsErr}</div> : null}
           {teamsOk ? <div className="callout callout--ok">{teamsOk}</div> : null}
-          <div className="row" style={{ alignItems: "end", gap: 12 }}>
-            <label style={{ flex: 1 }}>
+          <div className="row items-end gap-3">
+            <label className="flex-1">
               CSV file
               <input
                 type="file"
@@ -586,8 +586,8 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
             </button>
           </div>
           {teamsErrors.length ? (
-            <div style={{ marginTop: 12 }}>
-              <div style={{ fontWeight: 700, marginBottom: 6 }}>Rejected rows ({teamsErrors.length})</div>
+            <div className="mt-3">
+              <div className="font-bold mb-2">Rejected rows ({teamsErrors.length})</div>
               <table className="table">
                 <thead>
                   <tr>

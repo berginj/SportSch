@@ -74,18 +74,18 @@ export default function DivisionsManager({ leagueId }) {
       {ok ? <div className="callout callout--ok">{ok}</div> : null}
 
       <div className="card">
-        <div style={{ fontWeight: 700, marginBottom: 8 }}>Create division</div>
+        <div className="font-bold mb-3">Create division</div>
         <div className="row">
-          <label style={{ flex: 2 }}>
+          <label className="flex-2">
             Name
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ponytail (4th Grade)" />
           </label>
-          <label style={{ flex: 1 }}>
+          <label className="flex-1">
             Code (optional)
             <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="pony4" />
           </label>
         </div>
-        <div className="row" style={{ marginTop: 10 }}>
+        <div className="row mt-3">
           <button className="btn" onClick={create} disabled={busy || !leagueId}>
             Create
           </button>
@@ -96,7 +96,7 @@ export default function DivisionsManager({ leagueId }) {
       </div>
 
       <div className="card">
-        <div style={{ fontWeight: 700, marginBottom: 8 }}>Divisions ({divisions.length})</div>
+        <div className="font-bold mb-3">Divisions ({divisions.length})</div>
         {divisions.length === 0 ? (
           <div className="subtle">No divisions yet.</div>
         ) : (
@@ -115,7 +115,7 @@ export default function DivisionsManager({ leagueId }) {
                   <td>{d.code}</td>
                   <td>{d.name}</td>
                   <td>{String(!!d.isActive)}</td>
-                  <td style={{ textAlign: "right" }}>
+                  <td className="text-right">
                     <button
                       className="btn btn--ghost"
                       onClick={() => updateDivision(d, { name: d.name, isActive: !d.isActive })}

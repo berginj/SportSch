@@ -8,8 +8,8 @@ import LeaguePicker from "../components/LeaguePicker";
 function Pill({ active, children, onClick }) {
   return (
     <button
-      className={`btn btn--ghost ${active ? "" : ""}`}
-      style={{ borderColor: active ? "var(--accent)" : "var(--border)", color: active ? "var(--accent)" : "var(--text)" }}
+      className={`btn btn--ghost ${active ? "is-active" : ""}`}
+      type="button"
       onClick={onClick}
     >
       {children}
@@ -32,20 +32,20 @@ export default function ManagePage({ leagueId, me, setLeagueId }) {
 
   return (
     <div className="container">
-      <div className="card" style={{ marginBottom: 14 }}>
+      <div className="card mb-4">
         <div className="card__header">
           <div className="h2">League Management</div>
           <div className="subtle">
             League: <b>{leagueId || "(none selected)"}</b>
           </div>
         </div>
-        <div className="card__body" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
+        <div className="card__body row row--wrap items-end gap-3">
           {tabs.map((t) => (
             <Pill key={t.id} active={active === t.id} onClick={() => setActive(t.id)}>
               {t.label}
             </Pill>
           ))}
-          <div style={{ minWidth: 220 }}>
+          <div className="min-w-220">
             <LeaguePicker leagueId={leagueId} setLeagueId={setLeagueId} me={me} label="Switch league" />
           </div>
         </div>
@@ -71,13 +71,13 @@ export default function ManagePage({ leagueId, me, setLeagueId }) {
           </div>
           <div className="card__body">
             <div className="callout">
-              <div style={{ fontWeight: 700, marginBottom: 6 }}>CSV rules</div>
-              <div className="subtle" style={{ lineHeight: 1.45 }}>
+              <div className="font-bold mb-2">CSV rules</div>
+              <div className="subtle leading-relaxed">
                 CSV must include <b>fieldKey</b> + <b>parkName</b> + <b>fieldName</b> (and optionally displayName, address, notes, status). DisplayName should be what you want coaches to see.
                 Keep it consistent (example: <code>Tuckahoe Park &gt; Field 2</code>). fieldKey is stable and is how slots reference a field.
               </div>
             </div>
-            <div className="tableWrap" style={{ marginTop: 12 }}>
+            <div className="tableWrap mt-3">
               <FieldsImport leagueId={leagueId} me={me} />
             </div>
           </div>
@@ -114,8 +114,8 @@ export default function ManagePage({ leagueId, me, setLeagueId }) {
             <div className="h2">Notes</div>
             <div className="subtle">Admin-ish reminders (not secret; just pragmatic).</div>
           </div>
-          <div className="card__body" style={{ lineHeight: 1.5 }}>
-            <ul style={{ margin: 0, paddingLeft: 18 }}>
+          <div className="card__body leading-relaxed">
+            <ul className="no-margin pl-4">
               <li>
                 <b>League selection persists</b> via <code>gameswap_leagueId</code> in localStorage. Every API call sends <code>x-league-id</code>.
               </li>

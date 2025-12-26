@@ -496,12 +496,12 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
         <div className="row mt-3">
           <div className="pill">Slot status</div>
           {[SLOT_STATUS.OPEN, SLOT_STATUS.CONFIRMED, SLOT_STATUS.CANCELLED].map((status) => (
-            <label key={status} className="pill" style={{ cursor: "pointer" }} title={`Show ${status.toLowerCase()} offers on the calendar.`}>
+            <label key={status} className="pill cursor-pointer" title={`Show ${status.toLowerCase()} offers on the calendar.`}>
               <input
                 type="checkbox"
                 checked={!!slotStatusFilter[status]}
                 onChange={() => toggleSlotStatus(status)}
-                style={{ marginRight: 6 }}
+                className="mr-2"
                 disabled={!showSlots}
               />
               {status}
@@ -624,10 +624,10 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
       {canCreateEvents ? (
         <div className="card">
           <details>
-            <summary style={{ cursor: "pointer", fontWeight: 700 }}>
+            <summary className="cursor-pointer font-bold">
               {role === "Coach" ? "Request a game" : "Add an event"}
             </summary>
-            <div className="grid2" style={{ marginTop: 12 }}>
+            <div className="grid2 mt-3">
               {role === "LeagueAdmin" ? (
                 <label>
                   Type
@@ -676,7 +676,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
                 </>
               ) : null}
             </div>
-            <div className="row" style={{ marginTop: 10 }}>
+            <div className="row mt-3">
               <button className="btn primary" onClick={createEvent}>
                 Create Event
               </button>

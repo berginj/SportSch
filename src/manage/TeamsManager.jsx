@@ -111,13 +111,13 @@ export default function TeamsManager({ leagueId }) {
       {ok ? <div className="callout callout--ok">{ok}</div> : null}
 
       <div className="card">
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>Teams CSV upload</div>
-        <div className="subtle" style={{ marginBottom: 8 }}>
+        <div className="font-bold mb-2">Teams CSV upload</div>
+        <div className="subtle mb-2">
           Required columns: <code>division</code>, <code>teamId</code>, <code>name</code>. Optional:{" "}
           <code>coachName</code>, <code>coachEmail</code>, <code>coachPhone</code>.
         </div>
-        <div className="row" style={{ alignItems: "end", gap: 12 }}>
-          <label style={{ flex: 1 }} title="Upload a CSV of teams to create or update.">
+        <div className="row items-end gap-3">
+          <label className="flex-1" title="Upload a CSV of teams to create or update.">
             CSV file
             <input
               type="file"
@@ -134,8 +134,8 @@ export default function TeamsManager({ leagueId }) {
           </button>
         </div>
         {teamsErrors.length ? (
-          <div style={{ marginTop: 12 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Rejected rows ({teamsErrors.length})</div>
+          <div className="mt-3">
+            <div className="font-bold mb-2">Rejected rows ({teamsErrors.length})</div>
             <table className="table">
               <thead>
                 <tr>
@@ -158,7 +158,7 @@ export default function TeamsManager({ leagueId }) {
       </div>
 
       <div className="card">
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>Teams</div>
+        <div className="font-bold mb-2">Teams</div>
         {loading ? (
           <div className="subtle">Loading...</div>
         ) : teams.length === 0 ? (
@@ -182,7 +182,7 @@ export default function TeamsManager({ leagueId }) {
                     <td>{t.name}</td>
                     <td>
                       <div>{t?.primaryContact?.name || "-"}</div>
-                      <div className="muted" style={{ fontSize: 12 }}>
+                      <div className="muted text-xs">
                         {(t?.primaryContact?.email || "") + (t?.primaryContact?.phone ? ` | ${t.primaryContact.phone}` : "")}
                       </div>
                     </td>
@@ -195,8 +195,8 @@ export default function TeamsManager({ leagueId }) {
       </div>
 
       <div className="card">
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>Coach assignments</div>
-        <div className="subtle" style={{ marginBottom: 8 }}>
+        <div className="font-bold mb-2">Coach assignments</div>
+        <div className="subtle mb-2">
           Assign a coach to a team for scheduling permissions.
         </div>
         {coaches.length === 0 ? (
@@ -221,8 +221,8 @@ export default function TeamsManager({ leagueId }) {
                   return (
                     <tr key={c.userId}>
                       <td>
-                        <div style={{ fontWeight: 600 }}>{c.email || c.userId}</div>
-                        <div className="muted" style={{ fontSize: 12 }}>{c.userId}</div>
+                        <div className="font-semibold">{c.email || c.userId}</div>
+                        <div className="muted text-xs">{c.userId}</div>
                       </td>
                       <td>{c.team?.division && c.team?.teamId ? `${c.team.division} / ${c.team.teamId}` : "-"}</td>
                       <td>
@@ -254,7 +254,7 @@ export default function TeamsManager({ leagueId }) {
                           </select>
                         </div>
                       </td>
-                      <td style={{ textAlign: "right" }}>
+                      <td className="text-right">
                         <div className="row">
                           <button className="btn" onClick={() => saveCoachAssignment(c.userId)} title="Save coach assignment.">
                             Save

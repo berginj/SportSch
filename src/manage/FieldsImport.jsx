@@ -173,16 +173,16 @@ export default function FieldsImport({ leagueId }) {
       {ok ? <div className="callout callout--ok">{ok}</div> : null}
 
       <div className="card">
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>Field CSV import</div>
-        <div className="subtle" style={{ marginBottom: 10, lineHeight: 1.4 }}>
+        <div className="font-bold mb-2">Field CSV import</div>
+        <div className="subtle mb-3 leading-relaxed">
           Required columns: <code>fieldKey</code>, <code>parkName</code>, <code>fieldName</code>. Optional:{" "}
           <code>displayName</code>, <code>address</code>, <code>city</code>, <code>state</code>, <code>notes</code>,{" "}
           <code>status</code> ({FIELD_STATUS.ACTIVE}/
           {FIELD_STATUS.INACTIVE}).
         </div>
 
-        <div className="row" style={{ alignItems: "end", gap: 12 }}>
-          <label style={{ flex: 1 }}>
+        <div className="row items-end gap-3">
+          <label className="flex-1">
             CSV file
             <input
               type="file"
@@ -197,21 +197,16 @@ export default function FieldsImport({ leagueId }) {
           </button>
         </div>
 
-        <details style={{ marginTop: 12 }}>
-          <summary style={{ cursor: "pointer" }}>Or paste CSV (fallback)</summary>
+        <details className="mt-3">
+          <summary className="cursor-pointer">Or paste CSV (fallback)</summary>
           <textarea
             value={csvText}
             onChange={(e) => setCsvText(e.target.value)}
             rows={10}
-            style={{
-              width: "100%",
-              marginTop: 10,
-              fontFamily:
-                "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-            }}
+            className="textareaMono"
             disabled={!leagueId || busy}
           />
-          <div className="row" style={{ marginTop: 10 }}>
+          <div className="row mt-3">
             <button className="btn btn--ghost" onClick={importCsvText} disabled={!canImport}>
               {busy ? "Importing…" : "Import Pasted CSV"}
             </button>
@@ -219,9 +214,9 @@ export default function FieldsImport({ leagueId }) {
         </details>
 
         {rowErrors.length ? (
-          <div style={{ marginTop: 12 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Rejected rows ({rowErrors.length})</div>
-            <div className="subtle" style={{ marginBottom: 8 }}>
+          <div className="mt-3">
+            <div className="font-bold mb-2">Rejected rows ({rowErrors.length})</div>
+            <div className="subtle mb-2">
               These are row numbers from the CSV (including the header row).
             </div>
             <table className="table">
@@ -248,7 +243,7 @@ export default function FieldsImport({ leagueId }) {
           </div>
         ) : null}
 
-        <div className="row" style={{ marginTop: 10 }}>
+        <div className="row mt-3">
           <button className="btn btn--ghost" onClick={load} disabled={!leagueId || busy}>
             Reload fields
           </button>
@@ -256,8 +251,8 @@ export default function FieldsImport({ leagueId }) {
       </div>
 
       <div className="card">
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>Field details (edit)</div>
-        <div className="subtle" style={{ marginBottom: 8 }}>
+        <div className="font-bold mb-2">Field details (edit)</div>
+        <div className="subtle mb-2">
           Address details can be edited after import. Changes are saved per field.
         </div>
         {fields.length === 0 ? (
@@ -301,7 +296,7 @@ export default function FieldsImport({ leagueId }) {
                       value={fieldEdits[f.fieldKey]?.state ?? ""}
                       onChange={(e) => updateEdit(f.fieldKey, "state", e.target.value)}
                       disabled={!canEdit || savingKey === f.fieldKey}
-                      style={{ width: 64 }}
+                      className="fieldInputShort"
                     />
                   </td>
                   <td>{f.status}</td>
@@ -319,3 +314,4 @@ export default function FieldsImport({ leagueId }) {
     </div>
   );
 }
+

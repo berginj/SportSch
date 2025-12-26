@@ -122,16 +122,16 @@ export default function InvitesManager({ leagueId, me }) {
               </>
             ) : null}
           </div>
-          <div className="row" style={{ marginTop: 10 }}>
+          <div className="row mt-3">
             <button className="btn primary" onClick={createInvite} disabled={busy} title="Create a magic link for this invite.">
               {busy ? "Sending..." : "Create invite"}
             </button>
           </div>
 
           {inviteUrl ? (
-            <div className="card" style={{ marginTop: 10 }}>
-              <div style={{ fontWeight: 700, marginBottom: 6 }}>Magic link</div>
-              <div className="subtle" style={{ marginBottom: 8 }}>
+            <div className="card mt-3">
+              <div className="font-bold mb-2">Magic link</div>
+              <div className="subtle mb-2">
                 Send this link to the recipient. They will sign in and immediately receive access.
               </div>
               <div className="row">
