@@ -23,10 +23,6 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
       <div className="topnav__inner">
         <div className="navPresence" aria-live="polite">
           <div className="navPresence__title">Sports Scheduler</div>
-          <div className="navPresence__meta">
-            <span className="navPresence__label">Current view</span>
-            <span className="navPresence__value">{currentLabel}</span>
-          </div>
         </div>
 
         <div className="topnav__controls">
@@ -85,9 +81,6 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
           </nav>
 
           <div className="topnav__account">
-            <div className="whoami" title={email}>
-              {email || "Signed in"}
-            </div>
             <div className="control control--league">
               <label>League</label>
               <select
@@ -111,6 +104,9 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
                   })
                 )}
               </select>
+            </div>
+            <div className="whoami" title={email}>
+              {email || "Signed in"}
             </div>
           </div>
         </div>
