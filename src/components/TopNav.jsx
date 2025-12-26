@@ -81,9 +81,13 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
           </nav>
 
           <div className="topnav__account">
+            <div className="whoami" title={email}>
+              {email || "Signed in"}
+            </div>
             <div className="control control--league">
               <label>League</label>
               <select
+                className="leagueSelect"
                 value={leagueId || ""}
                 onChange={(e) => pickLeague(e.target.value)}
                 disabled={!hasLeagues}
@@ -104,9 +108,6 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
                   })
                 )}
               </select>
-            </div>
-            <div className="whoami" title={email}>
-              {email || "Signed in"}
             </div>
           </div>
         </div>
