@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { ROLE } from "../lib/constants";
+import { PromptDialog } from "../components/Dialogs";
+import { usePromptDialog } from "../lib/useDialogs";
 
 function normalizeRole(role) {
   return (role || "").trim();
@@ -29,6 +31,7 @@ export default function InvitesManager({ leagueId, me }) {
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
   const [inviteUrl, setInviteUrl] = useState("");
+  const { promptState, promptValue, setPromptValue, requestPrompt, handleConfirm, handleCancel } = usePromptDialog();
 
   async function createInvite() {
     setErr("");
@@ -71,7 +74,14 @@ export default function InvitesManager({ leagueId, me }) {
       await navigator.clipboard.writeText(inviteUrl);
       setOk("Invite link copied.");
     } catch {
-      prompt("Copy the invite link:", inviteUrl);
+      await requestPrompt({
+        title: "Copy invite link",
+        message: "Copy the link below.",
+        defaultValue: inviteUrl,
+        readOnly: true,
+        confirmLabel: "Close",
+        cancelLabel: "Close",
+      });
     }
   }
 
@@ -79,6 +89,18 @@ export default function InvitesManager({ leagueId, me }) {
     <div className="stack">
       {err ? <div className="callout callout--error">{err}</div> : null}
       {ok ? <div className="callout callout--ok">{ok}</div> : null}
+      <PromptDialog
+        open={!!promptState}
+        title={promptState?.title}
+        message={promptState?.message}
+        confirmLabel={promptState?.confirmLabel}
+        cancelLabel={promptState?.cancelLabel}
+        readOnly={!!promptState?.readOnly}
+        value={promptValue}
+        onChange={setPromptValue}
+        onConfirm={handleConfirm}
+        onCancel={handleCancel}
+      />
 
       {!canInvite ? (
         <div className="callout callout--error">Only League Admins can send invites.</div>

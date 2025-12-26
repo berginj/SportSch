@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import LeaguePicker from "../components/LeaguePicker";
+import Toast from "../components/Toast";
+import { PromptDialog } from "../components/Dialogs";
+import { usePromptDialog } from "../lib/useDialogs";
 
 const ROLE_OPTIONS = [
   "LeagueAdmin",
@@ -32,6 +35,9 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
   const [globalLoading, setGlobalLoading] = useState(false);
   const [globalLeagues, setGlobalLeagues] = useState([]);
   const [newLeague, setNewLeague] = useState({ leagueId: "", name: "", timezone: "America/New_York" });
+  const [toast, setToast] = useState(null);
+  const [accessStatus, setAccessStatus] = useState("Pending");
+  const { promptState, promptValue, setPromptValue, requestPrompt, handleConfirm, handleCancel } = usePromptDialog();
 
   const isGlobalAdmin = !!me?.isGlobalAdmin;
 
@@ -40,7 +46,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
     setErr("");
     try {
       const qs = new URLSearchParams();
-      qs.set("status", "Pending");
+      qs.set("status", accessStatus);
       const data = await apiFetch(`/api/accessrequests?${qs.toString()}`);
       setItems(Array.isArray(data) ? data : []);
     } catch (e) {
@@ -75,7 +81,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
       }
       setCoachDraft(draft);
     } catch (e) {
-      alert(e?.message || "Failed to load memberships/teams");
+      setToast({ tone: "error", message: e?.message || "Failed to load memberships/teams" });
       setMemberships([]);
       setDivisions([]);
       setTeams([]);
@@ -86,9 +92,30 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
 
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leagueId, accessStatus]);
+
+  useEffect(() => {
     loadMembershipsAndTeams();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leagueId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const status = (params.get("accessStatus") || "Pending").trim();
+    const allowed = new Set(["Pending", "Approved", "Denied"]);
+    setAccessStatus(allowed.has(status) ? status : "Pending");
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (accessStatus) params.set("accessStatus", accessStatus);
+    else params.delete("accessStatus");
+    const next = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
+    window.history.replaceState({}, "", next);
+  }, [accessStatus]);
 
   useEffect(() => {
     if (!isGlobalAdmin) return;
@@ -147,14 +174,20 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
       });
       await load();
     } catch (e) {
-      alert(e?.message || "Approve failed");
+      setToast({ tone: "error", message: e?.message || "Approve failed" });
     }
   }
 
   async function deny(req) {
     const userId = req?.userId || "";
     if (!userId) return;
-    const reason = prompt("Reason for denial? (optional)") || "";
+    const reason = await requestPrompt({
+      title: "Deny access request",
+      message: "Optional reason for denial.",
+      placeholder: "Reason (optional)",
+      confirmLabel: "Deny",
+    });
+    if (reason === null) return;
     try {
       await apiFetch(`/api/accessrequests/${encodeURIComponent(userId)}/deny`, {
         method: "PATCH",
@@ -163,7 +196,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
       });
       await load();
     } catch (e) {
-      alert(e?.message || "Deny failed");
+      setToast({ tone: "error", message: e?.message || "Deny failed" });
     }
   }
 
@@ -211,7 +244,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
       });
       await loadMembershipsAndTeams();
     } catch (e) {
-      alert(e?.message || "Failed to update coach assignment");
+      setToast({ tone: "error", message: e?.message || "Failed to update coach assignment" });
     }
   }
 
@@ -263,12 +296,38 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
 
   return (
     <div className="card">
+      <Toast
+        open={!!toast}
+        tone={toast?.tone}
+        message={toast?.message}
+        onClose={() => setToast(null)}
+      />
+      <PromptDialog
+        open={!!promptState}
+        title={promptState?.title}
+        message={promptState?.message}
+        placeholder={promptState?.placeholder}
+        confirmLabel={promptState?.confirmLabel}
+        cancelLabel={promptState?.cancelLabel}
+        value={promptValue}
+        onChange={setPromptValue}
+        onConfirm={handleConfirm}
+        onCancel={handleCancel}
+      />
       <h2>Admin: access requests</h2>
       <p className="muted">
         Approve or deny access requests for the currently selected league.
       </p>
       <div className="row gap-3 row--wrap mb-2">
         <LeaguePicker leagueId={leagueId} setLeagueId={setLeagueId} me={me} label="League" />
+        <label className="min-w-[160px]">
+          Status
+          <select value={accessStatus} onChange={(e) => setAccessStatus(e.target.value)}>
+            <option value="Pending">Pending</option>
+            <option value="Approved">Approved</option>
+            <option value="Denied">Denied</option>
+          </select>
+        </label>
       </div>
 
       <div className="row gap-3 row--wrap">

@@ -223,6 +223,29 @@
   .inlineCheck { @apply inline-flex items-center gap-2 mt-4; }
   .textareaMono { @apply w-full mt-3 font-mono text-sm; }
   .fieldInputShort { @apply w-16; }
+
+  .modalOverlay {
+    @apply fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4;
+  }
+  .modal {
+    @apply w-full max-w-[520px] rounded-2xl border border-border bg-[#111a2d] p-4 shadow-card;
+  }
+  .modal__header { @apply text-sm font-semibold; }
+  .modal__body { @apply mt-2 text-sm text-muted; }
+  .modal__input {
+    @apply mt-3 w-full rounded-xl border border-border bg-black/30 px-3 py-2.5 text-sm text-text;
+  }
+  .modal__actions { @apply mt-4 flex items-center justify-end gap-2; }
+
+  .toast {
+    @apply fixed bottom-4 right-4 z-50 rounded-xl border border-border bg-[#111a2d] px-4 py-2 text-sm shadow-card;
+  }
+  .toast--info { @apply text-text; }
+  .toast--success { @apply border-emerald-400/40 text-emerald-200; }
+  .toast--error { @apply border-red-400/40 text-red-200; }
+  .toast__close {
+    @apply ml-3 text-xs text-muted hover:text-text;
+  }
   .layoutStat__value { @apply text-lg font-semibold; }
   .layoutStat__label { @apply text-xs text-muted; }
 

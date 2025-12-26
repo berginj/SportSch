@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
 import LeaguePicker from "../components/LeaguePicker";
 import StatusCard from "../components/StatusCard";
+import Toast from "../components/Toast";
+import { PromptDialog } from "../components/Dialogs";
+import { usePromptDialog } from "../lib/useDialogs";
 
 function fmtDate(d) {
   return d || "";
@@ -27,6 +30,8 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
   const [acceptTeamBySlot, setAcceptTeamBySlot] = useState({});
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const [toast, setToast] = useState(null);
+  const { promptState, promptValue, setPromptValue, requestPrompt, handleConfirm, handleCancel } = usePromptDialog();
   const initializedRef = useRef(false);
 
   const fieldByKey = useMemo(() => {
@@ -175,14 +180,20 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
 
   async function requestSlot(slot, requestingTeamId) {
     setErr("");
-    const note = prompt("Notes for the other team? (optional)") || "";
+    const note = await requestPrompt({
+      title: "Add a note",
+      message: "Optional notes for the other team.",
+      placeholder: "Type a quick note (optional)",
+      confirmLabel: "Send",
+    });
+    if (note === null) return;
     try {
       const div = slot?.division || division;
       await apiFetch(`/api/slots/${encodeURIComponent(div)}/${encodeURIComponent(slot.slotId)}/requests`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          notes: note,
+          notes: note || "",
           requestingTeamId: requestingTeamId || undefined,
           requestingDivision: div,
         }),
@@ -198,6 +209,24 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
   return (
     <div className="stack">
       {err ? <StatusCard tone="error" title="Unable to load offers" message={err} /> : null}
+      <Toast
+        open={!!toast}
+        tone={toast?.tone}
+        message={toast?.message}
+        onClose={() => setToast(null)}
+      />
+      <PromptDialog
+        open={!!promptState}
+        title={promptState?.title}
+        message={promptState?.message}
+        placeholder={promptState?.placeholder}
+        confirmLabel={promptState?.confirmLabel}
+        cancelLabel={promptState?.cancelLabel}
+        value={promptValue}
+        onChange={setPromptValue}
+        onConfirm={handleConfirm}
+        onCancel={handleCancel}
+      />
 
       <div className="card">
         <div className="cardTitle">

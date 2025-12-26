@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { LEAGUE_HEADER_NAME } from "../lib/constants";
 
@@ -19,6 +19,20 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
   const signedIn = (me?.userId || "UNKNOWN") !== "UNKNOWN";
   const email = me?.email || "";
   const autoSubmitted = useRef(false);
+
+  const applyFiltersFromUrl = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const desiredLeague = (params.get("leagueId") || "").trim();
+    const desiredRole = (params.get("role") || "").trim();
+    if (desiredLeague && desiredLeague !== leagueId) {
+      setLeagueId(desiredLeague);
+    }
+    if (desiredRole) {
+      const normalized = desiredRole === "Viewer" ? "Viewer" : "Coach";
+      setRole(normalized);
+    }
+  }, [leagueId, setLeagueId]);
 
   const accessIntent = useMemo(() => {
     if (typeof window === "undefined") return null;
@@ -53,6 +67,28 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signedIn]);
+
+  useEffect(() => {
+    applyFiltersFromUrl();
+  }, [applyFiltersFromUrl]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onPopState = () => applyFiltersFromUrl();
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [applyFiltersFromUrl]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (leagueId) params.set("leagueId", leagueId);
+    else params.delete("leagueId");
+    if (role) params.set("role", role);
+    else params.delete("role");
+    const next = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
+    window.history.replaceState({}, "", next);
+  }, [leagueId, role]);
 
   useEffect(() => {
     if (!accessIntent) return;

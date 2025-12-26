@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import FieldsImport from "../manage/FieldsImport";
 import DivisionsManager from "../manage/DivisionsManager";
 import InvitesManager from "../manage/InvitesManager";
@@ -28,7 +28,42 @@ export default function ManagePage({ leagueId, me, setLeagueId }) {
     ],
     []
   );
-  const [active, setActive] = useState("teams");
+  const tabIds = useMemo(() => new Set(tabs.map((t) => t.id)), [tabs]);
+  const [active, setActive] = useState(() => {
+    if (typeof window === "undefined") return "teams";
+    const params = new URLSearchParams(window.location.search);
+    const next = (params.get("manageTab") || "teams").trim();
+    return tabIds.has(next) ? next : "teams";
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const next = (params.get("manageTab") || "teams").trim();
+    const safeNext = tabIds.has(next) ? next : "teams";
+    if (safeNext !== active) setActive(safeNext);
+  }, [leagueId, tabIds]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onPopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const next = (params.get("manageTab") || "teams").trim();
+      const safeNext = tabIds.has(next) ? next : "teams";
+      if (safeNext !== active) setActive(safeNext);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [active, tabIds]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (active) params.set("manageTab", active);
+    else params.delete("manageTab");
+    const next = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
+    window.history.replaceState({}, "", next);
+  }, [active]);
 
   return (
     <div className="container">

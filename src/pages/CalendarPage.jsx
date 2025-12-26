@@ -3,6 +3,9 @@ import { apiFetch } from "../lib/api";
 import { SLOT_STATUS } from "../lib/constants";
 import LeaguePicker from "../components/LeaguePicker";
 import StatusCard from "../components/StatusCard";
+import Toast from "../components/Toast";
+import { ConfirmDialog, PromptDialog } from "../components/Dialogs";
+import { useConfirmDialog, usePromptDialog } from "../lib/useDialogs";
 
 function toDateInputValue(d) {
   const yyyy = d.getFullYear();
@@ -82,6 +85,9 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const initializedRef = useRef(false);
+  const [toast, setToast] = useState(null);
+  const { confirmState, requestConfirm, handleConfirm: confirmYes, handleCancel: confirmNo } = useConfirmDialog();
+  const { promptState, promptValue, setPromptValue, requestPrompt, handleConfirm, handleCancel } = usePromptDialog();
 
   const canPickTeam = isGlobalAdmin || role === "LeagueAdmin";
 
@@ -325,12 +331,17 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
 
   async function deleteEvent(eventId) {
     if (!eventId) return;
-    const ok = confirm("Delete this event?");
+    const ok = await requestConfirm({
+      title: "Delete event",
+      message: "Delete this event from the calendar?",
+      confirmLabel: "Delete",
+    });
     if (!ok) return;
     setErr("");
     try {
       await apiFetch(`/api/events/${encodeURIComponent(eventId)}`, { method: "DELETE" });
       await loadData();
+      setToast({ tone: "success", message: "Event deleted." });
     } catch (e) {
       setErr(e?.message || String(e));
     }
@@ -338,7 +349,13 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
 
   async function requestSlot(slot, requestingTeamId) {
     if (!slot?.slotId || !slot?.division) return;
-    const notes = prompt("Optional notes for the offering coach:") || "";
+    const notes = await requestPrompt({
+      title: "Add a note",
+      message: "Optional notes for the offering coach.",
+      placeholder: "Type a note (optional)",
+      confirmLabel: "Accept",
+    });
+    if (notes === null) return;
     setErr("");
     try {
       await apiFetch(`/api/slots/${encodeURIComponent(slot.division)}/${encodeURIComponent(slot.slotId)}/requests`, {
@@ -351,7 +368,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
         }),
       });
       await loadData();
-      alert("Accepted. The game is now scheduled on the calendar.");
+      setToast({ tone: "success", message: "Accepted. The game is now scheduled on the calendar." });
     } catch (e) {
       setErr(e?.message || String(e));
     }
@@ -359,7 +376,11 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
 
   async function cancelSlot(slot) {
     if (!slot?.slotId || !slot?.division) return;
-    const ok = confirm("Cancel this game/slot?");
+    const ok = await requestConfirm({
+      title: "Cancel slot",
+      message: "Cancel this game/slot?",
+      confirmLabel: "Cancel game",
+    });
     if (!ok) return;
     setErr("");
     try {
@@ -367,6 +388,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
         method: "PATCH",
       });
       await loadData();
+      setToast({ tone: "success", message: "Slot cancelled." });
     } catch (e) {
       setErr(e?.message || String(e));
     }
@@ -430,9 +452,16 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     if (!subscribeInfo.url) return;
     try {
       await navigator.clipboard.writeText(subscribeInfo.url);
-      alert("Subscribe link copied.");
+      setToast({ tone: "success", message: "Subscribe link copied." });
     } catch {
-      prompt("Copy the subscribe link:", subscribeInfo.url);
+      await requestPrompt({
+        title: "Copy subscribe link",
+        message: "Copy the link below.",
+        defaultValue: subscribeInfo.url,
+        readOnly: true,
+        confirmLabel: "Close",
+        cancelLabel: "Close",
+      });
     }
   }
 
@@ -453,6 +482,34 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
   return (
     <div className="stack">
       {err ? <StatusCard tone="error" title="Unable to load calendar" message={err} /> : null}
+      <Toast
+        open={!!toast}
+        tone={toast?.tone}
+        message={toast?.message}
+        onClose={() => setToast(null)}
+      />
+      <ConfirmDialog
+        open={!!confirmState}
+        title={confirmState?.title}
+        message={confirmState?.message}
+        confirmLabel={confirmState?.confirmLabel}
+        cancelLabel={confirmState?.cancelLabel}
+        onConfirm={confirmYes}
+        onCancel={confirmNo}
+      />
+      <PromptDialog
+        open={!!promptState}
+        title={promptState?.title}
+        message={promptState?.message}
+        placeholder={promptState?.placeholder}
+        confirmLabel={promptState?.confirmLabel}
+        cancelLabel={promptState?.cancelLabel}
+        readOnly={!!promptState?.readOnly}
+        value={promptValue}
+        onChange={setPromptValue}
+        onConfirm={handleConfirm}
+        onCancel={handleCancel}
+      />
 
       <div className="calendarSplit">
         <div className="card">
