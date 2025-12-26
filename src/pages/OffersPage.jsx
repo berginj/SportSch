@@ -41,6 +41,7 @@ function matchesTypeFilter(gameType, filter) {
 
 function canAcceptSlot(slot) {
   if (!slot || (slot.status || "") !== "Open") return false;
+  if (slot.isAvailability) return false;
   if ((slot.awayTeamId || "").trim() && !slot.isExternalOffer) return false;
   return true;
 }
@@ -102,7 +103,9 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
   }, [teams]);
 
   const filteredSlots = useMemo(() => {
-    return (slots || []).filter((s) => matchesTypeFilter(s.gameType, slotTypeFilter));
+    return (slots || [])
+      .filter((s) => !s.isAvailability)
+      .filter((s) => matchesTypeFilter(s.gameType, slotTypeFilter));
   }, [slots, slotTypeFilter]);
 
   const applyFiltersFromUrl = useCallback(() => {

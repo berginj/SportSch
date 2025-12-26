@@ -36,6 +36,15 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
   const [globalLoading, setGlobalLoading] = useState(false);
   const [globalLeagues, setGlobalLeagues] = useState([]);
   const [newLeague, setNewLeague] = useState({ leagueId: "", name: "", timezone: "America/New_York" });
+  const [seasonLeagueId, setSeasonLeagueId] = useState("");
+  const [seasonDraft, setSeasonDraft] = useState({
+    springStart: "",
+    springEnd: "",
+    fallStart: "",
+    fallEnd: "",
+    gameLengthMinutes: 0,
+  });
+  const [blackoutsDraft, setBlackoutsDraft] = useState([]);
   const [toast, setToast] = useState(null);
   const [accessStatus, setAccessStatus] = useState("Pending");
   const [accessScope, setAccessScope] = useState("league");
@@ -173,6 +182,9 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
     try {
       const list = await apiFetch("/api/global/leagues");
       setGlobalLeagues(Array.isArray(list) ? list : []);
+      if (!seasonLeagueId && Array.isArray(list) && list.length) {
+        setSeasonLeagueId(list[0].leagueId);
+      }
     } catch (e) {
       setGlobalErr(e?.message || "Failed to load leagues");
       setGlobalLeagues([]);
@@ -202,6 +214,64 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
       await loadGlobalLeagues();
     } catch (e) {
       setGlobalErr(e?.message || "Create league failed");
+    } finally {
+      setGlobalLoading(false);
+    }
+  }
+
+  function applySeasonFromLeague(league) {
+    const season = league?.season || {};
+    setSeasonDraft({
+      springStart: season.springStart || "",
+      springEnd: season.springEnd || "",
+      fallStart: season.fallStart || "",
+      fallEnd: season.fallEnd || "",
+      gameLengthMinutes: season.gameLengthMinutes || 0,
+    });
+    setBlackoutsDraft(Array.isArray(season.blackouts) ? season.blackouts.map((b) => ({
+      startDate: b.startDate || "",
+      endDate: b.endDate || "",
+      label: b.label || "",
+    })) : []);
+  }
+
+  useEffect(() => {
+    if (!seasonLeagueId || !globalLeagues.length) return;
+    const league = globalLeagues.find((l) => l.leagueId === seasonLeagueId);
+    if (league) applySeasonFromLeague(league);
+  }, [seasonLeagueId, globalLeagues]);
+
+  async function saveSeasonConfig() {
+    if (!seasonLeagueId) return;
+    setGlobalErr("");
+    setGlobalOk("");
+    const payload = {
+      season: {
+        springStart: (seasonDraft.springStart || "").trim(),
+        springEnd: (seasonDraft.springEnd || "").trim(),
+        fallStart: (seasonDraft.fallStart || "").trim(),
+        fallEnd: (seasonDraft.fallEnd || "").trim(),
+        gameLengthMinutes: Number(seasonDraft.gameLengthMinutes) || 0,
+        blackouts: blackoutsDraft.map((b) => ({
+          startDate: (b.startDate || "").trim(),
+          endDate: (b.endDate || "").trim(),
+          label: (b.label || "").trim(),
+        })),
+      },
+    };
+
+    setGlobalLoading(true);
+    try {
+      await apiFetch(`/api/global/leagues/${encodeURIComponent(seasonLeagueId)}/season`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      setGlobalOk(`Updated season settings for ${seasonLeagueId}.`);
+      setToast({ tone: "success", message: `Updated season settings for ${seasonLeagueId}.` });
+      await loadGlobalLeagues();
+    } catch (e) {
+      setGlobalErr(e?.message || "Update season settings failed");
     } finally {
       setGlobalLoading(false);
     }
@@ -574,6 +644,135 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
               </table>
             </div>
           )}
+
+          <div className="card mt-4">
+            <h4 className="m-0">Season settings</h4>
+            <p className="muted">Set league season dates, blackout windows, and default game length.</p>
+            <div className="row gap-3 row--wrap mb-3">
+              <label className="min-w-[220px]">
+                League
+                <select value={seasonLeagueId} onChange={(e) => setSeasonLeagueId(e.target.value)}>
+                  {globalLeagues.map((l) => (
+                    <option key={l.leagueId} value={l.leagueId}>
+                      {l.name ? `${l.name} (${l.leagueId})` : l.leagueId}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="min-w-[180px]">
+                Game length (minutes)
+                <input
+                  type="number"
+                  min="1"
+                  value={seasonDraft.gameLengthMinutes}
+                  onChange={(e) => setSeasonDraft((p) => ({ ...p, gameLengthMinutes: e.target.value }))}
+                />
+              </label>
+            </div>
+            <div className="grid2 mb-3">
+              <label>
+                Spring start
+                <input
+                  value={seasonDraft.springStart}
+                  onChange={(e) => setSeasonDraft((p) => ({ ...p, springStart: e.target.value }))}
+                  placeholder="YYYY-MM-DD"
+                />
+              </label>
+              <label>
+                Spring end
+                <input
+                  value={seasonDraft.springEnd}
+                  onChange={(e) => setSeasonDraft((p) => ({ ...p, springEnd: e.target.value }))}
+                  placeholder="YYYY-MM-DD"
+                />
+              </label>
+              <label>
+                Fall start
+                <input
+                  value={seasonDraft.fallStart}
+                  onChange={(e) => setSeasonDraft((p) => ({ ...p, fallStart: e.target.value }))}
+                  placeholder="YYYY-MM-DD"
+                />
+              </label>
+              <label>
+                Fall end
+                <input
+                  value={seasonDraft.fallEnd}
+                  onChange={(e) => setSeasonDraft((p) => ({ ...p, fallEnd: e.target.value }))}
+                  placeholder="YYYY-MM-DD"
+                />
+              </label>
+            </div>
+
+            <div className="mb-3">
+              <div className="font-bold mb-2">Blackout windows</div>
+              {blackoutsDraft.length === 0 ? <div className="muted">No blackouts yet.</div> : null}
+              {blackoutsDraft.map((b, idx) => (
+                <div key={`${b.startDate}-${b.endDate}-${idx}`} className="row gap-2 row--wrap mb-2">
+                  <input
+                    className="min-w-[160px]"
+                    value={b.startDate}
+                    onChange={(e) => {
+                      const next = [...blackoutsDraft];
+                      next[idx] = { ...next[idx], startDate: e.target.value };
+                      setBlackoutsDraft(next);
+                    }}
+                    placeholder="Start (YYYY-MM-DD)"
+                  />
+                  <input
+                    className="min-w-[160px]"
+                    value={b.endDate}
+                    onChange={(e) => {
+                      const next = [...blackoutsDraft];
+                      next[idx] = { ...next[idx], endDate: e.target.value };
+                      setBlackoutsDraft(next);
+                    }}
+                    placeholder="End (YYYY-MM-DD)"
+                  />
+                  <input
+                    className="min-w-[220px]"
+                    value={b.label}
+                    onChange={(e) => {
+                      const next = [...blackoutsDraft];
+                      next[idx] = { ...next[idx], label: e.target.value };
+                      setBlackoutsDraft(next);
+                    }}
+                    placeholder="Label (optional)"
+                  />
+                  <button
+                    className="btn"
+                    type="button"
+                    onClick={() => setBlackoutsDraft((prev) => prev.filter((_, i) => i !== idx))}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+              <button
+                className="btn btn--ghost"
+                type="button"
+                onClick={() => setBlackoutsDraft((prev) => [...prev, { startDate: "", endDate: "", label: "" }])}
+              >
+                Add blackout
+              </button>
+            </div>
+
+            <div className="row gap-2">
+              <button className="btn btn--primary" onClick={saveSeasonConfig} disabled={globalLoading}>
+                Save season settings
+              </button>
+              <button
+                className="btn"
+                onClick={() => {
+                  const league = globalLeagues.find((l) => l.leagueId === seasonLeagueId);
+                  if (league) applySeasonFromLeague(league);
+                }}
+                disabled={globalLoading}
+              >
+                Reset
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
 

@@ -60,6 +60,9 @@ public class PublicSlots
                 var leagueId = (e.GetString("LeagueId") ?? "").Trim();
                 var division = e.GetString("Division") ?? "";
 
+                var isAvailability = e.GetBoolean("IsAvailability") ?? false;
+                if (isAvailability) continue;
+
                 var offeringTeamId = e.GetString("OfferingTeamId") ?? "";
                 var gameDate = e.GetString("GameDate") ?? "";
                 var startTime = e.GetString("StartTime") ?? "";

@@ -137,6 +137,12 @@ public class CreateSlotRequest
 
             var awayTeamId = (slot.GetString("AwayTeamId") ?? "").Trim();
             var isExternalOffer = slot.GetBoolean("IsExternalOffer") ?? false;
+            var isAvailability = slot.GetBoolean("IsAvailability") ?? false;
+            if (isAvailability)
+            {
+                return ApiResponses.Error(req, HttpStatusCode.Conflict, "SLOT_UNASSIGNED",
+                    "This slot is availability only and cannot be accepted yet.");
+            }
             if (!string.IsNullOrWhiteSpace(awayTeamId) && !isExternalOffer)
             {
                 return ApiResponses.Error(req, HttpStatusCode.Conflict, "SLOT_ASSIGNED",

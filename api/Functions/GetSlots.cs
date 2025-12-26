@@ -30,6 +30,7 @@ public class GetSlots
         string homeTeamId,
         string awayTeamId,
         bool isExternalOffer,
+        bool isAvailability,
         string gameDate,
         string startTime,
         string endTime,
@@ -95,6 +96,7 @@ public class GetSlots
                 var homeTeamId = (e.GetString("HomeTeamId") ?? offeringTeamId).Trim();
                 var awayTeamId = (e.GetString("AwayTeamId") ?? "").Trim();
                 var isExternalOffer = e.GetBoolean("IsExternalOffer") ?? false;
+                var isAvailability = e.GetBoolean("IsAvailability") ?? false;
                 var gameDate = e.GetString("GameDate") ?? "";
                 var startTime = e.GetString("StartTime") ?? "";
                 var endTime = e.GetString("EndTime") ?? "";
@@ -131,6 +133,7 @@ public class GetSlots
                     homeTeamId: homeTeamId,
                     awayTeamId: awayTeamId,
                     isExternalOffer: isExternalOffer,
+                    isAvailability: isAvailability,
                     gameDate: gameDate,
                     startTime: startTime,
                     endTime: endTime,

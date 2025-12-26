@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import Toast from "../components/Toast";
+import { getDefaultRangeFallback, getSeasonRange } from "../lib/season";
 
 function buildCsv(assignments, division) {
   const header = ["division", "gameDate", "startTime", "endTime", "fieldKey", "homeTeamId", "awayTeamId", "isExternalOffer"];
@@ -93,30 +94,57 @@ export default function SchedulerManager({ leagueId }) {
   const [divisions, setDivisions] = useState([]);
   const [division, setDivision] = useState("");
   const [fields, setFields] = useState([]);
+  const [leagueSeason, setLeagueSeason] = useState(null);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [maxGamesPerWeek, setMaxGamesPerWeek] = useState(2);
   const [noDoubleHeaders, setNoDoubleHeaders] = useState(true);
   const [balanceHomeAway, setBalanceHomeAway] = useState(true);
-  const [externalOfferCount, setExternalOfferCount] = useState(0);
+  const [externalOfferPerWeek, setExternalOfferPerWeek] = useState(1);
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [toast, setToast] = useState(null);
+  const [slotGenDivision, setSlotGenDivision] = useState("");
+  const [slotGenFieldKey, setSlotGenFieldKey] = useState("");
+  const [slotGenStartTime, setSlotGenStartTime] = useState("");
+  const [slotGenEndTime, setSlotGenEndTime] = useState("");
+  const [slotGenDays, setSlotGenDays] = useState({
+    Mon: false,
+    Tue: false,
+    Wed: false,
+    Thu: false,
+    Fri: false,
+    Sat: false,
+    Sun: false,
+  });
+  const [slotGenPreview, setSlotGenPreview] = useState(null);
+  const [overlaySlots, setOverlaySlots] = useState([]);
+  const [overlayEvents, setOverlayEvents] = useState([]);
+  const [overlayDivisions, setOverlayDivisions] = useState([]);
+  const [overlayLoading, setOverlayLoading] = useState(false);
 
   useEffect(() => {
     if (!leagueId) return;
     (async () => {
       try {
-        const [divs, flds] = await Promise.all([apiFetch("/api/divisions"), apiFetch("/api/fields")]);
+        const [divs, flds, league] = await Promise.all([
+          apiFetch("/api/divisions"),
+          apiFetch("/api/fields"),
+          apiFetch("/api/league"),
+        ]);
         const list = Array.isArray(divs) ? divs : [];
         setDivisions(list);
         setFields(Array.isArray(flds) ? flds : []);
+        setLeagueSeason(league?.season || null);
         if (!division && list.length) setDivision(list[0].code || list[0].division || "");
+        if (!slotGenDivision && list.length) setSlotGenDivision(list[0].code || list[0].division || "");
+        if (!slotGenFieldKey && Array.isArray(flds) && flds.length) setSlotGenFieldKey(flds[0].fieldKey || "");
       } catch (e) {
         setErr(e?.message || "Failed to load divisions");
         setDivisions([]);
         setFields([]);
+        setLeagueSeason(null);
       }
     })();
   }, [leagueId]);
@@ -129,6 +157,23 @@ export default function SchedulerManager({ leagueId }) {
     return map;
   }, [fields]);
 
+  const seasonRange = useMemo(() => {
+    const fallback = getDefaultRangeFallback();
+    const range = getSeasonRange(leagueSeason, new Date());
+    return range || fallback;
+  }, [leagueSeason]);
+
+  useEffect(() => {
+    if (!dateFrom) setDateFrom(seasonRange.from);
+    if (!dateTo) setDateTo(seasonRange.to);
+  }, [seasonRange, dateFrom, dateTo]);
+
+  useEffect(() => {
+    if (!overlayDivisions.length && divisions.length) {
+      setOverlayDivisions(divisions.map((d) => d.code || d.division).filter(Boolean));
+    }
+  }, [divisions, overlayDivisions.length]);
+
   const payload = useMemo(() => {
     return {
       division,
@@ -138,10 +183,10 @@ export default function SchedulerManager({ leagueId }) {
         maxGamesPerWeek: Number(maxGamesPerWeek) || undefined,
         noDoubleHeaders,
         balanceHomeAway,
-        externalOfferCount: Number(externalOfferCount) || 0,
+        externalOfferPerWeek: Number(externalOfferPerWeek) || 0,
       },
     };
-  }, [division, dateFrom, dateTo, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferCount]);
+  }, [division, dateFrom, dateTo, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek]);
 
   async function runPreview() {
     setErr("");
@@ -193,6 +238,144 @@ export default function SchedulerManager({ leagueId }) {
     downloadCsv(csv, `sportsengine_${safeDivision}.csv`);
   }
 
+  async function loadOverlay() {
+    setErr("");
+    setOverlayLoading(true);
+    try {
+      const baseQuery = new URLSearchParams();
+      if (dateFrom) baseQuery.set("dateFrom", dateFrom);
+      if (dateTo) baseQuery.set("dateTo", dateTo);
+      const [slotList, eventList] = await Promise.all([
+        apiFetch(`/api/slots?${baseQuery.toString()}`),
+        apiFetch(`/api/events?${baseQuery.toString()}`),
+      ]);
+      setOverlaySlots(Array.isArray(slotList) ? slotList : []);
+      setOverlayEvents(Array.isArray(eventList) ? eventList : []);
+    } catch (e) {
+      setErr(e?.message || "Failed to load overlay data");
+      setOverlaySlots([]);
+      setOverlayEvents([]);
+    } finally {
+      setOverlayLoading(false);
+    }
+  }
+
+  function toggleOverlayDivision(code) {
+    setOverlayDivisions((prev) => {
+      if (prev.includes(code)) return prev.filter((c) => c !== code);
+      return [...prev, code];
+    });
+  }
+
+  const divisionColors = useMemo(() => {
+    const palette = ["#1f4d7a", "#2f7a5a", "#8c4b2f", "#6b3fa0", "#8a6d2d", "#2a6f6f"];
+    const map = new Map();
+    let idx = 0;
+    for (const d of divisions || []) {
+      const code = d.code || d.division;
+      if (!code) continue;
+      map.set(code, palette[idx % palette.length]);
+      idx += 1;
+    }
+    return map;
+  }, [divisions]);
+
+  const overlayItems = useMemo(() => {
+    const allowed = new Set(overlayDivisions);
+    const slotItems = (overlaySlots || [])
+      .filter((s) => !s.isAvailability)
+      .filter((s) => !allowed.size || allowed.has(s.division))
+      .map((s) => ({
+        kind: "slot",
+        date: s.gameDate,
+        time: `${s.startTime}-${s.endTime}`,
+        division: s.division,
+        label: `${s.homeTeamId || s.offeringTeamId || "TBD"} vs ${s.awayTeamId || "TBD"}`,
+        field: s.displayName || s.fieldKey || "",
+        status: s.status,
+        isExternal: !!s.isExternalOffer,
+      }));
+
+    const eventItems = (overlayEvents || [])
+      .filter((e) => !allowed.size || !e.division || allowed.has(e.division))
+      .map((e) => ({
+        kind: "event",
+        date: e.eventDate,
+        time: `${e.startTime || ""}-${e.endTime || ""}`,
+        division: e.division || "",
+        label: `${e.type ? `${e.type}: ` : ""}${e.title || "Event"}`,
+        field: e.location || "",
+        status: e.status || "Scheduled",
+        isExternal: false,
+      }));
+
+    return [...slotItems, ...eventItems]
+      .filter((i) => i.date)
+      .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+  }, [overlaySlots, overlayEvents, overlayDivisions]);
+
+  async function previewSlotGeneration() {
+    setErr("");
+    setLoading(true);
+    try {
+      const days = Object.entries(slotGenDays)
+        .filter(([, on]) => on)
+        .map(([k]) => k);
+      const data = await apiFetch("/api/schedule/slots/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          division: slotGenDivision,
+          fieldKey: slotGenFieldKey,
+          dateFrom,
+          dateTo,
+          daysOfWeek: days,
+          startTime: slotGenStartTime,
+          endTime: slotGenEndTime,
+        }),
+      });
+      setSlotGenPreview(data || null);
+    } catch (e) {
+      setErr(e?.message || "Failed to preview slots");
+      setSlotGenPreview(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function applySlotGeneration(mode) {
+    setErr("");
+    setLoading(true);
+    try {
+      const days = Object.entries(slotGenDays)
+        .filter(([, on]) => on)
+        .map(([k]) => k);
+      const data = await apiFetch(`/api/schedule/slots/apply?mode=${encodeURIComponent(mode)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          division: slotGenDivision,
+          fieldKey: slotGenFieldKey,
+          dateFrom,
+          dateTo,
+          daysOfWeek: days,
+          startTime: slotGenStartTime,
+          endTime: slotGenEndTime,
+        }),
+      });
+      setSlotGenPreview(null);
+      setToast({ tone: "success", message: `Generated slots (${data?.created?.length || 0} created).` });
+    } catch (e) {
+      setErr(e?.message || "Failed to generate slots");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function toggleDay(day) {
+    setSlotGenDays((prev) => ({ ...prev, [day]: !prev[day] }));
+  }
+
   return (
     <div className="stack">
       <Toast
@@ -208,6 +391,13 @@ export default function SchedulerManager({ leagueId }) {
           <div className="h2">Division scheduler</div>
           <div className="subtle">Build a balanced schedule from your open slots.</div>
         </div>
+        {leagueSeason ? (
+          <div className="card__body">
+            <div className="subtle">
+              Season defaults: Spring {leagueSeason.springStart || "?"} - {leagueSeason.springEnd || "?"}, Fall {leagueSeason.fallStart || "?"} - {leagueSeason.fallEnd || "?"}. Game length: {leagueSeason.gameLengthMinutes || "?"} min.
+            </div>
+          </div>
+        ) : null}
         <div className="card__body grid2">
           <label>
             Division
@@ -245,12 +435,12 @@ export default function SchedulerManager({ leagueId }) {
             Balance home/away
           </label>
           <label>
-            External offers to keep open
+            External offers per week
             <input
               type="number"
               min="0"
-              value={externalOfferCount}
-              onChange={(e) => setExternalOfferCount(e.target.value)}
+              value={externalOfferPerWeek}
+              onChange={(e) => setExternalOfferPerWeek(e.target.value)}
             />
           </label>
         </div>
@@ -268,6 +458,128 @@ export default function SchedulerManager({ leagueId }) {
             Export SportsEngine CSV
           </button>
         </div>
+      </div>
+
+      <div className="card">
+        <div className="card__header">
+          <div className="h2">Field slot generator</div>
+          <div className="subtle">
+            Generate open availability slots for a division and field. Uses league game length (no buffers).
+          </div>
+        </div>
+        {leagueSeason && !leagueSeason.gameLengthMinutes ? (
+          <div className="card__body">
+            <div className="callout callout--error">
+              League game length is not set. Ask a global admin to configure season settings.
+            </div>
+          </div>
+        ) : null}
+        <div className="card__body grid2">
+          <label>
+            Division
+            <select value={slotGenDivision} onChange={(e) => setSlotGenDivision(e.target.value)}>
+              {divisions.map((d) => (
+                <option key={d.code || d.division} value={d.code || d.division}>
+                  {d.name ? `${d.name} (${d.code || d.division})` : d.code || d.division}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Field
+            <select value={slotGenFieldKey} onChange={(e) => setSlotGenFieldKey(e.target.value)}>
+              <option value="">Select field</option>
+              {fields.map((f) => (
+                <option key={f.fieldKey} value={f.fieldKey}>
+                  {f.displayName}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Start time
+            <input value={slotGenStartTime} onChange={(e) => setSlotGenStartTime(e.target.value)} placeholder="17:00" />
+          </label>
+          <label>
+            End time
+            <input value={slotGenEndTime} onChange={(e) => setSlotGenEndTime(e.target.value)} placeholder="22:00" />
+          </label>
+          <label>
+            Season range
+            <div className="row gap-2 row--wrap">
+              <input value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} placeholder="YYYY-MM-DD" />
+              <input value={dateTo} onChange={(e) => setDateTo(e.target.value)} placeholder="YYYY-MM-DD" />
+            </div>
+          </label>
+          <label>
+            Game length (minutes)
+            <input value={leagueSeason?.gameLengthMinutes || 0} readOnly />
+          </label>
+          <div>
+            <div className="mb-2">Days of week</div>
+            <div className="row row--wrap gap-2">
+              {Object.keys(slotGenDays).map((day) => (
+                <label key={day} className="inlineCheck">
+                  <input type="checkbox" checked={slotGenDays[day]} onChange={() => toggleDay(day)} />
+                  {day}
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="card__body row gap-2">
+          <button className="btn" onClick={previewSlotGeneration} disabled={loading || !slotGenDivision || !slotGenFieldKey}>
+            Preview slots
+          </button>
+          <button className="btn btn--primary" onClick={() => applySlotGeneration("skip")} disabled={loading || !slotGenDivision || !slotGenFieldKey}>
+            Generate (skip conflicts)
+          </button>
+          <button className="btn" onClick={() => applySlotGeneration("overwrite")} disabled={loading || !slotGenDivision || !slotGenFieldKey}>
+            Generate (overwrite availability)
+          </button>
+        </div>
+        {slotGenPreview ? (
+          <div className="card__body">
+            <div className="h2">Preview</div>
+            <div className="row row--wrap gap-4">
+              <div className="layoutStat">
+                <div className="layoutStat__value">{slotGenPreview.slots?.length || 0}</div>
+                <div className="layoutStat__label">Slots</div>
+              </div>
+              <div className="layoutStat">
+                <div className="layoutStat__value">{slotGenPreview.conflicts?.length || 0}</div>
+                <div className="layoutStat__label">Conflicts</div>
+              </div>
+            </div>
+            {slotGenPreview.conflicts?.length ? (
+              <div className="mt-3 tableWrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Time</th>
+                      <th>Field</th>
+                      <th>Division</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {slotGenPreview.conflicts.slice(0, 20).map((c, idx) => (
+                      <tr key={`${c.gameDate}-${c.startTime}-${idx}`}>
+                        <td>{c.gameDate}</td>
+                        <td>{c.startTime}-{c.endTime}</td>
+                        <td>{c.fieldKey}</td>
+                        <td>{c.division}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {slotGenPreview.conflicts.length > 20 ? (
+                  <div className="subtle">Showing first 20 conflicts.</div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {preview ? (
@@ -368,6 +680,78 @@ export default function SchedulerManager({ leagueId }) {
           ) : null}
         </div>
       ) : null}
+
+      <div className="card">
+        <div className="card__header">
+          <div className="h2">Season overlay</div>
+          <div className="subtle">See events and scheduled games across divisions with color coding.</div>
+        </div>
+        <div className="card__body">
+          <div className="row row--wrap gap-2 mb-3">
+            {divisions.map((d) => {
+              const code = d.code || d.division;
+              const color = divisionColors.get(code) || "#333";
+              return (
+                <label key={code} className="inlineCheck" style={{ borderLeft: `4px solid ${color}`, paddingLeft: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={overlayDivisions.includes(code)}
+                    onChange={() => toggleOverlayDivision(code)}
+                  />
+                  {code}
+                </label>
+              );
+            })}
+          </div>
+          <div className="row gap-2 mb-3">
+            <button className="btn" onClick={loadOverlay} disabled={overlayLoading}>
+              {overlayLoading ? "Loading..." : "Refresh overlay"}
+            </button>
+          </div>
+          {overlayItems.length === 0 ? (
+            <div className="muted">No items to display for the selected range.</div>
+          ) : (
+            <div className="tableWrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Time</th>
+                    <th>Division</th>
+                    <th>Type</th>
+                    <th>Details</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {overlayItems.map((i, idx) => {
+                    const color = divisionColors.get(i.division) || "#333";
+                    const typeLabel = i.kind === "event"
+                      ? "Event"
+                      : i.isExternal
+                        ? (i.status === "Confirmed" ? "External (filled)" : "External (open)")
+                        : "Matchup";
+                    return (
+                      <tr key={`${i.kind}-${i.date}-${i.time}-${idx}`}>
+                        <td>{i.date}</td>
+                        <td>{i.time}</td>
+                        <td>
+                          <span className="pill" style={{ borderLeft: `4px solid ${color}` }}>
+                            {i.division || "All"}
+                          </span>
+                        </td>
+                        <td>{typeLabel}</td>
+                        <td>{i.label} {i.field ? `@ ${i.field}` : ""}</td>
+                        <td>{i.status}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -20,12 +20,37 @@ public class LeaguesFunctions
     }
 
     public record LeagueContact(string? name, string? email, string? phone);
-    public record LeagueDto(string leagueId, string name, string timezone, string status, LeagueContact contact);
+    public record BlackoutRange(string? startDate, string? endDate, string? label);
+    public record SeasonConfig(
+        string? springStart,
+        string? springEnd,
+        string? fallStart,
+        string? fallEnd,
+        int gameLengthMinutes,
+        List<BlackoutRange> blackouts
+    );
+    public record LeagueDto(string leagueId, string name, string timezone, string status, LeagueContact contact, SeasonConfig season);
     public record CreateLeagueReq(string? leagueId, string? name, string? timezone);
     public record PatchLeagueReq(string? name, string? timezone, string? status, LeagueContact? contact);
+    public record PatchSeasonReq(SeasonConfig? season);
 
     private static LeagueDto ToDto(TableEntity e)
     {
+        var blackouts = new List<BlackoutRange>();
+        var blackoutsRaw = (e.GetString("Blackouts") ?? "").Trim();
+        if (!string.IsNullOrWhiteSpace(blackoutsRaw))
+        {
+            try
+            {
+                blackouts = System.Text.Json.JsonSerializer.Deserialize<List<BlackoutRange>>(blackoutsRaw) ?? new List<BlackoutRange>();
+            }
+            catch
+            {
+                blackouts = new List<BlackoutRange>();
+            }
+        }
+
+        var gameLengthMinutes = e.GetInt32("GameLengthMinutes") ?? 0;
         return new LeagueDto(
             leagueId: e.RowKey,
             name: (e.GetString("Name") ?? e.RowKey).Trim(),
@@ -35,6 +60,14 @@ public class LeaguesFunctions
                 name: (e.GetString("ContactName") ?? "").Trim(),
                 email: (e.GetString("ContactEmail") ?? "").Trim(),
                 phone: (e.GetString("ContactPhone") ?? "").Trim()
+            ),
+            season: new SeasonConfig(
+                springStart: (e.GetString("SpringStart") ?? "").Trim(),
+                springEnd: (e.GetString("SpringEnd") ?? "").Trim(),
+                fallStart: (e.GetString("FallStart") ?? "").Trim(),
+                fallEnd: (e.GetString("FallEnd") ?? "").Trim(),
+                gameLengthMinutes: gameLengthMinutes,
+                blackouts: blackouts
             )
         );
     }
@@ -228,18 +261,24 @@ public class LeaguesFunctions
             ApiGuards.EnsureValidTableKeyPart("leagueId", leagueId);
 
             var now = DateTimeOffset.UtcNow;
-            var e = new TableEntity(Constants.Pk.Leagues, leagueId)
-            {
-                ["LeagueId"] = leagueId,
-                ["Name"] = name,
-                ["Timezone"] = timezone,
-                ["Status"] = "Active",
-                ["ContactName"] = "",
-                ["ContactEmail"] = "",
-                ["ContactPhone"] = "",
-                ["CreatedUtc"] = now,
-                ["UpdatedUtc"] = now
-            };
+        var e = new TableEntity(Constants.Pk.Leagues, leagueId)
+        {
+            ["LeagueId"] = leagueId,
+            ["Name"] = name,
+            ["Timezone"] = timezone,
+            ["Status"] = "Active",
+            ["ContactName"] = "",
+            ["ContactEmail"] = "",
+            ["ContactPhone"] = "",
+            ["SpringStart"] = "",
+            ["SpringEnd"] = "",
+            ["FallStart"] = "",
+            ["FallEnd"] = "",
+            ["GameLengthMinutes"] = 0,
+            ["Blackouts"] = "[]",
+            ["CreatedUtc"] = now,
+            ["UpdatedUtc"] = now
+        };
 
             var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Leagues);
             try
@@ -297,6 +336,12 @@ public class LeaguesFunctions
                 ["ContactName"] = "",
                 ["ContactEmail"] = "",
                 ["ContactPhone"] = "",
+                ["SpringStart"] = "",
+                ["SpringEnd"] = "",
+                ["FallStart"] = "",
+                ["FallEnd"] = "",
+                ["GameLengthMinutes"] = 0,
+                ["Blackouts"] = "[]",
                 ["CreatedUtc"] = now,
                 ["UpdatedUtc"] = now
             };
@@ -322,5 +367,93 @@ public class LeaguesFunctions
             _log.LogError(ex, "CreateLeague_Global failed");
             return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
         }
+    }
+
+    [Function("PatchLeagueSeason_Admin")]
+    public async Task<HttpResponseData> PatchSeasonAdmin(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "admin/leagues/{leagueId}/season")] HttpRequestData req,
+        string leagueId)
+    {
+        return await PatchSeasonCore(req, leagueId);
+    }
+
+    [Function("PatchLeagueSeason_Global")]
+    public async Task<HttpResponseData> PatchSeasonGlobal(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "global/leagues/{leagueId}/season")] HttpRequestData req,
+        string leagueId)
+    {
+        return await PatchSeasonCore(req, leagueId);
+    }
+
+    private async Task<HttpResponseData> PatchSeasonCore(HttpRequestData req, string leagueId)
+    {
+        try
+        {
+            leagueId = (leagueId ?? "").Trim();
+            ApiGuards.EnsureValidTableKeyPart("leagueId", leagueId);
+
+            var me = IdentityUtil.GetMe(req);
+            await ApiGuards.RequireGlobalAdminAsync(_svc, me.UserId);
+
+            var body = await HttpUtil.ReadJsonAsync<PatchSeasonReq>(req);
+            if (body?.season is null)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "season is required");
+
+            var season = body.season;
+            ValidateSeasonDates(season.springStart, season.springEnd, "spring");
+            ValidateSeasonDates(season.fallStart, season.fallEnd, "fall");
+            if (season.gameLengthMinutes <= 0)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "gameLengthMinutes must be > 0");
+
+            var blackouts = season.blackouts ?? new List<BlackoutRange>();
+            foreach (var b in blackouts)
+            {
+                ValidateSeasonDates(b.startDate, b.endDate, "blackout");
+            }
+
+            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Leagues);
+            TableEntity e;
+            try
+            {
+                e = (await table.GetEntityAsync<TableEntity>(Constants.Pk.Leagues, leagueId)).Value;
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                return ApiResponses.Error(req, HttpStatusCode.NotFound, "NOT_FOUND", $"league not found: {leagueId}");
+            }
+
+            e["SpringStart"] = (season.springStart ?? "").Trim();
+            e["SpringEnd"] = (season.springEnd ?? "").Trim();
+            e["FallStart"] = (season.fallStart ?? "").Trim();
+            e["FallEnd"] = (season.fallEnd ?? "").Trim();
+            e["GameLengthMinutes"] = season.gameLengthMinutes;
+            e["Blackouts"] = System.Text.Json.JsonSerializer.Serialize(blackouts);
+            e["UpdatedUtc"] = DateTimeOffset.UtcNow;
+            await table.UpdateEntityAsync(e, e.ETag, TableUpdateMode.Replace);
+
+            return ApiResponses.Ok(req, ToDto(e));
+        }
+        catch (ApiGuards.HttpError ex)
+        {
+            return ApiResponses.FromHttpError(req, ex);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "PatchLeagueSeason failed");
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
+        }
+    }
+
+    private static void ValidateSeasonDates(string? start, string? end, string label)
+    {
+        var s = (start ?? "").Trim();
+        var e = (end ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(s) && string.IsNullOrWhiteSpace(e)) return;
+        if (!DateOnly.TryParseExact(s, "yyyy-MM-dd", out var sDate))
+            throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, $"{label} startDate must be YYYY-MM-DD.");
+        if (!DateOnly.TryParseExact(e, "yyyy-MM-dd", out var eDate))
+            throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, $"{label} endDate must be YYYY-MM-DD.");
+        if (eDate < sDate)
+            throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, $"{label} endDate must be on or after startDate.");
     }
 }

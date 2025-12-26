@@ -3,6 +3,7 @@ import { apiFetch } from "../lib/api";
 import LeaguePicker from "../components/LeaguePicker";
 import StatusCard from "../components/StatusCard";
 import { SLOT_STATUS } from "../lib/constants";
+import { getDefaultRangeFallback, getSeasonRange } from "../lib/season";
 
 function toDateInputValue(d) {
   const yyyy = d.getFullYear();
@@ -67,16 +68,10 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
   const isAdmin = !!me?.isGlobalAdmin || role === "LeagueAdmin";
 
   const today = useMemo(() => new Date(), []);
-  const seasonEnd = useMemo(() => {
-    const endThisYear = new Date(today.getFullYear(), 6, 30);
-    return today > endThisYear ? new Date(today.getFullYear() + 1, 6, 30) : endThisYear;
-  }, [today]);
-  const defaultDateFrom = useMemo(() => toDateInputValue(today), [today]);
-  const defaultDateTo = useMemo(() => toDateInputValue(seasonEnd), [seasonEnd]);
 
   const [division, setDivision] = useState("");
-  const [dateFrom, setDateFrom] = useState(defaultDateFrom);
-  const [dateTo, setDateTo] = useState(defaultDateTo);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [showSlots, setShowSlots] = useState(true);
   const [showEvents, setShowEvents] = useState(true);
   const [slotStatusFilter, setSlotStatusFilter] = useState({
@@ -92,27 +87,39 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const initializedRef = useRef(false);
+  const defaultsRef = useRef(getDefaultRangeFallback());
 
-  const applyFiltersFromUrl = useCallback(() => {
+  const applyFiltersFromUrl = useCallback((defaults) => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     setDivision((params.get("division") || "").trim());
-    setDateFrom((params.get("dateFrom") || "").trim() || defaultDateFrom);
-    setDateTo((params.get("dateTo") || "").trim() || defaultDateTo);
+    setDateFrom((params.get("dateFrom") || "").trim() || defaults.from);
+    setDateTo((params.get("dateTo") || "").trim() || defaults.to);
     setShowSlots(parseBoolParam(params, "showSlots", true));
     setShowEvents(parseBoolParam(params, "showEvents", true));
     setSlotStatusFilter(parseStatusFilter(params));
-  }, [defaultDateFrom, defaultDateTo]);
+  }, []);
 
   useEffect(() => {
     if (!leagueId) return;
-    applyFiltersFromUrl();
-    initializedRef.current = true;
+    (async () => {
+      let defaults = getDefaultRangeFallback();
+      try {
+        const league = await apiFetch("/api/league");
+        const seasonRange = getSeasonRange(league?.season, new Date());
+        if (seasonRange) defaults = seasonRange;
+      } catch {
+        // ignore season config
+      }
+      defaultsRef.current = defaults;
+      applyFiltersFromUrl(defaults);
+      initializedRef.current = true;
+    })();
   }, [leagueId, applyFiltersFromUrl]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const onPopState = () => applyFiltersFromUrl();
+    const onPopState = () => applyFiltersFromUrl(defaultsRef.current);
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, [applyFiltersFromUrl]);
@@ -183,10 +190,13 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
   }, [leagueId]);
 
   const openSlots = useMemo(
-    () => slots.filter((s) => s.status === SLOT_STATUS.OPEN && (!s.awayTeamId || s.isExternalOffer)),
+    () => slots.filter((s) => s.status === SLOT_STATUS.OPEN && !s.isAvailability && (!s.awayTeamId || s.isExternalOffer)),
     [slots]
   );
-  const confirmedSlots = useMemo(() => slots.filter((s) => s.status === SLOT_STATUS.CONFIRMED), [slots]);
+  const confirmedSlots = useMemo(
+    () => slots.filter((s) => s.status === SLOT_STATUS.CONFIRMED && !s.isAvailability),
+    [slots]
+  );
 
   function activateSlotFilter(status) {
     setShowSlots(true);

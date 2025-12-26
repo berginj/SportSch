@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
+import { getDefaultRangeFallback, getSeasonRange } from "../lib/season";
 import { SLOT_STATUS } from "../lib/constants";
 import LeaguePicker from "../components/LeaguePicker";
 import StatusCard from "../components/StatusCard";
@@ -56,6 +57,7 @@ function matchesSlotType(gameType, filter) {
 
 function canAcceptSlot(slot) {
   if (!slot || (slot.status || "") !== "Open") return false;
+  if (slot.isAvailability) return false;
   if ((slot.awayTeamId || "").trim() && !slot.isExternalOffer) return false;
   return true;
 }
@@ -89,15 +91,8 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
   const [divisions, setDivisions] = useState([]);
   const [division, setDivision] = useState("");
 
-  const today = useMemo(() => new Date(), []);
-  const seasonEnd = useMemo(() => {
-    const endThisYear = new Date(today.getFullYear(), 6, 30);
-    return today > endThisYear ? new Date(today.getFullYear() + 1, 6, 30) : endThisYear;
-  }, [today]);
-  const defaultDateFrom = useMemo(() => toDateInputValue(today), [today]);
-  const defaultDateTo = useMemo(() => toDateInputValue(seasonEnd), [seasonEnd]);
-  const [dateFrom, setDateFrom] = useState(defaultDateFrom);
-  const [dateTo, setDateTo] = useState(defaultDateTo);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [showSlots, setShowSlots] = useState(true);
   const [showEvents, setShowEvents] = useState(true);
   const [slotTypeFilter, setSlotTypeFilter] = useState("all");
@@ -114,6 +109,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const initializedRef = useRef(false);
+  const defaultsRef = useRef(getDefaultRangeFallback());
   const [toast, setToast] = useState(null);
   const { confirmState, requestConfirm, handleConfirm: confirmYes, handleCancel: confirmNo } = useConfirmDialog();
   const { promptState, promptValue, setPromptValue, requestPrompt, handleConfirm, handleCancel } = usePromptDialog();
@@ -132,17 +128,17 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     }
   }
 
-  const applyFiltersFromUrl = useCallback(() => {
+  const applyFiltersFromUrl = useCallback((defaults) => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     setDivision((params.get("division") || "").trim());
-    setDateFrom((params.get("dateFrom") || "").trim() || defaultDateFrom);
-    setDateTo((params.get("dateTo") || "").trim() || defaultDateTo);
+    setDateFrom((params.get("dateFrom") || "").trim() || defaults.from);
+    setDateTo((params.get("dateTo") || "").trim() || defaults.to);
     setShowSlots(parseBoolParam(params, "showSlots", true));
     setShowEvents(parseBoolParam(params, "showEvents", true));
     setSlotTypeFilter(normalizeSlotTypeFilter(params.get("slotType")));
     setSlotStatusFilter(parseStatusFilter(params));
-  }, [defaultDateFrom, defaultDateTo]);
+  }, []);
 
   async function loadData(overrides = null) {
     const current = overrides || {
@@ -184,7 +180,16 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
 
   useEffect(() => {
     (async () => {
-      applyFiltersFromUrl();
+      let defaults = getDefaultRangeFallback();
+      try {
+        const league = await apiFetch("/api/league");
+        const seasonRange = getSeasonRange(league?.season, new Date());
+        if (seasonRange) defaults = seasonRange;
+      } catch {
+        // ignore season config
+      }
+      defaultsRef.current = defaults;
+      applyFiltersFromUrl(defaults);
       try {
         await loadMeta();
       } catch {
@@ -193,8 +198,8 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
       const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
       const initialFilters = {
         division: (params.get("division") || "").trim(),
-        dateFrom: (params.get("dateFrom") || "").trim() || defaultDateFrom,
-        dateTo: (params.get("dateTo") || "").trim() || defaultDateTo,
+        dateFrom: (params.get("dateFrom") || "").trim() || defaults.from,
+        dateTo: (params.get("dateTo") || "").trim() || defaults.to,
         showSlots: parseBoolParam(params, "showSlots", true),
         showEvents: parseBoolParam(params, "showEvents", true),
         slotStatusFilter: parseStatusFilter(params),
@@ -207,7 +212,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const onPopState = () => applyFiltersFromUrl();
+    const onPopState = () => applyFiltersFromUrl(defaultsRef.current);
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, [applyFiltersFromUrl]);
@@ -265,6 +270,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     }
 
     for (const s of slots || []) {
+      if (s.isAvailability) continue;
       if (!matchesSlotType(s.gameType, slotTypeFilter)) continue;
       const matchup = slotMatchupLabel(s);
       const label = `${matchup || s.offeringTeamId || ""} @ ${s.displayName || `${s.parkName || ""} ${s.fieldName || ""}`}`.trim();

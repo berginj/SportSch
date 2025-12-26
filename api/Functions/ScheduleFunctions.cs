@@ -22,7 +22,7 @@ public class ScheduleFunctions
         _log = lf.CreateLogger<ScheduleFunctions>();
     }
 
-    public record ScheduleConstraints(int? maxGamesPerWeek, bool? noDoubleHeaders, bool? balanceHomeAway, int? externalOfferCount);
+    public record ScheduleConstraints(int? maxGamesPerWeek, bool? noDoubleHeaders, bool? balanceHomeAway, int? externalOfferPerWeek);
     public record ScheduleRequest(string? division, string? dateFrom, string? dateTo, ScheduleConstraints? constraints);
 
     public record ScheduleSlotDto(
@@ -85,7 +85,7 @@ public class ScheduleFunctions
             var maxGamesPerWeek = (constraints.maxGamesPerWeek ?? 0) <= 0 ? (int?)null : constraints.maxGamesPerWeek;
             var noDoubleHeaders = constraints.noDoubleHeaders ?? true;
             var balanceHomeAway = constraints.balanceHomeAway ?? true;
-            var externalOfferCount = Math.Max(0, constraints.externalOfferCount ?? 0);
+            var externalOfferPerWeek = Math.Max(0, constraints.externalOfferPerWeek ?? 0);
 
             var teams = await LoadTeamsAsync(leagueId, division);
             if (teams.Count < 2)
@@ -96,12 +96,12 @@ public class ScheduleFunctions
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "No open slots found for this division.");
 
             var matchups = BuildRoundRobin(teams);
-            var result = AssignMatchups(slots, matchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferCount);
+            var result = AssignMatchups(slots, matchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek);
 
             if (apply)
             {
                 var runId = Guid.NewGuid().ToString("N");
-                await SaveScheduleRunAsync(leagueId, division, runId, me.Email ?? me.UserId, dateFrom, dateTo, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferCount, result);
+                await SaveScheduleRunAsync(leagueId, division, runId, me.Email ?? me.UserId, dateFrom, dateTo, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek, result);
                 await ApplyAssignmentsAsync(leagueId, division, runId, result.assignments);
                 return ApiResponses.Ok(req, new { runId, result.summary, result.assignments, result.unassignedSlots, result.unassignedMatchups });
             }
@@ -205,7 +205,7 @@ public class ScheduleFunctions
         int? maxGamesPerWeek,
         bool noDoubleHeaders,
         bool balanceHomeAway,
-        int externalOfferCount)
+        int externalOfferPerWeek)
     {
         var teamSet = new HashSet<string>(teams, StringComparer.OrdinalIgnoreCase);
         var homeCounts = teams.ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
@@ -233,17 +233,34 @@ public class ScheduleFunctions
             assignments.Add(new ScheduleSlotDto(slot.slotId, slot.gameDate, slot.startTime, slot.endTime, slot.fieldKey, home, away, false));
         }
 
-        if (externalOfferCount > 0 && unassignedSlots.Count > 0)
+        if (externalOfferPerWeek > 0 && unassignedSlots.Count > 0)
         {
-            var externalSlots = unassignedSlots.Take(externalOfferCount).ToList();
-            unassignedSlots = unassignedSlots.Skip(externalOfferCount).ToList();
+            var remaining = new List<ScheduleSlotDto>();
+            var byWeek = unassignedSlots
+                .GroupBy(s => WeekKey(s.gameDate))
+                .OrderBy(g => g.Key)
+                .ToList();
 
-            foreach (var slot in externalSlots)
+            foreach (var group in byWeek)
             {
-                var home = PickExternalHome(teams, homeCounts, awayCounts);
-                ApplyCounts(home, "", slot.gameDate, homeCounts, awayCounts, gamesByDate, gamesByWeek);
-                assignments.Add(new ScheduleSlotDto(slot.slotId, slot.gameDate, slot.startTime, slot.endTime, slot.fieldKey, home, "", true));
+                if (string.IsNullOrWhiteSpace(group.Key))
+                {
+                    remaining.AddRange(group);
+                    continue;
+                }
+
+                var picks = group.Take(externalOfferPerWeek).ToList();
+                foreach (var slot in picks)
+                {
+                    var home = PickExternalHome(teams, homeCounts, awayCounts);
+                    ApplyCounts(home, "", slot.gameDate, homeCounts, awayCounts, gamesByDate, gamesByWeek);
+                    assignments.Add(new ScheduleSlotDto(slot.slotId, slot.gameDate, slot.startTime, slot.endTime, slot.fieldKey, home, "", true));
+                }
+
+                remaining.AddRange(group.Skip(externalOfferPerWeek));
             }
+
+            unassignedSlots = remaining;
         }
 
         var unassignedMatchups = remainingMatchups
@@ -411,7 +428,7 @@ public class ScheduleFunctions
         int? maxGamesPerWeek,
         bool noDoubleHeaders,
         bool balanceHomeAway,
-        int externalOfferCount,
+        int externalOfferPerWeek,
         ScheduleResult result)
     {
         var table = await TableClients.GetTableAsync(_svc, Constants.Tables.ScheduleRuns);
@@ -429,7 +446,7 @@ public class ScheduleFunctions
             ["MaxGamesPerWeek"] = maxGamesPerWeek ?? 0,
             ["NoDoubleHeaders"] = noDoubleHeaders,
             ["BalanceHomeAway"] = balanceHomeAway,
-            ["ExternalOfferCount"] = externalOfferCount,
+            ["ExternalOfferPerWeek"] = externalOfferPerWeek,
             ["Summary"] = JsonSerializer.Serialize(result.summary)
         };
 
@@ -457,6 +474,7 @@ public class ScheduleFunctions
             slot["HomeTeamId"] = a.homeTeamId;
             slot["AwayTeamId"] = a.awayTeamId ?? "";
             slot["IsExternalOffer"] = a.isExternalOffer;
+            slot["IsAvailability"] = false;
             slot["ScheduleRunId"] = runId;
             slot["UpdatedUtc"] = DateTimeOffset.UtcNow;
 
