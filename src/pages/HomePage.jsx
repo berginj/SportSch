@@ -184,6 +184,22 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
   const openSlots = useMemo(() => slots.filter((s) => s.status === SLOT_STATUS.OPEN), [slots]);
   const confirmedSlots = useMemo(() => slots.filter((s) => s.status === SLOT_STATUS.CONFIRMED), [slots]);
 
+  function activateSlotFilter(status) {
+    setShowSlots(true);
+    setSlotStatusFilter({
+      [SLOT_STATUS.OPEN]: status === SLOT_STATUS.OPEN,
+      [SLOT_STATUS.CONFIRMED]: status === SLOT_STATUS.CONFIRMED,
+      [SLOT_STATUS.CANCELLED]: status === SLOT_STATUS.CANCELLED,
+    });
+  }
+
+  function openAccessRequests() {
+    setTab("admin");
+    if (typeof window !== "undefined") {
+      window.location.hash = "#admin";
+    }
+  }
+
   const nextItems = useMemo(() => {
     const items = [
       ...events.map((e) => ({
@@ -305,18 +321,18 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
           <div className="layoutPanel">
             <div className="layoutPanel__title">Today</div>
             <div className="layoutStatRow">
-              <div className="layoutStat">
+              <button className="layoutStat layoutStat--link" onClick={() => activateSlotFilter(SLOT_STATUS.OPEN)}>
                 <div className="layoutStat__value">{openSlots.length}</div>
                 <div className="layoutStat__label">Open offers</div>
-              </div>
-              <div className="layoutStat">
+              </button>
+              <button className="layoutStat layoutStat--link" onClick={() => activateSlotFilter(SLOT_STATUS.CONFIRMED)}>
                 <div className="layoutStat__value">{confirmedSlots.length}</div>
                 <div className="layoutStat__label">Confirmed</div>
-              </div>
-              <div className="layoutStat">
+              </button>
+              <button className="layoutStat layoutStat--link" onClick={openAccessRequests}>
                 <div className="layoutStat__value">{accessRequests.length}</div>
                 <div className="layoutStat__label">Access requests</div>
-              </div>
+              </button>
             </div>
           </div>
           <div className="layoutPanel">
@@ -336,8 +352,8 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
               {divisions.slice(0, 4).map((d) => (
                 <div key={d.code} className="layoutPill">{d.code}</div>
               ))}
-              <div className="layoutPill">Open</div>
-              <div className="layoutPill">Confirmed</div>
+              <button className="layoutPill layoutPill--link" onClick={() => activateSlotFilter(SLOT_STATUS.OPEN)}>Open</button>
+              <button className="layoutPill layoutPill--link" onClick={() => activateSlotFilter(SLOT_STATUS.CONFIRMED)}>Confirmed</button>
             </div>
           </div>
           <div className="layoutPanel">

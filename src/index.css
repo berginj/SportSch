@@ -194,12 +194,14 @@
   .layoutList { @apply grid gap-2; }
   .layoutItem { @apply rounded-xl border border-border bg-black/20 p-2.5; }
   .layoutPill { @apply inline-flex items-center rounded-full border border-border px-2.5 py-1 text-xs text-muted; }
+  .layoutPill--link { @apply transition hover:border-orange-300/70 hover:text-orange-100; }
   .layoutBadge { @apply inline-flex items-center rounded-full border border-orange-300/70 px-2 py-1 text-xs text-accent; }
   .layoutBadge--confirm { @apply border-emerald-300/60 text-emerald-300; }
   .layoutBadge--event { @apply border-blue-300/60 text-blue-300; }
 
   .layoutStatRow { @apply grid gap-2.5 grid-cols-[repeat(auto-fit,minmax(120px,1fr))]; }
   .layoutStat { @apply rounded-xl border border-border bg-black/20 p-2.5; }
+  .layoutStat--link { @apply text-left transition hover:border-orange-300/70 hover:bg-black/30; }
   .layoutStat__value { @apply text-lg font-semibold; }
   .layoutStat__label { @apply text-xs text-muted; }
 
