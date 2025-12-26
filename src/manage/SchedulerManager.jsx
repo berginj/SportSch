@@ -119,6 +119,14 @@ function startOfWeek(d) {
   return addDays(date, -day);
 }
 
+function formatWeekRange(start) {
+  const end = addDays(start, 6);
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const startLabel = `${months[start.getMonth()]} ${start.getDate()}`;
+  const endLabel = `${months[end.getMonth()]} ${end.getDate()}, ${end.getFullYear()}`;
+  return `${startLabel} - ${endLabel}`;
+}
+
 export default function SchedulerManager({ leagueId }) {
   const [divisions, setDivisions] = useState([]);
   const [division, setDivision] = useState("");
@@ -153,6 +161,7 @@ export default function SchedulerManager({ leagueId }) {
   const [overlayDivisions, setOverlayDivisions] = useState([]);
   const [overlayLoading, setOverlayLoading] = useState(false);
   const [overlayView, setOverlayView] = useState("list");
+  const [overlayWeekStart, setOverlayWeekStart] = useState("");
 
   useEffect(() => {
     if (!leagueId) return;
@@ -197,6 +206,12 @@ export default function SchedulerManager({ leagueId }) {
     if (!dateFrom) setDateFrom(seasonRange.from);
     if (!dateTo) setDateTo(seasonRange.to);
   }, [seasonRange, dateFrom, dateTo]);
+
+  useEffect(() => {
+    if (overlayWeekStart) return;
+    const base = parseIsoDate(dateFrom || seasonRange.from);
+    if (base) setOverlayWeekStart(toIsoDate(startOfWeek(base)));
+  }, [dateFrom, overlayWeekStart, seasonRange]);
 
   useEffect(() => {
     if (!overlayDivisions.length && divisions.length) {
@@ -354,20 +369,11 @@ export default function SchedulerManager({ leagueId }) {
     return map;
   }, [overlayItems]);
 
-  const overlayWeeks = useMemo(() => {
-    const start = parseIsoDate(dateFrom || seasonRange.from);
-    const end = parseIsoDate(dateTo || seasonRange.to);
-    if (!start || !end) return [];
-    const weeks = [];
-    let cursor = startOfWeek(start);
-    const last = startOfWeek(end);
-    while (cursor <= last) {
-      const days = Array.from({ length: 7 }, (_, i) => addDays(cursor, i));
-      weeks.push(days);
-      cursor = addDays(cursor, 7);
-    }
-    return weeks;
-  }, [dateFrom, dateTo, seasonRange]);
+  const overlayWeek = useMemo(() => {
+    const start = parseIsoDate(overlayWeekStart);
+    if (!start) return [];
+    return Array.from({ length: 7 }, (_, i) => addDays(start, i));
+  }, [overlayWeekStart]);
 
   async function previewSlotGeneration() {
     setErr("");
@@ -821,6 +827,47 @@ export default function SchedulerManager({ leagueId }) {
               </table>
             </div>
           ) : (
+            <>
+              <div className="row row--between mb-2">
+                <div className="font-semibold">
+                  {overlayWeek.length ? formatWeekRange(overlayWeek[0]) : "Week view"}
+                </div>
+                <div className="row gap-2">
+                  <button
+                    className="btn btn--ghost"
+                    type="button"
+                    onClick={() => {
+                      const current = parseIsoDate(overlayWeekStart);
+                      if (!current) return;
+                      setOverlayWeekStart(toIsoDate(addDays(current, -7)));
+                    }}
+                  >
+                    Prev week
+                  </button>
+                  <button
+                    className="btn btn--ghost"
+                    type="button"
+                    onClick={() => {
+                      const base = parseIsoDate(dateFrom || seasonRange.from);
+                      if (!base) return;
+                      setOverlayWeekStart(toIsoDate(startOfWeek(base)));
+                    }}
+                  >
+                    Reset
+                  </button>
+                  <button
+                    className="btn btn--ghost"
+                    type="button"
+                    onClick={() => {
+                      const current = parseIsoDate(overlayWeekStart);
+                      if (!current) return;
+                      setOverlayWeekStart(toIsoDate(addDays(current, 7)));
+                    }}
+                  >
+                    Next week
+                  </button>
+                </div>
+              </div>
             <div className="tableWrap">
               <table className="table">
                 <thead>
@@ -831,42 +878,41 @@ export default function SchedulerManager({ leagueId }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {overlayWeeks.map((week, wIdx) => (
-                    <tr key={`week-${wIdx}`}>
-                      {week.map((day) => {
-                        const key = toIsoDate(day);
-                        const items = overlayByDate.get(key) || [];
-                        return (
-                          <td key={key} className="align-top">
-                            <div className="text-xs font-semibold mb-1">{key}</div>
-                            {items.length === 0 ? (
-                              <div className="muted text-xs">-</div>
-                            ) : (
-                              <div className="stack gap-1">
-                                {items.map((i, idx) => {
-                                  const color = divisionColors.get(i.division) || "#333";
-                                  const typeLabel = i.kind === "event"
-                                    ? "Event"
-                                    : i.isExternal
-                                      ? (i.status === "Confirmed" ? "External (filled)" : "External (open)")
-                                      : "Matchup";
-                                  return (
-                                    <div key={`${key}-${idx}`} className="subtle" style={{ borderLeft: `4px solid ${color}`, paddingLeft: 6 }}>
-                                      <div className="text-xs">{i.time} {typeLabel}</div>
-                                      <div className="text-xs">{i.label}</div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
+                  <tr>
+                    {overlayWeek.map((day) => {
+                      const key = toIsoDate(day);
+                      const items = overlayByDate.get(key) || [];
+                      return (
+                        <td key={key} className="align-top">
+                          <div className="text-xs font-semibold mb-1">{key}</div>
+                          {items.length === 0 ? (
+                            <div className="muted text-xs">-</div>
+                          ) : (
+                            <div className="stack gap-1">
+                              {items.map((i, idx) => {
+                                const color = divisionColors.get(i.division) || "#333";
+                                const typeLabel = i.kind === "event"
+                                  ? "Event"
+                                  : i.isExternal
+                                    ? (i.status === "Confirmed" ? "External (filled)" : "External (open)")
+                                    : "Matchup";
+                                return (
+                                  <div key={`${key}-${idx}`} className="subtle" style={{ borderLeft: `4px solid ${color}`, paddingLeft: 6 }}>
+                                    <div className="text-xs">{i.time} {typeLabel}</div>
+                                    <div className="text-xs">{i.label}</div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </div>
       </div>
