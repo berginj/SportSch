@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Azure.Functions.Worker.ApplicationInsights;
 
 var host = new HostBuilder()
     .ConfigureFunctionsWorkerDefaults()
