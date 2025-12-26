@@ -390,6 +390,15 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     setSlotStatusFilter((prev) => ({ ...prev, [status]: !prev[status] }));
   }
 
+  function activateSlotFilter(status) {
+    setShowSlots(true);
+    setSlotStatusFilter({
+      [SLOT_STATUS.OPEN]: status === SLOT_STATUS.OPEN,
+      [SLOT_STATUS.CONFIRMED]: status === SLOT_STATUS.CONFIRMED,
+      [SLOT_STATUS.CANCELLED]: status === SLOT_STATUS.CANCELLED,
+    });
+  }
+
   function setAcceptTeam(slotId, teamId) {
     setAcceptTeamBySlot((prev) => ({ ...prev, [slotId]: teamId }));
   }
@@ -451,7 +460,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
           Calendar filters
           <span className="hint" title="Filter what appears on the calendar and subscription link.">?</span>
         </div>
-        <div className="row filterRow" style={{ flexWrap: "wrap" }}>
+        <div className="row filterRow row--wrap">
           <LeaguePicker leagueId={leagueId} setLeagueId={setLeagueId} me={me} label="League" />
           <label title="Limit the calendar to one division, or show all.">
             Division
@@ -472,11 +481,11 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
             To
             <input value={dateTo} onChange={(e) => setDateTo(e.target.value)} placeholder="YYYY-MM-DD" />
           </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 18 }} title="Show or hide slot offers.">
+          <label className="inlineCheck" title="Show or hide slot offers.">
             <input type="checkbox" checked={showSlots} onChange={(e) => setShowSlots(e.target.checked)} />
             Slots
           </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 18 }} title="Show or hide league events.">
+          <label className="inlineCheck" title="Show or hide league events.">
             <input type="checkbox" checked={showEvents} onChange={(e) => setShowEvents(e.target.checked)} />
             Events
           </label>
@@ -484,7 +493,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
             Refresh
           </button>
         </div>
-        <div className="row" style={{ marginTop: 10 }}>
+        <div className="row mt-3">
           <div className="pill">Slot status</div>
           {[SLOT_STATUS.OPEN, SLOT_STATUS.CONFIRMED, SLOT_STATUS.CANCELLED].map((status) => (
             <label key={status} className="pill" style={{ cursor: "pointer" }} title={`Show ${status.toLowerCase()} offers on the calendar.`}>
@@ -502,7 +511,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
             <div className="muted">Select at least one status to show slots.</div>
           ) : null}
         </div>
-        <div className="row" style={{ marginTop: 10, justifyContent: "space-between" }}>
+        <div className="row row--between mt-3">
           <div className="muted">
             Showing calendar items for <b>{leagueId || "(no league)"}</b>.
           </div>
@@ -519,18 +528,23 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
             ) : null}
           </div>
         </div>
-        <div className="muted" style={{ marginTop: 6 }}>
+        <div className="muted mt-2">
           Subscribe link reflects the current filters and date range.
         </div>
         </div>
 
         <div className="card">
           <div className="cardTitle">Calendar</div>
+          {role === "Coach" && !myCoachTeamId ? (
+            <div className="callout callout--error">
+              Coach actions require a team assignment. Ask a LeagueAdmin to assign your team.
+            </div>
+          ) : null}
           {timeline.length === 0 ? <div className="muted">No items in this range.</div> : null}
           <div className="stack">
             {timeline.map((it) => (
               <div key={`${it.kind}:${it.id}`} className={statusClassForItem(it)}>
-                <div className="row" style={{ justifyContent: "space-between" }}>
+                <div className="row row--between">
                   <div>
                     <div style={{ fontWeight: 700 }}>
                       {it.date} {it.start ? `${it.start}${it.end ? `-${it.end}` : ""}` : ""} - {it.title}
@@ -539,16 +553,27 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
                     {it.kind === "event" && it.raw?.notes ? <div style={{ marginTop: 6 }}>{it.raw.notes}</div> : null}
                   </div>
                   <div className="row">
-                    <span className={`statusBadge status-${(statusLabelForItem(it) || "").toLowerCase()}`}>
-                      {statusLabelForItem(it)}
-                    </span>
+                    {it.kind === "slot" ? (
+                      <button
+                        className={`statusBadge statusBadge--link status-${(statusLabelForItem(it) || "").toLowerCase()}`}
+                        type="button"
+                        onClick={() => activateSlotFilter(statusLabelForItem(it))}
+                        title="Filter the calendar to this status"
+                      >
+                        {statusLabelForItem(it)}
+                      </button>
+                    ) : (
+                      <span className={`statusBadge status-${(statusLabelForItem(it) || "").toLowerCase()}`}>
+                        {statusLabelForItem(it)}
+                      </span>
+                    )}
                     {it.kind === "slot" && canPickTeam && (it.raw?.status || "") === "Open" ? (
                       (() => {
                         const divisionKey = (it.raw?.division || "").trim().toUpperCase();
                         const teamsForDivision = teamsByDivision.get(divisionKey) || [];
                         const selectedTeamId = acceptTeamBySlot[it.id] || "";
                         return (
-                          <div className="row" style={{ alignItems: "center" }}>
+                          <div className="row">
                             <select
                               value={selectedTeamId}
                               onChange={(e) => setAcceptTeam(it.id, e.target.value)}

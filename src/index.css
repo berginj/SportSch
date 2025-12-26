@@ -68,6 +68,12 @@
   .card__body { @apply grid gap-3; }
 
   .row { @apply flex flex-wrap items-center gap-2; }
+  .row--wrap { @apply flex-wrap; }
+  .row--between { @apply justify-between; }
+  .row--end { @apply justify-end; }
+  .mt-2 { @apply mt-2; }
+  .mt-3 { @apply mt-3; }
+  .mt-4 { @apply mt-4; }
   .grid2 { @apply grid gap-3 min-[900px]:grid-cols-2; }
   .formGrid { @apply grid gap-2.5 grid-cols-[repeat(auto-fit,minmax(240px,1fr))]; }
   .stack { @apply grid gap-3; }
@@ -142,6 +148,7 @@
   .timelineItem--slot.status-cancelled { @apply border-red-400/90; }
 
   .statusBadge { @apply inline-flex items-center rounded-full border border-border bg-black/30 px-2 py-1 text-xs text-muted capitalize; }
+  .statusBadge--link { @apply transition hover:border-orange-300/70 hover:text-orange-100; }
   .statusBadge.status-open { @apply text-accent border-orange-300/70; }
   .statusBadge.status-confirmed { @apply text-emerald-300 border-emerald-300/60; }
   .statusBadge.status-cancelled { @apply text-red-300 border-red-300/60; }
@@ -176,6 +183,7 @@
   .whoami {
     @apply text-[11px] text-text rounded-full border border-border bg-white/10 px-2.5 py-1;
   }
+  .navHint { @apply text-[10px] uppercase tracking-[0.2em] text-muted; }
 
   .hint { @apply inline-flex items-center justify-center w-4 h-4 rounded-full border border-border text-[11px] text-muted cursor-help; }
 
@@ -214,6 +222,8 @@
   .layoutStatRow { @apply grid gap-2.5 grid-cols-[repeat(auto-fit,minmax(120px,1fr))]; }
   .layoutStat { @apply rounded-xl border border-border bg-black/20 p-2.5; }
   .layoutStat--link { @apply text-left transition hover:border-orange-300/70 hover:bg-black/30; }
+
+  .inlineCheck { @apply inline-flex items-center gap-2 mt-4; }
   .layoutStat__value { @apply text-lg font-semibold; }
   .layoutStat__label { @apply text-xs text-muted; }
 

@@ -80,6 +80,10 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
             </button>
           </nav>
 
+          {!hasLeagues ? (
+            <div className="navHint">Select a league to unlock tabs and actions.</div>
+          ) : null}
+
           <div className="topnav__account">
             <div className="whoami" title={email}>
               {email || "Signed in"}
