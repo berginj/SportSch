@@ -1,4 +1,4 @@
-# GameSwap API Contract
+# Sports Scheduler API Contract
 
 This document is the single source of truth for UI/API integration.
 It lives at `docs/contract.md` in this repo and must be kept current.
@@ -15,7 +15,7 @@ It lives at `docs/contract.md` in this repo and must be kept current.
 ### League scoping (non-negotiable)
 - Every league-scoped endpoint requires header: x-league-id: <leagueId>
 - Backend validates header presence and authorization (membership or global admin where specified).
-- UI persists the selected league id and attaches it on every league-scoped request.
+- UI persists the selected league id (localStorage key `gameswap_leagueId`) and attaches it on every league-scoped request.
 
 ### Roles (locked)
 League role strings:
@@ -608,7 +608,7 @@ Body
 ```
 
 Rules
-- If caller role is `Coach`, the API enforces `offeringTeamId` and `division` must exactly match the coach???s assigned team.
+- If caller role is `Coach`, the API enforces `offeringTeamId` and `division` must exactly match the coach's assigned team.
   - If the coach has no team assignment: 400 `COACH_TEAM_REQUIRED`.
   - If team/division do not match: 403 `FORBIDDEN` or 409 `DIVISION_MISMATCH`.
 - `gameDate`, `startTime`, and `endTime` are interpreted as US/Eastern and must be valid (`HH:MM`, start < end).
