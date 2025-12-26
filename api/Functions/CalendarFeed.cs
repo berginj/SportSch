@@ -188,7 +188,7 @@ public class CalendarFeed
 
         var q = (ApiGuards.GetQueryParam(req, "leagueId") ?? "").Trim();
         if (string.IsNullOrWhiteSpace(q))
-            throw new ApiGuards.HttpError(HttpStatusCode.BadRequest, "BAD_REQUEST", "Missing x-league-id header.");
+            throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, "Missing x-league-id header.");
         return q;
     }
 
