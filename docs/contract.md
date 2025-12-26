@@ -315,23 +315,33 @@ Requires: LeagueAdmin or global admin.
 Body
 ```json
 {
-  "email": "coach@example.com",
+  "inviteEmail": "coach@example.com",
   "role": "Coach",
-  "team": { "division": "10U", "teamId": "TIGERS" }
+  "team": { "division": "10U", "teamId": "TIGERS" },
+  "expiresHours": 168
 }
 ```
 
 Response
 ```json
-{ "data": { "inviteId": "...", "email": "coach@example.com", "role": "Coach", "status": "Pending" } }
+{
+  "data": {
+    "inviteId": "...",
+    "inviteEmail": "coach@example.com",
+    "role": "Coach",
+    "status": "Sent",
+    "team": { "division": "10U", "teamId": "TIGERS" },
+    "acceptUrl": "https://<app>/?inviteId=...&leagueId=ARL"
+  }
+}
 ```
 
 ### POST /invites/accept
-Accepts an invite using the invite token.
+Accepts an invite using the invite id + league id.
 
 Body
 ```json
-{ "token": "<string>" }
+{ "leagueId": "ARL", "inviteId": "<string>" }
 ```
 
 Response

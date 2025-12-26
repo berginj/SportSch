@@ -22,8 +22,18 @@ public class LeagueInvitesFunctions
         _svc = tableServiceClient;
     }
 
-    public record CreateInviteReq(string? leagueId, string? inviteEmail, string? role, int? expiresHours);
-    public record InviteDto(string leagueId, string inviteId, string inviteEmail, string role, string status, DateTimeOffset expiresUtc);
+    public record InviteTeam(string? division, string? teamId);
+    public record CreateInviteReq(string? leagueId, string? inviteEmail, string? role, int? expiresHours, InviteTeam? team);
+    public record InviteDto(
+        string leagueId,
+        string inviteId,
+        string inviteEmail,
+        string role,
+        string status,
+        DateTimeOffset expiresUtc,
+        InviteTeam? team,
+        string? acceptUrl
+    );
 
     [Function("CreateInvite_Admin")]
     public async Task<HttpResponseData> CreateAdmin(
@@ -32,17 +42,51 @@ public class LeagueInvitesFunctions
         try
         {
             var me = IdentityUtil.GetMe(req);
-            await ApiGuards.RequireGlobalAdminAsync(_svc, me.UserId);
-
             var body = await HttpUtil.ReadJsonAsync<CreateInviteReq>(req);
             if (body is null) return HttpUtil.Json(req, HttpStatusCode.BadRequest, new { error = "Invalid JSON body" });
 
             var leagueId = (body.leagueId ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(leagueId))
+            {
+                leagueId = ApiGuards.RequireLeagueId(req);
+            }
+            else
+            {
+                ApiGuards.EnsureValidTableKeyPart("leagueId", leagueId);
+            }
+
+            if (await ApiGuards.IsGlobalAdminAsync(_svc, me.UserId))
+            {
+                // ok
+            }
+            else
+            {
+                await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+            }
+
             var email = (body.inviteEmail ?? "").Trim();
             var role = string.IsNullOrWhiteSpace(body.role) ? "LeagueAdmin" : body.role!.Trim();
 
             if (string.IsNullOrWhiteSpace(leagueId)) return HttpUtil.Json(req, HttpStatusCode.BadRequest, new { error = "leagueId is required" });
             if (string.IsNullOrWhiteSpace(email)) return HttpUtil.Json(req, HttpStatusCode.BadRequest, new { error = "inviteEmail is required" });
+
+            var teamDivision = (body.team?.division ?? "").Trim();
+            var teamId = (body.team?.teamId ?? "").Trim();
+            if (string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase))
+            {
+                if (!string.IsNullOrWhiteSpace(teamDivision) || !string.IsNullOrWhiteSpace(teamId))
+                {
+                    if (string.IsNullOrWhiteSpace(teamDivision) || string.IsNullOrWhiteSpace(teamId))
+                        return HttpUtil.Json(req, HttpStatusCode.BadRequest, new { error = "team.division and team.teamId are required together." });
+                    ApiGuards.EnsureValidTableKeyPart("division", teamDivision);
+                    ApiGuards.EnsureValidTableKeyPart("teamId", teamId);
+                }
+            }
+            else
+            {
+                teamDivision = "";
+                teamId = "";
+            }
 
             var inviteId = Guid.NewGuid().ToString("N");
             var expires = DateTimeOffset.UtcNow.AddHours(body.expiresHours ?? 168); // default 7 days
@@ -57,12 +101,14 @@ public class LeagueInvitesFunctions
                 ["ExpiresUtc"] = expires,
                 ["CreatedUtc"] = DateTimeOffset.UtcNow
             };
+            if (!string.IsNullOrWhiteSpace(teamDivision)) entity["Division"] = teamDivision;
+            if (!string.IsNullOrWhiteSpace(teamId)) entity["TeamId"] = teamId;
 
             var table = await TableClients.GetTableAsync(_svc, InvitesTableName);
             await table.AddEntityAsync(entity);
 
             var res = req.CreateResponse(HttpStatusCode.Created);
-            await res.WriteAsJsonAsync(ToDto(entity));
+            await res.WriteAsJsonAsync(ToDto(entity, BuildAcceptUrl(req, leagueId, inviteId)));
             return res;
         }
         catch (UnauthorizedAccessException ua)
@@ -148,11 +194,22 @@ public class LeagueInvitesFunctions
                     ["CreatedUtc"] = DateTimeOffset.UtcNow
                 };
 
+                if (string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase))
+                {
+                    var division = (e.GetString("Division") ?? "").Trim();
+                    var teamId = (e.GetString("TeamId") ?? "").Trim();
+                    if (!string.IsNullOrWhiteSpace(division) && !string.IsNullOrWhiteSpace(teamId))
+                    {
+                        mem["Division"] = division;
+                        mem["TeamId"] = teamId;
+                    }
+                }
+
                 await memberships.UpsertEntityAsync(mem, TableUpdateMode.Merge);
             }
 
             var res = req.CreateResponse(HttpStatusCode.OK);
-            await res.WriteAsJsonAsync(ToDto(e));
+            await res.WriteAsJsonAsync(ToDto(e, BuildAcceptUrl(req, leagueId, inviteId)));
             return res;
         }
         catch (Exception ex)
@@ -162,13 +219,33 @@ public class LeagueInvitesFunctions
         }
     }
 
-    private static InviteDto ToDto(TableEntity e) =>
+    private static InviteDto ToDto(TableEntity e, string? acceptUrl) =>
         new(
             leagueId: e.GetString("LeagueId") ?? "",
             inviteId: e.RowKey,
             inviteEmail: e.GetString("InviteEmail") ?? "",
             role: e.GetString("Role") ?? "LeagueAdmin",
             status: e.GetString("Status") ?? "Sent",
-            expiresUtc: e.GetDateTimeOffset("ExpiresUtc") ?? DateTimeOffset.MinValue
+            expiresUtc: e.GetDateTimeOffset("ExpiresUtc") ?? DateTimeOffset.MinValue,
+            team: ToTeam(e),
+            acceptUrl: acceptUrl
         );
+
+    private static InviteTeam? ToTeam(TableEntity e)
+    {
+        var division = (e.GetString("Division") ?? "").Trim();
+        var teamId = (e.GetString("TeamId") ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(division) || string.IsNullOrWhiteSpace(teamId)) return null;
+        return new InviteTeam(division, teamId);
+    }
+
+    private static string BuildAcceptUrl(HttpRequestData req, string leagueId, string inviteId)
+    {
+        var baseUri = new UriBuilder(req.Url)
+        {
+            Path = "/",
+            Query = $"inviteId={Uri.EscapeDataString(inviteId)}&leagueId={Uri.EscapeDataString(leagueId)}"
+        };
+        return baseUri.Uri.ToString();
+    }
 }

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import FieldsImport from "../manage/FieldsImport";
 import DivisionsManager from "../manage/DivisionsManager";
+import InvitesManager from "../manage/InvitesManager";
 
 function Pill({ active, children, onClick }) {
   return (
@@ -19,6 +20,7 @@ export default function ManagePage({ leagueId, me }) {
     () => [
       { id: "fields", label: "Fields" },
       { id: "divisions", label: "Divisions" },
+      { id: "invites", label: "Invites" },
       { id: "notes", label: "Notes" }
     ],
     []
@@ -72,6 +74,18 @@ export default function ManagePage({ leagueId, me }) {
           </div>
           <div className="card__body">
             <DivisionsManager leagueId={leagueId} />
+          </div>
+        </div>
+      )}
+
+      {active === "invites" && (
+        <div className="card">
+          <div className="card__header">
+            <div className="h2">Invites</div>
+            <div className="subtle">Send a magic link to grant access without a request.</div>
+          </div>
+          <div className="card__body">
+            <InvitesManager leagueId={leagueId} me={me} />
           </div>
         </div>
       )}

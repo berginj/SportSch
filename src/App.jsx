@@ -5,12 +5,23 @@ import ManagePage from "./pages/ManagePage";
 import HelpPage from "./pages/HelpPage";
 import AccessPage from "./pages/AccessPage";
 import AdminPage from "./pages/AdminPage";
+import InviteAcceptPage from "./pages/InviteAcceptPage";
 import TopNav from "./components/TopNav";
 import { useSession } from "./lib/useSession";
+
+function readInviteFromUrl() {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  const inviteId = (params.get("inviteId") || "").trim();
+  const leagueId = (params.get("leagueId") || "").trim();
+  if (!inviteId || !leagueId) return null;
+  return { inviteId, leagueId };
+}
 
 export default function App() {
   const { me, memberships, activeLeagueId, setActiveLeagueId, refreshMe } = useSession();
   const [tab, setTab] = useState("calendar");
+  const [invite, setInvite] = useState(() => readInviteFromUrl());
 
   const isSignedIn = !!me && me.userId && me.userId !== "UNKNOWN";
   const isGlobalAdmin = !!me?.isGlobalAdmin;
@@ -29,6 +40,28 @@ export default function App() {
           <h2>Loading…</h2>
         </div>
       </div>
+    );
+  }
+
+  if (invite) {
+    const clearInvite = () => {
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("inviteId");
+        url.searchParams.delete("leagueId");
+        window.history.replaceState({}, "", url.pathname + url.search);
+      }
+      setInvite(null);
+    };
+
+    return (
+      <InviteAcceptPage
+        invite={invite}
+        me={me}
+        refreshMe={refreshMe}
+        setLeagueId={setActiveLeagueId}
+        onDone={clearInvite}
+      />
     );
   }
 
