@@ -960,11 +960,11 @@ export default function SchedulerManager({ leagueId }) {
                           const monthBase = overlayMonthWeeks[0][0];
                           const inMonth = day.getMonth() === monthBase.getMonth();
                           const isCurrentWeek = overlayWeekStart === toIsoDate(startOfWeek(day));
-                          const badges = [
-                            matchups ? `M${matchups}` : "",
-                            externals ? `X${externals}` : "",
-                            events ? `E${events}` : "",
-                          ].filter(Boolean).join(" ");
+                          const badgeItems = [
+                            matchups ? { label: `M${matchups}`, color: "#1f4d7a" } : null,
+                            externals ? { label: `X${externals}`, color: "#8c4b2f" } : null,
+                            events ? { label: `E${events}`, color: "#2a6f6f" } : null,
+                          ].filter(Boolean);
                           return (
                             <td key={key}>
                               <button
@@ -979,7 +979,15 @@ export default function SchedulerManager({ leagueId }) {
                               >
                                 <span className={inMonth ? "" : "muted"}>{day.getDate()}</span>
                               </button>
-                              {badges ? <div className="text-[10px] mt-1">{badges}</div> : null}
+                              {badgeItems.length ? (
+                                <div className="text-[10px] mt-1 row row--wrap gap-1">
+                                  {badgeItems.map((b) => (
+                                    <span key={b.label} className="pill" style={{ borderLeft: `3px solid ${b.color}` }}>
+                                      {b.label}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : null}
                             </td>
                           );
                         })}
