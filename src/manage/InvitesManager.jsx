@@ -123,7 +123,7 @@ export default function InvitesManager({ leagueId, me }) {
             ) : null}
           </div>
           <div className="row mt-3">
-            <button className="btn primary" onClick={createInvite} disabled={busy} title="Create a magic link for this invite.">
+            <button className="btn btn--primary" onClick={createInvite} disabled={busy} title="Create a magic link for this invite.">
               {busy ? "Sending..." : "Create invite"}
             </button>
           </div>

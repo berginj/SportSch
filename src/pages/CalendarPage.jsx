@@ -587,7 +587,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
                               ))}
                             </select>
                             <button
-                              className="btn primary"
+                              className="btn btn--primary"
                               onClick={() => requestSlot(it.raw, selectedTeamId)}
                               disabled={!selectedTeamId}
                               title="Accept this offer on behalf of the selected team."
@@ -599,7 +599,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
                       })()
                     ) : null}
                     {it.kind === "slot" && !canPickTeam && role !== "Viewer" && (it.raw?.status || "") === "Open" && (it.raw?.offeringTeamId || "") !== myCoachTeamId ? (
-                      <button className="btn primary" onClick={() => requestSlot(it.raw)} title="Accept this open offer and confirm the game.">
+                      <button className="btn btn--primary" onClick={() => requestSlot(it.raw)} title="Accept this open offer and confirm the game.">
                         Accept
                       </button>
                     ) : null}
@@ -677,7 +677,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
               ) : null}
             </div>
             <div className="row mt-3">
-              <button className="btn primary" onClick={createEvent}>
+              <button className="btn btn--primary" onClick={createEvent}>
                 Create Event
               </button>
             </div>

@@ -65,7 +65,7 @@ export default function InviteAcceptPage({ invite, me, refreshMe, setLeagueId, o
             <div className="callout callout--ok">
               You now have access as <b>{result?.role || "member"}</b>.
             </div>
-            <button className="btn primary" onClick={finish}>
+            <button className="btn btn--primary" onClick={finish}>
               Go to app
             </button>
           </div>

@@ -261,7 +261,7 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
           </label>
         </div>
         <div className="row">
-          <button className="btn primary" onClick={createSlot} title="Post this offer to the calendar.">
+          <button className="btn btn--primary" onClick={createSlot} title="Post this offer to the calendar.">
             Create Game Offer
           </button>
         </div>

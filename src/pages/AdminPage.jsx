@@ -322,7 +322,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
                   </td>
                   <td>
                     <div className="row gap-2 row--wrap">
-                      <button className="btn btnPrimary" onClick={() => approve(r)}>
+                      <button className="btn btn--primary" onClick={() => approve(r)}>
                         Approve
                       </button>
                       <button className="btn" onClick={() => deny(r)}>
@@ -379,7 +379,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
                 placeholder="America/New_York"
               />
             </label>
-            <button className="btn btnPrimary" onClick={createLeague} disabled={globalLoading}>
+            <button className="btn btn--primary" onClick={createLeague} disabled={globalLoading}>
               {globalLoading ? "Saving..." : "Create league"}
             </button>
             <button className="btn" onClick={loadGlobalLeagues} disabled={globalLoading}>
@@ -490,7 +490,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
                       </td>
                       <td>
                         <div className="row gap-2 row--wrap">
-                          <button className="btn btnPrimary" onClick={() => saveCoachAssignment(c.userId)}>
+                          <button className="btn btn--primary" onClick={() => saveCoachAssignment(c.userId)}>
                             Save
                           </button>
                           <button

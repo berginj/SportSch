@@ -86,7 +86,7 @@
   .layoutItem--link:focus-visible {
     @apply outline-none ring-2 ring-orange-300/60 ring-offset-2 ring-offset-[#0b1020];
   }
-  .btn.btn--primary, .btnPrimary, .btn.primary {
+  .btn.btn--primary {
     @apply border-orange-300/70 bg-orange-400/20 text-orange-100;
   }
   .btn.btn--danger, .btn.danger { @apply border-rose-400/70 bg-rose-500/20; }
