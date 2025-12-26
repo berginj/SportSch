@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
 import LeaguePicker from "../components/LeaguePicker";
 
@@ -26,6 +26,7 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
   const [acceptTeamBySlot, setAcceptTeamBySlot] = useState({});
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const initializedRef = useRef(false);
 
   const fieldByKey = useMemo(() => {
     const m = new Map();
@@ -50,6 +51,12 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
     }
     return map;
   }, [teams]);
+
+  const applyFiltersFromUrl = useCallback(() => {
+    if (typeof window === "undefined") return "";
+    const params = new URLSearchParams(window.location.search);
+    return (params.get("division") || "").trim();
+  }, []);
 
   async function loadAll(selectedDivision) {
     setErr("");
@@ -83,7 +90,9 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
   }
 
   useEffect(() => {
-    loadAll("");
+    const preferred = applyFiltersFromUrl();
+    loadAll(preferred);
+    initializedRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leagueId]);
 
@@ -99,6 +108,15 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
       setErr(e?.message || String(e));
     }
   }
+
+  useEffect(() => {
+    if (!initializedRef.current || typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (division) params.set("division", division);
+    else params.delete("division");
+    const next = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
+    window.history.replaceState({}, "", next);
+  }, [division]);
 
   // --- Create slot ---
   const [offeringTeamId, setOfferingTeamId] = useState("");
