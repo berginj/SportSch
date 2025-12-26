@@ -31,6 +31,14 @@ function formatGameType(gameType) {
   return "Offer";
 }
 
+function matchesTypeFilter(gameType, filter) {
+  const normalized = formatGameType(gameType);
+  if (!filter || filter === "all") return true;
+  if (filter === "request") return normalized === "Request";
+  if (filter === "offer") return normalized === "Offer";
+  return true;
+}
+
 export default function OffersPage({ me, leagueId, setLeagueId }) {
   const email = me?.email || "";
   const isGlobalAdmin = !!me?.isGlobalAdmin;
@@ -47,6 +55,7 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
   const [division, setDivision] = useState("");
   const [fields, setFields] = useState([]);
   const [slots, setSlots] = useState([]);
+  const [slotTypeFilter, setSlotTypeFilter] = useState("all");
   const [teams, setTeams] = useState([]);
   const [acceptTeamBySlot, setAcceptTeamBySlot] = useState({});
   const [loading, setLoading] = useState(true);
@@ -79,10 +88,17 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
     return map;
   }, [teams]);
 
+  const filteredSlots = useMemo(() => {
+    return (slots || []).filter((s) => matchesTypeFilter(s.gameType, slotTypeFilter));
+  }, [slots, slotTypeFilter]);
+
   const applyFiltersFromUrl = useCallback(() => {
-    if (typeof window === "undefined") return "";
+    if (typeof window === "undefined") return { division: "", type: "all" };
     const params = new URLSearchParams(window.location.search);
-    return (params.get("division") || "").trim();
+    const div = (params.get("division") || "").trim();
+    const rawType = (params.get("slotType") || "").trim().toLowerCase();
+    const type = rawType === "request" || rawType === "offer" ? rawType : "all";
+    return { division: div, type };
   }, []);
 
   async function loadAll(selectedDivision) {
@@ -118,7 +134,8 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
 
   useEffect(() => {
     const preferred = applyFiltersFromUrl();
-    loadAll(preferred);
+    setSlotTypeFilter(preferred.type);
+    loadAll(preferred.division);
     initializedRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leagueId]);
@@ -141,14 +158,19 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
     const params = new URLSearchParams(window.location.search);
     if (division) params.set("division", division);
     else params.delete("division");
+    if (slotTypeFilter && slotTypeFilter !== "all") params.set("slotType", slotTypeFilter);
+    else params.delete("slotType");
     const next = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
     window.history.replaceState({}, "", next);
-  }, [division]);
+  }, [division, slotTypeFilter]);
 
   // --- Create slot ---
   const [entryType, setEntryType] = useState("Offer");
   const [isRecurring, setIsRecurring] = useState(false);
+  const [repeatMode, setRepeatMode] = useState("weekly");
   const [repeatEveryWeeks, setRepeatEveryWeeks] = useState(1);
+  const [repeatCustomEvery, setRepeatCustomEvery] = useState(10);
+  const [repeatCustomUnit, setRepeatCustomUnit] = useState("days");
   const [repeatCount, setRepeatCount] = useState(1);
   const [offeringTeamId, setOfferingTeamId] = useState("");
   const [gameDate, setGameDate] = useState("");
@@ -167,6 +189,8 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
     if (!f) return setErr("Select a field.");
 
     const repeatEvery = Math.max(1, Number.parseInt(repeatEveryWeeks, 10) || 1);
+    const customEvery = Math.max(1, Number.parseInt(repeatCustomEvery, 10) || 1);
+    const customUnit = repeatCustomUnit === "weeks" ? "weeks" : "days";
     const repeatTotal = Math.max(1, Number.parseInt(repeatCount, 10) || 1);
     const maxOccurrences = 26;
     if (isRecurring && repeatTotal > maxOccurrences) {
@@ -175,7 +199,9 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
 
     const occurrenceDates = [];
     const occurrences = isRecurring ? repeatTotal : 1;
-    const stepDays = 7 * repeatEvery;
+    const stepDays = isRecurring
+      ? (repeatMode === "custom" ? (customUnit === "weeks" ? 7 * customEvery : customEvery) : 7 * repeatEvery)
+      : 0;
     for (let i = 0; i < occurrences; i += 1) {
       const nextDate = addDaysToDate(gameDate.trim(), i * stepDays);
       if (!nextDate) return setErr("GameDate must be YYYY-MM-DD.");
@@ -212,7 +238,10 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
       setFieldKey("");
       setNotes("");
       setIsRecurring(false);
+      setRepeatMode("weekly");
       setRepeatEveryWeeks(1);
+      setRepeatCustomEvery(10);
+      setRepeatCustomUnit("days");
       setRepeatCount(1);
       await reloadSlots(division);
       const verb = entryType === "Request" ? "Request" : "Offer";
@@ -296,6 +325,14 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
               ))}
             </select>
           </label>
+          <label title="Filter offers vs requests in the list.">
+            Slot type
+            <select value={slotTypeFilter} onChange={(e) => setSlotTypeFilter(e.target.value)}>
+              <option value="all">All</option>
+              <option value="offer">Offers</option>
+              <option value="request">Requests</option>
+            </select>
+          </label>
           <button className="btn" onClick={() => loadAll(division)} title="Refresh divisions, fields, and offers.">
             Refresh
           </button>
@@ -352,6 +389,15 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
             />
           </label>
           {isRecurring ? (
+            <label title="Recurring cadence.">
+              Interval
+              <select value={repeatMode} onChange={(e) => setRepeatMode(e.target.value)}>
+                <option value="weekly">Weekly</option>
+                <option value="custom">Custom</option>
+              </select>
+            </label>
+          ) : null}
+          {isRecurring && repeatMode === "weekly" ? (
             <label title="Repeat every N weeks.">
               Repeat every (weeks)
               <input
@@ -361,6 +407,27 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
                 value={repeatEveryWeeks}
                 onChange={(e) => setRepeatEveryWeeks(e.target.value)}
               />
+            </label>
+          ) : null}
+          {isRecurring && repeatMode === "custom" ? (
+            <label title="Repeat every interval.">
+              Repeat every
+              <input
+                type="number"
+                min="1"
+                max="60"
+                value={repeatCustomEvery}
+                onChange={(e) => setRepeatCustomEvery(e.target.value)}
+              />
+            </label>
+          ) : null}
+          {isRecurring && repeatMode === "custom" ? (
+            <label title="Repeat unit.">
+              Unit
+              <select value={repeatCustomUnit} onChange={(e) => setRepeatCustomUnit(e.target.value)}>
+                <option value="days">Days</option>
+                <option value="weeks">Weeks</option>
+              </select>
             </label>
           ) : null}
           {isRecurring ? (
@@ -389,7 +456,7 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
 
       <div className="card">
         <div className="cardTitle">Open offers & requests</div>
-        {slots.length === 0 ? (
+        {filteredSlots.length === 0 ? (
           <div className="muted">No offers or requests found for this division.</div>
         ) : (
           <div className="tableWrap">
@@ -406,7 +473,7 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
                 </tr>
               </thead>
               <tbody>
-                {slots.map((s) => (
+                {filteredSlots.map((s) => (
                   <tr key={s.slotId}>
                     <td>{fmtDate(s.gameDate)}</td>
                     <td>

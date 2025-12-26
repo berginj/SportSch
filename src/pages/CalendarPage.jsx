@@ -41,6 +41,19 @@ function parseStatusFilter(params) {
   };
 }
 
+function normalizeSlotTypeFilter(raw) {
+  const v = (raw || "").trim().toLowerCase();
+  if (v === "offer" || v === "request") return v;
+  return "all";
+}
+
+function matchesSlotType(gameType, filter) {
+  const normalized = (gameType || "").trim().toLowerCase();
+  if (!filter || filter === "all") return true;
+  if (filter === "request") return normalized === "request";
+  return normalized !== "request";
+}
+
 export default function CalendarPage({ me, leagueId, setLeagueId }) {
   const isGlobalAdmin = !!me?.isGlobalAdmin;
   const memberships = Array.isArray(me?.memberships) ? me.memberships : [];
@@ -72,6 +85,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
   const [dateTo, setDateTo] = useState(defaultDateTo);
   const [showSlots, setShowSlots] = useState(true);
   const [showEvents, setShowEvents] = useState(true);
+  const [slotTypeFilter, setSlotTypeFilter] = useState("all");
   const [slotStatusFilter, setSlotStatusFilter] = useState({
     [SLOT_STATUS.OPEN]: true,
     [SLOT_STATUS.CONFIRMED]: true,
@@ -111,6 +125,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     setDateTo((params.get("dateTo") || "").trim() || defaultDateTo);
     setShowSlots(parseBoolParam(params, "showSlots", true));
     setShowEvents(parseBoolParam(params, "showEvents", true));
+    setSlotTypeFilter(normalizeSlotTypeFilter(params.get("slotType")));
     setSlotStatusFilter(parseStatusFilter(params));
   }, [defaultDateFrom, defaultDateTo]);
 
@@ -195,6 +210,8 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     else params.delete("showSlots");
     if (showEvents) params.set("showEvents", "1");
     else params.delete("showEvents");
+    if (slotTypeFilter && slotTypeFilter !== "all") params.set("slotType", slotTypeFilter);
+    else params.delete("slotType");
 
     const activeStatuses = [
       SLOT_STATUS.OPEN,
@@ -206,7 +223,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
 
     const next = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
     window.history.replaceState({}, "", next);
-  }, [division, dateFrom, dateTo, showSlots, showEvents, slotStatusFilter]);
+  }, [division, dateFrom, dateTo, showSlots, showEvents, slotStatusFilter, slotTypeFilter]);
 
   const timeline = useMemo(() => {
     const items = [];
@@ -233,6 +250,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     }
 
     for (const s of slots || []) {
+      if (!matchesSlotType(s.gameType, slotTypeFilter)) continue;
       const label = `${s.offeringTeamId || ""} @ ${s.displayName || `${s.parkName || ""} ${s.fieldName || ""}`}`.trim();
       items.push({
         kind: "slot",
@@ -259,7 +277,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
         const bd = `${b.date}T${b.start || "00:00"}`;
         return ad.localeCompare(bd) || a.kind.localeCompare(b.kind) || (a.title || "").localeCompare(b.title || "");
       });
-  }, [events, slots]);
+  }, [events, slots, slotTypeFilter]);
 
   const teamsByDivision = useMemo(() => {
     const map = new Map();
@@ -545,6 +563,18 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
           <label className="inlineCheck" title="Show or hide league events.">
             <input type="checkbox" checked={showEvents} onChange={(e) => setShowEvents(e.target.checked)} />
             Events
+          </label>
+          <label title="Filter offers vs requests." className={showSlots ? "" : "opacity-50"}>
+            Slot type
+            <select
+              value={slotTypeFilter}
+              onChange={(e) => setSlotTypeFilter(e.target.value)}
+              disabled={!showSlots}
+            >
+              <option value="all">All</option>
+              <option value="offer">Offers</option>
+              <option value="request">Requests</option>
+            </select>
           </label>
           <button className="btn" onClick={loadData} title="Refresh the calendar list with the current filters.">
             Refresh
