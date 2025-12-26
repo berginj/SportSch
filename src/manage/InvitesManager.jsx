@@ -3,6 +3,7 @@ import { apiFetch } from "../lib/api";
 import { ROLE } from "../lib/constants";
 import { PromptDialog } from "../components/Dialogs";
 import { usePromptDialog } from "../lib/useDialogs";
+import Toast from "../components/Toast";
 
 function normalizeRole(role) {
   return (role || "").trim();
@@ -31,6 +32,7 @@ export default function InvitesManager({ leagueId, me }) {
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
   const [inviteUrl, setInviteUrl] = useState("");
+  const [toast, setToast] = useState(null);
   const { promptState, promptValue, setPromptValue, requestPrompt, handleConfirm, handleCancel } = usePromptDialog();
 
   async function createInvite() {
@@ -73,6 +75,7 @@ export default function InvitesManager({ leagueId, me }) {
     try {
       await navigator.clipboard.writeText(inviteUrl);
       setOk("Invite link copied.");
+      setToast({ tone: "success", message: "Invite link copied." });
     } catch {
       await requestPrompt({
         title: "Copy invite link",
@@ -89,6 +92,12 @@ export default function InvitesManager({ leagueId, me }) {
     <div className="stack">
       {err ? <div className="callout callout--error">{err}</div> : null}
       {ok ? <div className="callout callout--ok">{ok}</div> : null}
+      <Toast
+        open={!!toast}
+        tone={toast?.tone}
+        message={toast?.message}
+        onClose={() => setToast(null)}
+      />
       <PromptDialog
         open={!!promptState}
         title={promptState?.title}
