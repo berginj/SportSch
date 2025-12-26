@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
 import LeaguePicker from "../components/LeaguePicker";
 import { SLOT_STATUS } from "../lib/constants";
@@ -30,6 +30,29 @@ function normalizeRole(role) {
   return (role || "").trim();
 }
 
+function parseBoolParam(params, key, fallback) {
+  const raw = params.get(key);
+  if (raw == null) return fallback;
+  return raw === "1" || raw.toLowerCase() === "true";
+}
+
+function parseStatusFilter(params) {
+  const raw = (params.get("status") || "").trim();
+  if (!raw) {
+    return {
+      [SLOT_STATUS.OPEN]: true,
+      [SLOT_STATUS.CONFIRMED]: true,
+      [SLOT_STATUS.CANCELLED]: false,
+    };
+  }
+  const set = new Set(raw.split(",").map((s) => s.trim()).filter(Boolean));
+  return {
+    [SLOT_STATUS.OPEN]: set.has(SLOT_STATUS.OPEN),
+    [SLOT_STATUS.CONFIRMED]: set.has(SLOT_STATUS.CONFIRMED),
+    [SLOT_STATUS.CANCELLED]: set.has(SLOT_STATUS.CANCELLED),
+  };
+}
+
 export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
   const isMobile = useIsMobile();
   const memberships = Array.isArray(me?.memberships) ? me.memberships : [];
@@ -47,10 +70,12 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
     const endThisYear = new Date(today.getFullYear(), 6, 30);
     return today > endThisYear ? new Date(today.getFullYear() + 1, 6, 30) : endThisYear;
   }, [today]);
+  const defaultDateFrom = useMemo(() => toDateInputValue(today), [today]);
+  const defaultDateTo = useMemo(() => toDateInputValue(seasonEnd), [seasonEnd]);
 
   const [division, setDivision] = useState("");
-  const [dateFrom, setDateFrom] = useState(toDateInputValue(today));
-  const [dateTo, setDateTo] = useState(toDateInputValue(seasonEnd));
+  const [dateFrom, setDateFrom] = useState(defaultDateFrom);
+  const [dateTo, setDateTo] = useState(defaultDateTo);
   const [showSlots, setShowSlots] = useState(true);
   const [showEvents, setShowEvents] = useState(true);
   const [slotStatusFilter, setSlotStatusFilter] = useState({
@@ -65,10 +90,57 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
   const [accessRequests, setAccessRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const initializedRef = useRef(false);
+
+  const applyFiltersFromUrl = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    setDivision((params.get("division") || "").trim());
+    setDateFrom((params.get("dateFrom") || "").trim() || defaultDateFrom);
+    setDateTo((params.get("dateTo") || "").trim() || defaultDateTo);
+    setShowSlots(parseBoolParam(params, "showSlots", true));
+    setShowEvents(parseBoolParam(params, "showEvents", true));
+    setSlotStatusFilter(parseStatusFilter(params));
+  }, [defaultDateFrom, defaultDateTo]);
 
   useEffect(() => {
-    setDivision("");
-  }, [leagueId]);
+    if (!leagueId) return;
+    applyFiltersFromUrl();
+    initializedRef.current = true;
+  }, [leagueId, applyFiltersFromUrl]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onPopState = () => applyFiltersFromUrl();
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [applyFiltersFromUrl]);
+
+  useEffect(() => {
+    if (!initializedRef.current || typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (division) params.set("division", division);
+    else params.delete("division");
+    if (dateFrom) params.set("dateFrom", dateFrom);
+    else params.delete("dateFrom");
+    if (dateTo) params.set("dateTo", dateTo);
+    else params.delete("dateTo");
+    if (showSlots) params.set("showSlots", "1");
+    else params.delete("showSlots");
+    if (showEvents) params.set("showEvents", "1");
+    else params.delete("showEvents");
+
+    const activeStatuses = [
+      SLOT_STATUS.OPEN,
+      SLOT_STATUS.CONFIRMED,
+      SLOT_STATUS.CANCELLED,
+    ].filter((s) => slotStatusFilter[s]);
+    if (activeStatuses.length) params.set("status", activeStatuses.join(","));
+    else params.delete("status");
+
+    const next = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
+    window.history.replaceState({}, "", next);
+  }, [division, dateFrom, dateTo, showSlots, showEvents, slotStatusFilter]);
 
   async function load() {
     if (!leagueId) return;
