@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
+import LeaguePicker from "../components/LeaguePicker";
 
 const ROLE_OPTIONS = [
   "LeagueAdmin",
@@ -7,7 +8,7 @@ const ROLE_OPTIONS = [
   "Viewer",
 ];
 
-export default function AdminPage({ me }) {
+export default function AdminPage({ me, leagueId, setLeagueId }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [items, setItems] = useState([]);
@@ -266,19 +267,22 @@ export default function AdminPage({ me }) {
       <p className="muted">
         Approve or deny access requests for the currently selected league.
       </p>
+      <div className="row" style={{ gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
+        <LeaguePicker leagueId={leagueId} setLeagueId={setLeagueId} me={me} label="League" />
+      </div>
 
       <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
-        <button className="btn" onClick={load} disabled={loading}>
+        <button className="btn" onClick={load} disabled={loading} title="Refresh access requests.">
           Refresh
         </button>
-        <button className="btn" onClick={loadMembershipsAndTeams} disabled={memLoading}>
+        <button className="btn" onClick={loadMembershipsAndTeams} disabled={memLoading} title="Refresh memberships and teams.">
           Refresh members/teams
         </button>
       </div>
 
       {err && <div className="error">{err}</div>}
       {loading ? (
-        <div className="muted">Loading…</div>
+        <div className="muted">Loading...</div>
       ) : sorted.length === 0 ? (
         <div className="muted">No pending requests.</div>
       ) : (
@@ -384,7 +388,7 @@ export default function AdminPage({ me }) {
           </div>
 
           {globalLoading ? (
-            <div className="muted">Loading…</div>
+            <div className="muted">Loading...</div>
           ) : globalLeagues.length === 0 ? (
             <div className="muted">No leagues yet.</div>
           ) : (
@@ -417,11 +421,11 @@ export default function AdminPage({ me }) {
       <div className="card" style={{ marginTop: 16 }}>
         <h3 style={{ marginTop: 0 }}>Coach assignments</h3>
         <p className="muted">
-          Coaches can be approved without a team. Assign teams here when you’re ready.
+          Coaches can be approved without a team. Assign teams here when you're ready.
         </p>
 
         {memLoading ? (
-          <div className="muted">Loading memberships…</div>
+          <div className="muted">Loading memberships...</div>
         ) : coaches.length === 0 ? (
           <div className="muted">No coaches in this league yet.</div>
         ) : (

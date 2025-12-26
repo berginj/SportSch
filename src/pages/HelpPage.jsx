@@ -20,7 +20,7 @@ export default function HelpPage({ me, leagueId }) {
         Help
       </div>
       <div className="muted" style={{ marginBottom: 14 }}>
-        This app helps leagues coordinate open game offers ("slots") and get them scheduled (all times are US/Eastern). Coaches offer slots and accept each other’s offers. League admins manage setup.
+        This app helps leagues coordinate open game offers ("slots") and get them scheduled (all times are US/Eastern). Coaches offer slots and accept each other's offers. League admins manage setup.
       </div>
 
       <Section title="Select your league">
@@ -49,13 +49,13 @@ export default function HelpPage({ me, leagueId }) {
 
       <Section title="Offer a slot">
         <p>
-          Go to <b>Offers</b>, choose your division, then create an open slot with date/time/field. Open slots appear to other teams.
+          Go to <b>Create Game Offer</b>, choose your division, then create an open slot with date/time/field. Open slots appear to other teams.
         </p>
       </Section>
 
       <Section title="Request a swap">
         <p>
-          When you see an open slot that works for your team, click <b>Accept</b> (Calendar) or <b>Request</b> (Offers). Add notes if helpful.
+          When you see an open slot that works for your team, click <b>Accept</b> (Calendar) or <b>Accept</b> (Create Game Offer). Add notes if helpful.
         </p>
         <p className="muted" style={{ marginTop: 0 }}>
           Acceptance immediately confirms the game and shows it as <b>Confirmed</b> on the calendar.
@@ -85,17 +85,17 @@ export default function HelpPage({ me, leagueId }) {
           LeagueAdmins can import/manage fields, manage divisions, manage teams, and update league contact info. Global admins are higher-level across all leagues.
         </p>
         <p className="muted" style={{ marginBottom: 0 }}>
-          Use Manage → Fields for CSV import (fieldKey is required). Use Manage → Divisions and Teams to keep the league organized.
+          Use League Management -> Fields for CSV import (fieldKey is required). Use League Management -> Teams &amp; Coaches to keep the league organized.
         </p>
       </Section>
 
       <Section title="Common issues + fixes">
         <ul style={{ margin: 0, paddingLeft: 18 }}>
           <li>
-            <b>Forbidden / 403</b>: wrong league selected, or you don’t have membership for that league.
+            <b>Forbidden / 403</b>: wrong league selected, or you don't have membership for that league.
           </li>
           <li>
-            <b>COACH_TEAM_REQUIRED</b>: you’re approved as Coach but not assigned to a team yet.
+            <b>COACH_TEAM_REQUIRED</b>: you're approved as Coach but not assigned to a team yet.
           </li>
           <li>
             <b>DIVISION_MISMATCH</b>: you can only accept/request games within your assigned division (exact match).

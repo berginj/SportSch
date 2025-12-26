@@ -48,6 +48,7 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
               className={tab === "calendar" ? "tab tab--active" : "tab"}
               onClick={() => setTab("calendar")}
               disabled={!hasLeagues}
+              title="Browse and accept offers on the calendar."
             >
               Calendar
             </button>
@@ -55,15 +56,16 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
               className={tab === "offers" ? "tab tab--active" : "tab"}
               onClick={() => setTab("offers")}
               disabled={!hasLeagues}
+              title="Create a new game offer."
             >
-              Offers
+              Create Game Offer
             </button>
             <button
               className={tab === "manage" ? "tab tab--active" : "tab"}
               onClick={() => setTab("manage")}
               disabled={!hasLeagues}
             >
-              Manage
+              League Management
             </button>
             {isGlobalAdmin ? (
               <button

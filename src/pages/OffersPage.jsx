@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
+import LeaguePicker from "../components/LeaguePicker";
 
 function fmtDate(d) {
   return d || "";
 }
 
-export default function OffersPage({ me }) {
+export default function OffersPage({ me, leagueId, setLeagueId }) {
   const email = me?.email || "";
   const [divisions, setDivisions] = useState([]);
   const [division, setDivision] = useState("");
@@ -27,10 +28,7 @@ export default function OffersPage({ me }) {
     setErr("");
     setLoading(true);
     try {
-      const [divs, flds] = await Promise.all([
-        apiFetch("/api/divisions"),
-        apiFetch("/api/fields"),
-      ]);
+      const [divs, flds] = await Promise.all([apiFetch("/api/divisions"), apiFetch("/api/fields")]);
       const divList = Array.isArray(divs) ? divs : [];
       setDivisions(divList);
       const firstDiv = selectedDivision || divList?.[0]?.code || "";
@@ -55,7 +53,7 @@ export default function OffersPage({ me }) {
   useEffect(() => {
     loadAll("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [leagueId]);
 
   async function reloadSlots(nextDivision) {
     const d = nextDivision ?? division;
@@ -122,12 +120,12 @@ export default function OffersPage({ me }) {
   // --- Request slot ---
   async function requestSlot(slot) {
     setErr("");
-    const notes = prompt("Notes for the other team? (optional)") || "";
+    const note = prompt("Notes for the other team? (optional)") || "";
     try {
       await apiFetch(`/api/slots/${encodeURIComponent(division)}/${encodeURIComponent(slot.slotId)}/requests`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notes }),
+        body: JSON.stringify({ notes: note }),
       });
       await reloadSlots(division);
     } catch (e) {
@@ -135,39 +133,49 @@ export default function OffersPage({ me }) {
     }
   }
 
-  if (loading) return <div className="card">Loading…</div>;
+  if (loading) return <div className="card">Loading...</div>;
 
   return (
     <div className="stack">
       {err ? <div className="card error">{err}</div> : null}
 
       <div className="card">
-        <div className="cardTitle">Division</div>
+        <div className="cardTitle">
+          Create game offer
+          <span className="hint" title="Post an open game offer that other teams can accept.">?</span>
+        </div>
         <div className="row">
-          <select value={division} onChange={(e) => reloadSlots(e.target.value)}>
-            {divisions.map((d) => (
-              <option key={d.code} value={d.code}>
-                {d.name} ({d.code})
-              </option>
-            ))}
-          </select>
-          <button className="btn" onClick={() => loadAll(division)}>
+          <LeaguePicker leagueId={leagueId} setLeagueId={setLeagueId} me={me} label="League" />
+          <label title="Choose a division for this offer.">
+            Division
+            <select value={division} onChange={(e) => reloadSlots(e.target.value)}>
+              {divisions.map((d) => (
+                <option key={d.code} value={d.code}>
+                  {d.name} ({d.code})
+                </option>
+              ))}
+            </select>
+          </label>
+          <button className="btn" onClick={() => loadAll(division)} title="Refresh divisions, fields, and offers.">
             Refresh
           </button>
+        </div>
+        <div className="muted" style={{ marginTop: 8 }}>
+          Create offers for <b>{leagueId || "(no league)"}</b>.
         </div>
       </div>
 
       <div className="card">
-        <div className="cardTitle">Create a slot</div>
+        <div className="cardTitle">Offer details</div>
         <div className="grid2">
-          <label>
+          <label title="Team making the offer (must match your coach assignment).">
             Offering Team ID
             <input value={offeringTeamId} onChange={(e) => setOfferingTeamId(e.target.value)} />
           </label>
-          <label>
+          <label title="Field for this game.">
             Field
             <select value={fieldKey} onChange={(e) => setFieldKey(e.target.value)}>
-              <option value="">Select…</option>
+              <option value="">Select...</option>
               {fields.map((f) => (
                 <option key={f.fieldKey} value={f.fieldKey}>
                   {f.displayName}
@@ -175,34 +183,34 @@ export default function OffersPage({ me }) {
               ))}
             </select>
           </label>
-          <label>
+          <label title="Game date (YYYY-MM-DD).">
             GameDate (YYYY-MM-DD)
             <input value={gameDate} onChange={(e) => setGameDate(e.target.value)} placeholder="2026-03-29" />
           </label>
-          <label>
+          <label title="Start time in 24h format.">
             StartTime (HH:MM)
             <input value={startTime} onChange={(e) => setStartTime(e.target.value)} placeholder="09:00" />
           </label>
-          <label>
+          <label title="End time in 24h format.">
             EndTime (HH:MM)
             <input value={endTime} onChange={(e) => setEndTime(e.target.value)} placeholder="10:15" />
           </label>
-          <label>
+          <label title="Optional notes visible to other teams.">
             Notes
             <input value={notes} onChange={(e) => setNotes(e.target.value)} />
           </label>
         </div>
         <div className="row">
-          <button className="btn primary" onClick={createSlot}>
-            Create Slot
+          <button className="btn primary" onClick={createSlot} title="Post this offer to the calendar.">
+            Create Game Offer
           </button>
         </div>
       </div>
 
       <div className="card">
-        <div className="cardTitle">Open slots</div>
+        <div className="cardTitle">Open offers</div>
         {slots.length === 0 ? (
-          <div className="muted">No slots found for this division.</div>
+          <div className="muted">No offers found for this division.</div>
         ) : (
           <div className="tableWrap">
             <table className="table">
@@ -221,18 +229,18 @@ export default function OffersPage({ me }) {
                   <tr key={s.slotId}>
                     <td>{fmtDate(s.gameDate)}</td>
                     <td>
-                      {s.startTime}–{s.endTime}
+                      {s.startTime}-{s.endTime}
                     </td>
                     <td>{s.displayName || s.fieldKey}</td>
                     <td>{s.offeringTeamId}</td>
                     <td>{s.status}</td>
                     <td style={{ textAlign: "right" }}>
                       {s.status === "Open" ? (
-                        <button className="btn" onClick={() => requestSlot(s)}>
-                          Request
+                        <button className="btn" onClick={() => requestSlot(s)} title="Accept this offer.">
+                          Accept
                         </button>
                       ) : (
-                        <span className="muted">—</span>
+                        <span className="muted">-</span>
                       )}
                     </td>
                   </tr>

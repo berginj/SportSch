@@ -85,11 +85,11 @@ export default function InvitesManager({ leagueId, me }) {
       ) : (
         <div className="stack">
           <div className="grid2">
-            <label>
+            <label title="Email of the person you are inviting.">
               Email
               <input value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="coach@example.com" />
             </label>
-            <label>
+            <label title="Role granted by this invite.">
               Role
               <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value)}>
                 <option value={ROLE.COACH}>Coach</option>
@@ -97,7 +97,7 @@ export default function InvitesManager({ leagueId, me }) {
                 <option value={ROLE.VIEWER}>Viewer</option>
               </select>
             </label>
-            <label>
+            <label title="How long the invite link remains valid.">
               Expires (hours)
               <input
                 value={expiresHours}
@@ -105,17 +105,17 @@ export default function InvitesManager({ leagueId, me }) {
                 placeholder="168"
               />
             </label>
-            <label>
+            <label title="League that will be granted.">
               League
               <input value={leagueId || ""} disabled />
             </label>
             {inviteRole === ROLE.COACH ? (
               <>
-                <label>
+                <label title="Optional division for coach assignment.">
                   Team division (optional)
                   <input value={teamDivision} onChange={(e) => setTeamDivision(e.target.value)} placeholder="10U" />
                 </label>
-                <label>
+                <label title="Optional team ID for coach assignment.">
                   Team ID (optional)
                   <input value={teamId} onChange={(e) => setTeamId(e.target.value)} placeholder="TIGERS" />
                 </label>
@@ -123,7 +123,7 @@ export default function InvitesManager({ leagueId, me }) {
             ) : null}
           </div>
           <div className="row" style={{ marginTop: 10 }}>
-            <button className="btn primary" onClick={createInvite} disabled={busy}>
+            <button className="btn primary" onClick={createInvite} disabled={busy} title="Create a magic link for this invite.">
               {busy ? "Sending..." : "Create invite"}
             </button>
           </div>
@@ -136,7 +136,7 @@ export default function InvitesManager({ leagueId, me }) {
               </div>
               <div className="row">
                 <input value={inviteUrl} readOnly />
-                <button className="btn btn--ghost" onClick={copyInviteUrl}>
+                <button className="btn btn--ghost" onClick={copyInviteUrl} title="Copy the invite URL.">
                   Copy
                 </button>
               </div>
