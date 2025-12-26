@@ -39,6 +39,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
   const [toast, setToast] = useState(null);
   const [accessStatus, setAccessStatus] = useState("Pending");
   const [accessScope, setAccessScope] = useState("league");
+  const [accessLeagueFilter, setAccessLeagueFilter] = useState("");
   const { promptState, promptValue, setPromptValue, requestPrompt, handleConfirm, handleCancel } = usePromptDialog();
 
   const isGlobalAdmin = !!me?.isGlobalAdmin;
@@ -138,6 +139,22 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
   }, [accessAll, isGlobalAdmin]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const league = (params.get("accessLeague") || "").trim();
+    setAccessLeagueFilter(league);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (isGlobalAdmin && accessAll && accessLeagueFilter) params.set("accessLeague", accessLeagueFilter);
+    else params.delete("accessLeague");
+    const next = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
+    window.history.replaceState({}, "", next);
+  }, [accessAll, accessLeagueFilter, isGlobalAdmin]);
+
+  useEffect(() => {
     if (!isGlobalAdmin) return;
     loadGlobalLeagues();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -231,9 +248,23 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
     }
   }
 
+  const filteredItems = useMemo(() => {
+    if (!accessAll || !accessLeagueFilter) return items;
+    return (items || []).filter((r) => (r.leagueId || "") === accessLeagueFilter);
+  }, [items, accessAll, accessLeagueFilter]);
+
   const sorted = useMemo(() => {
-    return [...items].sort((a, b) => (b.updatedUtc || "").localeCompare(a.updatedUtc || ""));
-  }, [items]);
+    return [...filteredItems].sort((a, b) => (b.updatedUtc || "").localeCompare(a.updatedUtc || ""));
+  }, [filteredItems]);
+
+  const accessLeagueOptions = useMemo(() => {
+    return [...(globalLeagues || [])].sort((a, b) => {
+      const nameA = (a.name || a.leagueId || "").toLowerCase();
+      const nameB = (b.name || b.leagueId || "").toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+  }, [globalLeagues]);
+
 
   const coaches = useMemo(() => {
     return (memberships || []).filter((m) => (m.role || "").toLowerCase() === "coach");
@@ -360,6 +391,19 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
             <select value={accessScope} onChange={(e) => setAccessScope(e.target.value)}>
               <option value="league">Current league</option>
               <option value="all">All leagues</option>
+            </select>
+          </label>
+        ) : null}
+        {isGlobalAdmin && accessAll ? (
+          <label className="min-w-[180px]">
+            League filter
+            <select value={accessLeagueFilter} onChange={(e) => setAccessLeagueFilter(e.target.value)}>
+              <option value="">All leagues</option>
+              {accessLeagueOptions.map((l) => (
+                <option key={l.leagueId} value={l.leagueId}>
+                  {l.name ? `${l.name} (${l.leagueId})` : l.leagueId}
+                </option>
+              ))}
             </select>
           </label>
         ) : null}
