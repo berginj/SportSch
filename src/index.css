@@ -157,7 +157,7 @@
   .topnav__controls label { @apply text-[9px] uppercase tracking-[0.22em] text-muted; }
   .topnav__controls select { @apply min-w-[150px] text-sm; }
   .topnav__account {
-    @apply ml-auto flex flex-col items-end gap-1.5 border-l border-border/70 pl-3;
+    @apply ml-auto flex flex-col items-end gap-1.5 border-l border-border pl-3;
   }
   .control--league { @apply min-w-[170px]; }
   .leagueSelect { @apply text-xs py-2 px-2.5; }
