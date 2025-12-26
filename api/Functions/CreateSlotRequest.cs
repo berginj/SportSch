@@ -19,7 +19,7 @@ public class CreateSlotRequest
         _svc = svc;
     }
 
-    public record CreateReq(string? notes);
+    public record CreateReq(string? notes, string? requestingTeamId, string? requestingDivision);
 
     // POST /slots/{division}/{slotId}/requests
     // Accepting a slot immediately confirms it (no approval step).
@@ -49,16 +49,57 @@ public class CreateSlotRequest
             // Must be member and not Viewer (global admin bypass)
             await ApiGuards.RequireNotViewerAsync(_svc, me.UserId, leagueId);
 
-            // Coach must have assigned team/division to accept
             var mem = await ApiGuards.GetMembershipAsync(_svc, me.UserId, leagueId);
-            var (myDivisionRaw, myTeamIdRaw) = ApiGuards.GetCoachTeam(mem);
+            var role = ApiGuards.GetRole(mem);
+            var isLeagueAdmin = string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase);
+            var isGlobalAdmin = await ApiGuards.IsGlobalAdminAsync(_svc, me.UserId);
 
+            var (myDivisionRaw, myTeamIdRaw) = ApiGuards.GetCoachTeam(mem);
             var myDivision = (myDivisionRaw ?? "").Trim().ToUpperInvariant();
             var myTeamId = (myTeamIdRaw ?? "").Trim();
 
+            // Optional body { notes, requestingTeamId, requestingDivision }
+            var body = await HttpUtil.ReadJsonAsync<CreateReq>(req);
+            var notes = (body?.notes ?? "").Trim();
+            var overrideTeamId = (body?.requestingTeamId ?? "").Trim();
+            var overrideDivision = (body?.requestingDivision ?? "").Trim().ToUpperInvariant();
+
+            var canOverrideTeam = isGlobalAdmin || isLeagueAdmin;
             if (string.IsNullOrWhiteSpace(myTeamId))
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "COACH_TEAM_REQUIRED",
-                    "Coach role requires an assigned team to accept a game request.");
+            {
+                if (!canOverrideTeam)
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.BadRequest, "COACH_TEAM_REQUIRED",
+                        "Coach role requires an assigned team to accept a game request.");
+                }
+
+                if (string.IsNullOrWhiteSpace(overrideTeamId))
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.BadRequest, "TEAM_REQUIRED",
+                        "Select a team to accept this game request.");
+                }
+
+                if (!string.IsNullOrWhiteSpace(overrideDivision) &&
+                    !string.Equals(overrideDivision, divisionNorm, StringComparison.OrdinalIgnoreCase))
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.BadRequest, "DIVISION_MISMATCH",
+                        "Requested division must match the slot's division.");
+                }
+
+                var teams = await TableClients.GetTableAsync(_svc, Constants.Tables.Teams);
+                try
+                {
+                    _ = (await teams.GetEntityAsync<TableEntity>(Constants.Pk.Teams(leagueId, divisionNorm), overrideTeamId)).Value;
+                }
+                catch (RequestFailedException ex) when (ex.Status == 404)
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.BadRequest, "NOT_FOUND",
+                        "Team not found in this division.");
+                }
+
+                myTeamId = overrideTeamId;
+                myDivision = divisionNorm;
+            }
 
             // Exact division match
             if (!string.IsNullOrWhiteSpace(myDivision) &&
@@ -132,9 +173,7 @@ public class CreateSlotRequest
                     "This game overlaps an existing confirmed game for one of the teams.", new { conflicts });
             }
 
-            // Optional body { notes }
-            var body = await HttpUtil.ReadJsonAsync<CreateReq>(req);
-            var notes = (body?.notes ?? "").Trim();
+            // notes already parsed above
 
             var now = DateTimeOffset.UtcNow;
             var requestId = Guid.NewGuid().ToString("N");

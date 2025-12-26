@@ -47,6 +47,7 @@ public static class Constants
         public static string Fields(string leagueId, string parkCode) => $"FIELD|{leagueId}|{parkCode}"; // RK = fieldCode
         public static string Slots(string leagueId, string division) => $"SLOT|{leagueId}|{division}"; // RK = slotId
         public static string SlotRequests(string leagueId, string division, string slotId) => $"SLOTREQ|{leagueId}|{division}|{slotId}"; // RK = requestId
+        public static string Teams(string leagueId, string division) => $"TEAM|{leagueId}|{division}"; // RK = teamId
 
         // Calendar events (non-slot): PK = EVENT|{leagueId}, RK = eventId
         public static string Events(string leagueId) => $"EVENT|{leagueId}";

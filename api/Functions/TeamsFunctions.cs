@@ -47,7 +47,7 @@ public class TeamsFunctions
         {
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
-            await ApiGuards.RequireMemberAsync(_svc, me.UserId, leagueId);
+            await ApiGuards.RequireMemberOrGlobalAdminAsync(_svc, me, leagueId);
 
             var division = (ApiGuards.GetQueryParam(req, "division") ?? "").Trim();
 

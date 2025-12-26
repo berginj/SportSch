@@ -51,12 +51,23 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
 
   const [events, setEvents] = useState([]);
   const [slots, setSlots] = useState([]);
+  const [teams, setTeams] = useState([]);
+  const [acceptTeamBySlot, setAcceptTeamBySlot] = useState({});
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+
+  const canPickTeam = isGlobalAdmin || role === "LeagueAdmin";
 
   async function loadMeta() {
     const divs = await apiFetch("/api/divisions");
     setDivisions(Array.isArray(divs) ? divs : []);
+
+    if (canPickTeam) {
+      const t = await apiFetch("/api/teams");
+      setTeams(Array.isArray(t) ? t : []);
+    } else {
+      setTeams([]);
+    }
   }
 
   async function loadData() {
@@ -154,6 +165,21 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
       });
   }, [events, slots]);
 
+  const teamsByDivision = useMemo(() => {
+    const map = new Map();
+    for (const t of teams || []) {
+      const div = (t.division || "").trim().toUpperCase();
+      if (!div) continue;
+      if (!map.has(div)) map.set(div, []);
+      map.get(div).push(t);
+    }
+    for (const [k, v] of map.entries()) {
+      v.sort((a, b) => (a.name || a.teamId || "").localeCompare(b.name || b.teamId || ""));
+      map.set(k, v);
+    }
+    return map;
+  }, [teams]);
+
   // --- Create events ---
   const canCreateEvents = role === "LeagueAdmin";
   const canDeleteAnyEvent = role === "LeagueAdmin";
@@ -220,7 +246,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     }
   }
 
-  async function requestSlot(slot) {
+  async function requestSlot(slot, requestingTeamId) {
     if (!slot?.slotId || !slot?.division) return;
     const notes = prompt("Optional notes for the offering coach:") || "";
     setErr("");
@@ -228,7 +254,11 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
       await apiFetch(`/api/slots/${encodeURIComponent(slot.division)}/${encodeURIComponent(slot.slotId)}/requests`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notes: String(notes || "").trim() }),
+        body: JSON.stringify({
+          notes: String(notes || "").trim(),
+          requestingTeamId: requestingTeamId || undefined,
+          requestingDivision: slot.division,
+        }),
       });
       await loadData();
       alert("Accepted. The game is now scheduled on the calendar.");
@@ -268,6 +298,10 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
 
   function toggleSlotStatus(status) {
     setSlotStatusFilter((prev) => ({ ...prev, [status]: !prev[status] }));
+  }
+
+  function setAcceptTeam(slotId, teamId) {
+    setAcceptTeamBySlot((prev) => ({ ...prev, [slotId]: teamId }));
   }
 
   const activeSlotStatuses = useMemo(
@@ -417,7 +451,38 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
                   <span className={`statusBadge status-${(statusLabelForItem(it) || "").toLowerCase()}`}>
                     {statusLabelForItem(it)}
                   </span>
-                  {it.kind === "slot" && role !== "Viewer" && (it.raw?.status || "") === "Open" && (it.raw?.offeringTeamId || "") !== myCoachTeamId ? (
+                  {it.kind === "slot" && canPickTeam && (it.raw?.status || "") === "Open" ? (
+                    (() => {
+                      const divisionKey = (it.raw?.division || "").trim().toUpperCase();
+                      const teamsForDivision = teamsByDivision.get(divisionKey) || [];
+                      const selectedTeamId = acceptTeamBySlot[it.id] || "";
+                      return (
+                        <div className="row" style={{ alignItems: "center" }}>
+                          <select
+                            value={selectedTeamId}
+                            onChange={(e) => setAcceptTeam(it.id, e.target.value)}
+                            title="Pick a team to accept this offer as."
+                          >
+                            <option value="">Select team</option>
+                            {teamsForDivision.map((t) => (
+                              <option key={t.teamId} value={t.teamId}>
+                                {t.name || t.teamId}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            className="btn primary"
+                            onClick={() => requestSlot(it.raw, selectedTeamId)}
+                            disabled={!selectedTeamId}
+                            title="Accept this offer on behalf of the selected team."
+                          >
+                            Accept as
+                          </button>
+                        </div>
+                      );
+                    })()
+                  ) : null}
+                  {it.kind === "slot" && !canPickTeam && role !== "Viewer" && (it.raw?.status || "") === "Open" && (it.raw?.offeringTeamId || "") !== myCoachTeamId ? (
                     <button className="btn primary" onClick={() => requestSlot(it.raw)} title="Accept this open offer and confirm the game.">
                       Accept
                     </button>

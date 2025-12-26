@@ -58,6 +58,16 @@ public static class ApiGuards
             throw new HttpError((int)HttpStatusCode.Forbidden, "Forbidden");
     }
 
+    public static async Task RequireMemberOrGlobalAdminAsync(TableServiceClient svc, IdentityUtil.Me me, string leagueId)
+    {
+        if (string.IsNullOrWhiteSpace(me.UserId) || me.UserId == "UNKNOWN")
+            throw new HttpError((int)HttpStatusCode.Unauthorized, "Not authenticated.");
+
+        if (await IsGlobalAdminAsync(svc, me.UserId)) return;
+        if (!await IsMemberAsync(svc, me.UserId, leagueId))
+            throw new HttpError((int)HttpStatusCode.Forbidden, "Forbidden");
+    }
+
     public static async Task<bool> IsMemberAsync(TableServiceClient svc, string userId, string leagueId)
     {
         var mem = await GetMembershipAsync(svc, userId, leagueId);

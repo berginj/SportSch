@@ -617,18 +617,19 @@ Rules
 
 
 ### POST /slots/{division}/{slotId}/requests (league-scoped)
-Creates a request to take an open slot (this is what the UI calls ???Accept???).
+Creates a request to take an open slot (this is what the UI calls "Accept").
 
 Requires: Coach or LeagueAdmin (not Viewer).  
 Rules
 - Requesting coach must have a team assignment (otherwise 400 `COACH_TEAM_REQUIRED`).
-- **Division validation:** requesting coach division must exactly match `{division}`.
+- League admins/global admins may pass `requestingTeamId` (and optional `requestingDivision`) to accept on behalf of a team.
+- **Division validation:** requesting team division must exactly match `{division}`.
 - Cannot request your own slot.
 - Slot must be `Open`.
 
 Body
 ```json
-{ "notes": "We can play!" }
+{ "notes": "We can play!", "requestingTeamId": "EAGLES", "requestingDivision": "10U" }
 ```
 
 Response

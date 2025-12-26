@@ -8,10 +8,22 @@ function fmtDate(d) {
 
 export default function OffersPage({ me, leagueId, setLeagueId }) {
   const email = me?.email || "";
+  const isGlobalAdmin = !!me?.isGlobalAdmin;
+  const memberships = Array.isArray(me?.memberships) ? me.memberships : [];
+  const role = useMemo(() => {
+    const inLeague = memberships.filter((m) => (m?.leagueId || "").trim() === (leagueId || "").trim());
+    const roles = inLeague.map((m) => (m?.role || "").trim());
+    if (roles.includes("LeagueAdmin")) return "LeagueAdmin";
+    if (roles.includes("Coach")) return "Coach";
+    return roles.includes("Viewer") ? "Viewer" : "";
+  }, [memberships, leagueId]);
+  const canPickTeam = isGlobalAdmin || role === "LeagueAdmin";
   const [divisions, setDivisions] = useState([]);
   const [division, setDivision] = useState("");
   const [fields, setFields] = useState([]);
   const [slots, setSlots] = useState([]);
+  const [teams, setTeams] = useState([]);
+  const [acceptTeamBySlot, setAcceptTeamBySlot] = useState({});
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
@@ -24,11 +36,30 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
     return m;
   }, [fields]);
 
+  const teamsByDivision = useMemo(() => {
+    const map = new Map();
+    for (const t of teams || []) {
+      const div = (t.division || "").trim().toUpperCase();
+      if (!div) continue;
+      if (!map.has(div)) map.set(div, []);
+      map.get(div).push(t);
+    }
+    for (const [k, v] of map.entries()) {
+      v.sort((a, b) => (a.name || a.teamId || "").localeCompare(b.name || b.teamId || ""));
+      map.set(k, v);
+    }
+    return map;
+  }, [teams]);
+
   async function loadAll(selectedDivision) {
     setErr("");
     setLoading(true);
     try {
-      const [divs, flds] = await Promise.all([apiFetch("/api/divisions"), apiFetch("/api/fields")]);
+      const [divs, flds, tms] = await Promise.all([
+        apiFetch("/api/divisions"),
+        apiFetch("/api/fields"),
+        canPickTeam ? apiFetch("/api/teams") : Promise.resolve([]),
+      ]);
       const divList = Array.isArray(divs) ? divs : [];
       setDivisions(divList);
       const firstDiv = selectedDivision || divList?.[0]?.code || "";
@@ -36,6 +67,7 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
 
       const fieldList = Array.isArray(flds) ? flds : [];
       setFields(fieldList);
+      setTeams(Array.isArray(tms) ? tms : []);
 
       if (firstDiv) {
         const s = await apiFetch(`/api/slots?division=${encodeURIComponent(firstDiv)}`);
@@ -118,14 +150,23 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
   }
 
   // --- Request slot ---
-  async function requestSlot(slot) {
+  function setAcceptTeam(slotId, teamId) {
+    setAcceptTeamBySlot((prev) => ({ ...prev, [slotId]: teamId }));
+  }
+
+  async function requestSlot(slot, requestingTeamId) {
     setErr("");
     const note = prompt("Notes for the other team? (optional)") || "";
     try {
-      await apiFetch(`/api/slots/${encodeURIComponent(division)}/${encodeURIComponent(slot.slotId)}/requests`, {
+      const div = slot?.division || division;
+      await apiFetch(`/api/slots/${encodeURIComponent(div)}/${encodeURIComponent(slot.slotId)}/requests`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notes: note }),
+        body: JSON.stringify({
+          notes: note,
+          requestingTeamId: requestingTeamId || undefined,
+          requestingDivision: div,
+        }),
       });
       await reloadSlots(division);
     } catch (e) {
@@ -236,9 +277,41 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
                     <td>{s.status}</td>
                     <td style={{ textAlign: "right" }}>
                       {s.status === "Open" ? (
-                        <button className="btn" onClick={() => requestSlot(s)} title="Accept this offer.">
-                          Accept
-                        </button>
+                        canPickTeam ? (
+                          (() => {
+                            const divisionKey = (s.division || division || "").trim().toUpperCase();
+                            const teamsForDivision = teamsByDivision.get(divisionKey) || [];
+                            const selectedTeamId = acceptTeamBySlot[s.slotId] || "";
+                            return (
+                              <div className="row" style={{ justifyContent: "flex-end" }}>
+                                <select
+                                  value={selectedTeamId}
+                                  onChange={(e) => setAcceptTeam(s.slotId, e.target.value)}
+                                  title="Pick a team to accept this offer as."
+                                >
+                                  <option value="">Select team</option>
+                                  {teamsForDivision.map((t) => (
+                                    <option key={t.teamId} value={t.teamId}>
+                                      {t.name || t.teamId}
+                                    </option>
+                                  ))}
+                                </select>
+                                <button
+                                  className="btn"
+                                  onClick={() => requestSlot(s, selectedTeamId)}
+                                  disabled={!selectedTeamId}
+                                  title="Accept this offer on behalf of the selected team."
+                                >
+                                  Accept as
+                                </button>
+                              </div>
+                            );
+                          })()
+                        ) : (
+                          <button className="btn" onClick={() => requestSlot(s)} title="Accept this offer.">
+                            Accept
+                          </button>
+                        )
                       ) : (
                         <span className="muted">-</span>
                       )}
