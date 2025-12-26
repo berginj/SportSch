@@ -39,7 +39,7 @@ export default function ManagePage({ leagueId, me, setLeagueId }) {
             League: <b>{leagueId || "(none selected)"}</b>
           </div>
         </div>
-        <div className="card__body" style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <div className="card__body" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
           {tabs.map((t) => (
             <Pill key={t.id} active={active === t.id} onClick={() => setActive(t.id)}>
               {t.label}

@@ -3,7 +3,7 @@ export default function LeaguePicker({ leagueId, setLeagueId, me, label = "Leagu
   const hasLeagues = memberships.length > 0;
 
   return (
-    <label title={title || "Switch the active league for this view."}>
+    <label className="leaguePicker" title={title || "Switch the active league for this view."}>
       {label}
       <select
         value={leagueId || ""}

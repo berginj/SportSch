@@ -35,7 +35,10 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
   const [division, setDivision] = useState("");
 
   const today = useMemo(() => new Date(), []);
-  const seasonEnd = useMemo(() => new Date(today.getFullYear(), 6, 30), [today]);
+  const seasonEnd = useMemo(() => {
+    const endThisYear = new Date(today.getFullYear(), 6, 30);
+    return today > endThisYear ? new Date(today.getFullYear() + 1, 6, 30) : endThisYear;
+  }, [today]);
   const [dateFrom, setDateFrom] = useState(toDateInputValue(today));
   const [dateTo, setDateTo] = useState(toDateInputValue(seasonEnd));
   const [showSlots, setShowSlots] = useState(true);
@@ -323,7 +326,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
           Calendar filters
           <span className="hint" title="Filter what appears on the calendar and subscription link.">?</span>
         </div>
-        <div className="row" style={{ flexWrap: "wrap", alignItems: "center" }}>
+        <div className="row filterRow" style={{ flexWrap: "wrap" }}>
           <LeaguePicker leagueId={leagueId} setLeagueId={setLeagueId} me={me} label="League" />
           <label title="Limit the calendar to one division, or show all.">
             Division

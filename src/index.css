@@ -245,6 +245,7 @@ button:disabled {
   border: 1px solid var(--border);
   background: rgba(255,255,255,0.05);
   color: var(--text);
+  white-space: nowrap;
 }
 
 .tabBtn.active, .tab--active {
@@ -300,6 +301,18 @@ button:disabled {
 .stack {
   display: grid;
   gap: 12px;
+}
+
+.filterRow {
+  align-items: flex-end;
+}
+
+.filterRow label {
+  min-width: 180px;
+}
+
+.leaguePicker {
+  min-width: 200px;
 }
 
 .btn {

@@ -144,7 +144,7 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
           Create game offer
           <span className="hint" title="Post an open game offer that other teams can accept.">?</span>
         </div>
-        <div className="row">
+        <div className="row filterRow">
           <LeaguePicker leagueId={leagueId} setLeagueId={setLeagueId} me={me} label="League" />
           <label title="Choose a division for this offer.">
             Division
