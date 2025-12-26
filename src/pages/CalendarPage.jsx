@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { SLOT_STATUS } from "../lib/constants";
 import LeaguePicker from "../components/LeaguePicker";
@@ -12,6 +12,29 @@ function toDateInputValue(d) {
 
 function normalizeRole(role) {
   return (role || "").trim();
+}
+
+function parseBoolParam(params, key, fallback) {
+  const raw = params.get(key);
+  if (raw == null) return fallback;
+  return raw === "1" || raw.toLowerCase() === "true";
+}
+
+function parseStatusFilter(params) {
+  const raw = (params.get("status") || "").trim();
+  if (!raw) {
+    return {
+      [SLOT_STATUS.OPEN]: true,
+      [SLOT_STATUS.CONFIRMED]: true,
+      [SLOT_STATUS.CANCELLED]: false,
+    };
+  }
+  const set = new Set(raw.split(",").map((s) => s.trim()).filter(Boolean));
+  return {
+    [SLOT_STATUS.OPEN]: set.has(SLOT_STATUS.OPEN),
+    [SLOT_STATUS.CONFIRMED]: set.has(SLOT_STATUS.CONFIRMED),
+    [SLOT_STATUS.CANCELLED]: set.has(SLOT_STATUS.CANCELLED),
+  };
 }
 
 export default function CalendarPage({ me, leagueId, setLeagueId }) {
@@ -39,8 +62,10 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     const endThisYear = new Date(today.getFullYear(), 6, 30);
     return today > endThisYear ? new Date(today.getFullYear() + 1, 6, 30) : endThisYear;
   }, [today]);
-  const [dateFrom, setDateFrom] = useState(toDateInputValue(today));
-  const [dateTo, setDateTo] = useState(toDateInputValue(seasonEnd));
+  const defaultDateFrom = useMemo(() => toDateInputValue(today), [today]);
+  const defaultDateTo = useMemo(() => toDateInputValue(seasonEnd), [seasonEnd]);
+  const [dateFrom, setDateFrom] = useState(defaultDateFrom);
+  const [dateTo, setDateTo] = useState(defaultDateTo);
   const [showSlots, setShowSlots] = useState(true);
   const [showEvents, setShowEvents] = useState(true);
   const [slotStatusFilter, setSlotStatusFilter] = useState({
@@ -55,6 +80,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
   const [acceptTeamBySlot, setAcceptTeamBySlot] = useState({});
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const initializedRef = useRef(false);
 
   const canPickTeam = isGlobalAdmin || role === "LeagueAdmin";
 
@@ -70,25 +96,44 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     }
   }
 
-  async function loadData() {
+  const applyFiltersFromUrl = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    setDivision((params.get("division") || "").trim());
+    setDateFrom((params.get("dateFrom") || "").trim() || defaultDateFrom);
+    setDateTo((params.get("dateTo") || "").trim() || defaultDateTo);
+    setShowSlots(parseBoolParam(params, "showSlots", true));
+    setShowEvents(parseBoolParam(params, "showEvents", true));
+    setSlotStatusFilter(parseStatusFilter(params));
+  }, [defaultDateFrom, defaultDateTo]);
+
+  async function loadData(overrides = null) {
+    const current = overrides || {
+      division,
+      dateFrom,
+      dateTo,
+      showSlots,
+      showEvents,
+      slotStatusFilter,
+    };
     setErr("");
     setLoading(true);
     try {
       const baseQuery = new URLSearchParams();
-      if (division) baseQuery.set("division", division);
-      if (dateFrom) baseQuery.set("dateFrom", dateFrom);
-      if (dateTo) baseQuery.set("dateTo", dateTo);
+      if (current.division) baseQuery.set("division", current.division);
+      if (current.dateFrom) baseQuery.set("dateFrom", current.dateFrom);
+      if (current.dateTo) baseQuery.set("dateTo", current.dateTo);
 
-      const activeStatuses = Object.entries(slotStatusFilter)
+      const activeStatuses = Object.entries(current.slotStatusFilter || {})
         .filter(([, on]) => on)
         .map(([k]) => k);
-      const shouldLoadSlots = showSlots && activeStatuses.length > 0;
+      const shouldLoadSlots = current.showSlots && activeStatuses.length > 0;
 
       const slotsQuery = new URLSearchParams(baseQuery);
       if (activeStatuses.length) slotsQuery.set("status", activeStatuses.join(","));
 
       const [ev, sl] = await Promise.all([
-        showEvents ? apiFetch(`/api/events?${baseQuery.toString()}`) : Promise.resolve([]),
+        current.showEvents ? apiFetch(`/api/events?${baseQuery.toString()}`) : Promise.resolve([]),
         shouldLoadSlots ? apiFetch(`/api/slots?${slotsQuery.toString()}`) : Promise.resolve([]),
       ]);
       setEvents(Array.isArray(ev) ? ev : []);
@@ -102,15 +147,59 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
 
   useEffect(() => {
     (async () => {
+      applyFiltersFromUrl();
       try {
         await loadMeta();
       } catch {
         // ignore
       }
-      await loadData();
+      const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+      const initialFilters = {
+        division: (params.get("division") || "").trim(),
+        dateFrom: (params.get("dateFrom") || "").trim() || defaultDateFrom,
+        dateTo: (params.get("dateTo") || "").trim() || defaultDateTo,
+        showSlots: parseBoolParam(params, "showSlots", true),
+        showEvents: parseBoolParam(params, "showEvents", true),
+        slotStatusFilter: parseStatusFilter(params),
+      };
+      await loadData(initialFilters);
+      initializedRef.current = true;
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leagueId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onPopState = () => applyFiltersFromUrl();
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [applyFiltersFromUrl]);
+
+  useEffect(() => {
+    if (!initializedRef.current || typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (division) params.set("division", division);
+    else params.delete("division");
+    if (dateFrom) params.set("dateFrom", dateFrom);
+    else params.delete("dateFrom");
+    if (dateTo) params.set("dateTo", dateTo);
+    else params.delete("dateTo");
+    if (showSlots) params.set("showSlots", "1");
+    else params.delete("showSlots");
+    if (showEvents) params.set("showEvents", "1");
+    else params.delete("showEvents");
+
+    const activeStatuses = [
+      SLOT_STATUS.OPEN,
+      SLOT_STATUS.CONFIRMED,
+      SLOT_STATUS.CANCELLED,
+    ].filter((s) => slotStatusFilter[s]);
+    if (activeStatuses.length) params.set("status", activeStatuses.join(","));
+    else params.delete("status");
+
+    const next = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
+    window.history.replaceState({}, "", next);
+  }, [division, dateFrom, dateTo, showSlots, showEvents, slotStatusFilter]);
 
   const timeline = useMemo(() => {
     const items = [];
