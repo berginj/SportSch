@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import OffersPage from "./pages/OffersPage";
 import CalendarPage from "./pages/CalendarPage";
 import ManagePage from "./pages/ManagePage";
@@ -9,6 +9,7 @@ import InviteAcceptPage from "./pages/InviteAcceptPage";
 import PublicLanding from "./pages/PublicLanding";
 import TopNav from "./components/TopNav";
 import { useSession } from "./lib/useSession";
+import { trackPageView } from "./lib/telemetry";
 
 function readInviteFromUrl() {
   if (typeof window === "undefined") return null;
@@ -33,6 +34,13 @@ export default function App() {
     if (!hasMemberships && isGlobalAdmin) return "admin";
     return tab;
   }, [tab, hasMemberships, isGlobalAdmin]);
+
+  useEffect(() => {
+    if (!me) return;
+    const name = `tab:${effectiveTab}`;
+    const uri = `${window.location.pathname}#${effectiveTab}`;
+    trackPageView(name, uri);
+  }, [effectiveTab, me]);
 
   if (!me) {
     return (

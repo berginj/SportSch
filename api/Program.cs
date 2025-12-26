@@ -6,6 +6,9 @@ var host = new HostBuilder()
     .ConfigureFunctionsWorkerDefaults()
     .ConfigureServices((context, services) =>
     {
+        services.AddApplicationInsightsTelemetryWorkerService();
+        services.ConfigureFunctionsApplicationInsights();
+
         var tableServiceClient = GameSwap.Functions.Storage.TableClients.CreateServiceClient(context.Configuration);
         services.AddSingleton(tableServiceClient);
         if (context.Configuration.GetValue<bool>("GAMESWAP_CREATE_TABLES"))
