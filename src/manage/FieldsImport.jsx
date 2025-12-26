@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { FIELD_STATUS } from "../lib/constants";
+import Toast from "../components/Toast";
 
 // Admin tool: CSV import is the ONLY fields workflow.
 // Contract: POST /import/fields with required columns: fieldKey, parkName, fieldName.
@@ -18,6 +19,7 @@ export default function FieldsImport({ leagueId }) {
   const [savingKey, setSavingKey] = useState("");
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
+  const [toast, setToast] = useState(null);
 
   // Keep paste-text option as fallback
   const [csvText, setCsvText] = useState(SAMPLE_CSV);
@@ -80,6 +82,7 @@ export default function FieldsImport({ leagueId }) {
 
       const msg = `Imported. Upserted: ${res?.upserted ?? 0}, Rejected: ${res?.rejected ?? 0}, Skipped: ${res?.skipped ?? 0}`;
       setOk(msg);
+      setToast({ tone: "success", message: "Fields import complete." });
 
       if (Array.isArray(res?.errors) && res.errors.length) {
         setRowErrors(res.errors);
@@ -111,6 +114,7 @@ export default function FieldsImport({ leagueId }) {
 
       const msg = `Imported. Upserted: ${res?.upserted ?? 0}, Rejected: ${res?.rejected ?? 0}, Skipped: ${res?.skipped ?? 0}`;
       setOk(msg);
+      setToast({ tone: "success", message: "Fields import complete." });
 
       if (Array.isArray(res?.errors) && res.errors.length) {
         setRowErrors(res.errors);
@@ -159,6 +163,7 @@ export default function FieldsImport({ leagueId }) {
       });
 
       setOk(`Saved ${field.displayName || field.fieldKey}.`);
+      setToast({ tone: "success", message: "Field saved." });
       await load();
     } catch (e) {
       setErr(e?.message || "Save failed");
@@ -171,6 +176,12 @@ export default function FieldsImport({ leagueId }) {
     <div className="stack">
       {err ? <div className="callout callout--error">{err}</div> : null}
       {ok ? <div className="callout callout--ok">{ok}</div> : null}
+      <Toast
+        open={!!toast}
+        tone={toast?.tone}
+        message={toast?.message}
+        onClose={() => setToast(null)}
+      />
 
       <div className="card">
         <div className="font-bold mb-2">Field CSV import</div>

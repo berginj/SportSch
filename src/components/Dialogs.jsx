@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-function useModalFocus(open, onCancel) {
+function useModalFocus(open, onCancel, initialFocusSelector) {
   const modalRef = useRef(null);
 
   useEffect(() => {
@@ -11,7 +11,8 @@ function useModalFocus(open, onCancel) {
     const focusable = modal.querySelectorAll(
       'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
     );
-    const first = focusable[0];
+    const preferred = initialFocusSelector ? modal.querySelector(initialFocusSelector) : null;
+    const first = preferred || focusable[0];
     const last = focusable[focusable.length - 1];
     if (first) first.focus();
 
@@ -48,7 +49,7 @@ export function ConfirmDialog({
   onCancel,
 }) {
   if (!open) return null;
-  const modalRef = useModalFocus(open, onCancel);
+  const modalRef = useModalFocus(open, onCancel, ".btn--primary");
   return (
     <div className="modalOverlay" role="presentation" onClick={onCancel}>
       <div
@@ -88,7 +89,7 @@ export function PromptDialog({
   onCancel,
 }) {
   if (!open) return null;
-  const modalRef = useModalFocus(open, onCancel);
+  const modalRef = useModalFocus(open, onCancel, "textarea");
   return (
     <div className="modalOverlay" role="presentation" onClick={onCancel}>
       <div

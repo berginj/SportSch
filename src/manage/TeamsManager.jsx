@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { ROLE } from "../lib/constants";
+import Toast from "../components/Toast";
 
 export default function TeamsManager({ leagueId }) {
   const [teams, setTeams] = useState([]);
@@ -8,6 +9,7 @@ export default function TeamsManager({ leagueId }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
+  const [toast, setToast] = useState(null);
 
   const [teamsFile, setTeamsFile] = useState(null);
   const [teamsBusy, setTeamsBusy] = useState(false);
@@ -74,6 +76,7 @@ export default function TeamsManager({ leagueId }) {
       });
       await load();
       setOk("Coach assignment updated.");
+      setToast({ tone: "success", message: "Coach assignment updated." });
     } catch (e) {
       setErr(e?.message || "Failed to update coach assignment.");
     }
@@ -96,6 +99,7 @@ export default function TeamsManager({ leagueId }) {
       fd.append("file", teamsFile);
       const res = await apiFetch("/api/import/teams", { method: "POST", body: fd });
       setOk(`Imported. Upserted: ${res?.upserted ?? 0}, Rejected: ${res?.rejected ?? 0}, Skipped: ${res?.skipped ?? 0}`);
+      setToast({ tone: "success", message: "Teams import complete." });
       if (Array.isArray(res?.errors) && res.errors.length) setTeamsErrors(res.errors);
       await load();
     } catch (e) {
@@ -109,6 +113,12 @@ export default function TeamsManager({ leagueId }) {
     <div className="stack">
       {err ? <div className="callout callout--error">{err}</div> : null}
       {ok ? <div className="callout callout--ok">{ok}</div> : null}
+      <Toast
+        open={!!toast}
+        tone={toast?.tone}
+        message={toast?.message}
+        onClose={() => setToast(null)}
+      />
 
       <div className="card">
         <div className="font-bold mb-2">Teams CSV upload</div>
