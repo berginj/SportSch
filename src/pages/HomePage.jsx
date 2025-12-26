@@ -322,15 +322,15 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
           <div className="layoutPanel">
             <div className="layoutPanel__title">Today</div>
             <div className="layoutStatRow">
-              <button className="layoutStat layoutStat--link" onClick={() => activateSlotFilter(SLOT_STATUS.OPEN)}>
+              <button className="layoutStat layoutStat--link" type="button" onClick={() => activateSlotFilter(SLOT_STATUS.OPEN)}>
                 <div className="layoutStat__value">{openSlots.length}</div>
                 <div className="layoutStat__label">Open offers</div>
               </button>
-              <button className="layoutStat layoutStat--link" onClick={() => activateSlotFilter(SLOT_STATUS.CONFIRMED)}>
+              <button className="layoutStat layoutStat--link" type="button" onClick={() => activateSlotFilter(SLOT_STATUS.CONFIRMED)}>
                 <div className="layoutStat__value">{confirmedSlots.length}</div>
                 <div className="layoutStat__label">Confirmed</div>
               </button>
-              <button className="layoutStat layoutStat--link" onClick={openAccessRequests}>
+              <button className="layoutStat layoutStat--link" type="button" onClick={openAccessRequests}>
                 <div className="layoutStat__value">{accessRequests.length}</div>
                 <div className="layoutStat__label">Access requests</div>
               </button>
@@ -353,8 +353,8 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
               {divisions.slice(0, 4).map((d) => (
                 <div key={d.code} className="layoutPill">{d.code}</div>
               ))}
-              <button className="layoutPill layoutPill--link" onClick={() => activateSlotFilter(SLOT_STATUS.OPEN)}>Open</button>
-              <button className="layoutPill layoutPill--link" onClick={() => activateSlotFilter(SLOT_STATUS.CONFIRMED)}>Confirmed</button>
+              <button className="layoutPill layoutPill--link" type="button" onClick={() => activateSlotFilter(SLOT_STATUS.OPEN)}>Open</button>
+              <button className="layoutPill layoutPill--link" type="button" onClick={() => activateSlotFilter(SLOT_STATUS.CONFIRMED)}>Confirmed</button>
             </div>
           </div>
           <div className="layoutPanel">

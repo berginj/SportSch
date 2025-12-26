@@ -77,6 +77,12 @@
   .btn {
     @apply inline-flex items-center gap-2 rounded-[10px] border border-border bg-white/5 px-3 py-2 text-sm text-text transition hover:bg-white/10;
   }
+  .btn:focus-visible,
+  .layoutPill--link:focus-visible,
+  .layoutStat--link:focus-visible,
+  .layoutItem--link:focus-visible {
+    @apply outline-none ring-2 ring-orange-300/60 ring-offset-2 ring-offset-[#0b1020];
+  }
   .btn.btn--primary, .btnPrimary, .btn.primary {
     @apply border-orange-300/70 bg-orange-400/20 text-orange-100;
   }
