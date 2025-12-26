@@ -2,6 +2,15 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
   const memberships = Array.isArray(me?.memberships) ? me.memberships : [];
   const email = me?.email || "";
   const isGlobalAdmin = !!me?.isGlobalAdmin;
+  const tabLabels = {
+    home: "Home",
+    calendar: "Calendar",
+    offers: "Offers",
+    manage: "Manage",
+    admin: "Admin",
+    help: "Help"
+  };
+  const currentLabel = tabLabels[tab] || "Home";
 
   function pickLeague(id) {
     setLeagueId(id);
@@ -12,9 +21,8 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
   return (
     <header className="topnav">
       <div className="topnav__inner">
-        <div className="brand">
-          <div className="brand__title">GameSwap</div>
-          <div className="brand__sub">League slot swaps &amp; approvals</div>
+        <div className="pageIndicator" aria-live="polite">
+          Current: <span className="pageIndicator__value">{currentLabel}</span>
         </div>
 
         <div className="topnav__controls">
@@ -49,6 +57,7 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
               onClick={() => setTab("home")}
               disabled={!hasLeagues}
               title="Role-based landing dashboard."
+              aria-current={tab === "home" ? "page" : undefined}
             >
               Home
             </button>
@@ -57,6 +66,7 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
               onClick={() => setTab("calendar")}
               disabled={!hasLeagues}
               title="Browse and accept offers on the calendar."
+              aria-current={tab === "calendar" ? "page" : undefined}
             >
               Calendar
             </button>
@@ -65,6 +75,7 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
               onClick={() => setTab("offers")}
               disabled={!hasLeagues}
               title="Create a new game offer."
+              aria-current={tab === "offers" ? "page" : undefined}
             >
               Create Game Offer
             </button>
@@ -72,6 +83,7 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
               className={tab === "manage" ? "tab tab--active" : "tab"}
               onClick={() => setTab("manage")}
               disabled={!hasLeagues}
+              aria-current={tab === "manage" ? "page" : undefined}
             >
               League Management
             </button>
@@ -79,6 +91,7 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
               <button
                 className={tab === "admin" ? "tab tab--active" : "tab"}
                 onClick={() => setTab("admin")}
+                aria-current={tab === "admin" ? "page" : undefined}
               >
                 Admin
               </button>
@@ -86,6 +99,7 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
             <button
               className={tab === "help" ? "tab tab--active" : "tab"}
               onClick={() => setTab("help")}
+              aria-current={tab === "help" ? "page" : undefined}
             >
               Help
             </button>
