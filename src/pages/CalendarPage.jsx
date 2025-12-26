@@ -54,6 +54,21 @@ function matchesSlotType(gameType, filter) {
   return normalized !== "request";
 }
 
+function canAcceptSlot(slot) {
+  if (!slot || (slot.status || "") !== "Open") return false;
+  if ((slot.awayTeamId || "").trim() && !slot.isExternalOffer) return false;
+  return true;
+}
+
+function slotMatchupLabel(slot) {
+  const home = (slot?.homeTeamId || slot?.offeringTeamId || "").trim();
+  const away = (slot?.awayTeamId || "").trim();
+  if (away) return `${home} vs ${away}`;
+  if (home && slot?.isExternalOffer) return `${home} vs TBD (external)`;
+  if (home) return `${home} vs TBD`;
+  return "";
+}
+
 export default function CalendarPage({ me, leagueId, setLeagueId }) {
   const isGlobalAdmin = !!me?.isGlobalAdmin;
   const memberships = Array.isArray(me?.memberships) ? me.memberships : [];
@@ -251,7 +266,8 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
 
     for (const s of slots || []) {
       if (!matchesSlotType(s.gameType, slotTypeFilter)) continue;
-      const label = `${s.offeringTeamId || ""} @ ${s.displayName || `${s.parkName || ""} ${s.fieldName || ""}`}`.trim();
+      const matchup = slotMatchupLabel(s);
+      const label = `${matchup || s.offeringTeamId || ""} @ ${s.displayName || `${s.parkName || ""} ${s.fieldName || ""}`}`.trim();
       items.push({
         kind: "slot",
         id: s.slotId,
@@ -263,6 +279,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
           s.division ? `Division: ${s.division}` : "",
           s.status ? `Status: ${s.status}` : "",
           s.confirmedTeamId ? `Confirmed: ${s.confirmedTeamId}` : "",
+          matchup ? `Matchup: ${matchup}` : "",
         ]
           .filter(Boolean)
           .join(" | "),
@@ -654,7 +671,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
                         {statusLabelForItem(it)}
                       </span>
                     )}
-                    {it.kind === "slot" && canPickTeam && (it.raw?.status || "") === "Open" ? (
+                    {it.kind === "slot" && canPickTeam && canAcceptSlot(it.raw) ? (
                       (() => {
                         const divisionKey = (it.raw?.division || "").trim().toUpperCase();
                         const teamsForDivision = teamsByDivision.get(divisionKey) || [];
@@ -685,8 +702,8 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
                         );
                       })()
                     ) : null}
-                    {it.kind === "slot" && !canPickTeam && role !== "Viewer" && (it.raw?.status || "") === "Open" && (it.raw?.offeringTeamId || "") !== myCoachTeamId ? (
-                      <button className="btn btn--primary" onClick={() => requestSlot(it.raw)} title="Accept this open offer and confirm the game.">
+                    {it.kind === "slot" && !canPickTeam && role !== "Viewer" && canAcceptSlot(it.raw) && (it.raw?.offeringTeamId || "") !== myCoachTeamId ? (
+                      <button className="btn btn--primary" onClick={() => requestSlot(it.raw)} title="Accept this open slot and confirm the game.">
                         Accept
                       </button>
                     ) : null}

@@ -39,6 +39,19 @@ function matchesTypeFilter(gameType, filter) {
   return true;
 }
 
+function canAcceptSlot(slot) {
+  if (!slot || (slot.status || "") !== "Open") return false;
+  if ((slot.awayTeamId || "").trim() && !slot.isExternalOffer) return false;
+  return true;
+}
+
+function formatTeams(slot) {
+  const home = (slot?.homeTeamId || slot?.offeringTeamId || "").trim();
+  const away = (slot?.awayTeamId || "").trim();
+  if (away) return `${home} vs ${away}`;
+  return home ? `${home} vs TBD` : "";
+}
+
 export default function OffersPage({ me, leagueId, setLeagueId }) {
   const email = me?.email || "";
   const isGlobalAdmin = !!me?.isGlobalAdmin;
@@ -481,10 +494,10 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
                     </td>
                     <td>{s.displayName || s.fieldKey}</td>
                     <td>{formatGameType(s.gameType)}</td>
-                    <td>{s.offeringTeamId}</td>
+                    <td>{formatTeams(s) || s.offeringTeamId}</td>
                     <td>{s.status}</td>
                     <td className="text-right">
-                      {s.status === "Open" ? (
+                      {canAcceptSlot(s) ? (
                         canPickTeam ? (
                           (() => {
                             const divisionKey = (s.division || division || "").trim().toUpperCase();
@@ -508,7 +521,7 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
                                   className="btn"
                                   onClick={() => requestSlot(s, selectedTeamId)}
                                   disabled={!selectedTeamId}
-                                  title="Accept this offer on behalf of the selected team."
+                                  title="Accept this slot on behalf of the selected team."
                                 >
                                   Accept as
                                 </button>
@@ -516,7 +529,7 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
                             );
                           })()
                         ) : (
-                          <button className="btn" onClick={() => requestSlot(s)} title="Accept this offer.">
+                          <button className="btn" onClick={() => requestSlot(s)} title="Accept this slot.">
                             Accept
                           </button>
                         )

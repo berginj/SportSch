@@ -3,6 +3,7 @@ import FieldsImport from "../manage/FieldsImport";
 import DivisionsManager from "../manage/DivisionsManager";
 import InvitesManager from "../manage/InvitesManager";
 import TeamsManager from "../manage/TeamsManager";
+import SchedulerManager from "../manage/SchedulerManager";
 import LeaguePicker from "../components/LeaguePicker";
 
 function Pill({ active, children, onClick }) {
@@ -18,15 +19,26 @@ function Pill({ active, children, onClick }) {
 }
 
 export default function ManagePage({ leagueId, me, setLeagueId }) {
+  const memberships = Array.isArray(me?.memberships) ? me.memberships : [];
+  const isGlobalAdmin = !!me?.isGlobalAdmin;
+  const isLeagueAdmin = useMemo(() => {
+    if (!leagueId) return false;
+    return memberships.some(
+      (m) => (m?.leagueId || "").trim() === leagueId && (m?.role || "").trim() === "LeagueAdmin"
+    );
+  }, [leagueId, memberships]);
+  const canSchedule = isGlobalAdmin || isLeagueAdmin;
+
   const tabs = useMemo(
     () => [
       { id: "teams", label: "Teams & Coaches" },
       { id: "invites", label: "Invites" },
       { id: "notes", label: "Notes" },
       { id: "divisions", label: "Divisions" },
-      { id: "fields", label: "Fields" }
+      { id: "fields", label: "Fields" },
+      ...(canSchedule ? [{ id: "scheduler", label: "Scheduler" }] : []),
     ],
-    []
+    [canSchedule]
   );
   const tabIds = useMemo(() => new Set(tabs.map((t) => t.id)), [tabs]);
   const [active, setActive] = useState(() => {
@@ -161,6 +173,18 @@ export default function ManagePage({ leagueId, me, setLeagueId }) {
                 The portal is currently built for speed, not for perfect security. Auth will tighten later (EasyAuth now, Entra later).
               </li>
             </ul>
+          </div>
+        </div>
+      )}
+
+      {active === "scheduler" && canSchedule && (
+        <div className="card">
+          <div className="card__header">
+            <div className="h2">Scheduler</div>
+            <div className="subtle">Auto-assign matchups to open slots for a division.</div>
+          </div>
+          <div className="card__body">
+            <SchedulerManager leagueId={leagueId} />
           </div>
         </div>
       )}

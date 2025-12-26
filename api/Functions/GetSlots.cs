@@ -27,6 +27,9 @@ public class GetSlots
         string division,
         string offeringTeamId,
         string confirmedTeamId,
+        string homeTeamId,
+        string awayTeamId,
+        bool isExternalOffer,
         string gameDate,
         string startTime,
         string endTime,
@@ -89,6 +92,9 @@ public class GetSlots
                 var slotId = e.RowKey;
 
                 var offeringTeamId = e.GetString("OfferingTeamId") ?? "";
+                var homeTeamId = (e.GetString("HomeTeamId") ?? offeringTeamId).Trim();
+                var awayTeamId = (e.GetString("AwayTeamId") ?? "").Trim();
+                var isExternalOffer = e.GetBoolean("IsExternalOffer") ?? false;
                 var gameDate = e.GetString("GameDate") ?? "";
                 var startTime = e.GetString("StartTime") ?? "";
                 var endTime = e.GetString("EndTime") ?? "";
@@ -122,6 +128,9 @@ public class GetSlots
                     division: e.GetString("Division") ?? division,
                     offeringTeamId: offeringTeamId,
                     confirmedTeamId: confirmedTeamId,
+                    homeTeamId: homeTeamId,
+                    awayTeamId: awayTeamId,
+                    isExternalOffer: isExternalOffer,
                     gameDate: gameDate,
                     startTime: startTime,
                     endTime: endTime,

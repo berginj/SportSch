@@ -27,6 +27,7 @@ public static class Constants
         public const string Events = "GameSwapEvents";
         public const string Slots = "GameSwapSlots";
         public const string SlotRequests = "GameSwapSlotRequests";
+        public const string ScheduleRuns = "GameSwapScheduleRuns";
 
         // Org / Team management
         public const string Teams = "GameSwapTeams";
@@ -48,6 +49,7 @@ public static class Constants
         public static string Slots(string leagueId, string division) => $"SLOT|{leagueId}|{division}"; // RK = slotId
         public static string SlotRequests(string leagueId, string division, string slotId) => $"SLOTREQ|{leagueId}|{division}|{slotId}"; // RK = requestId
         public static string Teams(string leagueId, string division) => $"TEAM|{leagueId}|{division}"; // RK = teamId
+        public static string ScheduleRuns(string leagueId, string division) => $"SCHED|{leagueId}|{division}"; // RK = runId
 
         // Calendar events (non-slot): PK = EVENT|{leagueId}, RK = eventId
         public static string Events(string leagueId) => $"EVENT|{leagueId}";

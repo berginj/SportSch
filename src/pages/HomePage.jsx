@@ -182,7 +182,10 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leagueId]);
 
-  const openSlots = useMemo(() => slots.filter((s) => s.status === SLOT_STATUS.OPEN), [slots]);
+  const openSlots = useMemo(
+    () => slots.filter((s) => s.status === SLOT_STATUS.OPEN && (!s.awayTeamId || s.isExternalOffer)),
+    [slots]
+  );
   const confirmedSlots = useMemo(() => slots.filter((s) => s.status === SLOT_STATUS.CONFIRMED), [slots]);
 
   function activateSlotFilter(status) {

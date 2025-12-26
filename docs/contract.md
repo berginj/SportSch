@@ -148,6 +148,8 @@ the notes for required headers or roles.
 | GET | /slots/{division}/{slotId}/requests | `Functions/GetSlotRequests.cs` | List requests for slot (requires `x-league-id`). |
 | POST | /slots/{division}/{slotId}/requests | `Functions/CreateSlotRequest.cs` | Request slot (requires `x-league-id`, Coach). |
 | PATCH | /slots/{division}/{slotId}/requests/{requestId}/approve | `Functions/ApproveSlotRequest.cs` | Approve slot request (requires `x-league-id`, offering coach, LeagueAdmin, or global admin). |
+| POST | /schedule/preview | `Functions/ScheduleFunctions.cs` | Preview schedule for a division (requires `x-league-id`, LeagueAdmin). |
+| POST | /schedule/apply | `Functions/ScheduleFunctions.cs` | Apply schedule assignments (requires `x-league-id`, LeagueAdmin). |
 | GET | /calendar/ics | `Functions/CalendarFeed.cs` | Calendar subscription feed (requires `x-league-id` or leagueId query). |
 | GET | /events | `Functions/GetEvents.cs` | List events (requires `x-league-id`). |
 | POST | /events | `Functions/CreateEvent.cs` | Create event (requires `x-league-id`, LeagueAdmin). |
@@ -581,6 +583,9 @@ Response
       "division": "10U",
       "offeringTeamId": "TIGERS",
       "confirmedTeamId": "",
+      "homeTeamId": "TIGERS",
+      "awayTeamId": "",
+      "isExternalOffer": false,
       "gameDate": "2026-04-10",
       "startTime": "18:00",
       "endTime": "20:00",
@@ -588,9 +593,9 @@ Response
       "fieldName": "Turf",
       "displayName": "Gunston > Turf",
       "fieldKey": "gunston/turf",
-  "gameType": "Swap",
-  "status": "Open",
-  "notes": "Open game offer"
+      "gameType": "Swap",
+      "status": "Open",
+      "notes": "Open game offer"
     }
   ]
 }
@@ -633,6 +638,7 @@ Rules
 - **Division validation:** requesting team division must exactly match `{division}`.
 - Cannot request your own slot.
 - Slot must be `Open`.
+- Slots with `awayTeamId` assigned and `isExternalOffer=false` are reserved for league scheduling and cannot be accepted.
 
 Body
 ```json
@@ -676,6 +682,107 @@ Response
 
 ### PATCH /slots/{division}/{slotId}/cancel (league-scoped)
 Requires: offering team OR accepting team (confirmedTeamId) OR LeagueAdmin OR global admin.
+
+---
+
+## 8c) Division scheduling (admin)
+
+### POST /schedule/preview (league-scoped)
+Requires: LeagueAdmin or global admin.
+
+Body
+```json
+{
+  "division": "10U",
+  "dateFrom": "2026-04-01",
+  "dateTo": "2026-06-30",
+  "constraints": {
+    "maxGamesPerWeek": 2,
+    "noDoubleHeaders": true,
+    "balanceHomeAway": true,
+    "externalOfferCount": 0
+  }
+}
+```
+
+Response
+```json
+{
+  "data": {
+    "summary": {
+      "slotsTotal": 24,
+      "slotsAssigned": 20,
+      "matchupsTotal": 21,
+      "matchupsAssigned": 20,
+      "externalOffers": 0,
+      "unassignedSlots": 4,
+      "unassignedMatchups": 1
+    },
+    "assignments": [
+      {
+        "slotId": "slot_1",
+        "gameDate": "2026-04-10",
+        "startTime": "18:00",
+        "endTime": "19:30",
+        "fieldKey": "gunston/turf",
+        "homeTeamId": "TIGERS",
+        "awayTeamId": "EAGLES",
+        "isExternalOffer": false
+      }
+    ],
+    "unassignedSlots": [
+      {
+        "slotId": "slot_24",
+        "gameDate": "2026-06-29",
+        "startTime": "18:00",
+        "endTime": "19:30",
+        "fieldKey": "gunston/turf",
+        "homeTeamId": "",
+        "awayTeamId": "",
+        "isExternalOffer": false
+      }
+    ],
+    "unassignedMatchups": [
+      { "homeTeamId": "SHARKS", "awayTeamId": "OWLS" }
+    ]
+  }
+}
+```
+
+### POST /schedule/apply (league-scoped)
+Requires: LeagueAdmin or global admin.
+
+Body: same as preview.
+
+Response
+```json
+{
+  "data": {
+    "runId": "sched_123",
+    "summary": {
+      "slotsTotal": 24,
+      "slotsAssigned": 20,
+      "matchupsTotal": 21,
+      "matchupsAssigned": 20,
+      "externalOffers": 0,
+      "unassignedSlots": 4,
+      "unassignedMatchups": 1
+    },
+    "assignments": [
+      {
+        "slotId": "slot_1",
+        "gameDate": "2026-04-10",
+        "startTime": "18:00",
+        "endTime": "19:30",
+        "fieldKey": "gunston/turf",
+        "homeTeamId": "TIGERS",
+        "awayTeamId": "EAGLES",
+        "isExternalOffer": false
+      }
+    ]
+  }
+}
+```
 
 ---
 

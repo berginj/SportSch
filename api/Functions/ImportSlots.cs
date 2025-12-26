@@ -171,6 +171,9 @@ public class ImportSlots
                     ["Division"] = division,
 
                     ["OfferingTeamId"] = offeringTeamId,
+                    ["HomeTeamId"] = offeringTeamId,
+                    ["AwayTeamId"] = "",
+                    ["IsExternalOffer"] = false,
                     ["OfferingEmail"] = offeringEmail,
 
                     ["GameDate"] = gameDate,

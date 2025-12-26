@@ -135,6 +135,14 @@ public class CreateSlotRequest
                     $"Slot is not open (status: {slotStatus}).");
             }
 
+            var awayTeamId = (slot.GetString("AwayTeamId") ?? "").Trim();
+            var isExternalOffer = slot.GetBoolean("IsExternalOffer") ?? false;
+            if (!string.IsNullOrWhiteSpace(awayTeamId) && !isExternalOffer)
+            {
+                return ApiResponses.Error(req, HttpStatusCode.Conflict, "SLOT_ASSIGNED",
+                    "This slot is already assigned to a league matchup.");
+            }
+
             // Prevent accepting your own slot
             var offeringTeamId = (slot.GetString("OfferingTeamId") ?? "").Trim();
             if (!string.IsNullOrWhiteSpace(offeringTeamId) &&

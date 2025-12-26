@@ -50,7 +50,7 @@ public class PublicSlots
                 limit = Math.Clamp(parsed, 1, 20);
 
             var table = await TableClients.GetTableAsync(_svc, SlotsTableName);
-            var filter = $"Status eq '{ApiGuards.EscapeOData(Constants.Status.SlotOpen)}'";
+            var filter = $"Status eq '{ApiGuards.EscapeOData(Constants.Status.SlotOpen)}' and IsExternalOffer eq true";
 
             var list = new List<PublicSlotDto>();
 
