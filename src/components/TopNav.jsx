@@ -21,36 +21,15 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
   return (
     <header className="topnav">
       <div className="topnav__inner">
-        <div className="pageIndicator" aria-live="polite">
-          Current: <span className="pageIndicator__value">{currentLabel}</span>
+        <div className="navPresence" aria-live="polite">
+          <div className="navPresence__title">Sports Scheduler</div>
+          <div className="navPresence__meta">
+            <span className="navPresence__label">Current view</span>
+            <span className="navPresence__value">{currentLabel}</span>
+          </div>
         </div>
 
         <div className="topnav__controls">
-          <div className="control">
-            <label>League</label>
-            <select
-              value={leagueId || ""}
-              onChange={(e) => pickLeague(e.target.value)}
-              disabled={!hasLeagues}
-              aria-label="Select league"
-            >
-              {!hasLeagues ? (
-                <option value="">No leagues</option>
-              ) : (
-                memberships.map((m) => {
-                  const id = (m?.leagueId || "").trim();
-                  const role = (m?.role || "").trim();
-                  if (!id) return null;
-                  return (
-                    <option key={id} value={id}>
-                      {role ? `${id} (${role})` : id}
-                    </option>
-                  );
-                })
-              )}
-            </select>
-          </div>
-
           <nav className="tabs" aria-label="Primary">
             <button
               className={tab === "home" ? "tab tab--active" : "tab"}
@@ -105,8 +84,34 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
             </button>
           </nav>
 
-          <div className="whoami" title={email}>
-            {email || "Signed in"}
+          <div className="topnav__account">
+            <div className="whoami" title={email}>
+              {email || "Signed in"}
+            </div>
+            <div className="control control--league">
+              <label>League</label>
+              <select
+                value={leagueId || ""}
+                onChange={(e) => pickLeague(e.target.value)}
+                disabled={!hasLeagues}
+                aria-label="Select league"
+              >
+                {!hasLeagues ? (
+                  <option value="">No leagues</option>
+                ) : (
+                  memberships.map((m) => {
+                    const id = (m?.leagueId || "").trim();
+                    const role = (m?.role || "").trim();
+                    if (!id) return null;
+                    return (
+                      <option key={id} value={id}>
+                        {role ? `${id} (${role})` : id}
+                      </option>
+                    );
+                  })
+                )}
+              </select>
+            </div>
           </div>
         </div>
       </div>
