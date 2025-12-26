@@ -197,7 +197,8 @@
   .layoutPanel { @apply rounded-xl border border-border bg-black/20 p-3; }
   .layoutPanel__title { @apply mb-2 font-semibold; }
   .layoutList { @apply grid gap-2; }
-  .layoutItem { @apply rounded-xl border border-border bg-black/20 p-2.5; }
+  .layoutItem { @apply rounded-xl border border-border bg-black/20 p-2.5 text-left; }
+  .layoutItem--link { @apply transition hover:border-orange-300/70 hover:bg-black/30; }
   .layoutPill { @apply inline-flex items-center rounded-full border border-border px-2.5 py-1 text-xs text-muted; }
   .layoutPill--link { @apply transition hover:border-orange-300/70 hover:text-orange-100; }
   .layoutBadge { @apply inline-flex items-center rounded-full border border-orange-300/70 px-2 py-1 text-xs text-accent; }

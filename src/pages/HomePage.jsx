@@ -360,9 +360,15 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
           <div className="layoutPanel">
             <div className="layoutPanel__title">Shortcuts</div>
             <div className="layoutList">
-              <div className="layoutItem" onClick={() => setTab("manage")}>Teams and coaches</div>
-              <div className="layoutItem" onClick={() => setTab("manage")}>Invites</div>
-              <div className="layoutItem" onClick={() => setTab("calendar")}>Calendar view</div>
+              <button className="layoutItem layoutItem--link" onClick={() => setTab("manage")} type="button">
+                Teams and coaches
+              </button>
+              <button className="layoutItem layoutItem--link" onClick={() => setTab("manage")} type="button">
+                Invites
+              </button>
+              <button className="layoutItem layoutItem--link" onClick={() => setTab("calendar")} type="button">
+                Calendar view
+              </button>
             </div>
           </div>
         </div>
