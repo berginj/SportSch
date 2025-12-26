@@ -1,14 +1,14 @@
 :root {
-  --bg: #0b1220;
-  --panel: #0f1a30;
-  --card: #0e1629;
-  --text: #e7eefc;
-  --muted: rgba(231, 238, 252, 0.72);
-  --border: rgba(231, 238, 252, 0.12);
-  --accent: #2dd4bf; /* teal */
-  --danger: #ff6b6b;
-  --warn: #fbbf24;
-  --ok: #34d399;
+  --bg: #0a1324;
+  --panel: #101c36;
+  --card: #101b33;
+  --text: #f6f7ff;
+  --muted: rgba(246, 247, 255, 0.7);
+  --border: rgba(246, 247, 255, 0.14);
+  --accent: #ff8a4c; /* coral */
+  --danger: #ef4444;
+  --warn: #f59e0b;
+  --ok: #22c55e;
 }
 
 * { box-sizing: border-box; }
@@ -17,8 +17,9 @@ html, body { height: 100%; }
 body {
   margin: 0;
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-  background: radial-gradient(1200px 700px at 20% 0%, rgba(45, 212, 191, 0.18), transparent 60%),
-              radial-gradient(900px 600px at 90% 10%, rgba(251, 191, 36, 0.12), transparent 55%),
+  background: radial-gradient(1200px 700px at 10% 0%, rgba(255, 138, 76, 0.2), transparent 60%),
+              radial-gradient(900px 600px at 90% 5%, rgba(56, 189, 248, 0.16), transparent 55%),
+              radial-gradient(900px 600px at 40% 100%, rgba(34, 197, 94, 0.12), transparent 60%),
               var(--bg);
   color: var(--text);
 }
@@ -531,6 +532,19 @@ button:disabled {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
+}
+
+/* Calendar split layout */
+.calendarSplit {
+  display: grid;
+  gap: 12px;
+}
+
+@media (min-width: 980px) {
+  .calendarSplit {
+    grid-template-columns: 320px 1fr;
+    align-items: start;
+  }
 }
 
 .tableWrap { overflow-x: auto; }

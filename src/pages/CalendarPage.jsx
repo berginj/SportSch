@@ -355,7 +355,8 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     <div className="stack">
       {err ? <div className="card error">{err}</div> : null}
 
-      <div className="card">
+      <div className="calendarSplit">
+        <div className="card">
         <div className="cardTitle">
           Calendar filters
           <span className="hint" title="Filter what appears on the calendar and subscription link.">?</span>
@@ -431,76 +432,77 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
         <div className="muted" style={{ marginTop: 6 }}>
           Subscribe link reflects the current filters and date range.
         </div>
-      </div>
+        </div>
 
-      <div className="card">
-        <div className="cardTitle">Calendar</div>
-        {timeline.length === 0 ? <div className="muted">No items in this range.</div> : null}
-        <div className="stack">
-          {timeline.map((it) => (
-            <div key={`${it.kind}:${it.id}`} className={statusClassForItem(it)}>
-              <div className="row" style={{ justifyContent: "space-between" }}>
-                <div>
-                  <div style={{ fontWeight: 700 }}>
-                    {it.date} {it.start ? `${it.start}${it.end ? `-${it.end}` : ""}` : ""} - {it.title}
+        <div className="card">
+          <div className="cardTitle">Calendar</div>
+          {timeline.length === 0 ? <div className="muted">No items in this range.</div> : null}
+          <div className="stack">
+            {timeline.map((it) => (
+              <div key={`${it.kind}:${it.id}`} className={statusClassForItem(it)}>
+                <div className="row" style={{ justifyContent: "space-between" }}>
+                  <div>
+                    <div style={{ fontWeight: 700 }}>
+                      {it.date} {it.start ? `${it.start}${it.end ? `-${it.end}` : ""}` : ""} - {it.title}
+                    </div>
+                    {it.subtitle ? <div className="muted">{it.subtitle}</div> : null}
+                    {it.kind === "event" && it.raw?.notes ? <div style={{ marginTop: 6 }}>{it.raw.notes}</div> : null}
                   </div>
-                  {it.subtitle ? <div className="muted">{it.subtitle}</div> : null}
-                  {it.kind === "event" && it.raw?.notes ? <div style={{ marginTop: 6 }}>{it.raw.notes}</div> : null}
-                </div>
-                <div className="row">
-                  <span className={`statusBadge status-${(statusLabelForItem(it) || "").toLowerCase()}`}>
-                    {statusLabelForItem(it)}
-                  </span>
-                  {it.kind === "slot" && canPickTeam && (it.raw?.status || "") === "Open" ? (
-                    (() => {
-                      const divisionKey = (it.raw?.division || "").trim().toUpperCase();
-                      const teamsForDivision = teamsByDivision.get(divisionKey) || [];
-                      const selectedTeamId = acceptTeamBySlot[it.id] || "";
-                      return (
-                        <div className="row" style={{ alignItems: "center" }}>
-                          <select
-                            value={selectedTeamId}
-                            onChange={(e) => setAcceptTeam(it.id, e.target.value)}
-                            title="Pick a team to accept this offer as."
-                          >
-                            <option value="">Select team</option>
-                            {teamsForDivision.map((t) => (
-                              <option key={t.teamId} value={t.teamId}>
-                                {t.name || t.teamId}
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            className="btn primary"
-                            onClick={() => requestSlot(it.raw, selectedTeamId)}
-                            disabled={!selectedTeamId}
-                            title="Accept this offer on behalf of the selected team."
-                          >
-                            Accept as
-                          </button>
-                        </div>
-                      );
-                    })()
-                  ) : null}
-                  {it.kind === "slot" && !canPickTeam && role !== "Viewer" && (it.raw?.status || "") === "Open" && (it.raw?.offeringTeamId || "") !== myCoachTeamId ? (
-                    <button className="btn primary" onClick={() => requestSlot(it.raw)} title="Accept this open offer and confirm the game.">
-                      Accept
-                    </button>
-                  ) : null}
-                  {it.kind === "slot" && canCancelSlot(it.raw) && (it.raw?.status || "") !== "Cancelled" ? (
-                    <button className="btn" onClick={() => cancelSlot(it.raw)} title="Cancel this game/slot.">
-                      Cancel
-                    </button>
-                  ) : null}
-                  {it.kind === "event" && canDeleteAnyEvent ? (
-                    <button className="btn" onClick={() => deleteEvent(it.id)} title="Delete this event from the calendar.">
-                      Delete
-                    </button>
-                  ) : null}
+                  <div className="row">
+                    <span className={`statusBadge status-${(statusLabelForItem(it) || "").toLowerCase()}`}>
+                      {statusLabelForItem(it)}
+                    </span>
+                    {it.kind === "slot" && canPickTeam && (it.raw?.status || "") === "Open" ? (
+                      (() => {
+                        const divisionKey = (it.raw?.division || "").trim().toUpperCase();
+                        const teamsForDivision = teamsByDivision.get(divisionKey) || [];
+                        const selectedTeamId = acceptTeamBySlot[it.id] || "";
+                        return (
+                          <div className="row" style={{ alignItems: "center" }}>
+                            <select
+                              value={selectedTeamId}
+                              onChange={(e) => setAcceptTeam(it.id, e.target.value)}
+                              title="Pick a team to accept this offer as."
+                            >
+                              <option value="">Select team</option>
+                              {teamsForDivision.map((t) => (
+                                <option key={t.teamId} value={t.teamId}>
+                                  {t.name || t.teamId}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              className="btn primary"
+                              onClick={() => requestSlot(it.raw, selectedTeamId)}
+                              disabled={!selectedTeamId}
+                              title="Accept this offer on behalf of the selected team."
+                            >
+                              Accept as
+                            </button>
+                          </div>
+                        );
+                      })()
+                    ) : null}
+                    {it.kind === "slot" && !canPickTeam && role !== "Viewer" && (it.raw?.status || "") === "Open" && (it.raw?.offeringTeamId || "") !== myCoachTeamId ? (
+                      <button className="btn primary" onClick={() => requestSlot(it.raw)} title="Accept this open offer and confirm the game.">
+                        Accept
+                      </button>
+                    ) : null}
+                    {it.kind === "slot" && canCancelSlot(it.raw) && (it.raw?.status || "") !== "Cancelled" ? (
+                      <button className="btn" onClick={() => cancelSlot(it.raw)} title="Cancel this game/slot.">
+                        Cancel
+                      </button>
+                    ) : null}
+                    {it.kind === "event" && canDeleteAnyEvent ? (
+                      <button className="btn" onClick={() => deleteEvent(it.id)} title="Delete this event from the calendar.">
+                        Delete
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
 

@@ -45,6 +45,14 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
 
           <nav className="tabs" aria-label="Primary">
             <button
+              className={tab === "home" ? "tab tab--active" : "tab"}
+              onClick={() => setTab("home")}
+              disabled={!hasLeagues}
+              title="Role-based landing dashboard."
+            >
+              Home
+            </button>
+            <button
               className={tab === "calendar" ? "tab tab--active" : "tab"}
               onClick={() => setTab("calendar")}
               disabled={!hasLeagues}

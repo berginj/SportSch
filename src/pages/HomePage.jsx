@@ -1,0 +1,383 @@
+import { useEffect, useMemo, useState } from "react";
+import { apiFetch } from "../lib/api";
+import LeaguePicker from "../components/LeaguePicker";
+import { SLOT_STATUS } from "../lib/constants";
+
+function toDateInputValue(d) {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 720px)");
+    const update = () => setIsMobile(mq.matches);
+    update();
+    if (mq.addEventListener) mq.addEventListener("change", update);
+    else mq.addListener(update);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", update);
+      else mq.removeListener(update);
+    };
+  }, []);
+  return isMobile;
+}
+
+function normalizeRole(role) {
+  return (role || "").trim();
+}
+
+export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
+  const isMobile = useIsMobile();
+  const memberships = Array.isArray(me?.memberships) ? me.memberships : [];
+  const role = useMemo(() => {
+    const inLeague = memberships.filter((m) => (m?.leagueId || "").trim() === (leagueId || "").trim());
+    const roles = inLeague.map((m) => normalizeRole(m?.role));
+    if (roles.includes("LeagueAdmin")) return "LeagueAdmin";
+    if (roles.includes("Coach")) return "Coach";
+    return roles.includes("Viewer") ? "Viewer" : "";
+  }, [memberships, leagueId]);
+  const isAdmin = !!me?.isGlobalAdmin || role === "LeagueAdmin";
+
+  const today = useMemo(() => new Date(), []);
+  const seasonEnd = useMemo(() => {
+    const endThisYear = new Date(today.getFullYear(), 6, 30);
+    return today > endThisYear ? new Date(today.getFullYear() + 1, 6, 30) : endThisYear;
+  }, [today]);
+
+  const [division, setDivision] = useState("");
+  const [dateFrom, setDateFrom] = useState(toDateInputValue(today));
+  const [dateTo, setDateTo] = useState(toDateInputValue(seasonEnd));
+  const [showSlots, setShowSlots] = useState(true);
+  const [showEvents, setShowEvents] = useState(true);
+  const [slotStatusFilter, setSlotStatusFilter] = useState({
+    [SLOT_STATUS.OPEN]: true,
+    [SLOT_STATUS.CONFIRMED]: true,
+    [SLOT_STATUS.CANCELLED]: false,
+  });
+
+  const [divisions, setDivisions] = useState([]);
+  const [slots, setSlots] = useState([]);
+  const [events, setEvents] = useState([]);
+  const [accessRequests, setAccessRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    setDivision("");
+  }, [leagueId]);
+
+  async function load() {
+    if (!leagueId) return;
+    setErr("");
+    setLoading(true);
+    try {
+      const baseQuery = new URLSearchParams();
+      if (division) baseQuery.set("division", division);
+      if (dateFrom) baseQuery.set("dateFrom", dateFrom);
+      if (dateTo) baseQuery.set("dateTo", dateTo);
+
+      const activeStatuses = Object.entries(slotStatusFilter)
+        .filter(([, on]) => on)
+        .map(([k]) => k);
+      const slotsQuery = new URLSearchParams(baseQuery);
+      if (activeStatuses.length) slotsQuery.set("status", activeStatuses.join(","));
+
+      const reqs = [];
+      reqs.push(apiFetch("/api/divisions"));
+      reqs.push(showSlots && activeStatuses.length ? apiFetch(`/api/slots?${slotsQuery.toString()}`) : Promise.resolve([]));
+      reqs.push(showEvents ? apiFetch(`/api/events?${baseQuery.toString()}`) : Promise.resolve([]));
+      if (isAdmin) reqs.push(apiFetch("/api/accessrequests?status=Pending"));
+      const [divs, slotList, eventList, accessList] = await Promise.all(reqs);
+
+      setDivisions(Array.isArray(divs) ? divs : []);
+      setSlots(Array.isArray(slotList) ? slotList : []);
+      setEvents(Array.isArray(eventList) ? eventList : []);
+      setAccessRequests(Array.isArray(accessList) ? accessList : []);
+    } catch (e) {
+      setErr(e?.message || "Failed to load.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leagueId]);
+
+  const openSlots = useMemo(() => slots.filter((s) => s.status === SLOT_STATUS.OPEN), [slots]);
+  const confirmedSlots = useMemo(() => slots.filter((s) => s.status === SLOT_STATUS.CONFIRMED), [slots]);
+
+  const nextItems = useMemo(() => {
+    const items = [
+      ...events.map((e) => ({
+        kind: "event",
+        date: e.eventDate,
+        label: `${e.type ? `${e.type}: ` : ""}${e.title}`,
+      })),
+      ...confirmedSlots.map((s) => ({
+        kind: "slot",
+        date: s.gameDate,
+        label: `${s.offeringTeamId || ""} @ ${s.displayName || s.fieldKey || ""}`,
+      })),
+    ];
+    return items
+      .filter((i) => i.date)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(0, 5);
+  }, [events, confirmedSlots]);
+
+  const layoutKey = isMobile ? "mobile" : isAdmin ? "admin" : role === "Coach" ? "filters" : "coach";
+
+  function renderFilters() {
+    return (
+      <div className="layoutPanel">
+        <div className="layoutPanel__title">Filters</div>
+        <div className="layoutForm">
+          <label>
+            League
+            <LeaguePicker leagueId={leagueId} setLeagueId={setLeagueId} me={me} label="League" />
+          </label>
+          <label>
+            Division
+            <select value={division} onChange={(e) => setDivision(e.target.value)}>
+              <option value="">All</option>
+              {divisions.map((d) => (
+                <option key={d.code} value={d.code}>
+                  {d.name} ({d.code})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            From
+            <input value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+          </label>
+          <label>
+            To
+            <input value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+          </label>
+          <label>
+            Status
+            <div className="layoutRow">
+              {[SLOT_STATUS.OPEN, SLOT_STATUS.CONFIRMED, SLOT_STATUS.CANCELLED].map((status) => (
+                <button
+                  key={status}
+                  className={`btn btn--ghost ${slotStatusFilter[status] ? "is-active" : ""}`}
+                  onClick={() =>
+                    setSlotStatusFilter((prev) => ({ ...prev, [status]: !prev[status] }))
+                  }
+                >
+                  {status}
+                </button>
+              ))}
+            </div>
+          </label>
+          <div className="layoutRow">
+            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input type="checkbox" checked={showSlots} onChange={(e) => setShowSlots(e.target.checked)} />
+              Slots
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input type="checkbox" checked={showEvents} onChange={(e) => setShowEvents(e.target.checked)} />
+              Events
+            </label>
+          </div>
+          <button className="btn" onClick={load}>
+            Apply
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  function renderFiltersResults() {
+    return (
+      <div className="layoutPanel">
+        <div className="layoutPanel__title">Results</div>
+        <div className="layoutList">
+          {openSlots.slice(0, 6).map((s) => (
+            <div className="layoutItem" key={s.slotId}>
+              <div className="layoutRow layoutRow--space">
+                <div>{s.gameDate} - {s.offeringTeamId}</div>
+                <div className="layoutBadge">Open</div>
+              </div>
+              <div className="layoutMeta">{s.displayName || s.fieldKey}</div>
+            </div>
+          ))}
+          {openSlots.length === 0 ? <div className="layoutMeta">No open offers.</div> : null}
+        </div>
+      </div>
+    );
+  }
+
+  function renderAdmin() {
+    return (
+      <div className="layoutPreview layoutPreview--admin">
+        <div className="layoutHeader">
+          <div>
+            <div className="layoutTitle">League admin desk</div>
+            <div className="layoutMeta">Power tasks for {leagueId || "your league"}</div>
+          </div>
+          <div className="layoutRow">
+            <button className="btn" onClick={() => setTab("manage")}>League Management</button>
+            <button className="btn" onClick={() => setTab("offers")}>Create offer</button>
+            <button className="btn" onClick={() => setTab("admin")}>Access requests</button>
+          </div>
+        </div>
+        <div className="layoutGrid">
+          <div className="layoutPanel">
+            <div className="layoutPanel__title">Today</div>
+            <div className="layoutStatRow">
+              <div className="layoutStat">
+                <div className="layoutStat__value">{openSlots.length}</div>
+                <div className="layoutStat__label">Open offers</div>
+              </div>
+              <div className="layoutStat">
+                <div className="layoutStat__value">{confirmedSlots.length}</div>
+                <div className="layoutStat__label">Confirmed</div>
+              </div>
+              <div className="layoutStat">
+                <div className="layoutStat__value">{accessRequests.length}</div>
+                <div className="layoutStat__label">Access requests</div>
+              </div>
+            </div>
+          </div>
+          <div className="layoutPanel">
+            <div className="layoutPanel__title">Next 7 days</div>
+            <div className="layoutList">
+              {nextItems.map((i, idx) => (
+                <div className="layoutItem" key={idx}>
+                  {i.date} - {i.label}
+                </div>
+              ))}
+              {nextItems.length === 0 ? <div className="layoutMeta">No upcoming items.</div> : null}
+            </div>
+          </div>
+          <div className="layoutPanel">
+            <div className="layoutPanel__title">Quick filters</div>
+            <div className="layoutRow">
+              {divisions.slice(0, 4).map((d) => (
+                <div key={d.code} className="layoutPill">{d.code}</div>
+              ))}
+              <div className="layoutPill">Open</div>
+              <div className="layoutPill">Confirmed</div>
+            </div>
+          </div>
+          <div className="layoutPanel">
+            <div className="layoutPanel__title">Shortcuts</div>
+            <div className="layoutList">
+              <div className="layoutItem" onClick={() => setTab("manage")}>Teams and coaches</div>
+              <div className="layoutItem" onClick={() => setTab("manage")}>Invites</div>
+              <div className="layoutItem" onClick={() => setTab("calendar")}>Calendar view</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function renderCoachHub() {
+    return (
+      <div className="layoutPreview layoutPreview--coach">
+        <div className="layoutHero">
+          <div>
+            <div className="layoutTitle">Coach hub</div>
+            <div className="layoutMeta">Find open offers, accept, and confirm quickly.</div>
+          </div>
+          <div className="layoutRow">
+            <button className="btn" onClick={() => setTab("offers")}>Create offer</button>
+            <button className="btn btn--ghost" onClick={() => setTab("calendar")}>Calendar</button>
+          </div>
+        </div>
+        <div className="layoutGrid layoutGrid--two">
+          <div className="layoutPanel">
+            <div className="layoutPanel__title">Open offers</div>
+            <div className="layoutList">
+              {openSlots.slice(0, 4).map((s) => (
+                <div className="layoutItem" key={s.slotId}>
+                  <div className="layoutRow layoutRow--space">
+                    <div>{s.gameDate} - {s.offeringTeamId}</div>
+                    <div className="layoutBadge">Open</div>
+                  </div>
+                  <div className="layoutMeta">{s.displayName || s.fieldKey}</div>
+                </div>
+              ))}
+              {openSlots.length === 0 ? <div className="layoutMeta">No open offers.</div> : null}
+            </div>
+          </div>
+          <div className="layoutPanel">
+            <div className="layoutPanel__title">My calendar</div>
+            <div className="layoutList">
+              {nextItems.map((i, idx) => (
+                <div className="layoutItem" key={idx}>
+                  {i.date} - {i.label}
+                </div>
+              ))}
+              {nextItems.length === 0 ? <div className="layoutMeta">No upcoming items.</div> : null}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function renderMobile() {
+    return (
+      <div className="layoutPreview layoutPreview--mobile">
+        <div className="layoutPhone">
+          <div className="layoutPhone__bar">GameSwap</div>
+          <div className="layoutPhone__section">
+            <div className="layoutTitle">Today</div>
+            <div className="layoutPill">Open offers</div>
+            <div className="layoutList">
+              {openSlots.slice(0, 2).map((s) => (
+                <div className="layoutItem" key={s.slotId}>
+                  <div className="layoutRow">
+                    <div>{s.offeringTeamId} @ {s.displayName || s.fieldKey}</div>
+                    <div className="layoutBadge">Open</div>
+                  </div>
+                  <div className="layoutMeta">{s.gameDate} {s.startTime}-{s.endTime}</div>
+                  <button className="btn">Accept</button>
+                </div>
+              ))}
+              {openSlots.length === 0 ? <div className="layoutMeta">No open offers.</div> : null}
+            </div>
+          </div>
+          <div className="layoutPhone__nav">
+            <button className="btn btn--ghost" onClick={() => setTab("calendar")}>Calendar</button>
+            <button className="btn btn--ghost" onClick={() => setTab("offers")}>Offer</button>
+            <button className="btn btn--ghost" onClick={() => setTab("manage")}>Teams</button>
+            <button className="btn btn--ghost" onClick={() => setTab("help")}>Help</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return <div className="card">Loading...</div>;
+  }
+
+  if (err) {
+    return <div className="card error">{err}</div>;
+  }
+
+  if (layoutKey === "mobile") return renderMobile();
+  if (layoutKey === "admin") return renderAdmin();
+  if (layoutKey === "filters") {
+    return (
+      <div className="layoutPreview layoutPreview--filters">
+        <div className="layoutSplit">
+          {renderFilters()}
+          {renderFiltersResults()}
+        </div>
+      </div>
+    );
+  }
+  return renderCoachHub();
+}

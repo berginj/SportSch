@@ -7,6 +7,7 @@ import AccessPage from "./pages/AccessPage";
 import AdminPage from "./pages/AdminPage";
 import InviteAcceptPage from "./pages/InviteAcceptPage";
 import PublicLanding from "./pages/PublicLanding";
+import HomePage from "./pages/HomePage";
 import TopNav from "./components/TopNav";
 import { useSession } from "./lib/useSession";
 import { trackPageView } from "./lib/telemetry";
@@ -22,7 +23,7 @@ function readInviteFromUrl() {
 
 export default function App() {
   const { me, memberships, activeLeagueId, setActiveLeagueId, refreshMe } = useSession();
-  const [tab, setTab] = useState("calendar");
+  const [tab, setTab] = useState("home");
   const [invite, setInvite] = useState(() => readInviteFromUrl());
 
   const isSignedIn = !!me && me.userId && me.userId !== "UNKNOWN";
@@ -124,6 +125,14 @@ export default function App() {
       />
 
       <main className="main">
+        {effectiveTab === "home" && (
+          <HomePage
+            me={me}
+            leagueId={activeLeagueId}
+            setLeagueId={setActiveLeagueId}
+            setTab={setTab}
+          />
+        )}
         {effectiveTab === "offers" && (
           <OffersPage me={me} leagueId={activeLeagueId} setLeagueId={setActiveLeagueId} />
         )}
