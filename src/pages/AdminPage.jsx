@@ -4,6 +4,7 @@ import LeaguePicker from "../components/LeaguePicker";
 import Toast from "../components/Toast";
 import { PromptDialog } from "../components/Dialogs";
 import { usePromptDialog } from "../lib/useDialogs";
+import { LEAGUE_HEADER_NAME } from "../lib/constants";
 
 const ROLE_OPTIONS = [
   "LeagueAdmin",
@@ -37,9 +38,11 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
   const [newLeague, setNewLeague] = useState({ leagueId: "", name: "", timezone: "America/New_York" });
   const [toast, setToast] = useState(null);
   const [accessStatus, setAccessStatus] = useState("Pending");
+  const [accessScope, setAccessScope] = useState("league");
   const { promptState, promptValue, setPromptValue, requestPrompt, handleConfirm, handleCancel } = usePromptDialog();
 
   const isGlobalAdmin = !!me?.isGlobalAdmin;
+  const accessAll = accessScope === "all";
 
   async function load() {
     setLoading(true);
@@ -47,6 +50,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
     try {
       const qs = new URLSearchParams();
       qs.set("status", accessStatus);
+      if (accessAll) qs.set("all", "true");
       const data = await apiFetch(`/api/accessrequests?${qs.toString()}`);
       setItems(Array.isArray(data) ? data : []);
     } catch (e) {
@@ -93,7 +97,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leagueId, accessStatus]);
+  }, [leagueId, accessStatus, accessAll]);
 
   useEffect(() => {
     loadMembershipsAndTeams();
@@ -116,6 +120,22 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
     const next = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
     window.history.replaceState({}, "", next);
   }, [accessStatus]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const scope = (params.get("accessScope") || "").trim();
+    setAccessScope(isGlobalAdmin && scope === "all" ? "all" : "league");
+  }, [isGlobalAdmin]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (isGlobalAdmin && accessAll) params.set("accessScope", "all");
+    else params.delete("accessScope");
+    const next = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
+    window.history.replaceState({}, "", next);
+  }, [accessAll, isGlobalAdmin]);
 
   useEffect(() => {
     if (!isGlobalAdmin) return;
@@ -166,11 +186,15 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
   async function approve(req, roleOverride) {
     const userId = req?.userId || "";
     const role = (roleOverride || req?.requestedRole || "Viewer").trim();
+    const targetLeagueId = (req?.leagueId || leagueId || "").trim();
     if (!userId) return;
     try {
       await apiFetch(`/api/accessrequests/${encodeURIComponent(userId)}/approve`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(targetLeagueId ? { [LEAGUE_HEADER_NAME]: targetLeagueId } : {}),
+        },
         body: JSON.stringify({ role }),
       });
       await load();
@@ -182,6 +206,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
 
   async function deny(req) {
     const userId = req?.userId || "";
+    const targetLeagueId = (req?.leagueId || leagueId || "").trim();
     if (!userId) return;
     const reason = await requestPrompt({
       title: "Deny access request",
@@ -193,7 +218,10 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
     try {
       await apiFetch(`/api/accessrequests/${encodeURIComponent(userId)}/deny`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(targetLeagueId ? { [LEAGUE_HEADER_NAME]: targetLeagueId } : {}),
+        },
         body: JSON.stringify({ reason }),
       });
       await load();
@@ -320,10 +348,21 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
       />
       <h2>Admin: access requests</h2>
       <p className="muted">
-        Approve or deny access requests for the currently selected league.
+        {accessAll
+          ? "Approve or deny access requests across all leagues."
+          : "Approve or deny access requests for the currently selected league."}
       </p>
       <div className="row gap-3 row--wrap mb-2">
         <LeaguePicker leagueId={leagueId} setLeagueId={setLeagueId} me={me} label="League" />
+        {isGlobalAdmin ? (
+          <label className="min-w-[160px]">
+            Scope
+            <select value={accessScope} onChange={(e) => setAccessScope(e.target.value)}>
+              <option value="league">Current league</option>
+              <option value="all">All leagues</option>
+            </select>
+          </label>
+        ) : null}
         <label className="min-w-[160px]">
           Status
           <select value={accessStatus} onChange={(e) => setAccessStatus(e.target.value)}>
@@ -347,12 +386,13 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
       {loading ? (
         <div className="muted">Loading...</div>
       ) : sorted.length === 0 ? (
-        <div className="muted">No pending requests.</div>
+        <div className="muted">No {accessStatus.toLowerCase()} requests.</div>
       ) : (
         <div className="tableWrap">
           <table className="table">
             <thead>
               <tr>
+                {accessAll ? <th>League</th> : null}
                 <th>User</th>
                 <th>Requested role</th>
                 <th>Notes</th>
@@ -362,6 +402,11 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
             <tbody>
               {sorted.map((r) => (
                 <tr key={r.userId}>
+                  {accessAll ? (
+                    <td>
+                      <code>{r.leagueId}</code>
+                    </td>
+                  ) : null}
                   <td>
                     <div className="font-semibold">{r.email || r.userId}</div>
                     <div className="muted text-xs">{r.userId}</div>

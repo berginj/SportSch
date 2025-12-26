@@ -121,7 +121,7 @@ the notes for required headers or roles.
 | GET | /storage/health | `Functions/StorageHealth.cs` | Global admin storage connectivity check (alt route). |
 | POST | /accessrequests | `Functions/AccessRequestsFunctions.cs` | Create access request. |
 | GET | /accessrequests/mine | `Functions/AccessRequestsFunctions.cs` | Current user's access requests. |
-| GET | /accessrequests | `Functions/AccessRequestsFunctions.cs` | League access requests (requires `x-league-id`, LeagueAdmin). |
+| GET | /accessrequests | `Functions/AccessRequestsFunctions.cs` | League access requests (requires `x-league-id`, LeagueAdmin). Global admins can use `all=true` to list across leagues. |
 | PATCH | /accessrequests/{userId}/approve | `Functions/AccessRequestsFunctions.cs` | Approve access request (requires `x-league-id`, LeagueAdmin). |
 | PATCH | /accessrequests/{userId}/deny | `Functions/AccessRequestsFunctions.cs` | Deny access request (requires `x-league-id`, LeagueAdmin). |
 | POST | /admin/invites | `Functions/LeagueInvitesFunctions.cs` | Create invite (requires `x-league-id`, LeagueAdmin). |
@@ -280,6 +280,9 @@ Response
 Header: x-league-id
 Requires: LeagueAdmin or global admin.
 Query: status (default Pending)
+
+Global admin: list across all leagues
+Query: `all=true` (requires global admin; ignores league header scope)
 
 ### Admin: PATCH /accessrequests/{userId}/approve (league-scoped)
 Header: x-league-id

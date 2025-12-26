@@ -37,6 +37,15 @@ public class AccessRequestsFunctions
     private static string ReqPk(string leagueId) => Constants.Pk.AccessRequests(leagueId);
     private static string ReqRk(string userId) => userId; // one request per (league,user)
 
+    private const string AccessReqPkPrefix = "ACCESSREQ|";
+
+    private static string LeagueIdFromPk(string pk)
+    {
+        if (string.IsNullOrWhiteSpace(pk)) return "";
+        if (!pk.StartsWith(AccessReqPkPrefix, StringComparison.OrdinalIgnoreCase)) return "";
+        return pk[AccessReqPkPrefix.Length..];
+    }
+
     private static AccessRequestDto ToDto(TableEntity e)
         => new(
             leagueId: (e.GetString("LeagueId") ?? "").Trim(),
@@ -49,10 +58,25 @@ public class AccessRequestsFunctions
             updatedUtc: e.GetDateTimeOffset("UpdatedUtc") ?? DateTimeOffset.MinValue
         );
 
+    private static AccessRequestDto ToDtoWithFallback(TableEntity e)
+    {
+        var dto = ToDto(e);
+        if (!string.IsNullOrWhiteSpace(dto.leagueId)) return dto;
+        return dto with { leagueId = LeagueIdFromPk(e.PartitionKey) };
+    }
+
     private static bool IsValidRequestedRole(string role)
         => string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase)
            || string.Equals(role, Constants.Roles.Viewer, StringComparison.OrdinalIgnoreCase)
            || string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsTruthy(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        return value.Equals("1", StringComparison.OrdinalIgnoreCase)
+               || value.Equals("true", StringComparison.OrdinalIgnoreCase)
+               || value.Equals("yes", StringComparison.OrdinalIgnoreCase);
+    }
 
     [Function("CreateAccessRequest")]
     public async Task<HttpResponseData> Create(
@@ -145,7 +169,7 @@ public class AccessRequestsFunctions
             var filter = $"UserId eq '{ApiGuards.EscapeOData(me.UserId)}'";
             var list = new List<AccessRequestDto>();
             await foreach (var e in table.QueryAsync<TableEntity>(filter: filter))
-                list.Add(ToDto(e));
+                list.Add(ToDtoWithFallback(e));
 
             return ApiResponses.Ok(req, list.OrderByDescending(x => x.updatedUtc));
         }
@@ -162,17 +186,29 @@ public class AccessRequestsFunctions
     {
         try
         {
-            var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
-            await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
-
             var status = (ApiGuards.GetQueryParam(req, "status") ?? Constants.Status.AccessRequestPending).Trim();
+            var all = IsTruthy(ApiGuards.GetQueryParam(req, "all"));
 
             var table = await TableClients.GetTableAsync(_svc, Constants.Tables.AccessRequests);
-            var filter = $"PartitionKey eq '{ApiGuards.EscapeOData(ReqPk(leagueId))}' and Status eq '{ApiGuards.EscapeOData(status)}'";
             var list = new List<AccessRequestDto>();
-            await foreach (var e in table.QueryAsync<TableEntity>(filter: filter))
-                list.Add(ToDto(e));
+
+            if (all)
+            {
+                await ApiGuards.RequireGlobalAdminAsync(_svc, me);
+                var filter = $"Status eq '{ApiGuards.EscapeOData(status)}'";
+                await foreach (var e in table.QueryAsync<TableEntity>(filter: filter))
+                    list.Add(ToDtoWithFallback(e));
+
+                return ApiResponses.Ok(req, list.OrderBy(x => x.leagueId).ThenBy(x => x.email));
+            }
+
+            var leagueId = ApiGuards.RequireLeagueId(req);
+            await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+
+            var leagueFilter = $"PartitionKey eq '{ApiGuards.EscapeOData(ReqPk(leagueId))}' and Status eq '{ApiGuards.EscapeOData(status)}'";
+            await foreach (var e in table.QueryAsync<TableEntity>(filter: leagueFilter))
+                list.Add(ToDtoWithFallback(e));
 
             return ApiResponses.Ok(req, list.OrderBy(x => x.email));
         }
