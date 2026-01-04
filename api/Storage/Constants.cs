@@ -82,6 +82,15 @@ public static class Constants
         public const string IsActive = "IsActive";
     }
 
+    public static class FieldAvailabilityExceptionColumns
+    {
+        public const string DateFrom = "DateFrom";
+        public const string DateTo = "DateTo";
+        public const string StartTimeLocal = "StartTimeLocal";
+        public const string EndTimeLocal = "EndTimeLocal";
+        public const string Reason = "Reason";
+    }
+
     public static class Status
     {
         // Fields
