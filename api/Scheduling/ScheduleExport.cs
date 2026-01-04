@@ -34,8 +34,8 @@ public static class ScheduleExport
     public static string BuildInternalCsv(IEnumerable<ScheduleAssignment> assignments, string division)
     {
         var rows = new List<string[]> { InternalHeader };
-        rows.AddRange(assignments.Select(a =>
-        [
+        rows.AddRange(assignments.Select(a => new[]
+        {
             division ?? "",
             a.GameDate ?? "",
             a.StartTime ?? "",
@@ -44,7 +44,7 @@ public static class ScheduleExport
             a.HomeTeamId ?? "",
             a.AwayTeamId ?? "",
             a.IsExternalOffer ? "true" : "false"
-        ]));
+        }));
 
         return BuildCsv(rows);
     }
@@ -56,7 +56,8 @@ public static class ScheduleExport
         {
             var duration = CalcDurationMinutes(a.StartTime, a.EndTime);
             fieldsByKey.TryGetValue(a.FieldKey ?? "", out var venue);
-            rows.Add([
+            rows.Add(new[]
+            {
                 "Game",
                 "",
                 "",
@@ -70,7 +71,7 @@ public static class ScheduleExport
                 "",
                 venue ?? a.FieldKey ?? "",
                 "Scheduled"
-            ]);
+            });
         }
 
         return BuildCsv(rows);

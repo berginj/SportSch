@@ -93,16 +93,24 @@ public class ScheduleFunctions
             var scheduleSlots = slots.Select(slot => new ScheduleSlot(slot.slotId, slot.gameDate, slot.startTime, slot.endTime, slot.fieldKey, slot.offeringTeamId)).ToList();
             var result = ScheduleEngine.AssignMatchups(scheduleSlots, matchups, teams, scheduleConstraints);
             var validation = ScheduleValidation.Validate(result, scheduleConstraints);
+            var assignments = result.Assignments.Select(ToSlotDto).ToList();
+            var unassignedSlots = result.UnassignedSlots.Select(ToSlotDto).ToList();
+            var unassignedMatchups = result.UnassignedMatchups
+                .Select(m => (object)new { homeTeamId = m.HomeTeamId, awayTeamId = m.AwayTeamId })
+                .ToList();
+            var failures = validation.Issues
+                .Select(i => (object)new { ruleId = i.RuleId, severity = i.Severity, message = i.Message, details = i.Details })
+                .ToList();
 
             if (apply)
             {
                 var runId = Guid.NewGuid().ToString("N");
-                await SaveScheduleRunAsync(leagueId, division, runId, me.Email ?? me.UserId, dateFrom, dateTo, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek, result);
-                await ApplyAssignmentsAsync(leagueId, division, runId, result.assignments);
-                return ApiResponses.Ok(req, new { runId, result.summary, result.assignments, result.unassignedSlots, result.unassignedMatchups, result.failures });
+                await SaveScheduleRunAsync(leagueId, division, runId, me.Email ?? me.UserId, dateFrom, dateTo, scheduleConstraints, result);
+                await ApplyAssignmentsAsync(leagueId, division, runId, result.Assignments);
+                return ApiResponses.Ok(req, new { runId, result.Summary, assignments, unassignedSlots, unassignedMatchups, failures });
             }
 
-            return ApiResponses.Ok(req, new SchedulePreviewDto(result.summary, result.assignments, result.unassignedSlots, result.unassignedMatchups, result.failures));
+            return ApiResponses.Ok(req, new SchedulePreviewDto(result.Summary, assignments, unassignedSlots, unassignedMatchups, failures));
         }
         catch (ApiGuards.HttpError ex)
         {
@@ -206,7 +214,7 @@ public class ScheduleFunctions
 
             var payload = await response.Content.ReadAsStringAsync();
             var expanded = ParseAvailabilitySlots(payload);
-            if (expanded.Count == 0) return expanded;
+            if (expanded.Count == 0) return new List<SlotInfo>();
 
             var filtered = expanded
                 .Where(s => string.IsNullOrWhiteSpace(s.division) || string.Equals(s.division, division, StringComparison.OrdinalIgnoreCase))
@@ -725,7 +733,7 @@ public class ScheduleFunctions
         string dateFrom,
         string dateTo,
         ScheduleConstraints constraints,
-        ScheduleResult result)
+        GameSwap.Functions.Scheduling.ScheduleResult result)
     {
         var table = await TableClients.GetTableAsync(_svc, Constants.Tables.ScheduleRuns);
         var pk = Constants.Pk.ScheduleRuns(leagueId, division);
@@ -777,6 +785,18 @@ public class ScheduleFunctions
             await table.UpdateEntityAsync(slot, slot.ETag, TableUpdateMode.Merge);
         }
     }
+
+    private static ScheduleSlotDto ToSlotDto(ScheduleAssignment assignment)
+        => new(
+            assignment.SlotId,
+            assignment.GameDate,
+            assignment.StartTime,
+            assignment.EndTime,
+            assignment.FieldKey,
+            assignment.HomeTeamId,
+            assignment.AwayTeamId,
+            assignment.IsExternalOffer
+        );
 
     private record AvailabilityExpansionRequest(string leagueId, string division, string? dateFrom, string? dateTo);
     private record AvailabilitySlotDto(string slotId, string gameDate, string startTime, string endTime, string fieldKey, string division, string? offeringTeamId);

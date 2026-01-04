@@ -97,8 +97,9 @@ public static class ScheduleEngine
                 continue;
             }
 
-            var (home, away) = pick.Value;
-            remainingMatchups.Remove(pick.Value);
+            var home = pick.HomeTeamId;
+            var away = pick.AwayTeamId;
+            remainingMatchups.Remove(pick);
             ApplyCounts(home, away, slot.GameDate, homeCounts, awayCounts, gamesByDate, gamesByWeek);
             assignments.Add(new ScheduleAssignment(slot.SlotId, slot.GameDate, slot.StartTime, slot.EndTime, slot.FieldKey, home, away, false));
         }

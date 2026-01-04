@@ -101,11 +101,6 @@ public class SlotGenerationFunctions
                     return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "daysOfWeek is required");
             }
 
-            var season = await GetSeasonContextAsync(leagueId, division, field);
-            var gameLengthMinutes = season.gameLengthMinutes;
-            if (gameLengthMinutes <= 0)
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Season game length must be set for the league or division.");
-
             if (!TryParseFieldKey(fieldKey, out var parkCode, out var fieldCode))
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "fieldKey must be parkCode/fieldCode.");
 
@@ -122,6 +117,11 @@ public class SlotGenerationFunctions
             var parkName = (field.GetString("ParkName") ?? "").Trim();
             var fieldName = (field.GetString("FieldName") ?? "").Trim();
             var displayName = (field.GetString("DisplayName") ?? "").Trim();
+
+            var season = await GetSeasonContextAsync(leagueId, division, field);
+            var gameLengthMinutes = season.gameLengthMinutes;
+            if (gameLengthMinutes <= 0)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Season game length must be set for the league or division.");
 
             var blackoutRanges = season.blackouts;
             var candidateSlots = useRules
@@ -160,7 +160,7 @@ public class SlotGenerationFunctions
                 created.Add(slot);
             }
 
-            if (applyMode == "overwrite" && conflicts.Count > 0)
+            if (applyMode == "overwrite" && conflicts.Any())
             {
                 await OverwriteConflictsAsync(slotsTable, leagueId, fieldKey, conflicts, created, overwritten, skipped);
             }
