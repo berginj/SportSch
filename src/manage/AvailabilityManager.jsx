@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
+import { getDefaultRangeFallback, getSeasonRange } from "../lib/season";
 
 const DAY_OPTIONS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -27,6 +28,7 @@ const emptyException = {
 export default function AvailabilityManager({ leagueId }) {
   const [fields, setFields] = useState([]);
   const [divisions, setDivisions] = useState([]);
+  const [leagueSeason, setLeagueSeason] = useState(null);
   const [fieldKey, setFieldKey] = useState("");
   const [rules, setRules] = useState([]);
   const [ruleDraft, setRuleDraft] = useState(emptyRule);
@@ -44,14 +46,16 @@ export default function AvailabilityManager({ leagueId }) {
     (async () => {
       setErr("");
       try {
-        const [flds, divs] = await Promise.all([
+        const [flds, divs, league] = await Promise.all([
           apiFetch("/api/fields"),
           apiFetch("/api/divisions"),
+          apiFetch("/api/league"),
         ]);
         const list = Array.isArray(flds) ? flds : [];
         const divList = Array.isArray(divs) ? divs : [];
         setFields(list);
         setDivisions(divList);
+        setLeagueSeason(league?.season || null);
         if (!fieldKey && list.length) setFieldKey(list[0].fieldKey || "");
         if (!ruleDraft.division && divList.length) {
           setRuleDraft((prev) => ({
@@ -63,9 +67,36 @@ export default function AvailabilityManager({ leagueId }) {
         setErr(e?.message || "Failed to load fields/divisions.");
         setFields([]);
         setDivisions([]);
+        setLeagueSeason(null);
       }
     })();
   }, [leagueId]);
+
+  const seasonRange = useMemo(() => {
+    const fallback = getDefaultRangeFallback();
+    const range = getSeasonRange(leagueSeason, new Date());
+    return range || fallback;
+  }, [leagueSeason]);
+
+  useEffect(() => {
+    if (ruleDraft.ruleId) return;
+    if (!ruleDraft.startsOn || !ruleDraft.endsOn) {
+      setRuleDraft((prev) => ({
+        ...prev,
+        startsOn: prev.startsOn || seasonRange.from,
+        endsOn: prev.endsOn || seasonRange.to,
+      }));
+    }
+  }, [ruleDraft.ruleId, ruleDraft.startsOn, ruleDraft.endsOn, seasonRange]);
+
+  useEffect(() => {
+    if (!previewRange.dateFrom || !previewRange.dateTo) {
+      setPreviewRange((prev) => ({
+        dateFrom: prev.dateFrom || seasonRange.from,
+        dateTo: prev.dateTo || seasonRange.to,
+      }));
+    }
+  }, [previewRange.dateFrom, previewRange.dateTo, seasonRange]);
 
   useEffect(() => {
     if (!fieldKey) return;
