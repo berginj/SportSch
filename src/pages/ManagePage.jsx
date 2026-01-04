@@ -5,6 +5,7 @@ import InvitesManager from "../manage/InvitesManager";
 import TeamsManager from "../manage/TeamsManager";
 import SchedulerManager from "../manage/SchedulerManager";
 import CommissionerHub from "../manage/CommissionerHub";
+import AvailabilityManager from "../manage/AvailabilityManager";
 import LeaguePicker from "../components/LeaguePicker";
 
 function Pill({ active, children, onClick }) {
@@ -38,6 +39,7 @@ export default function ManagePage({ leagueId, me, setLeagueId }) {
       { id: "notes", label: "Notes" },
       { id: "divisions", label: "Divisions" },
       { id: "fields", label: "Fields" },
+      ...(canSchedule ? [{ id: "availability", label: "Field Availability" }] : []),
       ...(canSchedule ? [{ id: "scheduler", label: "Scheduler" }] : []),
     ],
     [canSchedule]
@@ -154,6 +156,18 @@ export default function ManagePage({ leagueId, me, setLeagueId }) {
             <div className="tableWrap mt-3">
               <FieldsImport leagueId={leagueId} me={me} />
             </div>
+          </div>
+        </div>
+      )}
+
+      {active === "availability" && canSchedule && (
+        <div className="card">
+          <div className="card__header">
+            <div className="h2">Field Availability</div>
+            <div className="subtle">Create recurring rules and add exclusions for fields.</div>
+          </div>
+          <div className="card__body">
+            <AvailabilityManager leagueId={leagueId} />
           </div>
         </div>
       )}

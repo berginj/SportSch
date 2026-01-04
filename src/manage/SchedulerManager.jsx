@@ -198,6 +198,8 @@ export default function SchedulerManager({ leagueId }) {
   const [overlayView, setOverlayView] = useState("list");
   const [overlayWeekStart, setOverlayWeekStart] = useState("");
   const [overlayMonthStart, setOverlayMonthStart] = useState("");
+  const [validation, setValidation] = useState(null);
+  const [validationLoading, setValidationLoading] = useState(false);
 
   useEffect(() => {
     if (!leagueId) return;
@@ -338,6 +340,24 @@ export default function SchedulerManager({ leagueId }) {
       setErr(e?.message || "Failed to apply schedule");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function runValidation() {
+    setErr("");
+    setValidationLoading(true);
+    try {
+      const data = await apiFetch("/api/schedule/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      setValidation(data || null);
+    } catch (e) {
+      setErr(e?.message || "Failed to run validations");
+      setValidation(null);
+    } finally {
+      setValidationLoading(false);
     }
   }
 
@@ -605,6 +625,9 @@ export default function SchedulerManager({ leagueId }) {
           <button className="btn btn--primary" onClick={applySchedule} disabled={loading || !division}>
             Apply schedule
           </button>
+          <button className="btn" onClick={runValidation} disabled={validationLoading || !division}>
+            {validationLoading ? "Validating..." : "Run validations"}
+          </button>
           <button className="btn" onClick={exportCsv} disabled={!preview?.assignments?.length}>
             Export CSV
           </button>
@@ -832,6 +855,72 @@ export default function SchedulerManager({ leagueId }) {
               </div>
             </div>
           ) : null}
+          {preview.failures?.length ? (
+            <div className="card__body">
+              <div className="h2">Validation issues</div>
+              <div className="tableWrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Rule</th>
+                      <th>Severity</th>
+                      <th>Message</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.failures.map((f, idx) => (
+                      <tr key={`${f.ruleId || "issue"}-${idx}`}>
+                        <td>{f.ruleId || ""}</td>
+                        <td>{f.severity || ""}</td>
+                        <td>{f.message || ""}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {validation ? (
+        <div className="card">
+          <div className="card__header">
+            <div className="h2">Validation results</div>
+            <div className="subtle">Checks against scheduled games in the selected range.</div>
+          </div>
+          <div className="card__body">
+            <div className="row row--wrap gap-4">
+              <div className="layoutStat">
+                <div className="layoutStat__value">{validation.totalIssues ?? 0}</div>
+                <div className="layoutStat__label">Total issues</div>
+              </div>
+            </div>
+          </div>
+          {validation.issues?.length ? (
+            <div className="card__body tableWrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Rule</th>
+                    <th>Severity</th>
+                    <th>Message</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {validation.issues.map((f, idx) => (
+                    <tr key={`${f.ruleId || "issue"}-${idx}`}>
+                      <td>{f.ruleId || ""}</td>
+                      <td>{f.severity || ""}</td>
+                      <td>{f.message || ""}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="card__body muted">No validation issues found.</div>
+          )}
         </div>
       ) : null}
 

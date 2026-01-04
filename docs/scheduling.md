@@ -4,16 +4,17 @@ This guide documents the **rule-driven schedule seed flow** and how to produce e
 
 ## 1) Create availability rules
 
-Rules define repeating field availability for a division.
+Rules define repeating field availability for a division (field + date range + days + time window).
 
-**Rule inputs** (mirrors `api/Scheduling/AvailabilityRuleEngine.cs`):
+**Rule inputs** (mirrors `api/Functions/AvailabilityFunctions.cs`):
 
 - `division` (ex: `10U`)
 - `fieldKey` (`parkCode/fieldCode`)
 - `startsOn`, `endsOn` (`YYYY-MM-DD`)
 - `daysOfWeek` (ex: `Mon`, `Thu`)
-- `startTime`, `endTime` (`HH:MM` local)
+- `startTimeLocal`, `endTimeLocal` (`HH:MM` local)
 - `recurrencePattern` (currently `Weekly`)
+- `timezone` (defaults to league timezone)
 
 These rules are stored in **GameSwapFieldAvailabilityRules** (PK `AVAILRULE|{leagueId}|{fieldKey}`), with exceptions in **GameSwapFieldAvailabilityExceptions** (PK `AVAILRULEEX|{ruleId}`).
 
@@ -21,10 +22,11 @@ These rules are stored in **GameSwapFieldAvailabilityRules** (PK `AVAILRULE|{lea
 
 Exceptions block availability on date ranges (league holidays, tournaments, etc.). Each exception entry defines:
 
-- `startDate`, `endDate` (`YYYY-MM-DD`)
-- optional `label`
+- `dateFrom`, `dateTo` (`YYYY-MM-DD`)
+- `startTimeLocal`, `endTimeLocal` (`HH:MM` local)
+- optional `reason`
 
-When expanded, any date within an exception window is skipped.
+When expanded, any slot overlapping the exception window is skipped.
 
 ## 3) Generate availability slots
 
@@ -86,9 +88,29 @@ POST /api/schedule/apply
 
 ## 5) Rerun validations
 
-Every `/api/schedule/preview` and `/api/schedule/apply` response includes a `validation` block that summarizes rule warnings (double headers, max games per week, missing opponents, unassigned matchups/slots).
+Every `/api/schedule/preview` response includes validation warnings (double headers, max games per week, missing opponents, unassigned matchups/slots).
 
-To rerun validation after edits, call `/api/schedule/preview` again with the same constraints/date range.
+To rerun validation after edits against scheduled games, call:
+
+```
+POST /api/schedule/validate
+```
+
+Body (same shape as preview):
+
+```json
+{
+  "division": "10U",
+  "dateFrom": "2026-04-01",
+  "dateTo": "2026-06-30",
+  "constraints": {
+    "maxGamesPerWeek": 2,
+    "noDoubleHeaders": true,
+    "balanceHomeAway": true,
+    "externalOfferPerWeek": 1
+  }
+}
+```
 
 ## 6) Export CSVs (internal + SportsEngine)
 

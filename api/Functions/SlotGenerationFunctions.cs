@@ -501,9 +501,16 @@ public class SlotGenerationFunctions
     }
 
     private record AvailabilityRuleSpec(
+        string ruleId,
         DateOnly? startsOn,
         DateOnly? endsOn,
         HashSet<DayOfWeek> days,
+        int startMin,
+        int endMin);
+
+    private record AvailabilityExceptionSpec(
+        DateOnly dateFrom,
+        DateOnly dateTo,
         int startMin,
         int endMin);
 
@@ -517,6 +524,7 @@ public class SlotGenerationFunctions
         List<(DateOnly start, DateOnly end)> blackouts)
     {
         var rules = await LoadAvailabilityRulesAsync(leagueId, fieldKey, division);
+        var exceptionsByRule = await LoadExceptionsByRuleAsync(rules.Select(r => r.ruleId));
         var candidates = new List<SlotCandidate>();
         foreach (var rule in rules)
         {
@@ -538,7 +546,8 @@ public class SlotGenerationFunctions
                 gameLengthMinutes,
                 fieldKey,
                 division,
-                blackouts));
+                blackouts)
+                .Where(c => !IsException(exceptionsByRule, rule.ruleId, c)));
         }
 
         return DeduplicateCandidates(candidates);
@@ -567,10 +576,60 @@ public class SlotGenerationFunctions
             var startsOn = ParseDateOnly(e.GetString(Constants.FieldAvailabilityColumns.StartsOn));
             var endsOn = ParseDateOnly(e.GetString(Constants.FieldAvailabilityColumns.EndsOn));
 
-            rules.Add(new AvailabilityRuleSpec(startsOn, endsOn, days, startMin, endMin));
+            rules.Add(new AvailabilityRuleSpec(entity.RowKey, startsOn, endsOn, days, startMin, endMin));
         }
 
         return rules;
+    }
+
+    private async Task<Dictionary<string, List<AvailabilityExceptionSpec>>> LoadExceptionsByRuleAsync(IEnumerable<string> ruleIds)
+    {
+        var table = await TableClients.GetTableAsync(_svc, Constants.Tables.FieldAvailabilityExceptions);
+        var results = new Dictionary<string, List<AvailabilityExceptionSpec>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var ruleId in ruleIds.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var pk = Constants.Pk.FieldAvailabilityRuleExceptions(ruleId);
+            var filter = $"PartitionKey eq '{ApiGuards.EscapeOData(pk)}'";
+            var list = new List<AvailabilityExceptionSpec>();
+
+            await foreach (var entity in table.QueryAsync<TableEntity>(filter: filter))
+            {
+                var dateFromRaw = (entity.GetString(Constants.FieldAvailabilityExceptionColumns.DateFrom) ?? "").Trim();
+                var dateToRaw = (entity.GetString(Constants.FieldAvailabilityExceptionColumns.DateTo) ?? "").Trim();
+                var startRaw = (entity.GetString(Constants.FieldAvailabilityExceptionColumns.StartTimeLocal) ?? "").Trim();
+                var endRaw = (entity.GetString(Constants.FieldAvailabilityExceptionColumns.EndTimeLocal) ?? "").Trim();
+
+                if (!DateOnly.TryParseExact(dateFromRaw, "yyyy-MM-dd", out var dateFrom)) continue;
+                if (!DateOnly.TryParseExact(dateToRaw, "yyyy-MM-dd", out var dateTo)) continue;
+                if (!TimeUtil.IsValidRange(startRaw, endRaw, out var startMin, out var endMin, out _)) continue;
+
+                list.Add(new AvailabilityExceptionSpec(dateFrom, dateTo, startMin, endMin));
+            }
+
+            results[ruleId] = list;
+        }
+
+        return results;
+    }
+
+    private static bool IsException(
+        Dictionary<string, List<AvailabilityExceptionSpec>> exceptionsByRule,
+        string ruleId,
+        SlotCandidate candidate)
+    {
+        if (!exceptionsByRule.TryGetValue(ruleId, out var list) || list.Count == 0) return false;
+        if (!DateOnly.TryParseExact(candidate.gameDate, "yyyy-MM-dd", out var date)) return false;
+        if (!TimeUtil.IsValidRange(candidate.startTime, candidate.endTime, out var startMin, out var endMin, out _))
+            return false;
+
+        foreach (var ex in list)
+        {
+            if (date < ex.dateFrom || date > ex.dateTo) continue;
+            if (TimeUtil.Overlaps(startMin, endMin, ex.startMin, ex.endMin)) return true;
+        }
+
+        return false;
     }
 
     private static DateOnly? ParseDateOnly(string? raw)

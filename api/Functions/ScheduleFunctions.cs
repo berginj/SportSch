@@ -50,6 +50,71 @@ public class ScheduleFunctions
         return await RunSchedule(req, apply: true);
     }
 
+    [Function("ScheduleValidate")]
+    public async Task<HttpResponseData> Validate(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "schedule/validate")] HttpRequestData req)
+    {
+        try
+        {
+            var leagueId = ApiGuards.RequireLeagueId(req);
+            var me = IdentityUtil.GetMe(req);
+            await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+
+            var body = await HttpUtil.ReadJsonAsync<ScheduleRequest>(req);
+            if (body is null)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Invalid JSON body");
+
+            var division = (body.division ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(division))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "division is required");
+            ApiGuards.EnsureValidTableKeyPart("division", division);
+
+            var dateFrom = (body.dateFrom ?? "").Trim();
+            var dateTo = (body.dateTo ?? "").Trim();
+            if (!string.IsNullOrWhiteSpace(dateFrom) && !DateOnly.TryParseExact(dateFrom, "yyyy-MM-dd", out _))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "dateFrom must be YYYY-MM-DD.");
+            if (!string.IsNullOrWhiteSpace(dateTo) && !DateOnly.TryParseExact(dateTo, "yyyy-MM-dd", out _))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "dateTo must be YYYY-MM-DD.");
+
+            var constraints = body.constraints ?? new ScheduleConstraintsDto(null, null, null, null);
+            var maxGamesPerWeek = (constraints.maxGamesPerWeek ?? 0) <= 0 ? (int?)null : constraints.maxGamesPerWeek;
+            var noDoubleHeaders = constraints.noDoubleHeaders ?? true;
+            var balanceHomeAway = constraints.balanceHomeAway ?? true;
+            var externalOfferPerWeek = Math.Max(0, constraints.externalOfferPerWeek ?? 0);
+            var scheduleConstraints = new ScheduleConstraints(maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek);
+
+            var assignments = await LoadScheduledAssignmentsAsync(leagueId, division, dateFrom, dateTo);
+            if (assignments.Count == 0)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "No scheduled games found in this range.");
+
+            var summary = new ScheduleSummary(
+                SlotsTotal: assignments.Count,
+                SlotsAssigned: assignments.Count,
+                MatchupsTotal: assignments.Count,
+                MatchupsAssigned: assignments.Count,
+                ExternalOffers: assignments.Count(a => a.IsExternalOffer),
+                UnassignedSlots: 0,
+                UnassignedMatchups: 0);
+
+            var result = new ScheduleResult(summary, assignments, new List<ScheduleAssignment>(), new List<MatchupPair>());
+            var validation = ScheduleValidation.Validate(result, scheduleConstraints);
+            var issues = validation.Issues
+                .Select(i => (object)new { ruleId = i.RuleId, severity = i.Severity, message = i.Message, details = i.Details })
+                .ToList();
+
+            return ApiResponses.Ok(req, new { summary, issues, totalIssues = validation.TotalIssues });
+        }
+        catch (ApiGuards.HttpError ex)
+        {
+            return ApiResponses.FromHttpError(req, ex);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Schedule validate failed");
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
+        }
+    }
+
     private async Task<HttpResponseData> RunSchedule(HttpRequestData req, bool apply)
     {
         try
@@ -793,6 +858,50 @@ public class ScheduleFunctions
 
             await table.UpdateEntityAsync(slot, slot.ETag, TableUpdateMode.Merge);
         }
+    }
+
+    private async Task<List<ScheduleAssignment>> LoadScheduledAssignmentsAsync(string leagueId, string division, string dateFrom, string dateTo)
+    {
+        var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Slots);
+        var pk = Constants.Pk.Slots(leagueId, division);
+        var filter = $"PartitionKey eq '{ApiGuards.EscapeOData(pk)}'";
+        if (!string.IsNullOrWhiteSpace(dateFrom))
+            filter += $" and GameDate ge '{ApiGuards.EscapeOData(dateFrom)}'";
+        if (!string.IsNullOrWhiteSpace(dateTo))
+            filter += $" and GameDate le '{ApiGuards.EscapeOData(dateTo)}'";
+
+        var list = new List<ScheduleAssignment>();
+        await foreach (var e in table.QueryAsync<TableEntity>(filter: filter))
+        {
+            var status = (e.GetString("Status") ?? Constants.Status.SlotOpen).Trim();
+            if (string.Equals(status, Constants.Status.SlotCancelled, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var isAvailability = e.GetBoolean("IsAvailability") ?? false;
+            if (isAvailability) continue;
+
+            var home = (e.GetString("HomeTeamId") ?? "").Trim();
+            var away = (e.GetString("AwayTeamId") ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(home) && string.IsNullOrWhiteSpace(away)) continue;
+
+            list.Add(new ScheduleAssignment(
+                SlotId: e.RowKey,
+                GameDate: (e.GetString("GameDate") ?? "").Trim(),
+                StartTime: (e.GetString("StartTime") ?? "").Trim(),
+                EndTime: (e.GetString("EndTime") ?? "").Trim(),
+                FieldKey: (e.GetString("FieldKey") ?? "").Trim(),
+                HomeTeamId: home,
+                AwayTeamId: away,
+                IsExternalOffer: e.GetBoolean("IsExternalOffer") ?? false
+            ));
+        }
+
+        return list
+            .Where(a => !string.IsNullOrWhiteSpace(a.GameDate))
+            .OrderBy(a => a.GameDate)
+            .ThenBy(a => a.StartTime)
+            .ThenBy(a => a.FieldKey)
+            .ToList();
     }
 
     private static ScheduleSlotDto ToSlotDto(ScheduleAssignment assignment)
