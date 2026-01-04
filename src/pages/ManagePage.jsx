@@ -132,7 +132,7 @@ export default function ManagePage({ leagueId, me, setLeagueId }) {
           <div className="card">
             <div className="card__header">
               <div className="h2">Scheduling</div>
-              <div className="subtle">Generate slots, prioritize days, and preview the season schedule.</div>
+              <div className="subtle">Preview schedules here. Generate slots in the Field Slots tab first.</div>
             </div>
             <div className="card__body">
               <SchedulerManager leagueId={leagueId} />
