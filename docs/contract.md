@@ -840,6 +840,7 @@ Requires: LeagueAdmin or global admin.
 Notes
 - Uses league-level `gameLengthMinutes` for back-to-back slot sizing.
 - Skips league blackout ranges.
+- `source=rules` pulls slot windows from field availability rules.
 
 Body
 ```json
@@ -850,7 +851,19 @@ Body
   "dateTo": "2026-05-31",
   "daysOfWeek": ["Mon", "Sun"],
   "startTime": "17:00",
-  "endTime": "22:00"
+  "endTime": "22:00",
+  "source": "adhoc"
+}
+```
+
+Rules-based body (uses availability rules for the field/division)
+```json
+{
+  "division": "10U",
+  "fieldKey": "gunston/turf",
+  "dateFrom": "2026-03-01",
+  "dateTo": "2026-05-31",
+  "source": "rules"
 }
 ```
 
@@ -868,7 +881,7 @@ Response
 }
 ```
 
-### POST /schedule/slots/apply?mode=skip|overwrite (league-scoped)
+### POST /schedule/slots/apply?mode=skip|overwrite|regenerate (league-scoped)
 Requires: LeagueAdmin or global admin.
 
 Body: same as preview.
@@ -881,7 +894,8 @@ Response
       { "gameDate": "2026-03-01", "startTime": "17:00", "endTime": "19:00", "fieldKey": "gunston/turf", "division": "10U" }
     ],
     "overwritten": [],
-    "skipped": []
+    "skipped": [],
+    "cleared": 0
   }
 }
 ```
