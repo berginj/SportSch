@@ -8,6 +8,9 @@ Repo layout (single repo):
 - UI (React + Vite): repo root
 - API (Azure Functions isolated): `api/`
 
+Scheduling workflow docs:
+- See `docs/scheduling.md` for rule creation, exceptions, schedule generation, validation reruns, and SportsEngine export steps.
+
 
 0) Repos and deployed apps (source of truth)
 
