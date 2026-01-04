@@ -48,6 +48,36 @@ The API does **not** convert between time zones.
 
 ---
 
+## Storage tables + keys (authoritative)
+
+Canonical table names (do not introduce new variants):
+- GameSwapMemberships
+- GameSwapFields
+- GameSwapSlots
+- GameSwapSlotRequests
+- GameSwapAccessRequests
+- GameSwapLeagues
+- GameSwapDivisions
+- GameSwapTeams
+- GameSwapEvents
+- GameSwapScheduleRuns
+- GameSwapFieldAvailabilityRules
+- GameSwapFieldAvailabilityExceptions
+
+PartitionKey/RowKey conventions (canonical):
+- Memberships: PK = `<userId>`, RK = `<leagueId>`
+- Fields: PK = `FIELD|{leagueId}|{parkCode}`, RK = `<fieldCode>` (display name is `FieldName`)
+- Slots: PK = `SLOT|{leagueId}|{division}`, RK = deterministic slot id (SafeKey of offeringTeamId + date + start + end + fieldKey)
+- Slot Requests: PK = `SLOTREQ|{leagueId}|{division}|{slotId}`, RK = `<requestId GUID>`
+- Access Requests: PK = `ACCESSREQ|{leagueId}`, RK = `<userId>`
+- Availability Rules: PK = `AVAILRULE|{leagueId}|{fieldKey}`, RK = `<ruleId>`
+- Availability Exceptions: PK = `AVAILRULEEX|{ruleId}`, RK = `<exceptionId>`
+
+Legacy compatibility:
+- Reads may fall back to legacy PKs when needed, but all new writes must use canonical PKs above.
+
+---
+
 ## 1) Onboarding
 
 ### GET /me
@@ -1010,6 +1040,11 @@ Scheduler export formats
 - Internal CSV: division, gameDate, startTime, endTime, fieldKey, homeTeamId, awayTeamId, isExternalOffer
 - SportsEngine CSV template (`docs/sportsenginetemplate.csv`): Event Type, Date, Start Time, End Time, Duration (minutes), Home Team, Away Team, Venue, Status (other event-only columns left blank)
 
+Validation + apply rules
+- `/schedule/preview` returns `failures` when validation warnings exist.
+- `/schedule/apply` fails with `SCHEDULE_VALIDATION_FAILED` if validation issues exist.
+- `/schedule/validate` runs validations against scheduled games (non-availability slots only).
+
 ### POST /schedule/slots/preview (league-scoped)
 Requires: LeagueAdmin or global admin.
 
@@ -1139,3 +1174,25 @@ Requires: LeagueAdmin or global admin.
 
 ### DELETE /events/{eventId} (league-scoped)
 Requires: LeagueAdmin or global admin.
+
+---
+
+## 10) Permissions matrix (summary)
+
+Legend: R = read, W = write/modify, A = approve/deny/admin action.
+
+| Area | Viewer | Coach | LeagueAdmin | GlobalAdmin |
+| --- | --- | --- | --- | --- |
+| Access requests (self) | W | W | W | W |
+| Access requests (admin) | - | - | A | A |
+| Memberships list/update | - | - | W | W |
+| Divisions | R | R | W | W |
+| Fields | R | R | W | W |
+| Availability rules/exceptions | - | - | W | W |
+| Slots list | R | R | R | R |
+| Create slots | - | W | W | W |
+| Slot requests | - | W | W | W |
+| Approve slot requests | - | W (own slot) | W | W |
+| Schedule preview/apply | - | - | W | W |
+| Schedule validate | - | - | W | W |
+| Events | R | R | W | W |
