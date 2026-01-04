@@ -222,7 +222,7 @@ public class ScheduleFunctions
 
             var payload = await response.Content.ReadAsStringAsync();
             var expanded = ParseAvailabilitySlots(payload);
-            if (expanded.Count == 0) return new List<SlotInfo>();
+            if (expanded.Count == 0) return null;
 
             var filtered = expanded
                 .Where(s => string.IsNullOrWhiteSpace(s.division) || string.Equals(s.division, division, StringComparison.OrdinalIgnoreCase))
@@ -237,11 +237,12 @@ public class ScheduleFunctions
                 .Where(s => !string.IsNullOrWhiteSpace(s.slotId))
                 .ToList();
 
-            return filtered
+            var ordered = filtered
                 .OrderBy(s => s.gameDate)
                 .ThenBy(s => s.startTime)
                 .ThenBy(s => s.fieldKey)
                 .ToList();
+            return ordered.Count == 0 ? null : ordered;
         }
         catch (Exception ex)
         {
