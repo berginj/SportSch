@@ -160,7 +160,8 @@ the notes for required headers or roles.
 | DELETE | /availability/rules/{ruleId}/exceptions/{exceptionId} | `Functions/AvailabilityFunctions.cs` | Delete availability exception (requires `x-league-id`, LeagueAdmin). |
 | GET | /availability/preview | `Functions/AvailabilityFunctions.cs` | Preview availability slots (requires `x-league-id`, LeagueAdmin). |
 | POST | /schedule/preview | `Functions/ScheduleFunctions.cs` | Preview schedule for a division (requires `x-league-id`, LeagueAdmin). |
-| POST | /schedule/apply | `Functions/ScheduleFunctions.cs` | Apply schedule assignments (requires `x-league-id`, LeagueAdmin). |
+| POST | /schedule/apply | `Functions/ScheduleFunctions.cs` | Apply schedule assignments (requires `x-league-id`, LeagueAdmin). Blocks if validation issues exist. |
+| POST | /schedule/validate | `Functions/ScheduleFunctions.cs` | Validate scheduled games for a division (requires `x-league-id`, LeagueAdmin). |
 | POST | /schedule/slots/preview | `Functions/SlotGenerationFunctions.cs` | Preview generated availability slots (requires `x-league-id`, LeagueAdmin). |
 | POST | /schedule/slots/apply | `Functions/SlotGenerationFunctions.cs` | Generate availability slots (requires `x-league-id`, LeagueAdmin). |
 | GET | /calendar/ics | `Functions/CalendarFeed.cs` | Calendar subscription feed (requires `x-league-id` or leagueId query). |
@@ -916,17 +917,14 @@ Response
     "unassignedMatchups": [
       { "homeTeamId": "SHARKS", "awayTeamId": "OWLS" }
     ],
-    "validation": {
-      "issues": [
-        {
-          "ruleId": "double-header",
-          "severity": "warning",
-          "message": "TIGERS has 2 games on 2026-04-10.",
-          "details": { "teamId": "TIGERS", "gameDate": "2026-04-10", "count": 2 }
-        }
-      ],
-      "totalIssues": 1
-    }
+    "failures": [
+      {
+        "ruleId": "double-header",
+        "severity": "warning",
+        "message": "TIGERS has 2 games on 2026-04-10.",
+        "details": { "teamId": "TIGERS", "gameDate": "2026-04-10", "count": 2 }
+      }
+    ]
   }
 }
 ```
@@ -962,10 +960,48 @@ Response
         "isExternalOffer": false
       }
     ],
-    "validation": {
-      "issues": [],
-      "totalIssues": 0
-    }
+    "failures": []
+  }
+}
+```
+
+Apply failure (validation issues)
+```json
+{
+  "error": {
+    "code": "SCHEDULE_VALIDATION_FAILED",
+    "message": "Schedule validation failed with 2 issue(s). Review the Schedule preview and adjust constraints, then try again. See /#schedule."
+  }
+}
+```
+
+### POST /schedule/validate (league-scoped)
+Requires: LeagueAdmin or global admin.
+
+Body: same as preview.
+
+Response
+```json
+{
+  "data": {
+    "summary": {
+      "slotsTotal": 20,
+      "slotsAssigned": 20,
+      "matchupsTotal": 20,
+      "matchupsAssigned": 20,
+      "externalOffers": 0,
+      "unassignedSlots": 0,
+      "unassignedMatchups": 0
+    },
+    "issues": [
+      {
+        "ruleId": "double-header",
+        "severity": "warning",
+        "message": "TIGERS has 2 games on 2026-04-10.",
+        "details": { "teamId": "TIGERS", "gameDate": "2026-04-10", "count": 2 }
+      }
+    ],
+    "totalIssues": 1
   }
 }
 ```
