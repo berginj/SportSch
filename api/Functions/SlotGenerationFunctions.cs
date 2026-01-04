@@ -584,7 +584,7 @@ public class SlotGenerationFunctions
             var startsOn = ParseDateOnly(e.GetString(Constants.FieldAvailabilityColumns.StartsOn));
             var endsOn = ParseDateOnly(e.GetString(Constants.FieldAvailabilityColumns.EndsOn));
 
-            rules.Add(new RuleWindowSpec(entity.RowKey, startsOn, endsOn, days, startMin, endMin));
+            rules.Add(new RuleWindowSpec(e.RowKey, startsOn, endsOn, days, startMin, endMin));
         }
 
         return rules;

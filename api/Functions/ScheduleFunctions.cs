@@ -96,7 +96,11 @@ public class ScheduleFunctions
                 UnassignedSlots: 0,
                 UnassignedMatchups: 0);
 
-            var result = new ScheduleResult(summary, assignments, new List<ScheduleAssignment>(), new List<MatchupPair>());
+            var result = new GameSwap.Functions.Scheduling.ScheduleResult(
+                summary,
+                assignments,
+                new List<ScheduleAssignment>(),
+                new List<GameSwap.Functions.Scheduling.MatchupPair>());
             var validation = ScheduleValidation.Validate(result, scheduleConstraints);
             var issues = validation.Issues
                 .Select(i => (object)new { ruleId = i.RuleId, severity = i.Severity, message = i.Message, details = i.Details })

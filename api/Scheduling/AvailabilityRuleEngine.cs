@@ -25,6 +25,28 @@ public record AvailabilitySlotCandidate(
     string FieldKey,
     string Division);
 
+public record AvailabilityRule(
+    string FieldKey,
+    string Division,
+    DateOnly StartsOn,
+    DateOnly EndsOn,
+    IReadOnlyList<DayOfWeek> DaysOfWeek,
+    string StartTimeLocal,
+    string EndTimeLocal);
+
+public record AvailabilityException(
+    DateOnly DateFrom,
+    DateOnly DateTo,
+    string StartTimeLocal,
+    string EndTimeLocal);
+
+public record AvailabilitySlot(
+    DateOnly GameDate,
+    int StartTime,
+    int EndTime,
+    string FieldKey,
+    string Division);
+
 public static class AvailabilityRuleEngine
 {
     public static List<AvailabilitySlotCandidate> ExpandRecurringSlots(
@@ -71,6 +93,54 @@ public static class AvailabilityRuleEngine
         return slots;
     }
 
+    public static List<AvailabilitySlot> ExpandSlots(
+        AvailabilityRule rule,
+        IReadOnlyList<AvailabilityException> exceptions,
+        int gameLengthMinutes)
+    {
+        if (!TimeUtil.TryParseMinutes(rule.StartTimeLocal, out var startMin)) return new List<AvailabilitySlot>();
+        if (!TimeUtil.TryParseMinutes(rule.EndTimeLocal, out var endMin)) return new List<AvailabilitySlot>();
+
+        var ruleSpec = new AvailabilityRuleSpec(
+            RuleId: "seed",
+            FieldKey: rule.FieldKey,
+            Division: rule.Division,
+            StartsOn: rule.StartsOn,
+            EndsOn: rule.EndsOn,
+            Days: new HashSet<DayOfWeek>(rule.DaysOfWeek),
+            StartMin: startMin,
+            EndMin: endMin);
+
+        var exceptionSpecs = exceptions
+            .Where(e => TimeUtil.TryParseMinutes(e.StartTimeLocal, out _) && TimeUtil.TryParseMinutes(e.EndTimeLocal, out _))
+            .Select(e =>
+            {
+                TimeUtil.TryParseMinutes(e.StartTimeLocal, out var exStart);
+                TimeUtil.TryParseMinutes(e.EndTimeLocal, out var exEnd);
+                return new AvailabilityExceptionSpec(e.DateFrom, e.DateTo, exStart, exEnd);
+            })
+            .ToList();
+
+        var expanded = ExpandRecurringSlots(
+            new[] { ruleSpec },
+            new Dictionary<string, List<AvailabilityExceptionSpec>> { ["seed"] = exceptionSpecs },
+            rule.StartsOn,
+            rule.EndsOn,
+            gameLengthMinutes,
+            new List<(DateOnly start, DateOnly end)>());
+
+        var slots = new List<AvailabilitySlot>();
+        foreach (var slot in expanded)
+        {
+            if (!DateOnly.TryParseExact(slot.GameDate, "yyyy-MM-dd", out var date)) continue;
+            if (!TimeUtil.TryParseMinutes(slot.StartTime, out var s)) continue;
+            if (!TimeUtil.TryParseMinutes(slot.EndTime, out var e)) continue;
+            slots.Add(new AvailabilitySlot(date, s, e, slot.FieldKey, slot.Division));
+        }
+
+        return slots;
+    }
+
     private static bool IsException(
         IReadOnlyDictionary<string, List<AvailabilityExceptionSpec>> exceptionsByRule,
         string ruleId,
@@ -97,7 +167,10 @@ public static class AvailabilityRuleEngine
         return false;
     }
 
-    private static string FormatTime(int minutes)
+    public static string FormatDate(DateOnly date)
+        => date.ToString("yyyy-MM-dd");
+
+    public static string FormatTime(int minutes)
     {
         var h = minutes / 60;
         var m = minutes % 60;

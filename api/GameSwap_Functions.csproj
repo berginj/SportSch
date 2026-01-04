@@ -18,7 +18,10 @@
 
   <ItemGroup>
     <Compile Remove="Tests\**\*.cs" />
+    <Compile Remove="GameSwap.Tests\**\*.cs" />
     <EmbeddedResource Remove="Tests\**\*.*" />
+    <EmbeddedResource Remove="GameSwap.Tests\**\*.*" />
     <None Remove="Tests\**\*.*" />
+    <None Remove="GameSwap.Tests\**\*.*" />
   </ItemGroup>
 </Project>
