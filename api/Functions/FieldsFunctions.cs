@@ -20,6 +20,7 @@ public class FieldsFunctions
         _svc = tableServiceClient;
     }
 
+    public record BlackoutRange(string? startDate, string? endDate, string? label);
     public record FieldDto(
         string fieldKey,
         string parkName,
@@ -29,7 +30,8 @@ public class FieldsFunctions
         string city,
         string state,
         string notes,
-        string status
+        string status,
+        List<BlackoutRange> blackouts
     );
 
     [Function("ListFields")]
@@ -73,7 +75,8 @@ public class FieldsFunctions
                     city: e.GetString("City") ?? "",
                     state: e.GetString("State") ?? "",
                     notes: e.GetString("Notes") ?? "",
-                    status: isActive ? Constants.Status.FieldActive : Constants.Status.FieldInactive
+                    status: isActive ? Constants.Status.FieldActive : Constants.Status.FieldInactive,
+                    blackouts: ParseBlackouts(e.GetString("Blackouts"))
                 ));
             }
 
@@ -106,7 +109,8 @@ public class FieldsFunctions
         string? address,
         string? city,
         string? state,
-        string? notes
+        string? notes,
+        List<BlackoutRange>? blackouts
     );
 
     [Function("UpdateField")]
@@ -155,6 +159,8 @@ public class FieldsFunctions
             if (body.city is not null) entity["City"] = body.city;
             if (body.state is not null) entity["State"] = body.state;
             if (body.notes is not null) entity["Notes"] = body.notes;
+            if (body.blackouts is not null)
+                entity["Blackouts"] = System.Text.Json.JsonSerializer.Serialize(body.blackouts);
             entity["UpdatedUtc"] = DateTimeOffset.UtcNow;
 
             await table.UpdateEntityAsync(entity, entity.ETag, TableUpdateMode.Merge);
@@ -166,7 +172,8 @@ public class FieldsFunctions
                 address = entity.GetString("Address") ?? "",
                 city = entity.GetString("City") ?? "",
                 state = entity.GetString("State") ?? "",
-                notes = entity.GetString("Notes") ?? ""
+                notes = entity.GetString("Notes") ?? "",
+                blackouts = ParseBlackouts(entity.GetString("Blackouts"))
             });
         }
         catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
@@ -174,6 +181,20 @@ public class FieldsFunctions
         {
             _log.LogError(ex, "UpdateField failed");
             return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
+        }
+    }
+
+    private static List<BlackoutRange> ParseBlackouts(string? raw)
+    {
+        var blackoutsRaw = (raw ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(blackoutsRaw)) return new List<BlackoutRange>();
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<List<BlackoutRange>>(blackoutsRaw) ?? new List<BlackoutRange>();
+        }
+        catch
+        {
+            return new List<BlackoutRange>();
         }
     }
 }

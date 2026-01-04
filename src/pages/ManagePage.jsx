@@ -4,6 +4,7 @@ import DivisionsManager from "../manage/DivisionsManager";
 import InvitesManager from "../manage/InvitesManager";
 import TeamsManager from "../manage/TeamsManager";
 import SchedulerManager from "../manage/SchedulerManager";
+import CommissionerHub from "../manage/CommissionerHub";
 import LeaguePicker from "../components/LeaguePicker";
 
 function Pill({ active, children, onClick }) {
@@ -31,6 +32,7 @@ export default function ManagePage({ leagueId, me, setLeagueId }) {
 
   const tabs = useMemo(
     () => [
+      ...(canSchedule ? [{ id: "commissioner", label: "Commissioner Hub" }] : []),
       { id: "teams", label: "Teams & Coaches" },
       { id: "invites", label: "Invites" },
       { id: "notes", label: "Notes" },
@@ -44,8 +46,9 @@ export default function ManagePage({ leagueId, me, setLeagueId }) {
   const [active, setActive] = useState(() => {
     if (typeof window === "undefined") return "teams";
     const params = new URLSearchParams(window.location.search);
-    const next = (params.get("manageTab") || "teams").trim();
-    return tabIds.has(next) ? next : "teams";
+    const next = (params.get("manageTab") || "").trim();
+    if (next && tabIds.has(next)) return next;
+    return canSchedule ? "commissioner" : "teams";
   });
 
   useEffect(() => {
@@ -106,6 +109,30 @@ export default function ManagePage({ leagueId, me, setLeagueId }) {
           </div>
           <div className="card__body">
             <TeamsManager leagueId={leagueId} />
+          </div>
+        </div>
+      )}
+
+      {active === "commissioner" && canSchedule && (
+        <div className="stack gap-4">
+          <div className="card">
+            <div className="card__header">
+              <div className="h2">Commissioner Hub</div>
+              <div className="subtle">Season settings, blackouts, and scheduling tools in one place.</div>
+            </div>
+            <div className="card__body">
+              <CommissionerHub leagueId={leagueId} />
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card__header">
+              <div className="h2">Scheduling</div>
+              <div className="subtle">Generate slots, prioritize days, and preview the season schedule.</div>
+            </div>
+            <div className="card__body">
+              <SchedulerManager leagueId={leagueId} />
+            </div>
           </div>
         </div>
       )}

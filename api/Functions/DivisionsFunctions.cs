@@ -26,10 +26,26 @@ public class DivisionsFunctions
 
     public record DivisionTemplateItem(string code, string name);
     public record PatchTemplatesReq(List<DivisionTemplateItem>? templates);
+    public record BlackoutRange(string? startDate, string? endDate, string? label);
+    public record SeasonConfig(
+        string? springStart,
+        string? springEnd,
+        string? fallStart,
+        string? fallEnd,
+        int gameLengthMinutes,
+        List<BlackoutRange> blackouts
+    );
+    public record PatchSeasonReq(SeasonConfig? season);
 
     private static string DivPk(string leagueId) => Constants.Pk.Divisions(leagueId);
     private static string TemplatesPk(string leagueId) => $"DIVTEMPLATE|{leagueId}";
     private const string TemplatesRk = "CATALOG";
+    private const string SeasonSpringStart = "SeasonSpringStart";
+    private const string SeasonSpringEnd = "SeasonSpringEnd";
+    private const string SeasonFallStart = "SeasonFallStart";
+    private const string SeasonFallEnd = "SeasonFallEnd";
+    private const string SeasonGameLengthMinutes = "SeasonGameLengthMinutes";
+    private const string SeasonBlackouts = "SeasonBlackouts";
 
     [Function("GetDivisions")]
     public async Task<HttpResponseData> Get(
@@ -178,6 +194,96 @@ public class DivisionsFunctions
         }
     }
 
+    [Function("GetDivisionSeason")]
+    public async Task<HttpResponseData> GetSeason(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "divisions/{code}/season")] HttpRequestData req,
+        string code)
+    {
+        try
+        {
+            var leagueId = ApiGuards.RequireLeagueId(req);
+            var me = IdentityUtil.GetMe(req);
+            await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+            ApiGuards.EnsureValidTableKeyPart("code", code);
+
+            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Divisions);
+            try
+            {
+                var e = (await table.GetEntityAsync<TableEntity>(DivPk(leagueId), code)).Value;
+                return ApiResponses.Ok(req, new { season = ReadSeasonConfig(e) });
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                return ApiResponses.Error(req, HttpStatusCode.NotFound, "NOT_FOUND", "division not found");
+            }
+        }
+        catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "GetDivisionSeason failed");
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
+        }
+    }
+
+    [Function("PatchDivisionSeason")]
+    public async Task<HttpResponseData> PatchSeason(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "divisions/{code}/season")] HttpRequestData req,
+        string code)
+    {
+        try
+        {
+            var leagueId = ApiGuards.RequireLeagueId(req);
+            var me = IdentityUtil.GetMe(req);
+            await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+            ApiGuards.EnsureValidTableKeyPart("code", code);
+
+            var body = await HttpUtil.ReadJsonAsync<PatchSeasonReq>(req);
+            if (body?.season is null)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "season is required");
+
+            var season = body.season;
+            ValidateSeasonDates(season.springStart, season.springEnd, "spring");
+            ValidateSeasonDates(season.fallStart, season.fallEnd, "fall");
+            if (season.gameLengthMinutes < 0)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "gameLengthMinutes must be >= 0");
+
+            var blackouts = season.blackouts ?? new List<BlackoutRange>();
+            foreach (var b in blackouts)
+            {
+                ValidateSeasonDates(b.startDate, b.endDate, "blackout");
+            }
+
+            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Divisions);
+            TableEntity e;
+            try
+            {
+                e = (await table.GetEntityAsync<TableEntity>(DivPk(leagueId), code)).Value;
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                return ApiResponses.Error(req, HttpStatusCode.NotFound, "NOT_FOUND", "division not found");
+            }
+
+            e[SeasonSpringStart] = (season.springStart ?? "").Trim();
+            e[SeasonSpringEnd] = (season.springEnd ?? "").Trim();
+            e[SeasonFallStart] = (season.fallStart ?? "").Trim();
+            e[SeasonFallEnd] = (season.fallEnd ?? "").Trim();
+            e[SeasonGameLengthMinutes] = season.gameLengthMinutes;
+            e[SeasonBlackouts] = JsonSerializer.Serialize(blackouts, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            e["UpdatedUtc"] = DateTimeOffset.UtcNow;
+
+            await table.UpdateEntityAsync(e, e.ETag, TableUpdateMode.Replace);
+
+            return ApiResponses.Ok(req, new { season = ReadSeasonConfig(e) });
+        }
+        catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "PatchDivisionSeason failed");
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
+        }
+    }
+
     [Function("GetDivisionTemplates")]
     public async Task<HttpResponseData> GetTemplates(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "divisions/templates")] HttpRequestData req)
@@ -261,6 +367,46 @@ public class DivisionsFunctions
             _log.LogError(ex, "PatchDivisionTemplates failed");
             return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
         }
+    }
+
+    private static SeasonConfig ReadSeasonConfig(TableEntity e)
+    {
+        var blackouts = new List<BlackoutRange>();
+        var blackoutsRaw = (e.GetString(SeasonBlackouts) ?? "").Trim();
+        if (!string.IsNullOrWhiteSpace(blackoutsRaw))
+        {
+            try
+            {
+                blackouts = JsonSerializer.Deserialize<List<BlackoutRange>>(blackoutsRaw, new JsonSerializerOptions(JsonSerializerDefaults.Web))
+                    ?? new List<BlackoutRange>();
+            }
+            catch
+            {
+                blackouts = new List<BlackoutRange>();
+            }
+        }
+
+        return new SeasonConfig(
+            springStart: (e.GetString(SeasonSpringStart) ?? "").Trim(),
+            springEnd: (e.GetString(SeasonSpringEnd) ?? "").Trim(),
+            fallStart: (e.GetString(SeasonFallStart) ?? "").Trim(),
+            fallEnd: (e.GetString(SeasonFallEnd) ?? "").Trim(),
+            gameLengthMinutes: e.GetInt32(SeasonGameLengthMinutes) ?? 0,
+            blackouts: blackouts
+        );
+    }
+
+    private static void ValidateSeasonDates(string? start, string? end, string label)
+    {
+        var s = (start ?? "").Trim();
+        var e = (end ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(s) && string.IsNullOrWhiteSpace(e)) return;
+        if (!DateOnly.TryParseExact(s, "yyyy-MM-dd", out var sDate))
+            throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, $"{label} startDate must be YYYY-MM-DD.");
+        if (!DateOnly.TryParseExact(e, "yyyy-MM-dd", out var eDate))
+            throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, $"{label} endDate must be YYYY-MM-DD.");
+        if (eDate < sDate)
+            throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, $"{label} endDate must be on or after startDate.");
     }
 
 }

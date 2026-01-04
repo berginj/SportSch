@@ -157,12 +157,22 @@ export default function SchedulerManager({ leagueId }) {
   const [division, setDivision] = useState("");
   const [fields, setFields] = useState([]);
   const [leagueSeason, setLeagueSeason] = useState(null);
+  const [divisionSeason, setDivisionSeason] = useState(null);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [maxGamesPerWeek, setMaxGamesPerWeek] = useState(2);
   const [noDoubleHeaders, setNoDoubleHeaders] = useState(true);
   const [balanceHomeAway, setBalanceHomeAway] = useState(true);
   const [externalOfferPerWeek, setExternalOfferPerWeek] = useState(1);
+  const [preferredDays, setPreferredDays] = useState({
+    Mon: false,
+    Tue: false,
+    Wed: false,
+    Thu: false,
+    Fri: false,
+    Sat: false,
+    Sun: false,
+  });
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -210,9 +220,22 @@ export default function SchedulerManager({ leagueId }) {
         setDivisions([]);
         setFields([]);
         setLeagueSeason(null);
+        setDivisionSeason(null);
       }
     })();
   }, [leagueId]);
+
+  useEffect(() => {
+    if (!leagueId || !division) return;
+    (async () => {
+      try {
+        const data = await apiFetch(`/api/divisions/${encodeURIComponent(division)}/season`);
+        setDivisionSeason(data?.season || null);
+      } catch (e) {
+        setDivisionSeason(null);
+      }
+    })();
+  }, [leagueId, division]);
 
   const fieldsByKey = useMemo(() => {
     const map = new Map();
@@ -222,11 +245,27 @@ export default function SchedulerManager({ leagueId }) {
     return map;
   }, [fields]);
 
+  const effectiveSeason = useMemo(() => {
+    if (!divisionSeason) return leagueSeason;
+    if (!leagueSeason) return divisionSeason;
+    return {
+      springStart: divisionSeason.springStart || leagueSeason.springStart,
+      springEnd: divisionSeason.springEnd || leagueSeason.springEnd,
+      fallStart: divisionSeason.fallStart || leagueSeason.fallStart,
+      fallEnd: divisionSeason.fallEnd || leagueSeason.fallEnd,
+      gameLengthMinutes: divisionSeason.gameLengthMinutes || leagueSeason.gameLengthMinutes,
+      blackouts: [
+        ...(leagueSeason.blackouts || []),
+        ...(divisionSeason.blackouts || []),
+      ],
+    };
+  }, [divisionSeason, leagueSeason]);
+
   const seasonRange = useMemo(() => {
     const fallback = getDefaultRangeFallback();
-    const range = getSeasonRange(leagueSeason, new Date());
+    const range = getSeasonRange(effectiveSeason, new Date());
     return range || fallback;
-  }, [leagueSeason]);
+  }, [effectiveSeason]);
 
   useEffect(() => {
     if (!dateFrom) setDateFrom(seasonRange.from);
@@ -259,9 +298,12 @@ export default function SchedulerManager({ leagueId }) {
         noDoubleHeaders,
         balanceHomeAway,
         externalOfferPerWeek: Number(externalOfferPerWeek) || 0,
+        preferredDays: Object.entries(preferredDays)
+          .filter(([, enabled]) => enabled)
+          .map(([day]) => day),
       },
     };
-  }, [division, dateFrom, dateTo, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek]);
+  }, [division, dateFrom, dateTo, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek, preferredDays]);
 
   async function runPreview() {
     setErr("");
@@ -488,10 +530,10 @@ export default function SchedulerManager({ leagueId }) {
           <div className="h2">Division scheduler</div>
           <div className="subtle">Build a balanced schedule from your open slots.</div>
         </div>
-        {leagueSeason ? (
+        {effectiveSeason ? (
           <div className="card__body">
             <div className="subtle">
-              Season defaults: Spring {leagueSeason.springStart || "?"} - {leagueSeason.springEnd || "?"}, Fall {leagueSeason.fallStart || "?"} - {leagueSeason.fallEnd || "?"}. Game length: {leagueSeason.gameLengthMinutes || "?"} min.
+              Season defaults: Spring {effectiveSeason.springStart || "?"} - {effectiveSeason.springEnd || "?"}, Fall {effectiveSeason.fallStart || "?"} - {effectiveSeason.fallEnd || "?"}. Game length: {effectiveSeason.gameLengthMinutes || "?"} min.
             </div>
           </div>
         ) : null}
@@ -540,6 +582,21 @@ export default function SchedulerManager({ leagueId }) {
               onChange={(e) => setExternalOfferPerWeek(e.target.value)}
             />
           </label>
+          <div className="stack gap-1">
+            <span className="muted">Preferred game days (optional)</span>
+            <div className="row row--wrap gap-2">
+              {Object.keys(preferredDays).map((day) => (
+                <label key={day} className="inlineCheck">
+                  <input
+                    type="checkbox"
+                    checked={preferredDays[day]}
+                    onChange={(e) => setPreferredDays((prev) => ({ ...prev, [day]: e.target.checked }))}
+                  />
+                  {day}
+                </label>
+              ))}
+            </div>
+          </div>
         </div>
         <div className="card__body row gap-2">
           <button className="btn" onClick={runPreview} disabled={loading || !division}>
@@ -561,13 +618,13 @@ export default function SchedulerManager({ leagueId }) {
         <div className="card__header">
           <div className="h2">Field slot generator</div>
           <div className="subtle">
-            Generate open availability slots for a division and field. Uses league game length (no buffers).
+            Generate open availability slots for a division and field. Uses season game length (no buffers).
           </div>
         </div>
-        {leagueSeason && !leagueSeason.gameLengthMinutes ? (
+        {effectiveSeason && !effectiveSeason.gameLengthMinutes ? (
           <div className="card__body">
             <div className="callout callout--error">
-              League game length is not set. Ask a global admin to configure season settings.
+              Season game length is not set. Update league or division season settings.
             </div>
           </div>
         ) : null}
