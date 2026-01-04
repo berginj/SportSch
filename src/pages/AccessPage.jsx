@@ -12,6 +12,7 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
   const [role, setRole] = useState("Coach");
   const [notes, setNotes] = useState("");
   const [mine, setMine] = useState([]);
+  const [mineLoaded, setMineLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
@@ -19,6 +20,7 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
   const signedIn = (me?.userId || "UNKNOWN") !== "UNKNOWN";
   const email = me?.email || "";
   const autoSubmitted = useRef(false);
+  const autoRequested = useRef(false);
 
   const applyFiltersFromUrl = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -58,8 +60,10 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
       ]);
       setLeagues(Array.isArray(ls) ? ls : []);
       setMine(Array.isArray(my) ? my : []);
+      setMineLoaded(true);
     } catch (e) {
       setErr(e?.message || "Failed to load.");
+      setMineLoaded(true);
     }
   }
 
@@ -105,6 +109,15 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
     // Pick the first active league if none selected and we have a list.
     if (!leagueId && leagues.length > 0) setLeagueId(leagues[0].leagueId);
   }, [leagueId, leagues, setLeagueId]);
+
+  useEffect(() => {
+    if (!signedIn || !mineLoaded || autoRequested.current) return;
+    if (accessIntent?.autoSubmit) return;
+    if (!leagueId || leagues.length === 0) return;
+    if (mine.length > 0) return;
+    autoRequested.current = true;
+    submitRequest(role).catch(() => {});
+  }, [signedIn, mineLoaded, mine, leagueId, leagues.length, role, accessIntent]);
 
   async function submitRequest(roleOverride) {
     setErr("");
