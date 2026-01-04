@@ -790,7 +790,18 @@ Response
     ],
     "unassignedMatchups": [
       { "homeTeamId": "SHARKS", "awayTeamId": "OWLS" }
-    ]
+    ],
+    "validation": {
+      "issues": [
+        {
+          "ruleId": "double-header",
+          "severity": "warning",
+          "message": "TIGERS has 2 games on 2026-04-10.",
+          "details": { "teamId": "TIGERS", "gameDate": "2026-04-10", "count": 2 }
+        }
+      ],
+      "totalIssues": 1
+    }
   }
 }
 ```
@@ -825,7 +836,11 @@ Response
         "awayTeamId": "EAGLES",
         "isExternalOffer": false
       }
-    ]
+    ],
+    "validation": {
+      "issues": [],
+      "totalIssues": 0
+    }
   }
 }
 ```
