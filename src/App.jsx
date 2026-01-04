@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import OffersPage from "./pages/OffersPage";
 import CalendarPage from "./pages/CalendarPage";
+import SchedulePage from "./pages/SchedulePage";
 import ManagePage from "./pages/ManagePage";
 import HelpPage from "./pages/HelpPage";
 import AccessPage from "./pages/AccessPage";
@@ -12,7 +13,7 @@ import StatusCard from "./components/StatusCard";
 import { useSession } from "./lib/useSession";
 import { trackPageView } from "./lib/telemetry";
 
-const VALID_TABS = new Set(["home", "calendar", "offers", "manage", "admin", "help"]);
+const VALID_TABS = new Set(["home", "calendar", "schedule", "offers", "manage", "admin", "help"]);
 
 function readInviteFromUrl() {
   if (typeof window === "undefined") return null;
@@ -162,6 +163,9 @@ export default function App() {
         )}
         {effectiveTab === "calendar" && (
           <CalendarPage me={me} leagueId={activeLeagueId} setLeagueId={setActiveLeagueId} />
+        )}
+        {effectiveTab === "schedule" && (
+          <SchedulePage me={me} leagueId={activeLeagueId} setLeagueId={setActiveLeagueId} />
         )}
         {effectiveTab === "manage" && (
           <ManagePage me={me} leagueId={activeLeagueId} setLeagueId={setActiveLeagueId} />
