@@ -5,6 +5,7 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
   const tabLabels = {
     home: "Home",
     calendar: "Calendar",
+    schedule: "Schedule",
     offers: "Offers",
     manage: "Manage",
     admin: "Admin",
@@ -44,6 +45,15 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
               aria-current={tab === "calendar" ? "page" : undefined}
             >
               Calendar
+            </button>
+            <button
+              className={tab === "schedule" ? "tab tab--active" : "tab"}
+              onClick={() => setTab("schedule")}
+              disabled={!hasLeagues}
+              title="View the schedule in list or calendar mode."
+              aria-current={tab === "schedule" ? "page" : undefined}
+            >
+              Schedule
             </button>
             <button
               className={tab === "offers" ? "tab tab--active" : "tab"}

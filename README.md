@@ -220,6 +220,15 @@ PATCH /api/slots/{division}/{slotId}/requests/{requestId}/approve
 
 GET /api/leagues/{leagueId}/fields (route includes leagueId; backend should still accept header-first with mismatch protection)
 
+GET /api/schedule/export?division=...&dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD&status=...
+
+Schedule export assumptions (CSV):
+- Default status filter is Confirmed when ?status= is omitted.
+- Status output maps SlotConfirmed -> Scheduled, SlotCancelled -> Cancelled, otherwise uses slot status.
+- Venue is sourced from GameSwapFields DisplayName (fallback to ParkName > FieldName).
+- Away team falls back to ConfirmedTeamId if AwayTeamId is empty.
+- Availability slots (IsAvailability=true) are excluded.
+
 Deprecated endpoints:
 
 any ???Accept slot??? route. UI must not call it.

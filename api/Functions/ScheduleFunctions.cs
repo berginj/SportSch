@@ -1,6 +1,8 @@
 using System.Linq;
 using System.Text.Json;
 using System.Net;
+using System.Net.Http;
+using System.Text;
 using Azure;
 using Azure.Data.Tables;
 using GameSwap.Functions.Scheduling;
@@ -26,11 +28,11 @@ public class ScheduleFunctions
     public record ScheduleRequest(string? division, string? dateFrom, string? dateTo, ScheduleConstraintsDto? constraints);
 
     public record SchedulePreviewDto(
-        ScheduleSummary summary,
-        List<ScheduleAssignment> assignments,
-        List<ScheduleAssignment> unassignedSlots,
-        List<MatchupPair> unassignedMatchups,
-        ScheduleValidationResult validation
+        object summary,
+        List<ScheduleSlotDto> assignments,
+        List<ScheduleSlotDto> unassignedSlots,
+        List<object> unassignedMatchups,
+        List<object> failures
     );
 
     [Function("SchedulePreview")]
@@ -82,9 +84,9 @@ public class ScheduleFunctions
             if (teams.Count < 2)
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Need at least two teams to schedule.");
 
-            var slots = await LoadOpenSlotsAsync(leagueId, division, dateFrom, dateTo);
+            var slots = await LoadAvailabilitySlotsAsync(leagueId, division, dateFrom, dateTo);
             if (slots.Count == 0)
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "No open slots found for this division.");
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "No availability slots found for this division.");
 
             var matchups = ScheduleEngine.BuildRoundRobin(teams);
             var scheduleSlots = slots.Select(slot => new ScheduleSlot(slot.slotId, slot.gameDate, slot.startTime, slot.endTime, slot.fieldKey, slot.offeringTeamId)).ToList();
@@ -94,12 +96,12 @@ public class ScheduleFunctions
             if (apply)
             {
                 var runId = Guid.NewGuid().ToString("N");
-                await SaveScheduleRunAsync(leagueId, division, runId, me.Email ?? me.UserId, dateFrom, dateTo, scheduleConstraints, result);
-                await ApplyAssignmentsAsync(leagueId, division, runId, result.Assignments);
-                return ApiResponses.Ok(req, new { runId, result.Summary, result.Assignments, result.UnassignedSlots, result.UnassignedMatchups, validation });
+                await SaveScheduleRunAsync(leagueId, division, runId, me.Email ?? me.UserId, dateFrom, dateTo, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek, result);
+                await ApplyAssignmentsAsync(leagueId, division, runId, result.assignments);
+                return ApiResponses.Ok(req, new { runId, result.summary, result.assignments, result.unassignedSlots, result.unassignedMatchups, result.failures });
             }
 
-            return ApiResponses.Ok(req, new SchedulePreviewDto(result.Summary, result.Assignments, result.UnassignedSlots, result.UnassignedMatchups, validation));
+            return ApiResponses.Ok(req, new SchedulePreviewDto(result.summary, result.assignments, result.unassignedSlots, result.unassignedMatchups, result.failures));
         }
         catch (ApiGuards.HttpError ex)
         {
@@ -126,11 +128,20 @@ public class ScheduleFunctions
         return list.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
     }
 
-    private async Task<List<SlotInfo>> LoadOpenSlotsAsync(string leagueId, string division, string dateFrom, string dateTo)
+    private async Task<List<SlotInfo>> LoadAvailabilitySlotsAsync(string leagueId, string division, string dateFrom, string dateTo)
+    {
+        var expanded = await TryLoadAvailabilityExpansionAsync(leagueId, division, dateFrom, dateTo);
+        if (expanded is not null)
+            return expanded;
+
+        return await LoadAvailabilitySlotsFromTableAsync(leagueId, division, dateFrom, dateTo);
+    }
+
+    private async Task<List<SlotInfo>> LoadAvailabilitySlotsFromTableAsync(string leagueId, string division, string dateFrom, string dateTo)
     {
         var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Slots);
         var pk = Constants.Pk.Slots(leagueId, division);
-        var filter = $"PartitionKey eq '{ApiGuards.EscapeOData(pk)}' and Status eq '{ApiGuards.EscapeOData(Constants.Status.SlotOpen)}'";
+        var filter = $"PartitionKey eq '{ApiGuards.EscapeOData(pk)}' and Status eq '{ApiGuards.EscapeOData(Constants.Status.SlotOpen)}' and IsAvailability eq true";
         if (!string.IsNullOrWhiteSpace(dateFrom))
             filter += $" and GameDate ge '{ApiGuards.EscapeOData(dateFrom)}'";
         if (!string.IsNullOrWhiteSpace(dateTo))
@@ -139,9 +150,10 @@ public class ScheduleFunctions
         var list = new List<SlotInfo>();
         await foreach (var e in table.QueryAsync<TableEntity>(filter: filter))
         {
+            var homeTeamId = (e.GetString("HomeTeamId") ?? "").Trim();
             var awayTeamId = (e.GetString("AwayTeamId") ?? "").Trim();
             var isExternalOffer = e.GetBoolean("IsExternalOffer") ?? false;
-            if (!string.IsNullOrWhiteSpace(awayTeamId) || isExternalOffer) continue;
+            if (!string.IsNullOrWhiteSpace(homeTeamId) || !string.IsNullOrWhiteSpace(awayTeamId) || isExternalOffer) continue;
 
             list.Add(new SlotInfo(
                 slotId: e.RowKey,
@@ -159,6 +171,539 @@ public class ScheduleFunctions
             .ThenBy(s => s.startTime)
             .ThenBy(s => s.fieldKey)
             .ToList();
+    }
+
+    private async Task<List<SlotInfo>?> TryLoadAvailabilityExpansionAsync(string leagueId, string division, string dateFrom, string dateTo)
+    {
+        var endpoint = (Environment.GetEnvironmentVariable("GAMESWAP_AVAILABILITY_EXPANSION_URL")
+            ?? Environment.GetEnvironmentVariable("AVAILABILITY_EXPANSION_URL")
+            ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(endpoint)) return null;
+
+        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri))
+        {
+            _log.LogWarning("Availability expansion endpoint is invalid: {endpoint}", endpoint);
+            return null;
+        }
+
+        var request = new AvailabilityExpansionRequest(
+            leagueId,
+            division,
+            string.IsNullOrWhiteSpace(dateFrom) ? null : dateFrom,
+            string.IsNullOrWhiteSpace(dateTo) ? null : dateTo);
+
+        try
+        {
+            using var client = new HttpClient();
+            using var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
+            using var response = await client.PostAsync(uri, content);
+            if (!response.IsSuccessStatusCode)
+            {
+                _log.LogWarning("Availability expansion service returned {status}", response.StatusCode);
+                return null;
+            }
+
+            var payload = await response.Content.ReadAsStringAsync();
+            var expanded = ParseAvailabilitySlots(payload);
+            if (expanded.Count == 0) return expanded;
+
+            var filtered = expanded
+                .Where(s => string.IsNullOrWhiteSpace(s.division) || string.Equals(s.division, division, StringComparison.OrdinalIgnoreCase))
+                .Where(s => IsWithinDateRange(s.gameDate, dateFrom, dateTo))
+                .Select(s => new SlotInfo(
+                    slotId: s.slotId,
+                    gameDate: s.gameDate,
+                    startTime: s.startTime,
+                    endTime: s.endTime,
+                    fieldKey: s.fieldKey,
+                    offeringTeamId: s.offeringTeamId ?? ""))
+                .Where(s => !string.IsNullOrWhiteSpace(s.slotId))
+                .ToList();
+
+            return filtered
+                .OrderBy(s => s.gameDate)
+                .ThenBy(s => s.startTime)
+                .ThenBy(s => s.fieldKey)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Availability expansion service failed");
+            return null;
+        }
+    }
+
+    private static bool IsWithinDateRange(string gameDate, string dateFrom, string dateTo)
+    {
+        if (string.IsNullOrWhiteSpace(gameDate)) return false;
+        if (!string.IsNullOrWhiteSpace(dateFrom) && string.CompareOrdinal(gameDate, dateFrom) < 0) return false;
+        if (!string.IsNullOrWhiteSpace(dateTo) && string.CompareOrdinal(gameDate, dateTo) > 0) return false;
+        return true;
+    }
+
+    private static List<AvailabilitySlotDto> ParseAvailabilitySlots(string payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload)) return new List<AvailabilitySlotDto>();
+
+        try
+        {
+            using var doc = JsonDocument.Parse(payload);
+            var root = doc.RootElement;
+            if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("slots", out var slotsElement))
+            {
+                root = slotsElement;
+            }
+
+            if (root.ValueKind != JsonValueKind.Array) return new List<AvailabilitySlotDto>();
+            return JsonSerializer.Deserialize<List<AvailabilitySlotDto>>(root.GetRawText(), JsonOptions) ?? new List<AvailabilitySlotDto>();
+        }
+        catch (JsonException)
+        {
+            return new List<AvailabilitySlotDto>();
+        }
+    }
+
+    private static List<MatchupPair> BuildRoundRobin(List<string> teamIds)
+    {
+        var teams = new List<string>(teamIds);
+        if (teams.Count % 2 == 1) teams.Add("BYE");
+
+        var rounds = teams.Count - 1;
+        var half = teams.Count / 2;
+        var matchups = new List<MatchupPair>();
+
+        for (var round = 0; round < rounds; round++)
+        {
+            for (var i = 0; i < half; i++)
+            {
+                var teamA = teams[i];
+                var teamB = teams[teams.Count - 1 - i];
+                if (teamA == "BYE" || teamB == "BYE") continue;
+
+                var home = round % 2 == 0 ? teamA : teamB;
+                var away = round % 2 == 0 ? teamB : teamA;
+                matchups.Add(new MatchupPair(home, away));
+            }
+
+            var last = teams[^1];
+            teams.RemoveAt(teams.Count - 1);
+            teams.Insert(1, last);
+        }
+
+        return matchups;
+    }
+
+    private static ScheduleResult AssignMatchups(
+        List<SlotInfo> slots,
+        List<MatchupPair> matchups,
+        List<string> teams,
+        int? maxGamesPerWeek,
+        bool noDoubleHeaders,
+        bool balanceHomeAway,
+        int externalOfferPerWeek)
+    {
+        var teamSet = new HashSet<string>(teams, StringComparer.OrdinalIgnoreCase);
+        var homeCounts = teams.ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
+        var awayCounts = teams.ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
+        var gamesByDate = teams.ToDictionary(t => t, _ => new HashSet<string>(StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase);
+        var gamesByWeek = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        var matchupAssignments = new List<SlotAssignment>();
+        var remainingMatchups = new List<MatchupPair>(matchups);
+        var unassignedSlots = new List<ScheduleSlotDto>();
+        var failures = new List<object>();
+        var backtrackAttempts = 0;
+        var backtrackSuccesses = 0;
+        var backtrackFailures = 0;
+
+        foreach (var slot in slots)
+        {
+            var fixedHome = teamSet.Contains(slot.offeringTeamId) ? slot.offeringTeamId : "";
+            var pick = PickMatchup(slot, fixedHome, remainingMatchups, homeCounts, awayCounts, gamesByDate, gamesByWeek, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway);
+            if (pick is null)
+            {
+                backtrackAttempts++;
+                if (TryBacktrackAssign(slot, teamSet, matchupAssignments, remainingMatchups, homeCounts, awayCounts, gamesByDate, gamesByWeek, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, out var failureReason))
+                {
+                    backtrackSuccesses++;
+                    continue;
+                }
+
+                backtrackFailures++;
+                failures.Add(new { slotId = slot.slotId, gameDate = slot.gameDate, reason = failureReason });
+                unassignedSlots.Add(new ScheduleSlotDto(slot.slotId, slot.gameDate, slot.startTime, slot.endTime, slot.fieldKey, "", "", false));
+                continue;
+            }
+
+            ApplyMatchupAssignment(slot, pick, matchupAssignments, remainingMatchups, homeCounts, awayCounts, gamesByDate, gamesByWeek);
+        }
+
+        var assignments = matchupAssignments
+            .Select(a => new ScheduleSlotDto(a.slot.slotId, a.slot.gameDate, a.slot.startTime, a.slot.endTime, a.slot.fieldKey, a.homeTeamId, a.awayTeamId, false))
+            .ToList();
+
+        if (externalOfferPerWeek > 0 && unassignedSlots.Count > 0)
+        {
+            var remaining = new List<ScheduleSlotDto>();
+            var byWeek = unassignedSlots
+                .GroupBy(s => WeekKey(s.gameDate))
+                .OrderBy(g => g.Key)
+                .ToList();
+
+            foreach (var group in byWeek)
+            {
+                if (string.IsNullOrWhiteSpace(group.Key))
+                {
+                    remaining.AddRange(group);
+                    continue;
+                }
+
+                var picks = group.Take(externalOfferPerWeek).ToList();
+                foreach (var slot in picks)
+                {
+                    var home = PickExternalHome(teams, homeCounts, awayCounts);
+                    ApplyCounts(home, "", slot.gameDate, homeCounts, awayCounts, gamesByDate, gamesByWeek);
+                    assignments.Add(new ScheduleSlotDto(slot.slotId, slot.gameDate, slot.startTime, slot.endTime, slot.fieldKey, home, "", true));
+                }
+
+                remaining.AddRange(group.Skip(externalOfferPerWeek));
+            }
+
+            unassignedSlots = remaining;
+        }
+
+        var unassignedMatchups = remainingMatchups
+            .Select(m => (object)new { homeTeamId = m.home, awayTeamId = m.away })
+            .ToList();
+
+        var summary = new
+        {
+            slotsTotal = slots.Count,
+            slotsAssigned = assignments.Count,
+            matchupsTotal = matchups.Count,
+            matchupsAssigned = matchups.Count - remainingMatchups.Count,
+            externalOffers = assignments.Count(a => a.isExternalOffer),
+            unassignedSlots = unassignedSlots.Count,
+            unassignedMatchups = remainingMatchups.Count,
+            backtrackAttempts,
+            backtrackSuccesses,
+            backtrackFailures
+        };
+
+        return new ScheduleResult(summary, assignments, unassignedSlots, unassignedMatchups, failures);
+    }
+
+    private static CandidateMatchup? PickMatchup(
+        SlotInfo slot,
+        string fixedHome,
+        List<MatchupPair> matchups,
+        Dictionary<string, int> homeCounts,
+        Dictionary<string, int> awayCounts,
+        Dictionary<string, HashSet<string>> gamesByDate,
+        Dictionary<string, int> gamesByWeek,
+        int? maxGamesPerWeek,
+        bool noDoubleHeaders,
+        bool balanceHomeAway)
+    {
+        var candidates = BuildMatchupCandidates(slot.gameDate, fixedHome, matchups, homeCounts, awayCounts, gamesByDate, gamesByWeek, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway);
+        return candidates.FirstOrDefault();
+    }
+
+    private static List<CandidateMatchup> BuildMatchupCandidates(
+        string gameDate,
+        string fixedHome,
+        List<MatchupPair> matchups,
+        Dictionary<string, int> homeCounts,
+        Dictionary<string, int> awayCounts,
+        Dictionary<string, HashSet<string>> gamesByDate,
+        Dictionary<string, int> gamesByWeek,
+        int? maxGamesPerWeek,
+        bool noDoubleHeaders,
+        bool balanceHomeAway)
+    {
+        var candidates = new List<CandidateMatchup>();
+        foreach (var m in matchups)
+        {
+            var home = m.home;
+            var away = m.away;
+
+            if (!string.IsNullOrWhiteSpace(fixedHome))
+            {
+                if (!string.Equals(home, fixedHome, StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(away, fixedHome, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (!string.Equals(home, fixedHome, StringComparison.OrdinalIgnoreCase))
+                {
+                    home = fixedHome;
+                    away = m.home;
+                }
+            }
+
+            if (!CanAssign(home, away, gameDate, gamesByDate, gamesByWeek, maxGamesPerWeek, noDoubleHeaders)) continue;
+
+            var score = 0;
+            if (balanceHomeAway)
+            {
+                var homeDiff = Math.Abs((homeCounts[home] + 1) - awayCounts[home]);
+                var awayDiff = Math.Abs((awayCounts[away] + 1) - homeCounts[away]);
+                score = homeDiff + awayDiff;
+            }
+
+            candidates.Add(new CandidateMatchup(m, home, away, score));
+        }
+
+        return candidates
+            .OrderBy(c => c.score)
+            .ThenBy(c => c.home, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(c => c.away, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static bool CanAssign(
+        string home,
+        string away,
+        string gameDate,
+        Dictionary<string, HashSet<string>> gamesByDate,
+        Dictionary<string, int> gamesByWeek,
+        int? maxGamesPerWeek,
+        bool noDoubleHeaders)
+    {
+        if (noDoubleHeaders)
+        {
+            if (gamesByDate[home].Contains(gameDate)) return false;
+            if (gamesByDate[away].Contains(gameDate)) return false;
+        }
+
+        if (maxGamesPerWeek.HasValue)
+        {
+            var weekKey = WeekKey(gameDate);
+            if (!string.IsNullOrWhiteSpace(weekKey))
+            {
+                if (GetWeekCount(gamesByWeek, home, weekKey) >= maxGamesPerWeek.Value) return false;
+                if (GetWeekCount(gamesByWeek, away, weekKey) >= maxGamesPerWeek.Value) return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static void ApplyCounts(
+        string home,
+        string away,
+        string gameDate,
+        Dictionary<string, int> homeCounts,
+        Dictionary<string, int> awayCounts,
+        Dictionary<string, HashSet<string>> gamesByDate,
+        Dictionary<string, int> gamesByWeek)
+    {
+        if (!string.IsNullOrWhiteSpace(home))
+        {
+            homeCounts[home] += 1;
+            gamesByDate[home].Add(gameDate);
+            AddWeekCount(gamesByWeek, home, gameDate);
+        }
+        if (!string.IsNullOrWhiteSpace(away))
+        {
+            awayCounts[away] += 1;
+            gamesByDate[away].Add(gameDate);
+            AddWeekCount(gamesByWeek, away, gameDate);
+        }
+    }
+
+    private static void RemoveCounts(
+        string home,
+        string away,
+        string gameDate,
+        Dictionary<string, int> homeCounts,
+        Dictionary<string, int> awayCounts,
+        Dictionary<string, HashSet<string>> gamesByDate,
+        Dictionary<string, int> gamesByWeek)
+    {
+        if (!string.IsNullOrWhiteSpace(home))
+        {
+            homeCounts[home] = Math.Max(0, homeCounts[home] - 1);
+            gamesByDate[home].Remove(gameDate);
+            RemoveWeekCount(gamesByWeek, home, gameDate);
+        }
+        if (!string.IsNullOrWhiteSpace(away))
+        {
+            awayCounts[away] = Math.Max(0, awayCounts[away] - 1);
+            gamesByDate[away].Remove(gameDate);
+            RemoveWeekCount(gamesByWeek, away, gameDate);
+        }
+    }
+
+    private static string PickExternalHome(List<string> teams, Dictionary<string, int> homeCounts, Dictionary<string, int> awayCounts)
+    {
+        return teams
+            .OrderBy(t => homeCounts[t] + awayCounts[t])
+            .ThenBy(t => homeCounts[t])
+            .ThenBy(t => t)
+            .First();
+    }
+
+    private static string WeekKey(string gameDate)
+    {
+        if (!DateTime.TryParseExact(gameDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
+            return "";
+        var cal = CultureInfo.InvariantCulture.Calendar;
+        var week = cal.GetWeekOfYear(dt, CalendarWeekRule.FirstFourDayWeek, DayOfWeek.Monday);
+        return $"{dt.Year}-W{week:D2}";
+    }
+
+    private static int GetWeekCount(Dictionary<string, int> gamesByWeek, string teamId, string weekKey)
+    {
+        var key = $"{teamId}|{weekKey}";
+        return gamesByWeek.TryGetValue(key, out var v) ? v : 0;
+    }
+
+    private static void AddWeekCount(Dictionary<string, int> gamesByWeek, string teamId, string gameDate)
+    {
+        var weekKey = WeekKey(gameDate);
+        if (string.IsNullOrWhiteSpace(weekKey)) return;
+        var key = $"{teamId}|{weekKey}";
+        gamesByWeek[key] = gamesByWeek.TryGetValue(key, out var v) ? v + 1 : 1;
+    }
+
+    private static void RemoveWeekCount(Dictionary<string, int> gamesByWeek, string teamId, string gameDate)
+    {
+        var weekKey = WeekKey(gameDate);
+        if (string.IsNullOrWhiteSpace(weekKey)) return;
+        var key = $"{teamId}|{weekKey}";
+        if (!gamesByWeek.TryGetValue(key, out var v)) return;
+        if (v <= 1) gamesByWeek.Remove(key);
+        else gamesByWeek[key] = v - 1;
+    }
+
+    private static bool TryBacktrackAssign(
+        SlotInfo currentSlot,
+        HashSet<string> teamSet,
+        List<SlotAssignment> matchupAssignments,
+        List<MatchupPair> remainingMatchups,
+        Dictionary<string, int> homeCounts,
+        Dictionary<string, int> awayCounts,
+        Dictionary<string, HashSet<string>> gamesByDate,
+        Dictionary<string, int> gamesByWeek,
+        int? maxGamesPerWeek,
+        bool noDoubleHeaders,
+        bool balanceHomeAway,
+        out string failureReason)
+    {
+        failureReason = "No eligible matchup for slot.";
+        if (matchupAssignments.Count == 0) return false;
+
+        const int MaxBacktrackDepth = 4;
+        const int MaxBacktrackAttempts = 200;
+
+        var depth = Math.Min(MaxBacktrackDepth, matchupAssignments.Count);
+        var windowAssignments = matchupAssignments.Skip(matchupAssignments.Count - depth).ToList();
+        var slotsToAssign = windowAssignments.Select(a => a.slot).ToList();
+        slotsToAssign.Add(currentSlot);
+
+        foreach (var assignment in windowAssignments)
+        {
+            UndoMatchupAssignment(assignment, remainingMatchups, homeCounts, awayCounts, gamesByDate, gamesByWeek);
+        }
+        matchupAssignments.RemoveRange(matchupAssignments.Count - depth, depth);
+
+        var newAssignments = new List<SlotAssignment>();
+        var attempts = 0;
+        var success = BacktrackAssignSlots(slotsToAssign, 0, teamSet, remainingMatchups, homeCounts, awayCounts, gamesByDate, gamesByWeek, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, newAssignments, ref attempts, MaxBacktrackAttempts, out failureReason);
+
+        if (success)
+        {
+            matchupAssignments.AddRange(newAssignments);
+            return true;
+        }
+
+        foreach (var assignment in newAssignments)
+        {
+            UndoMatchupAssignment(assignment, remainingMatchups, homeCounts, awayCounts, gamesByDate, gamesByWeek);
+        }
+
+        foreach (var assignment in windowAssignments)
+        {
+            ApplyMatchupAssignment(assignment.slot, new CandidateMatchup(assignment.matchup, assignment.homeTeamId, assignment.awayTeamId, 0), matchupAssignments, remainingMatchups, homeCounts, awayCounts, gamesByDate, gamesByWeek);
+        }
+
+        return false;
+    }
+
+    private static bool BacktrackAssignSlots(
+        List<SlotInfo> slots,
+        int index,
+        HashSet<string> teamSet,
+        List<MatchupPair> remainingMatchups,
+        Dictionary<string, int> homeCounts,
+        Dictionary<string, int> awayCounts,
+        Dictionary<string, HashSet<string>> gamesByDate,
+        Dictionary<string, int> gamesByWeek,
+        int? maxGamesPerWeek,
+        bool noDoubleHeaders,
+        bool balanceHomeAway,
+        List<SlotAssignment> assignments,
+        ref int attempts,
+        int maxAttempts,
+        out string failureReason)
+    {
+        failureReason = "No eligible matchup for slot.";
+        if (index >= slots.Count) return true;
+        if (attempts >= maxAttempts)
+        {
+            failureReason = "Backtracking attempt budget exceeded.";
+            return false;
+        }
+
+        var slot = slots[index];
+        var slotFixedHome = teamSet.Contains(slot.offeringTeamId) ? slot.offeringTeamId : "";
+
+        var candidates = BuildMatchupCandidates(slot.gameDate, slotFixedHome, remainingMatchups, homeCounts, awayCounts, gamesByDate, gamesByWeek, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway);
+        foreach (var candidate in candidates)
+        {
+            if (attempts++ >= maxAttempts)
+            {
+                failureReason = "Backtracking attempt budget exceeded.";
+                return false;
+            }
+
+            ApplyMatchupAssignment(slot, candidate, assignments, remainingMatchups, homeCounts, awayCounts, gamesByDate, gamesByWeek);
+            if (BacktrackAssignSlots(slots, index + 1, teamSet, remainingMatchups, homeCounts, awayCounts, gamesByDate, gamesByWeek, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, assignments, ref attempts, maxAttempts, out failureReason))
+                return true;
+
+            UndoMatchupAssignment(assignments[^1], remainingMatchups, homeCounts, awayCounts, gamesByDate, gamesByWeek);
+            assignments.RemoveAt(assignments.Count - 1);
+        }
+
+        failureReason = "No eligible matchup after backtracking.";
+        return false;
+    }
+
+    private static void ApplyMatchupAssignment(
+        SlotInfo slot,
+        CandidateMatchup candidate,
+        List<SlotAssignment> assignments,
+        List<MatchupPair> remainingMatchups,
+        Dictionary<string, int> homeCounts,
+        Dictionary<string, int> awayCounts,
+        Dictionary<string, HashSet<string>> gamesByDate,
+        Dictionary<string, int> gamesByWeek)
+    {
+        remainingMatchups.Remove(candidate.source);
+        ApplyCounts(candidate.home, candidate.away, slot.gameDate, homeCounts, awayCounts, gamesByDate, gamesByWeek);
+        assignments.Add(new SlotAssignment(slot, candidate.source, candidate.home, candidate.away));
+    }
+
+    private static void UndoMatchupAssignment(
+        SlotAssignment assignment,
+        List<MatchupPair> remainingMatchups,
+        Dictionary<string, int> homeCounts,
+        Dictionary<string, int> awayCounts,
+        Dictionary<string, HashSet<string>> gamesByDate,
+        Dictionary<string, int> gamesByWeek)
+    {
+        remainingMatchups.Add(assignment.matchup);
+        RemoveCounts(assignment.homeTeamId, assignment.awayTeamId, assignment.slot.gameDate, homeCounts, awayCounts, gamesByDate, gamesByWeek);
     }
 
     private async Task SaveScheduleRunAsync(
@@ -222,5 +767,13 @@ public class ScheduleFunctions
         }
     }
 
+    private record AvailabilityExpansionRequest(string leagueId, string division, string? dateFrom, string? dateTo);
+    private record AvailabilitySlotDto(string slotId, string gameDate, string startTime, string endTime, string fieldKey, string division, string? offeringTeamId);
     private record SlotInfo(string slotId, string gameDate, string startTime, string endTime, string fieldKey, string offeringTeamId);
+    private record MatchupPair(string home, string away);
+    private record CandidateMatchup(MatchupPair source, string home, string away, int score);
+    private record SlotAssignment(SlotInfo slot, MatchupPair matchup, string homeTeamId, string awayTeamId);
+    private record ScheduleResult(object summary, List<ScheduleSlotDto> assignments, List<ScheduleSlotDto> unassignedSlots, List<object> unassignedMatchups, List<object> failures);
+
+    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 }
