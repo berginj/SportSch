@@ -28,7 +28,8 @@ public class SlotGenerationFunctions
         string? dateTo,
         List<string>? daysOfWeek,
         string? startTime,
-        string? endTime
+        string? endTime,
+        string? source
     );
 
     public record SlotCandidate(
@@ -74,6 +75,8 @@ public class SlotGenerationFunctions
             var dateTo = (body.dateTo ?? "").Trim();
             var startTime = (body.startTime ?? "").Trim();
             var endTime = (body.endTime ?? "").Trim();
+            var source = (body.source ?? "").Trim().ToLowerInvariant();
+            var useRules = string.Equals(source, "rules", StringComparison.OrdinalIgnoreCase);
 
             if (string.IsNullOrWhiteSpace(division) || string.IsNullOrWhiteSpace(fieldKey))
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "division and fieldKey are required");
@@ -85,12 +88,18 @@ public class SlotGenerationFunctions
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "dateTo must be YYYY-MM-DD.");
             if (to < from)
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "dateTo must be on or after dateFrom.");
-            if (!TimeUtil.IsValidRange(startTime, endTime, out var startMin, out var endMin, out var timeErr))
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", timeErr);
+            var startMin = 0;
+            var endMin = 0;
+            var days = new HashSet<DayOfWeek>();
+            if (!useRules)
+            {
+                if (!TimeUtil.IsValidRange(startTime, endTime, out startMin, out endMin, out var timeErr))
+                    return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", timeErr);
 
-            var days = NormalizeDays(body.daysOfWeek);
-            if (days.Count == 0)
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "daysOfWeek is required");
+                days = NormalizeDays(body.daysOfWeek);
+                if (days.Count == 0)
+                    return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "daysOfWeek is required");
+            }
 
             var league = await GetLeagueAsync(leagueId);
             var gameLengthMinutes = league.gameLengthMinutes;
@@ -115,7 +124,9 @@ public class SlotGenerationFunctions
             var displayName = (field.GetString("DisplayName") ?? "").Trim();
 
             var blackoutRanges = league.blackouts;
-            var candidateSlots = BuildCandidateSlots(from, to, days, startMin, endMin, gameLengthMinutes, fieldKey, division, blackoutRanges);
+            var candidateSlots = useRules
+                ? await BuildRuleBasedSlotsAsync(leagueId, fieldKey, division, from, to, gameLengthMinutes, blackoutRanges)
+                : BuildCandidateSlots(from, to, days, startMin, endMin, gameLengthMinutes, fieldKey, division, blackoutRanges);
 
             var existing = await LoadExistingSlotsAsync(leagueId, fieldKey, from, to);
             var conflicts = candidateSlots.Where(s => existing.Contains(TimeKey(s))).ToList();
@@ -130,10 +141,18 @@ public class SlotGenerationFunctions
             var skipped = new List<SlotCandidate>();
             var overwritten = new List<SlotCandidate>();
 
-            if (applyMode != "skip" && applyMode != "overwrite")
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "mode must be skip or overwrite");
+            if (applyMode != "skip" && applyMode != "overwrite" && applyMode != "regenerate")
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "mode must be skip, overwrite, or regenerate");
 
             var slotsTable = await TableClients.GetTableAsync(_svc, Constants.Tables.Slots);
+            var cleared = 0;
+            if (applyMode == "regenerate")
+            {
+                cleared = await ClearAvailabilitySlotsAsync(slotsTable, leagueId, division, fieldKey, from, to);
+                existing = await LoadExistingSlotsAsync(leagueId, fieldKey, from, to, includeAvailability: false);
+                conflicts = candidateSlots.Where(s => existing.Contains(TimeKey(s))).ToList();
+                toCreate = candidateSlots.Where(s => !existing.Contains(TimeKey(s))).ToList();
+            }
             foreach (var slot in toCreate)
             {
                 var entity = BuildSlotEntity(leagueId, slot, gameLengthMinutes, parkName, fieldName, displayName);
@@ -154,7 +173,8 @@ public class SlotGenerationFunctions
             {
                 created,
                 overwritten,
-                skipped
+                skipped,
+                cleared
             });
         }
         catch (ApiGuards.HttpError ex)
@@ -273,6 +293,14 @@ public class SlotGenerationFunctions
         => $"{s.gameDate}|{s.startTime}|{s.endTime}|{s.fieldKey}";
 
     private async Task<HashSet<string>> LoadExistingSlotsAsync(string leagueId, string fieldKey, DateOnly from, DateOnly to)
+        => await LoadExistingSlotsAsync(leagueId, fieldKey, from, to, includeAvailability: true);
+
+    private async Task<HashSet<string>> LoadExistingSlotsAsync(
+        string leagueId,
+        string fieldKey,
+        DateOnly from,
+        DateOnly to,
+        bool includeAvailability)
     {
         var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Slots);
         var prefix = $"SLOT|{leagueId}|";
@@ -288,6 +316,12 @@ public class SlotGenerationFunctions
             if (string.Equals(status, Constants.Status.SlotCancelled, StringComparison.OrdinalIgnoreCase))
                 continue;
 
+            if (!includeAvailability)
+            {
+                var isAvailability = e.GetBoolean("IsAvailability") ?? false;
+                if (isAvailability) continue;
+            }
+
             var division = ExtractDivision(e.PartitionKey, leagueId);
             var candidate = new SlotCandidate(
                 (e.GetString("GameDate") ?? "").Trim(),
@@ -301,6 +335,34 @@ public class SlotGenerationFunctions
         }
 
         return existing;
+    }
+
+    private async Task<int> ClearAvailabilitySlotsAsync(
+        TableClient table,
+        string leagueId,
+        string division,
+        string fieldKey,
+        DateOnly from,
+        DateOnly to)
+    {
+        var pk = Constants.Pk.Slots(leagueId, division);
+        var filter = $"PartitionKey eq '{ApiGuards.EscapeOData(pk)}' " +
+                     $"and GameDate ge '{from:yyyy-MM-dd}' and GameDate le '{to:yyyy-MM-dd}' " +
+                     $"and FieldKey eq '{ApiGuards.EscapeOData(fieldKey)}'";
+        var cleared = 0;
+        await foreach (var e in table.QueryAsync<TableEntity>(filter: filter))
+        {
+            var status = (e.GetString("Status") ?? Constants.Status.SlotOpen).Trim();
+            if (!string.Equals(status, Constants.Status.SlotOpen, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var isAvailability = e.GetBoolean("IsAvailability") ?? false;
+            if (!isAvailability) continue;
+
+            await table.DeleteEntityAsync(e.PartitionKey, e.RowKey, e.ETag);
+            cleared++;
+        }
+        return cleared;
     }
 
     private async Task OverwriteConflictsAsync(
@@ -414,5 +476,133 @@ public class SlotGenerationFunctions
         var prefix = $"SLOT|{leagueId}|";
         if (!pk.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return "";
         return pk[prefix.Length..];
+    }
+
+    private record AvailabilityRuleSpec(
+        DateOnly? startsOn,
+        DateOnly? endsOn,
+        HashSet<DayOfWeek> days,
+        int startMin,
+        int endMin);
+
+    private async Task<List<SlotCandidate>> BuildRuleBasedSlotsAsync(
+        string leagueId,
+        string fieldKey,
+        string division,
+        DateOnly from,
+        DateOnly to,
+        int gameLengthMinutes,
+        List<(DateOnly start, DateOnly end)> blackouts)
+    {
+        var rules = await LoadAvailabilityRulesAsync(leagueId, fieldKey, division);
+        var candidates = new List<SlotCandidate>();
+        foreach (var rule in rules)
+        {
+            if (rule.days.Count == 0) continue;
+
+            var rangeStart = rule.startsOn ?? from;
+            var rangeEnd = rule.endsOn ?? to;
+            if (rangeEnd < from || rangeStart > to) continue;
+
+            var windowStart = rangeStart > from ? rangeStart : from;
+            var windowEnd = rangeEnd < to ? rangeEnd : to;
+
+            candidates.AddRange(BuildCandidateSlots(
+                windowStart,
+                windowEnd,
+                rule.days,
+                rule.startMin,
+                rule.endMin,
+                gameLengthMinutes,
+                fieldKey,
+                division,
+                blackouts));
+        }
+
+        return DeduplicateCandidates(candidates);
+    }
+
+    private async Task<List<AvailabilityRuleSpec>> LoadAvailabilityRulesAsync(string leagueId, string fieldKey, string division)
+    {
+        var table = await TableClients.GetTableAsync(_svc, Constants.Tables.FieldAvailabilityRules);
+        var pk = Constants.Pk.FieldAvailabilityRules(leagueId, fieldKey);
+        var filter = $"PartitionKey eq '{ApiGuards.EscapeOData(pk)}'";
+        var rules = new List<AvailabilityRuleSpec>();
+        await foreach (var e in table.QueryAsync<TableEntity>(filter: filter))
+        {
+            var isActive = e.GetBoolean(Constants.FieldAvailabilityColumns.IsActive) ?? true;
+            if (!isActive) continue;
+            if (!RuleAppliesToDivision(e, division)) continue;
+
+            var days = ParseRuleDays(e.GetString(Constants.FieldAvailabilityColumns.DaysOfWeek) ?? "");
+            if (days.Count == 0) continue;
+
+            var startTime = (e.GetString(Constants.FieldAvailabilityColumns.StartTimeLocal) ?? "").Trim();
+            var endTime = (e.GetString(Constants.FieldAvailabilityColumns.EndTimeLocal) ?? "").Trim();
+            if (!TimeUtil.IsValidRange(startTime, endTime, out var startMin, out var endMin, out _))
+                continue;
+
+            var startsOn = ParseDateOnly(e.GetString(Constants.FieldAvailabilityColumns.StartsOn));
+            var endsOn = ParseDateOnly(e.GetString(Constants.FieldAvailabilityColumns.EndsOn));
+
+            rules.Add(new AvailabilityRuleSpec(startsOn, endsOn, days, startMin, endMin));
+        }
+
+        return rules;
+    }
+
+    private static DateOnly? ParseDateOnly(string? raw)
+    {
+        var text = (raw ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        return DateOnly.TryParseExact(text, "yyyy-MM-dd", out var date) ? date : null;
+    }
+
+    private static HashSet<DayOfWeek> ParseRuleDays(string raw)
+    {
+        var text = (raw ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(text)) return new HashSet<DayOfWeek>();
+
+        if (text.StartsWith("["))
+        {
+            try
+            {
+                var parsed = System.Text.Json.JsonSerializer.Deserialize<List<string>>(text) ?? new List<string>();
+                return NormalizeDays(parsed);
+            }
+            catch
+            {
+                return new HashSet<DayOfWeek>();
+            }
+        }
+
+        var parts = text.Split(new[] { ',', ';', '|', ' ' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return NormalizeDays(parts.ToList());
+    }
+
+    private static bool RuleAppliesToDivision(TableEntity e, string division)
+    {
+        var direct = (e.GetString(Constants.FieldAvailabilityColumns.Division) ?? "").Trim();
+        if (!string.IsNullOrWhiteSpace(direct))
+            return string.Equals(direct, division, StringComparison.OrdinalIgnoreCase);
+
+        var ids = (e.GetString(Constants.FieldAvailabilityColumns.DivisionIds) ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(ids)) return true;
+
+        var parts = ids.Split(new[] { ',', ';', '|', ' ' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return parts.Any(p => string.Equals(p, division, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static List<SlotCandidate> DeduplicateCandidates(IEnumerable<SlotCandidate> candidates)
+    {
+        var list = new List<SlotCandidate>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var candidate in candidates)
+        {
+            var key = TimeKey(candidate);
+            if (seen.Add(key))
+                list.Add(candidate);
+        }
+        return list;
     }
 }
