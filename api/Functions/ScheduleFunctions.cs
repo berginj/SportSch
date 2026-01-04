@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Linq;
 using System.Text.Json;
 using System.Net;
@@ -6,6 +5,7 @@ using System.Net.Http;
 using System.Text;
 using Azure;
 using Azure.Data.Tables;
+using GameSwap.Functions.Scheduling;
 using GameSwap.Functions.Storage;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
@@ -24,24 +24,8 @@ public class ScheduleFunctions
         _log = lf.CreateLogger<ScheduleFunctions>();
     }
 
-    public record ScheduleConstraints(
-        int? maxGamesPerWeek,
-        bool? noDoubleHeaders,
-        bool? balanceHomeAway,
-        int? externalOfferPerWeek,
-        List<string>? preferredDays);
-    public record ScheduleRequest(string? division, string? dateFrom, string? dateTo, ScheduleConstraints? constraints);
-
-    public record ScheduleSlotDto(
-        string slotId,
-        string gameDate,
-        string startTime,
-        string endTime,
-        string fieldKey,
-        string homeTeamId,
-        string awayTeamId,
-        bool isExternalOffer
-    );
+    public record ScheduleConstraintsDto(int? maxGamesPerWeek, bool? noDoubleHeaders, bool? balanceHomeAway, int? externalOfferPerWeek);
+    public record ScheduleRequest(string? division, string? dateFrom, string? dateTo, ScheduleConstraintsDto? constraints);
 
     public record SchedulePreviewDto(
         object summary,
@@ -89,12 +73,12 @@ public class ScheduleFunctions
             if (!string.IsNullOrWhiteSpace(dateTo) && !DateOnly.TryParseExact(dateTo, "yyyy-MM-dd", out _))
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "dateTo must be YYYY-MM-DD.");
 
-            var constraints = body.constraints ?? new ScheduleConstraints(null, null, null, null);
+            var constraints = body.constraints ?? new ScheduleConstraintsDto(null, null, null, null);
             var maxGamesPerWeek = (constraints.maxGamesPerWeek ?? 0) <= 0 ? (int?)null : constraints.maxGamesPerWeek;
             var noDoubleHeaders = constraints.noDoubleHeaders ?? true;
             var balanceHomeAway = constraints.balanceHomeAway ?? true;
             var externalOfferPerWeek = Math.Max(0, constraints.externalOfferPerWeek ?? 0);
-            var preferredDays = NormalizePreferredDays(constraints.preferredDays);
+            var scheduleConstraints = new ScheduleConstraints(maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek);
 
             var teams = await LoadTeamsAsync(leagueId, division);
             if (teams.Count < 2)
@@ -104,8 +88,10 @@ public class ScheduleFunctions
             if (slots.Count == 0)
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "No availability slots found for this division.");
 
-            var matchups = BuildRoundRobin(teams);
-            var result = AssignMatchups(slots, matchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek, preferredDays);
+            var matchups = ScheduleEngine.BuildRoundRobin(teams);
+            var scheduleSlots = slots.Select(slot => new ScheduleSlot(slot.slotId, slot.gameDate, slot.startTime, slot.endTime, slot.fieldKey, slot.offeringTeamId)).ToList();
+            var result = ScheduleEngine.AssignMatchups(scheduleSlots, matchups, teams, scheduleConstraints);
+            var validation = ScheduleValidation.Validate(result, scheduleConstraints);
 
             if (apply)
             {
@@ -737,10 +723,7 @@ public class ScheduleFunctions
         string createdBy,
         string dateFrom,
         string dateTo,
-        int? maxGamesPerWeek,
-        bool noDoubleHeaders,
-        bool balanceHomeAway,
-        int externalOfferPerWeek,
+        ScheduleConstraints constraints,
         ScheduleResult result)
     {
         var table = await TableClients.GetTableAsync(_svc, Constants.Tables.ScheduleRuns);
@@ -755,17 +738,17 @@ public class ScheduleFunctions
             ["CreatedUtc"] = now,
             ["DateFrom"] = dateFrom,
             ["DateTo"] = dateTo,
-            ["MaxGamesPerWeek"] = maxGamesPerWeek ?? 0,
-            ["NoDoubleHeaders"] = noDoubleHeaders,
-            ["BalanceHomeAway"] = balanceHomeAway,
-            ["ExternalOfferPerWeek"] = externalOfferPerWeek,
-            ["Summary"] = JsonSerializer.Serialize(result.summary)
+            ["MaxGamesPerWeek"] = constraints.MaxGamesPerWeek ?? 0,
+            ["NoDoubleHeaders"] = constraints.NoDoubleHeaders,
+            ["BalanceHomeAway"] = constraints.BalanceHomeAway,
+            ["ExternalOfferPerWeek"] = constraints.ExternalOfferPerWeek,
+            ["Summary"] = JsonSerializer.Serialize(result.Summary)
         };
 
         await table.AddEntityAsync(entity);
     }
 
-    private async Task ApplyAssignmentsAsync(string leagueId, string division, string runId, List<ScheduleSlotDto> assignments)
+    private async Task ApplyAssignmentsAsync(string leagueId, string division, string runId, List<ScheduleAssignment> assignments)
     {
         var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Slots);
         var pk = Constants.Pk.Slots(leagueId, division);
@@ -775,17 +758,17 @@ public class ScheduleFunctions
             TableEntity slot;
             try
             {
-                slot = (await table.GetEntityAsync<TableEntity>(pk, a.slotId)).Value;
+                slot = (await table.GetEntityAsync<TableEntity>(pk, a.SlotId)).Value;
             }
             catch (RequestFailedException ex) when (ex.Status == 404)
             {
                 continue;
             }
 
-            slot["OfferingTeamId"] = a.homeTeamId;
-            slot["HomeTeamId"] = a.homeTeamId;
-            slot["AwayTeamId"] = a.awayTeamId ?? "";
-            slot["IsExternalOffer"] = a.isExternalOffer;
+            slot["OfferingTeamId"] = a.HomeTeamId;
+            slot["HomeTeamId"] = a.HomeTeamId;
+            slot["AwayTeamId"] = a.AwayTeamId ?? "";
+            slot["IsExternalOffer"] = a.IsExternalOffer;
             slot["IsAvailability"] = false;
             slot["ScheduleRunId"] = runId;
             slot["UpdatedUtc"] = DateTimeOffset.UtcNow;
