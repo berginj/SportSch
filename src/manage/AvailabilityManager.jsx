@@ -224,7 +224,7 @@ export default function AvailabilityManager({ leagueId }) {
     }
   }
 
-  async function previewSlots() {
+  async function loadPreviewSlots() {
     setErr("");
     setOk("");
     if (!previewRange.dateFrom || !previewRange.dateTo) return setErr("Pick preview date range.");
@@ -517,7 +517,7 @@ export default function AvailabilityManager({ leagueId }) {
           </label>
         </div>
         <div className="card__body row gap-2">
-          <button className="btn" onClick={previewSlots} disabled={busy || !fieldKey}>
+          <button className="btn" onClick={loadPreviewSlots} disabled={busy || !fieldKey}>
             Preview slots
           </button>
         </div>
