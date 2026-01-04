@@ -28,6 +28,8 @@ public static class Constants
         public const string Slots = "GameSwapSlots";
         public const string SlotRequests = "GameSwapSlotRequests";
         public const string ScheduleRuns = "GameSwapScheduleRuns";
+        public const string FieldAvailabilityRules = "GameSwapFieldAvailabilityRules";
+        public const string FieldAvailabilityExceptions = "GameSwapFieldAvailabilityExceptions";
 
         // Org / Team management
         public const string Teams = "GameSwapTeams";
@@ -53,6 +55,31 @@ public static class Constants
 
         // Calendar events (non-slot): PK = EVENT|{leagueId}, RK = eventId
         public static string Events(string leagueId) => $"EVENT|{leagueId}";
+
+        // Field availability rules: PK = AVAILRULE|{leagueId}|{fieldKey}, RK = ruleId
+        public static string FieldAvailabilityRules(string leagueId, string fieldKey) => $"AVAILRULE|{leagueId}|{fieldKey}";
+
+        // Field availability rule exceptions: PK = AVAILRULEEX|{ruleId}, RK = exceptionId
+        public static string FieldAvailabilityRuleExceptions(string ruleId) => $"AVAILRULEEX|{ruleId}";
+
+        // Secondary index rows for fast division/date range queries: PK = AVAILRULEIDX|{leagueId}|{divisionId}
+        // Suggested RK: {startDate}|{endDate}|{ruleId}
+        public static string FieldAvailabilityRuleIndex(string leagueId, string divisionId) => $"AVAILRULEIDX|{leagueId}|{divisionId}";
+    }
+
+    public static class FieldAvailabilityColumns
+    {
+        public const string FieldKey = "FieldKey";
+        public const string Division = "Division";
+        public const string DivisionIds = "DivisionIds";
+        public const string StartsOn = "StartsOn";
+        public const string EndsOn = "EndsOn";
+        public const string DaysOfWeek = "DaysOfWeek";
+        public const string StartTimeLocal = "StartTimeLocal";
+        public const string EndTimeLocal = "EndTimeLocal";
+        public const string RecurrencePattern = "RecurrencePattern";
+        public const string Timezone = "Timezone";
+        public const string IsActive = "IsActive";
     }
 
     public static class Status
