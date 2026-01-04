@@ -104,6 +104,14 @@ public class ScheduleFunctions
 
             if (apply)
             {
+                if (validation.TotalIssues > 0)
+                {
+                    return ApiResponses.Error(
+                        req,
+                        HttpStatusCode.BadRequest,
+                        "SCHEDULE_VALIDATION_FAILED",
+                        $"Schedule validation failed with {validation.TotalIssues} issue(s). Review the Schedule preview and adjust constraints, then try again. See /#schedule.");
+                }
                 var runId = Guid.NewGuid().ToString("N");
                 await SaveScheduleRunAsync(leagueId, division, runId, me.Email ?? me.UserId, dateFrom, dateTo, scheduleConstraints, result);
                 await ApplyAssignmentsAsync(leagueId, division, runId, result.Assignments);
