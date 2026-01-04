@@ -150,6 +150,15 @@ the notes for required headers or roles.
 | GET | /slots/{division}/{slotId}/requests | `Functions/GetSlotRequests.cs` | List requests for slot (requires `x-league-id`). |
 | POST | /slots/{division}/{slotId}/requests | `Functions/CreateSlotRequest.cs` | Request slot (requires `x-league-id`, Coach). |
 | PATCH | /slots/{division}/{slotId}/requests/{requestId}/approve | `Functions/ApproveSlotRequest.cs` | Approve slot request (requires `x-league-id`, offering coach, LeagueAdmin, or global admin). |
+| GET | /availability/rules | `Functions/AvailabilityFunctions.cs` | List availability rules for a field (requires `x-league-id`, LeagueAdmin). |
+| POST | /availability/rules | `Functions/AvailabilityFunctions.cs` | Create availability rule (requires `x-league-id`, LeagueAdmin). |
+| PATCH | /availability/rules/{ruleId} | `Functions/AvailabilityFunctions.cs` | Update availability rule (requires `x-league-id`, LeagueAdmin). |
+| PATCH | /availability/rules/{ruleId}/deactivate | `Functions/AvailabilityFunctions.cs` | Deactivate availability rule (requires `x-league-id`, LeagueAdmin). |
+| GET | /availability/rules/{ruleId}/exceptions | `Functions/AvailabilityFunctions.cs` | List availability exceptions for a rule (requires `x-league-id`, LeagueAdmin). |
+| POST | /availability/rules/{ruleId}/exceptions | `Functions/AvailabilityFunctions.cs` | Create availability exception (requires `x-league-id`, LeagueAdmin). |
+| PATCH | /availability/rules/{ruleId}/exceptions/{exceptionId} | `Functions/AvailabilityFunctions.cs` | Update availability exception (requires `x-league-id`, LeagueAdmin). |
+| DELETE | /availability/rules/{ruleId}/exceptions/{exceptionId} | `Functions/AvailabilityFunctions.cs` | Delete availability exception (requires `x-league-id`, LeagueAdmin). |
+| GET | /availability/preview | `Functions/AvailabilityFunctions.cs` | Preview availability slots (requires `x-league-id`, LeagueAdmin). |
 | POST | /schedule/preview | `Functions/ScheduleFunctions.cs` | Preview schedule for a division (requires `x-league-id`, LeagueAdmin). |
 | POST | /schedule/apply | `Functions/ScheduleFunctions.cs` | Apply schedule assignments (requires `x-league-id`, LeagueAdmin). |
 | POST | /schedule/slots/preview | `Functions/SlotGenerationFunctions.cs` | Preview generated availability slots (requires `x-league-id`, LeagueAdmin). |
@@ -728,6 +737,122 @@ Response
 
 ### PATCH /slots/{division}/{slotId}/cancel (league-scoped)
 Requires: offering team OR accepting team (confirmedTeamId) OR LeagueAdmin OR global admin.
+
+---
+
+## 8a) Field availability rules (admin)
+
+Availability rules define recurring field availability windows. Use exceptions to remove or adjust specific date ranges.
+
+### GET /availability/rules (league-scoped)
+Requires: LeagueAdmin or global admin.  
+Query: `fieldKey` (format `parkCode/fieldCode`)
+
+### POST /availability/rules (league-scoped)
+Requires: LeagueAdmin or global admin.
+
+Body
+```json
+{
+  "fieldKey": "gunston/turf",
+  "division": "10U",
+  "divisionIds": ["10U"],
+  "startsOn": "2026-03-01",
+  "endsOn": "2026-05-31",
+  "daysOfWeek": ["Mon", "Wed"],
+  "startTimeLocal": "17:00",
+  "endTimeLocal": "22:00",
+  "recurrencePattern": "Weekly",
+  "timezone": "America/New_York",
+  "isActive": true
+}
+```
+
+Response
+```json
+{
+  "data": {
+    "ruleId": "rule_123",
+    "fieldKey": "gunston/turf",
+    "division": "10U",
+    "divisionIds": ["10U"],
+    "startsOn": "2026-03-01",
+    "endsOn": "2026-05-31",
+    "daysOfWeek": ["Mon", "Wed"],
+    "startTimeLocal": "17:00",
+    "endTimeLocal": "22:00",
+    "recurrencePattern": "Weekly",
+    "timezone": "America/New_York",
+    "isActive": true
+  }
+}
+```
+
+### PATCH /availability/rules/{ruleId} (league-scoped)
+Requires: LeagueAdmin or global admin.  
+Body: same as create.
+
+### PATCH /availability/rules/{ruleId}/deactivate (league-scoped)
+Requires: LeagueAdmin or global admin.
+
+### GET /availability/rules/{ruleId}/exceptions (league-scoped)
+Requires: LeagueAdmin or global admin.
+
+### POST /availability/rules/{ruleId}/exceptions (league-scoped)
+Requires: LeagueAdmin or global admin.
+
+Body
+```json
+{
+  "dateFrom": "2026-04-10",
+  "dateTo": "2026-04-10",
+  "startTimeLocal": "18:00",
+  "endTimeLocal": "20:00",
+  "reason": "Tournament blackout"
+}
+```
+
+Response
+```json
+{
+  "data": {
+    "exceptionId": "ex_123",
+    "dateFrom": "2026-04-10",
+    "dateTo": "2026-04-10",
+    "startTimeLocal": "18:00",
+    "endTimeLocal": "20:00",
+    "reason": "Tournament blackout"
+  }
+}
+```
+
+### PATCH /availability/rules/{ruleId}/exceptions/{exceptionId} (league-scoped)
+Requires: LeagueAdmin or global admin.  
+Body: same as create.
+
+### DELETE /availability/rules/{ruleId}/exceptions/{exceptionId} (league-scoped)
+Requires: LeagueAdmin or global admin.
+
+### GET /availability/preview (league-scoped)
+Requires: LeagueAdmin or global admin.  
+Query: `dateFrom` (YYYY-MM-DD), `dateTo` (YYYY-MM-DD)
+
+Response
+```json
+{
+  "data": {
+    "slots": [
+      {
+        "gameDate": "2026-03-03",
+        "startTime": "17:00",
+        "endTime": "22:00",
+        "fieldKey": "gunston/turf",
+        "division": "10U"
+      }
+    ]
+  }
+}
+```
 
 ---
 
