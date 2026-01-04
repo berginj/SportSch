@@ -6,6 +6,7 @@ import TeamsManager from "../manage/TeamsManager";
 import SchedulerManager from "../manage/SchedulerManager";
 import CommissionerHub from "../manage/CommissionerHub";
 import AvailabilityManager from "../manage/AvailabilityManager";
+import SlotGeneratorManager from "../manage/SlotGeneratorManager";
 import LeaguePicker from "../components/LeaguePicker";
 
 function Pill({ active, children, onClick }) {
@@ -40,6 +41,7 @@ export default function ManagePage({ leagueId, me, setLeagueId }) {
       { id: "divisions", label: "Divisions" },
       { id: "fields", label: "Fields" },
       ...(canSchedule ? [{ id: "availability", label: "Field Availability" }] : []),
+      ...(canSchedule ? [{ id: "slots", label: "Field Slots" }] : []),
       ...(canSchedule ? [{ id: "scheduler", label: "Scheduler" }] : []),
     ],
     [canSchedule]
@@ -168,6 +170,18 @@ export default function ManagePage({ leagueId, me, setLeagueId }) {
           </div>
           <div className="card__body">
             <AvailabilityManager leagueId={leagueId} />
+          </div>
+        </div>
+      )}
+
+      {active === "slots" && canSchedule && (
+        <div className="card">
+          <div className="card__header">
+            <div className="h2">Field Slots</div>
+            <div className="subtle">Generate availability slots separately from schedule generation.</div>
+          </div>
+          <div className="card__body">
+            <SlotGeneratorManager leagueId={leagueId} />
           </div>
         </div>
       )}

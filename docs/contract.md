@@ -959,6 +959,9 @@ Response
 }
 ```
 
+Notes
+- Saving league season settings also propagates the season defaults to all divisions in the league.
+
 ### POST /schedule/apply (league-scoped)
 Requires: LeagueAdmin or global admin.
 

@@ -34,6 +34,13 @@ public class LeaguesFunctions
     public record PatchLeagueReq(string? name, string? timezone, string? status, LeagueContact? contact);
     public record PatchSeasonReq(SeasonConfig? season);
 
+    private const string SeasonSpringStart = "SeasonSpringStart";
+    private const string SeasonSpringEnd = "SeasonSpringEnd";
+    private const string SeasonFallStart = "SeasonFallStart";
+    private const string SeasonFallEnd = "SeasonFallEnd";
+    private const string SeasonGameLengthMinutes = "SeasonGameLengthMinutes";
+    private const string SeasonBlackouts = "SeasonBlackouts";
+
     private static LeagueDto ToDto(TableEntity e)
     {
         var blackouts = new List<BlackoutRange>();
@@ -434,6 +441,8 @@ public class LeaguesFunctions
             e["UpdatedUtc"] = DateTimeOffset.UtcNow;
             await table.UpdateEntityAsync(e, e.ETag, TableUpdateMode.Replace);
 
+            await ApplySeasonToDivisionsAsync(leagueId, season, blackouts);
+
             return ApiResponses.Ok(req, ToDto(e));
         }
         catch (ApiGuards.HttpError ex)
@@ -458,5 +467,25 @@ public class LeaguesFunctions
             throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, $"{label} endDate must be YYYY-MM-DD.");
         if (eDate < sDate)
             throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, $"{label} endDate must be on or after startDate.");
+    }
+
+    private async Task ApplySeasonToDivisionsAsync(string leagueId, SeasonConfig season, List<BlackoutRange> blackouts)
+    {
+        var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Divisions);
+        var pk = Constants.Pk.Divisions(leagueId);
+        var filter = $"PartitionKey eq '{ApiGuards.EscapeOData(pk)}'";
+
+        await foreach (var e in table.QueryAsync<TableEntity>(filter: filter))
+        {
+            e[SeasonSpringStart] = (season.springStart ?? "").Trim();
+            e[SeasonSpringEnd] = (season.springEnd ?? "").Trim();
+            e[SeasonFallStart] = (season.fallStart ?? "").Trim();
+            e[SeasonFallEnd] = (season.fallEnd ?? "").Trim();
+            e[SeasonGameLengthMinutes] = season.gameLengthMinutes;
+            e[SeasonBlackouts] = System.Text.Json.JsonSerializer.Serialize(blackouts);
+            e["UpdatedUtc"] = DateTimeOffset.UtcNow;
+
+            await table.UpdateEntityAsync(e, e.ETag, TableUpdateMode.Merge);
+        }
     }
 }
