@@ -1,83 +1,106 @@
-using System.Globalization;
+using GameSwap.Functions.Storage;
 
 namespace GameSwap.Functions.Scheduling;
 
-public record AvailabilityRule(
-    string Division,
+public record AvailabilityRuleSpec(
+    string RuleId,
     string FieldKey,
+    string Division,
     DateOnly StartsOn,
     DateOnly EndsOn,
-    IReadOnlyCollection<DayOfWeek> DaysOfWeek,
-    TimeOnly StartTime,
-    TimeOnly EndTime,
-    string RecurrencePattern = "Weekly");
+    HashSet<DayOfWeek> Days,
+    int StartMin,
+    int EndMin);
 
-public record AvailabilityException(DateOnly StartDate, DateOnly EndDate, string Label = "");
+public record AvailabilityExceptionSpec(
+    DateOnly DateFrom,
+    DateOnly DateTo,
+    int StartMin,
+    int EndMin);
 
-public record AvailabilitySlot(
-    DateOnly GameDate,
-    TimeOnly StartTime,
-    TimeOnly EndTime,
+public record AvailabilitySlotCandidate(
+    string GameDate,
+    string StartTime,
+    string EndTime,
     string FieldKey,
     string Division);
 
 public static class AvailabilityRuleEngine
 {
-    public static List<AvailabilitySlot> ExpandSlots(
-        AvailabilityRule rule,
-        IReadOnlyCollection<AvailabilityException> exceptions,
-        int gameLengthMinutes)
+    public static List<AvailabilitySlotCandidate> ExpandRecurringSlots(
+        IReadOnlyList<AvailabilityRuleSpec> rules,
+        IReadOnlyDictionary<string, List<AvailabilityExceptionSpec>> exceptionsByRule,
+        DateOnly from,
+        DateOnly to,
+        int gameLengthMinutes,
+        List<(DateOnly start, DateOnly end)> blackouts)
     {
-        if (gameLengthMinutes <= 0)
-            throw new ArgumentOutOfRangeException(nameof(gameLengthMinutes), "Game length must be positive.");
+        var slots = new List<AvailabilitySlotCandidate>();
+        if (rules.Count == 0 || gameLengthMinutes <= 0) return slots;
 
-        var slots = new List<AvailabilitySlot>();
-        var startMinutes = ToMinutes(rule.StartTime);
-        var endMinutes = ToMinutes(rule.EndTime);
-        if (endMinutes <= startMinutes)
-            return slots;
-
-        for (var date = rule.StartsOn; date <= rule.EndsOn; date = date.AddDays(1))
+        foreach (var rule in rules)
         {
-            if (rule.RecurrencePattern.Equals("Weekly", StringComparison.OrdinalIgnoreCase))
-            {
-                if (!rule.DaysOfWeek.Contains(date.DayOfWeek)) continue;
-            }
+            var ruleStart = rule.StartsOn < from ? from : rule.StartsOn;
+            var ruleEnd = rule.EndsOn > to ? to : rule.EndsOn;
+            if (ruleEnd < ruleStart) continue;
 
-            if (IsException(date, exceptions)) continue;
-
-            var cursor = startMinutes;
-            while (cursor + gameLengthMinutes <= endMinutes)
+            for (var date = ruleStart; date <= ruleEnd; date = date.AddDays(1))
             {
-                var start = FromMinutes(cursor);
-                var end = FromMinutes(cursor + gameLengthMinutes);
-                slots.Add(new AvailabilitySlot(date, start, end, rule.FieldKey, rule.Division));
-                cursor += gameLengthMinutes;
+                if (!rule.Days.Contains(date.DayOfWeek)) continue;
+                if (IsBlackout(date, blackouts)) continue;
+
+                var start = rule.StartMin;
+                while (start + gameLengthMinutes <= rule.EndMin)
+                {
+                    var end = start + gameLengthMinutes;
+                    if (!IsException(exceptionsByRule, rule.RuleId, date, start, end))
+                    {
+                        slots.Add(new AvailabilitySlotCandidate(
+                            date.ToString("yyyy-MM-dd"),
+                            FormatTime(start),
+                            FormatTime(end),
+                            rule.FieldKey,
+                            rule.Division
+                        ));
+                    }
+                    start = end;
+                }
             }
         }
 
         return slots;
     }
 
-    public static string FormatDate(DateOnly date)
-        => date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-
-    public static string FormatTime(TimeOnly time)
-        => $"{time.Hour:D2}:{time.Minute:D2}";
-
-    private static bool IsException(DateOnly date, IReadOnlyCollection<AvailabilityException> exceptions)
+    private static bool IsException(
+        IReadOnlyDictionary<string, List<AvailabilityExceptionSpec>> exceptionsByRule,
+        string ruleId,
+        DateOnly date,
+        int startMin,
+        int endMin)
     {
-        foreach (var ex in exceptions)
+        if (!exceptionsByRule.TryGetValue(ruleId, out var list) || list.Count == 0) return false;
+        foreach (var ex in list)
         {
-            if (date >= ex.StartDate && date <= ex.EndDate) return true;
+            if (date < ex.DateFrom || date > ex.DateTo) continue;
+            if (TimeUtil.Overlaps(startMin, endMin, ex.StartMin, ex.EndMin)) return true;
         }
 
         return false;
     }
 
-    private static int ToMinutes(TimeOnly time)
-        => time.Hour * 60 + time.Minute;
+    private static bool IsBlackout(DateOnly date, List<(DateOnly start, DateOnly end)> blackouts)
+    {
+        foreach (var (start, end) in blackouts)
+        {
+            if (date >= start && date <= end) return true;
+        }
+        return false;
+    }
 
-    private static TimeOnly FromMinutes(int minutes)
-        => new(minutes / 60, minutes % 60);
+    private static string FormatTime(int minutes)
+    {
+        var h = minutes / 60;
+        var m = minutes % 60;
+        return $"{h:D2}:{m:D2}";
+    }
 }
