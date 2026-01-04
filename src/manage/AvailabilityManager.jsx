@@ -342,14 +342,6 @@ export default function AvailabilityManager({ leagueId }) {
               placeholder="22:00"
             />
           </label>
-          <label>
-            Timezone
-            <input
-              value={ruleDraft.timezone}
-              onChange={(e) => setRuleDraft((prev) => ({ ...prev, timezone: e.target.value }))}
-              placeholder="America/New_York"
-            />
-          </label>
           <label className="inlineCheck">
             <input
               type="checkbox"

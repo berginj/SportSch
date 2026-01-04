@@ -35,7 +35,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
   const [globalOk, setGlobalOk] = useState("");
   const [globalLoading, setGlobalLoading] = useState(false);
   const [globalLeagues, setGlobalLeagues] = useState([]);
-  const [newLeague, setNewLeague] = useState({ leagueId: "", name: "", timezone: "America/New_York" });
+  const [newLeague, setNewLeague] = useState({ leagueId: "", name: "" });
   const [seasonLeagueId, setSeasonLeagueId] = useState("");
   const [seasonDraft, setSeasonDraft] = useState({
     springStart: "",
@@ -204,7 +204,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
     setGlobalOk("");
     const leagueId = (newLeague.leagueId || "").trim();
     const name = (newLeague.name || "").trim();
-    const timezone = (newLeague.timezone || "America/New_York").trim();
+    const timezone = "America/New_York";
     if (!leagueId || !name) return setGlobalErr("leagueId and name are required.");
 
     setGlobalLoading(true);
@@ -216,7 +216,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
       });
       setGlobalOk(`Created league ${leagueId}.`);
       setToast({ tone: "success", message: `Created league ${leagueId}.` });
-      setNewLeague({ leagueId: "", name: "", timezone });
+      setNewLeague({ leagueId: "", name: "" });
       await loadGlobalLeagues();
     } catch (e) {
       setGlobalErr(e?.message || "Create league failed");
@@ -604,14 +604,6 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
                 value={newLeague.name}
                 onChange={(e) => setNewLeague((p) => ({ ...p, name: e.target.value }))}
                 placeholder="Arlington"
-              />
-            </label>
-            <label className="flex-[2] min-w-[220px]">
-              Timezone
-              <input
-                value={newLeague.timezone}
-                onChange={(e) => setNewLeague((p) => ({ ...p, timezone: e.target.value }))}
-                placeholder="America/New_York"
               />
             </label>
             <button className="btn btn--primary" onClick={createLeague} disabled={globalLoading}>

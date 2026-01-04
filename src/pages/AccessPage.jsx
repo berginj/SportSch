@@ -229,9 +229,6 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
             <button className="btn" onClick={submitRequest} disabled={busy}>
               {busy ? "Submitting..." : "Submit request"}
             </button>
-            {selectedLeague ? (
-              <div className="muted">Timezone: {selectedLeague.timezone}</div>
-            ) : null}
           </div>
 
           {err ? <div className="err">{err}</div> : null}
