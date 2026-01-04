@@ -24,7 +24,12 @@ public class ScheduleFunctions
         _log = lf.CreateLogger<ScheduleFunctions>();
     }
 
-    public record ScheduleConstraints(int? maxGamesPerWeek, bool? noDoubleHeaders, bool? balanceHomeAway, int? externalOfferPerWeek);
+    public record ScheduleConstraints(
+        int? maxGamesPerWeek,
+        bool? noDoubleHeaders,
+        bool? balanceHomeAway,
+        int? externalOfferPerWeek,
+        List<string>? preferredDays);
     public record ScheduleRequest(string? division, string? dateFrom, string? dateTo, ScheduleConstraints? constraints);
 
     public record ScheduleSlotDto(
@@ -89,6 +94,7 @@ public class ScheduleFunctions
             var noDoubleHeaders = constraints.noDoubleHeaders ?? true;
             var balanceHomeAway = constraints.balanceHomeAway ?? true;
             var externalOfferPerWeek = Math.Max(0, constraints.externalOfferPerWeek ?? 0);
+            var preferredDays = NormalizePreferredDays(constraints.preferredDays);
 
             var teams = await LoadTeamsAsync(leagueId, division);
             if (teams.Count < 2)
@@ -99,7 +105,7 @@ public class ScheduleFunctions
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "No availability slots found for this division.");
 
             var matchups = BuildRoundRobin(teams);
-            var result = AssignMatchups(slots, matchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek);
+            var result = AssignMatchups(slots, matchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek, preferredDays);
 
             if (apply)
             {
@@ -308,8 +314,18 @@ public class ScheduleFunctions
         int? maxGamesPerWeek,
         bool noDoubleHeaders,
         bool balanceHomeAway,
-        int externalOfferPerWeek)
+        int externalOfferPerWeek,
+        List<DayOfWeek> preferredDays)
     {
+        if (preferredDays.Count > 0)
+        {
+            slots = slots
+                .OrderBy(s => PreferredDayRank(s.gameDate, preferredDays))
+                .ThenBy(s => s.gameDate)
+                .ThenBy(s => s.startTime)
+                .ThenBy(s => s.fieldKey)
+                .ToList();
+        }
         var teamSet = new HashSet<string>(teams, StringComparer.OrdinalIgnoreCase);
         var homeCounts = teams.ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
         var awayCounts = teams.ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
@@ -787,4 +803,32 @@ public class ScheduleFunctions
     private record ScheduleResult(object summary, List<ScheduleSlotDto> assignments, List<ScheduleSlotDto> unassignedSlots, List<object> unassignedMatchups, List<object> failures);
 
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
+
+    private static List<DayOfWeek> NormalizePreferredDays(List<string>? days)
+    {
+        var ordered = new List<DayOfWeek>();
+        if (days is null) return ordered;
+        foreach (var raw in days)
+        {
+            var key = (raw ?? "").Trim().ToLowerInvariant();
+            if (key.StartsWith("sun")) ordered.Add(DayOfWeek.Sunday);
+            else if (key.StartsWith("mon")) ordered.Add(DayOfWeek.Monday);
+            else if (key.StartsWith("tue")) ordered.Add(DayOfWeek.Tuesday);
+            else if (key.StartsWith("wed")) ordered.Add(DayOfWeek.Wednesday);
+            else if (key.StartsWith("thu")) ordered.Add(DayOfWeek.Thursday);
+            else if (key.StartsWith("fri")) ordered.Add(DayOfWeek.Friday);
+            else if (key.StartsWith("sat")) ordered.Add(DayOfWeek.Saturday);
+        }
+
+        return ordered.Distinct().ToList();
+    }
+
+    private static int PreferredDayRank(string gameDate, List<DayOfWeek> preferredDays)
+    {
+        if (preferredDays.Count == 0) return int.MaxValue;
+        if (!DateTime.TryParseExact(gameDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
+            return int.MaxValue;
+        var index = preferredDays.IndexOf(dt.DayOfWeek);
+        return index >= 0 ? index : int.MaxValue;
+    }
 }

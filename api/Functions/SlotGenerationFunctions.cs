@@ -101,10 +101,10 @@ public class SlotGenerationFunctions
                     return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "daysOfWeek is required");
             }
 
-            var league = await GetLeagueAsync(leagueId);
-            var gameLengthMinutes = league.gameLengthMinutes;
+            var season = await GetSeasonContextAsync(leagueId, division, field);
+            var gameLengthMinutes = season.gameLengthMinutes;
             if (gameLengthMinutes <= 0)
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "League game length must be set by global admin.");
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Season game length must be set for the league or division.");
 
             if (!TryParseFieldKey(fieldKey, out var parkCode, out var fieldCode))
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "fieldKey must be parkCode/fieldCode.");
@@ -123,7 +123,7 @@ public class SlotGenerationFunctions
             var fieldName = (field.GetString("FieldName") ?? "").Trim();
             var displayName = (field.GetString("DisplayName") ?? "").Trim();
 
-            var blackoutRanges = league.blackouts;
+            var blackoutRanges = season.blackouts;
             var candidateSlots = useRules
                 ? await BuildRuleBasedSlotsAsync(leagueId, fieldKey, division, from, to, gameLengthMinutes, blackoutRanges)
                 : BuildCandidateSlots(from, to, days, startMin, endMin, gameLengthMinutes, fieldKey, division, blackoutRanges);
@@ -188,37 +188,59 @@ public class SlotGenerationFunctions
         }
     }
 
-    private record LeagueSeasonConfig(int gameLengthMinutes, List<(DateOnly start, DateOnly end)> blackouts);
+    private record SeasonContext(int gameLengthMinutes, List<(DateOnly start, DateOnly end)> blackouts);
     private record BlackoutRange(string? startDate, string? endDate, string? label);
 
-    private async Task<LeagueSeasonConfig> GetLeagueAsync(string leagueId)
+    private async Task<SeasonContext> GetSeasonContextAsync(string leagueId, string division, TableEntity field)
     {
-        var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Leagues);
-        var e = (await table.GetEntityAsync<TableEntity>(Constants.Pk.Leagues, leagueId)).Value;
-        var gameLengthMinutes = e.GetInt32("GameLengthMinutes") ?? 0;
+        var leagues = await TableClients.GetTableAsync(_svc, Constants.Tables.Leagues);
+        var leagueEntity = (await leagues.GetEntityAsync<TableEntity>(Constants.Pk.Leagues, leagueId)).Value;
+        var leagueGameLengthMinutes = leagueEntity.GetInt32("GameLengthMinutes") ?? 0;
 
         var blackouts = new List<(DateOnly start, DateOnly end)>();
-        var blackoutsRaw = (e.GetString("Blackouts") ?? "").Trim();
-        if (!string.IsNullOrWhiteSpace(blackoutsRaw))
+        blackouts.AddRange(ParseBlackouts(leagueEntity.GetString("Blackouts")));
+
+        var divisions = await TableClients.GetTableAsync(_svc, Constants.Tables.Divisions);
+        try
         {
-            try
-            {
-                var parsed = System.Text.Json.JsonSerializer.Deserialize<List<BlackoutRange>>(blackoutsRaw) ?? new List<BlackoutRange>();
-                foreach (var b in parsed)
-                {
-                    if (!DateOnly.TryParseExact((b.startDate ?? "").Trim(), "yyyy-MM-dd", out var s)) continue;
-                    if (!DateOnly.TryParseExact((b.endDate ?? "").Trim(), "yyyy-MM-dd", out var eDate)) continue;
-                    if (eDate < s) continue;
-                    blackouts.Add((s, eDate));
-                }
-            }
-            catch
-            {
-                blackouts = new List<(DateOnly start, DateOnly end)>();
-            }
+            var divEntity = (await divisions.GetEntityAsync<TableEntity>(Constants.Pk.Divisions(leagueId), division)).Value;
+            var divisionGameLengthMinutes = divEntity.GetInt32("SeasonGameLengthMinutes") ?? 0;
+            if (divisionGameLengthMinutes > 0)
+                leagueGameLengthMinutes = divisionGameLengthMinutes;
+            blackouts.AddRange(ParseBlackouts(divEntity.GetString("SeasonBlackouts")));
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            // Ignore missing division overrides.
         }
 
-        return new LeagueSeasonConfig(gameLengthMinutes, blackouts);
+        blackouts.AddRange(ParseBlackouts(field.GetString("Blackouts")));
+
+        return new SeasonContext(leagueGameLengthMinutes, blackouts);
+    }
+
+    private static List<(DateOnly start, DateOnly end)> ParseBlackouts(string? raw)
+    {
+        var blackouts = new List<(DateOnly start, DateOnly end)>();
+        var blackoutsRaw = (raw ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(blackoutsRaw)) return blackouts;
+        try
+        {
+            var parsed = System.Text.Json.JsonSerializer.Deserialize<List<BlackoutRange>>(blackoutsRaw) ?? new List<BlackoutRange>();
+            foreach (var b in parsed)
+            {
+                if (!DateOnly.TryParseExact((b.startDate ?? "").Trim(), "yyyy-MM-dd", out var s)) continue;
+                if (!DateOnly.TryParseExact((b.endDate ?? "").Trim(), "yyyy-MM-dd", out var eDate)) continue;
+                if (eDate < s) continue;
+                blackouts.Add((s, eDate));
+            }
+        }
+        catch
+        {
+            return new List<(DateOnly start, DateOnly end)>();
+        }
+
+        return blackouts;
     }
 
     private static HashSet<DayOfWeek> NormalizeDays(List<string>? days)

@@ -374,7 +374,7 @@ public class LeaguesFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "admin/leagues/{leagueId}/season")] HttpRequestData req,
         string leagueId)
     {
-        return await PatchSeasonCore(req, leagueId);
+        return await PatchSeasonCore(req, leagueId, requireGlobal: false);
     }
 
     [Function("PatchLeagueSeason_Global")]
@@ -382,10 +382,10 @@ public class LeaguesFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "global/leagues/{leagueId}/season")] HttpRequestData req,
         string leagueId)
     {
-        return await PatchSeasonCore(req, leagueId);
+        return await PatchSeasonCore(req, leagueId, requireGlobal: true);
     }
 
-    private async Task<HttpResponseData> PatchSeasonCore(HttpRequestData req, string leagueId)
+    private async Task<HttpResponseData> PatchSeasonCore(HttpRequestData req, string leagueId, bool requireGlobal)
     {
         try
         {
@@ -393,7 +393,10 @@ public class LeaguesFunctions
             ApiGuards.EnsureValidTableKeyPart("leagueId", leagueId);
 
             var me = IdentityUtil.GetMe(req);
-            await ApiGuards.RequireGlobalAdminAsync(_svc, me.UserId);
+            if (requireGlobal)
+                await ApiGuards.RequireGlobalAdminAsync(_svc, me.UserId);
+            else
+                await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
 
             var body = await HttpUtil.ReadJsonAsync<PatchSeasonReq>(req);
             if (body?.season is null)
