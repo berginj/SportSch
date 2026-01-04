@@ -8,12 +8,13 @@ import AccessPage from "./pages/AccessPage";
 import AdminPage from "./pages/AdminPage";
 import InviteAcceptPage from "./pages/InviteAcceptPage";
 import HomePage from "./pages/HomePage";
+import DebugPage from "./pages/DebugPage";
 import TopNav from "./components/TopNav";
 import StatusCard from "./components/StatusCard";
 import { useSession } from "./lib/useSession";
 import { trackPageView } from "./lib/telemetry";
 
-const VALID_TABS = new Set(["home", "calendar", "schedule", "offers", "manage", "admin", "help"]);
+const VALID_TABS = new Set(["home", "calendar", "schedule", "offers", "manage", "admin", "debug", "help"]);
 
 function readInviteFromUrl() {
   if (typeof window === "undefined") return null;
@@ -173,6 +174,16 @@ export default function App() {
         {effectiveTab === "help" && <HelpPage />}
         {effectiveTab === "admin" && (
           <AdminPage me={me} leagueId={activeLeagueId} setLeagueId={setActiveLeagueId} />
+        )}
+        {effectiveTab === "debug" && (
+          isGlobalAdmin ? (
+            <DebugPage me={me} leagueId={activeLeagueId} />
+          ) : (
+            <div className="card">
+              <h2>Debug</h2>
+              <p className="muted">You do not have access to this page.</p>
+            </div>
+          )
         )}
       </main>
     </div>

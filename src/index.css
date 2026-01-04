@@ -223,6 +223,7 @@
   .inlineCheck { @apply inline-flex items-center gap-2 mt-4; }
   .textareaMono { @apply w-full mt-3 font-mono text-sm; }
   .fieldInputShort { @apply w-16; }
+  .codeblock { @apply mt-3 rounded-xl border border-border bg-black/30 p-3 text-xs overflow-x-auto font-mono; }
 
   .modalOverlay {
     @apply fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4;

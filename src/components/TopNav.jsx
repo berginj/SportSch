@@ -9,6 +9,7 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
     offers: "Offers",
     manage: "Manage",
     admin: "Admin",
+    debug: "Debug",
     help: "Help"
   };
   const currentLabel = tabLabels[tab] || "Home";
@@ -79,6 +80,15 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
                 aria-current={tab === "admin" ? "page" : undefined}
               >
                 Admin
+              </button>
+            ) : null}
+            {isGlobalAdmin ? (
+              <button
+                className={tab === "debug" ? "tab tab--active" : "tab"}
+                onClick={() => setTab("debug")}
+                aria-current={tab === "debug" ? "page" : undefined}
+              >
+                Debug
               </button>
             ) : null}
             <button

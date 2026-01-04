@@ -52,6 +52,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
   const { promptState, promptValue, setPromptValue, requestPrompt, handleConfirm, handleCancel } = usePromptDialog();
 
   const isGlobalAdmin = !!me?.isGlobalAdmin;
+  const hasMemberships = Array.isArray(me?.memberships) && me.memberships.length > 0;
   const accessAll = accessScope === "all";
 
   async function load() {
@@ -134,9 +135,21 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
-    const scope = (params.get("accessScope") || "").trim();
+    const scopeParam = params.get("accessScope");
+    const scope = (scopeParam || "").trim();
+    if (!scopeParam && isGlobalAdmin) {
+      setAccessScope("all");
+      return;
+    }
     setAccessScope(isGlobalAdmin && scope === "all" ? "all" : "league");
   }, [isGlobalAdmin]);
+
+  useEffect(() => {
+    if (!isGlobalAdmin) return;
+    if (!hasMemberships || !leagueId) {
+      setAccessScope("all");
+    }
+  }, [isGlobalAdmin, hasMemberships, leagueId]);
 
   useEffect(() => {
     if (!isGlobalAdmin || !accessAll) return;
