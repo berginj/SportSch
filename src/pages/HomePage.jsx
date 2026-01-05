@@ -12,6 +12,10 @@ function toDateInputValue(d) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function isPracticeSlot(slot) {
+  return (slot?.gameType || "").trim().toLowerCase() === "practice";
+}
+
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -190,11 +194,15 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
   }, [leagueId]);
 
   const openSlots = useMemo(
-    () => slots.filter((s) => s.status === SLOT_STATUS.OPEN && !s.isAvailability && (!s.awayTeamId || s.isExternalOffer)),
+    () => slots.filter((s) => s.status === SLOT_STATUS.OPEN && !s.isAvailability && !isPracticeSlot(s) && (!s.awayTeamId || s.isExternalOffer)),
     [slots]
   );
   const confirmedSlots = useMemo(
-    () => slots.filter((s) => s.status === SLOT_STATUS.CONFIRMED && !s.isAvailability),
+    () => slots.filter((s) => s.status === SLOT_STATUS.CONFIRMED && !s.isAvailability && !isPracticeSlot(s)),
+    [slots]
+  );
+  const practiceSlots = useMemo(
+    () => slots.filter((s) => s.status === SLOT_STATUS.CONFIRMED && !s.isAvailability && isPracticeSlot(s)),
     [slots]
   );
 
@@ -231,12 +239,17 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
         date: s.gameDate,
         label: `${s.offeringTeamId || ""} @ ${s.displayName || s.fieldKey || ""}`,
       })),
+      ...practiceSlots.map((s) => ({
+        kind: "practice",
+        date: s.gameDate,
+        label: `Practice: ${(s.confirmedTeamId || s.offeringTeamId || "").trim()} @ ${s.displayName || s.fieldKey || ""}`,
+      })),
     ];
     return items
       .filter((i) => i.date && i.date >= todayKey && i.date <= windowEndKey)
       .sort((a, b) => a.date.localeCompare(b.date))
       .slice(0, 5);
-  }, [events, confirmedSlots, today]);
+  }, [events, confirmedSlots, practiceSlots, today]);
 
   const layoutKey = isMobile ? "mobile" : isAdmin ? "admin" : role === "Coach" ? "filters" : "coach";
 

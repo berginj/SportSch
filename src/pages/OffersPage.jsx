@@ -39,6 +39,10 @@ function matchesTypeFilter(gameType, filter) {
   return true;
 }
 
+function isPracticeSlot(slot) {
+  return (slot?.gameType || "").trim().toLowerCase() === "practice";
+}
+
 function canAcceptSlot(slot) {
   if (!slot || (slot.status || "") !== "Open") return false;
   if (slot.isAvailability) return false;
@@ -105,6 +109,7 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
   const filteredSlots = useMemo(() => {
     return (slots || [])
       .filter((s) => !s.isAvailability)
+      .filter((s) => !isPracticeSlot(s))
       .filter((s) => matchesTypeFilter(s.gameType, slotTypeFilter));
   }, [slots, slotTypeFilter]);
 
