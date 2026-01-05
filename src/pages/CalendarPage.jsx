@@ -55,6 +55,10 @@ function matchesSlotType(gameType, filter) {
   return normalized !== "request";
 }
 
+function isPracticeSlot(slot) {
+  return (slot?.gameType || "").trim().toLowerCase() === "practice";
+}
+
 function canAcceptSlot(slot) {
   if (!slot || (slot.status || "") !== "Open") return false;
   if (slot.isAvailability) return false;
@@ -63,6 +67,10 @@ function canAcceptSlot(slot) {
 }
 
 function slotMatchupLabel(slot) {
+  if (isPracticeSlot(slot)) {
+    const team = (slot?.confirmedTeamId || slot?.offeringTeamId || "").trim();
+    return team ? `Practice: ${team}` : "Practice";
+  }
   const home = (slot?.homeTeamId || slot?.offeringTeamId || "").trim();
   const away = (slot?.awayTeamId || "").trim();
   if (away) return `${home} vs ${away}`;

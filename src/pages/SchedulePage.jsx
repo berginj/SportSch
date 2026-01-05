@@ -5,7 +5,15 @@ import LeaguePicker from "../components/LeaguePicker";
 import StatusCard from "../components/StatusCard";
 import Toast from "../components/Toast";
 
+function isPracticeSlot(slot) {
+  return (slot?.gameType || "").trim().toLowerCase() === "practice";
+}
+
 function formatMatchup(slot) {
+  if (isPracticeSlot(slot)) {
+    const team = (slot?.confirmedTeamId || slot?.offeringTeamId || "").trim();
+    return team ? `Practice: ${team}` : "Practice";
+  }
   const home = (slot?.homeTeamId || slot?.offeringTeamId || "").trim();
   const away = (slot?.awayTeamId || "").trim();
   if (away) return `${home} vs ${away}`;
