@@ -4,6 +4,7 @@ import { LEAGUE_HEADER_NAME } from "../lib/constants";
 
 const ROLE_OPTIONS = [
   { value: "Coach", label: "Coach" },
+  { value: "LeagueAdmin", label: "League admin" },
   { value: "Viewer", label: "Read-only viewer" },
 ];
 const NEW_LEAGUE_VALUE = "NEW_LEAGUE";
@@ -253,6 +254,9 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
                 ))}
               </select>
             </label>
+          </div>
+          <div className="muted">
+            Global admin access is assigned from the global admin management page only.
           </div>
 
           <label>
