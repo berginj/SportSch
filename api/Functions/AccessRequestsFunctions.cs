@@ -87,6 +87,12 @@ public class AccessRequestsFunctions
         {
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
+            if (string.IsNullOrWhiteSpace(me.UserId) || me.UserId == "UNKNOWN")
+            {
+                return ApiResponses.Error(req, HttpStatusCode.Unauthorized,
+                    "UNAUTHENTICATED", "You must be signed in.");
+            }
+            ApiGuards.EnsureValidTableKeyPart("userId", me.UserId);
 
             var body = await HttpUtil.ReadJsonAsync<CreateAccessRequestReq>(req);
             if (body is null)
@@ -169,6 +175,11 @@ public class AccessRequestsFunctions
         try
         {
             var me = IdentityUtil.GetMe(req);
+            if (string.IsNullOrWhiteSpace(me.UserId) || me.UserId == "UNKNOWN")
+            {
+                return ApiResponses.Error(req, HttpStatusCode.Unauthorized,
+                    "UNAUTHENTICATED", "You must be signed in.");
+            }
             var table = await TableClients.GetTableAsync(_svc, Constants.Tables.AccessRequests);
             var filter = $"UserId eq '{ApiGuards.EscapeOData(me.UserId)}'";
             var list = new List<AccessRequestDto>();
@@ -191,6 +202,11 @@ public class AccessRequestsFunctions
         try
         {
             var me = IdentityUtil.GetMe(req);
+            if (string.IsNullOrWhiteSpace(me.UserId) || me.UserId == "UNKNOWN")
+            {
+                return ApiResponses.Error(req, HttpStatusCode.Unauthorized,
+                    "UNAUTHENTICATED", "You must be signed in.");
+            }
             var status = (ApiGuards.GetQueryParam(req, "status") ?? Constants.Status.AccessRequestPending).Trim();
             var all = IsTruthy(ApiGuards.GetQueryParam(req, "all"));
 
@@ -236,6 +252,11 @@ public class AccessRequestsFunctions
         {
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
+            if (string.IsNullOrWhiteSpace(me.UserId) || me.UserId == "UNKNOWN")
+            {
+                return ApiResponses.Error(req, HttpStatusCode.Unauthorized,
+                    "UNAUTHENTICATED", "You must be signed in.");
+            }
             await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
 
             userId = (userId ?? "").Trim();
@@ -311,6 +332,11 @@ public class AccessRequestsFunctions
         {
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
+            if (string.IsNullOrWhiteSpace(me.UserId) || me.UserId == "UNKNOWN")
+            {
+                return ApiResponses.Error(req, HttpStatusCode.Unauthorized,
+                    "UNAUTHENTICATED", "You must be signed in.");
+            }
             await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
 
             userId = (userId ?? "").Trim();
