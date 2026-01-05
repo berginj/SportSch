@@ -27,8 +27,7 @@ public class GetMe
             var me = IdentityUtil.GetMe(req);
 
             // Contract-compliant: unauthenticated must be a 401, not "UNKNOWN"
-            if (string.IsNullOrWhiteSpace(me.UserId) || me.UserId == "UNKNOWN"
-                || string.IsNullOrWhiteSpace(me.Email) || me.Email == "UNKNOWN")
+            if (string.IsNullOrWhiteSpace(me.UserId) || me.UserId == "UNKNOWN")
             {
                 return ApiResponses.Error(req, HttpStatusCode.Unauthorized,
                     "UNAUTHENTICATED", "You must be signed in.");
