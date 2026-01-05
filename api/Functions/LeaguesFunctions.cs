@@ -392,6 +392,46 @@ public class LeaguesFunctions
         return await PatchSeasonCore(req, leagueId, requireGlobal: true);
     }
 
+    [Function("DeleteLeague_Global")]
+    public async Task<HttpResponseData> DeleteGlobal(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "global/leagues/{leagueId}")] HttpRequestData req,
+        string leagueId)
+    {
+        try
+        {
+            var me = IdentityUtil.GetMe(req);
+            await ApiGuards.RequireGlobalAdminAsync(_svc, me.UserId);
+
+            leagueId = (leagueId ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(leagueId))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "leagueId is required");
+            ApiGuards.EnsureValidTableKeyPart("leagueId", leagueId);
+
+            await DeleteLeagueDataAsync(leagueId);
+
+            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Leagues);
+            try
+            {
+                await table.DeleteEntityAsync(Constants.Pk.Leagues, leagueId);
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                return ApiResponses.Error(req, HttpStatusCode.NotFound, "NOT_FOUND", $"league not found: {leagueId}");
+            }
+
+            return ApiResponses.Ok(req, new { leagueId, deleted = true });
+        }
+        catch (ApiGuards.HttpError ex)
+        {
+            return ApiResponses.FromHttpError(req, ex);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "DeleteLeague_Global failed");
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
+        }
+    }
+
     private async Task<HttpResponseData> PatchSeasonCore(HttpRequestData req, string leagueId, bool requireGlobal)
     {
         try
@@ -487,5 +527,61 @@ public class LeaguesFunctions
 
             await table.UpdateEntityAsync(e, e.ETag, TableUpdateMode.Merge);
         }
+    }
+
+    private async Task DeleteLeagueDataAsync(string leagueId)
+    {
+        var ruleIds = new List<string>();
+        var rulesTable = await TableClients.GetTableAsync(_svc, Constants.Tables.FieldAvailabilityRules);
+        var rulesFilter = PrefixFilter($"AVAILRULE|{leagueId}|");
+        await foreach (var rule in rulesTable.QueryAsync<TableEntity>(filter: rulesFilter))
+        {
+            ruleIds.Add(rule.RowKey);
+            await rulesTable.DeleteEntityAsync(rule.PartitionKey, rule.RowKey);
+        }
+
+        if (ruleIds.Count > 0)
+        {
+            var exceptionsTable = await TableClients.GetTableAsync(_svc, Constants.Tables.FieldAvailabilityExceptions);
+            foreach (var ruleId in ruleIds)
+            {
+                var exceptionFilter = $"PartitionKey eq '{ApiGuards.EscapeOData(Constants.Pk.FieldAvailabilityRuleExceptions(ruleId))}'";
+                await foreach (var ex in exceptionsTable.QueryAsync<TableEntity>(filter: exceptionFilter))
+                    await exceptionsTable.DeleteEntityAsync(ex.PartitionKey, ex.RowKey);
+            }
+        }
+
+        await DeleteByFilterAsync(Constants.Tables.AccessRequests,
+            $"PartitionKey eq '{ApiGuards.EscapeOData(Constants.Pk.AccessRequests(leagueId))}'");
+        await DeleteByFilterAsync(Constants.Tables.Divisions,
+            $"PartitionKey eq '{ApiGuards.EscapeOData(Constants.Pk.Divisions(leagueId))}' or PartitionKey eq '{ApiGuards.EscapeOData($"DIVTEMPLATE|{leagueId}")}'");
+        await DeleteByFilterAsync(Constants.Tables.Events,
+            $"PartitionKey eq '{ApiGuards.EscapeOData(Constants.Pk.Events(leagueId))}'");
+        await DeleteByFilterAsync(Constants.Tables.Fields, PrefixFilter($"FIELD|{leagueId}|"));
+        await DeleteByFilterAsync(Constants.Tables.LeagueInvites,
+            $"PartitionKey eq '{ApiGuards.EscapeOData($"LEAGUEINVITE|{leagueId}")}'");
+        await DeleteByFilterAsync(Constants.Tables.Memberships,
+            $"RowKey eq '{ApiGuards.EscapeOData(leagueId)}'");
+        await DeleteByFilterAsync(Constants.Tables.SlotRequests, PrefixFilter($"SLOTREQ|{leagueId}|"));
+        await DeleteByFilterAsync(Constants.Tables.Slots, PrefixFilter($"SLOT|{leagueId}|"));
+        await DeleteByFilterAsync(Constants.Tables.Teams, PrefixFilter($"TEAM|{leagueId}|"));
+        await DeleteByFilterAsync(Constants.Tables.ScheduleRuns, PrefixFilter($"SCHED|{leagueId}|"));
+    }
+
+    private static string PrefixFilter(string prefix)
+        => $"PartitionKey ge '{ApiGuards.EscapeOData(prefix)}' and PartitionKey lt '{ApiGuards.EscapeOData(prefix + "~")}'";
+
+    private async Task<int> DeleteByFilterAsync(string tableName, string filter)
+    {
+        var table = await TableClients.GetTableAsync(_svc, tableName);
+        var deleted = 0;
+
+        await foreach (var e in table.QueryAsync<TableEntity>(filter: filter))
+        {
+            await table.DeleteEntityAsync(e.PartitionKey, e.RowKey, ETag.All);
+            deleted++;
+        }
+
+        return deleted;
     }
 }
