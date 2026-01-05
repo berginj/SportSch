@@ -6,11 +6,14 @@ const ROLE_OPTIONS = [
   { value: "Coach", label: "Coach" },
   { value: "Viewer", label: "Read-only viewer" },
 ];
+const NEW_LEAGUE_VALUE = "NEW_LEAGUE";
+const NEW_LEAGUE_LABEL = "New league (enter details in message)";
 
 export default function AccessPage({ me, leagueId, setLeagueId }) {
   const [leagues, setLeagues] = useState([]);
   const [role, setRole] = useState("Coach");
   const [notes, setNotes] = useState("");
+  const [requestLeagueId, setRequestLeagueId] = useState(leagueId || "");
   const [mine, setMine] = useState([]);
   const [mineLoaded, setMineLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -27,14 +30,19 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
     const params = new URLSearchParams(window.location.search);
     const desiredLeague = (params.get("leagueId") || "").trim();
     const desiredRole = (params.get("role") || "").trim();
-    if (desiredLeague && desiredLeague !== leagueId) {
-      setLeagueId(desiredLeague);
+    if (desiredLeague) {
+      setRequestLeagueId((prev) => (desiredLeague !== prev ? desiredLeague : prev));
+      if (desiredLeague === NEW_LEAGUE_VALUE) {
+        setLeagueId("");
+      } else {
+        setLeagueId((prev) => (desiredLeague !== prev ? desiredLeague : prev));
+      }
     }
     if (desiredRole) {
       const normalized = desiredRole === "Viewer" ? "Viewer" : "Coach";
-      setRole(normalized);
+      setRole((prev) => (normalized !== prev ? normalized : prev));
     }
-  }, [leagueId, setLeagueId]);
+  }, [setLeagueId]);
 
   const accessIntent = useMemo(() => {
     if (typeof window === "undefined") return null;
@@ -96,19 +104,39 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
 
   useEffect(() => {
     if (!accessIntent) return;
-    if (accessIntent.desiredLeague && !leagueId) {
-      setLeagueId(accessIntent.desiredLeague);
+    if (accessIntent.desiredLeague) {
+      setRequestLeagueId(accessIntent.desiredLeague);
+      if (accessIntent.desiredLeague === NEW_LEAGUE_VALUE) {
+        setLeagueId("");
+      } else {
+        setLeagueId(accessIntent.desiredLeague);
+      }
     }
     if (accessIntent.requestedRole) {
       const normalized = accessIntent.requestedRole === "Viewer" ? "Viewer" : "Coach";
       setRole(normalized);
     }
-  }, [accessIntent, leagueId, setLeagueId]);
+  }, [accessIntent, setLeagueId]);
 
   useEffect(() => {
     // Pick the first active league if none selected and we have a list.
-    if (!leagueId && leagues.length > 0) setLeagueId(leagues[0].leagueId);
-  }, [leagueId, leagues, setLeagueId]);
+    if (!leagueId && leagues.length > 0 && !requestLeagueId) {
+      setRequestLeagueId(leagues[0].leagueId);
+      setLeagueId(leagues[0].leagueId);
+    }
+  }, [leagueId, leagues, setLeagueId, requestLeagueId]);
+
+  useEffect(() => {
+    if (!leagueId && requestLeagueId && requestLeagueId !== NEW_LEAGUE_VALUE) {
+      setRequestLeagueId("");
+    }
+  }, [leagueId, requestLeagueId]);
+
+  useEffect(() => {
+    if (leagueId && leagueId !== requestLeagueId && requestLeagueId !== NEW_LEAGUE_VALUE) {
+      setRequestLeagueId(leagueId);
+    }
+  }, [leagueId, requestLeagueId]);
 
   useEffect(() => {
     if (!signedIn || !mineLoaded || autoRequested.current) return;
@@ -127,7 +155,7 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
       return;
     }
 
-    const id = (leagueId || "").trim();
+    const id = (requestLeagueId || "").trim();
     if (!id) {
       setErr("Choose a league.");
       return;
@@ -194,7 +222,19 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
           <div className="formGrid">
             <label>
               League
-              <select value={leagueId || ""} onChange={(e) => setLeagueId(e.target.value)}>
+              <select
+                value={requestLeagueId || ""}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setRequestLeagueId(next);
+                  if (next === NEW_LEAGUE_VALUE) {
+                    setLeagueId("");
+                  } else {
+                    setLeagueId(next);
+                  }
+                }}
+              >
+                <option value={NEW_LEAGUE_VALUE}>{NEW_LEAGUE_LABEL}</option>
                 {leagues.map((l) => (
                   <option key={l.leagueId} value={l.leagueId}>
                     {l.name ? `${l.name} (${l.leagueId})` : l.leagueId}
@@ -220,13 +260,13 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Tell the admin who you are and why you need access."
+              placeholder="Tell the admin who you are and why you need access. For new leagues, include the league name, region, and any admin contact info."
               rows={4}
             />
           </label>
 
           <div className="row">
-            <button className="btn" onClick={submitRequest} disabled={busy}>
+            <button className="btn" onClick={() => submitRequest()} disabled={busy}>
               {busy ? "Submitting..." : "Submit request"}
             </button>
           </div>
