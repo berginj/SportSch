@@ -25,6 +25,7 @@ public class MembershipsFunctions
 
     public record CoachTeam(string? division, string? teamId);
     public record PatchMembershipReq(CoachTeam? team);
+    public record CreateMembershipReq(string? userId, string? email, string? leagueId, string? role, CoachTeam? team);
     public record MembershipDto(string userId, string email, string role, CoachTeam? team);
 
     [Function("ListMemberships")]
@@ -73,6 +74,91 @@ public class MembershipsFunctions
         catch (Exception ex)
         {
             _log.LogError(ex, "ListMemberships failed");
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
+        }
+    }
+
+    [Function("CreateMembership")]
+    public async Task<HttpResponseData> Create(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/memberships")] HttpRequestData req)
+    {
+        try
+        {
+            var me = IdentityUtil.GetMe(req);
+            await ApiGuards.RequireGlobalAdminAsync(_svc, me.UserId);
+
+            var body = await HttpUtil.ReadJsonAsync<CreateMembershipReq>(req);
+            if (body is null)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Invalid JSON body");
+
+            var userId = (body.userId ?? "").Trim();
+            var email = (body.email ?? "").Trim();
+            var leagueId = (body.leagueId ?? "").Trim();
+            var role = (body.role ?? "").Trim();
+
+            if (string.IsNullOrWhiteSpace(userId))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "userId is required");
+            if (string.IsNullOrWhiteSpace(leagueId))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "leagueId is required");
+            if (string.IsNullOrWhiteSpace(role))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "role is required");
+
+            ApiGuards.EnsureValidTableKeyPart("userId", userId);
+            ApiGuards.EnsureValidTableKeyPart("leagueId", leagueId);
+
+            var normalizedRole = role switch
+            {
+                var r when r.Equals(Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase) => Constants.Roles.Coach,
+                var r when r.Equals(Constants.Roles.Viewer, StringComparison.OrdinalIgnoreCase) => Constants.Roles.Viewer,
+                var r when r.Equals(Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase) => Constants.Roles.LeagueAdmin,
+                _ => ""
+            };
+
+            if (string.IsNullOrWhiteSpace(normalizedRole))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "role must be Coach, Viewer, or LeagueAdmin");
+
+            var leagues = await TableClients.GetTableAsync(_svc, Constants.Tables.Leagues);
+            try
+            {
+                _ = (await leagues.GetEntityAsync<TableEntity>(Constants.Pk.Leagues, leagueId)).Value;
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                return ApiResponses.Error(req, HttpStatusCode.NotFound, "NOT_FOUND", $"league not found: {leagueId}");
+            }
+
+            string division = "";
+            string teamId = "";
+            if (string.Equals(normalizedRole, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase) && body.team is not null)
+            {
+                division = (body.team.division ?? "").Trim();
+                teamId = (body.team.teamId ?? "").Trim();
+                if (!string.IsNullOrWhiteSpace(division))
+                    ApiGuards.EnsureValidTableKeyPart("division", division);
+                if (!string.IsNullOrWhiteSpace(teamId))
+                    ApiGuards.EnsureValidTableKeyPart("teamId", teamId);
+            }
+
+            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Memberships);
+            var entity = new TableEntity(userId, leagueId)
+            {
+                ["Role"] = normalizedRole,
+                ["Email"] = email,
+                ["Division"] = division,
+                ["TeamId"] = teamId,
+                ["UpdatedUtc"] = DateTimeOffset.UtcNow
+            };
+
+            await table.UpsertEntityAsync(entity, TableUpdateMode.Merge);
+            return ApiResponses.Ok(req, new MembershipDto(userId, email, normalizedRole,
+                string.IsNullOrWhiteSpace(division) || string.IsNullOrWhiteSpace(teamId)
+                    ? null
+                    : new CoachTeam(division, teamId)));
+        }
+        catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "CreateMembership failed");
             return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
         }
     }
