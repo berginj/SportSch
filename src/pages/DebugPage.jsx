@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../lib/api";
 
+const MEMBERSHIP_ROLES = ["LeagueAdmin", "Coach", "Viewer"];
+
 export default function DebugPage({ leagueId }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
