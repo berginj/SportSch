@@ -9,12 +9,13 @@ import AdminPage from "./pages/AdminPage";
 import InviteAcceptPage from "./pages/InviteAcceptPage";
 import HomePage from "./pages/HomePage";
 import DebugPage from "./pages/DebugPage";
+import PracticePortalPage from "./pages/PracticePortalPage";
 import TopNav from "./components/TopNav";
 import StatusCard from "./components/StatusCard";
 import { useSession } from "./lib/useSession";
 import { trackPageView } from "./lib/telemetry";
 
-const VALID_TABS = new Set(["home", "calendar", "schedule", "offers", "manage", "admin", "debug", "help"]);
+const VALID_TABS = new Set(["home", "calendar", "schedule", "offers", "manage", "admin", "debug", "help", "practice"]);
 
 function readInviteFromUrl() {
   if (typeof window === "undefined") return null;
@@ -184,6 +185,9 @@ export default function App() {
               <p className="muted">You do not have access to this page.</p>
             </div>
           )
+        )}
+        {effectiveTab === "practice" && (
+          <PracticePortalPage me={me} leagueId={activeLeagueId} />
         )}
       </main>
     </div>
