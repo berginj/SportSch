@@ -38,6 +38,7 @@ public class AccessRequestsFunctions
     private static string ReqRk(string userId) => userId; // one request per (league,user)
 
     private const string AccessReqPkPrefix = "ACCESSREQ|";
+    private const string NewLeagueId = "NEW_LEAGUE";
 
     private static string LeagueIdFromPk(string pk)
     {
@@ -100,15 +101,18 @@ public class AccessRequestsFunctions
             if (!IsValidRequestedRole(requestedRole))
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "requestedRole must be Coach, Viewer, or LeagueAdmin");
 
-            // Ensure league exists
-            var leagues = await TableClients.GetTableAsync(_svc, Constants.Tables.Leagues);
-            try
+            if (!string.Equals(leagueId, NewLeagueId, StringComparison.OrdinalIgnoreCase))
             {
-                _ = (await leagues.GetEntityAsync<TableEntity>(Constants.Pk.Leagues, leagueId)).Value;
-            }
-            catch (RequestFailedException ex) when (ex.Status == 404)
-            {
-                return ApiResponses.Error(req, HttpStatusCode.NotFound, "NOT_FOUND", $"league not found: {leagueId}");
+                // Ensure league exists
+                var leagues = await TableClients.GetTableAsync(_svc, Constants.Tables.Leagues);
+                try
+                {
+                    _ = (await leagues.GetEntityAsync<TableEntity>(Constants.Pk.Leagues, leagueId)).Value;
+                }
+                catch (RequestFailedException ex) when (ex.Status == 404)
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.NotFound, "NOT_FOUND", $"league not found: {leagueId}");
+                }
             }
 
             var requests = await TableClients.GetTableAsync(_svc, Constants.Tables.AccessRequests);
