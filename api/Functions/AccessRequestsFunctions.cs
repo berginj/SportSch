@@ -87,6 +87,12 @@ public class AccessRequestsFunctions
         {
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
+            if (string.IsNullOrWhiteSpace(me.UserId) || me.UserId == "UNKNOWN")
+            {
+                return ApiResponses.Error(req, HttpStatusCode.Unauthorized,
+                    "UNAUTHENTICATED", "You must be signed in.");
+            }
+            ApiGuards.EnsureValidTableKeyPart("userId", me.UserId);
 
             var body = await HttpUtil.ReadJsonAsync<CreateAccessRequestReq>(req);
             if (body is null)
