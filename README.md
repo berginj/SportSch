@@ -1,3 +1,39 @@
+# GameSwap / SportsScheduler
+
+## What does this app do?
+GameSwap / SportsScheduler is a multi-tenant youth sports scheduling system that helps leagues manage field availability,
+generate schedules, and coordinate game or practice slot swaps. League admins can define leagues, divisions, teams, and fields;
+coaches can offer up slots and request swaps; and viewers can follow schedules without making changes. The UI is a React + Vite
+front end that talks to an Azure Functions (isolated) API backed by Azure Table Storage, with Azure Static Web Apps handling
+hosting and EasyAuth for authentication. The system enforces league scoping across all API calls and keeps data in canonical
+Table Storage partitions, so every slot, request, field, or membership is isolated to the active league.
+
+Key workflows include:
+- **League setup**: manage leagues, divisions, teams, fields, and availability rules.
+- **Scheduling**: create slots, request swaps, approve or reject requests, and export schedules.
+- **Multi-tenant access**: users can belong to multiple leagues with distinct roles.
+
+## Roles
+Roles are defined in the API contract and enforced by the backend:
+- **LeagueAdmin**: Full league setup and scheduling control.
+- **Coach**: Offer/request slots and approve requests (with potential team assignment later).
+- **Viewer**: Read-only access to schedules and available slots.
+- **Global admin**: Cross-league administrative access; returned by `/api/me`.
+
+## Contract files (source of truth)
+- `docs/contract.md`: The API/UI contract, including routes, roles, storage table names, and key formats. Keep this current
+  whenever endpoints or payloads change.
+- `docs/scheduling.md`: Scheduling rule creation, exceptions, generation, validation reruns, and SportsEngine export steps.
+
+## Azure components required
+To run or deploy this system, you need the following Azure services configured:
+- **Azure Static Web Apps**: Hosts the React UI and provides EasyAuth; proxies `/api` to the Functions backend.
+- **Azure Functions (v4, isolated worker)**: Hosts the API in `api/`.
+- **Azure Storage Account (Table Storage)**: Persists memberships, fields, slots, requests, and scheduling data.
+- **Application Insights (recommended)**: Telemetry via the Functions worker integration.
+
+---
+
 Baseline prompt for future AI work on GameSwap / SportsScheduler (vNext)
 
 You are helping me build and troubleshoot a multi-tenant youth sports GameSwap system with a React UI and an Azure Functions backend using Azure Table Storage. Your job is to propose and implement changes without introducing drift in table naming, partition keys, league scoping, API routes, field naming, or workflow state transitions. When you change behavior, update both backend and UI consistently. When I ask for full page/file replacements, give full replacements (not snippets).
@@ -277,8 +313,4 @@ Prefer shared helpers (ApiGuards/IdentityUtil)
 
 Provide full-file replacements when requested
 
-<<<<<<< HEAD
 Avoid creating new table names or new PK patterns unless explicitly directed
-=======
-Avoid creating new table names or new PK patterns unless explicitly directed
->>>>>>> 0ac44d73bcb2b32bcc3d067b75d1ed55b4779353
