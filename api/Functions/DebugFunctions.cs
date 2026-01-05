@@ -1,6 +1,5 @@
 using System.Net;
 using System.Text.Json;
-using Azure;
 using Azure.Data.Tables;
 using GameSwap.Functions.Storage;
 using Microsoft.Azure.Functions.Worker;
