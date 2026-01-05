@@ -33,6 +33,11 @@ export function useSession() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const markSignedOut = (message) => {
+    setMe({ userId: "UNKNOWN", email: "UNKNOWN", memberships: [] });
+    if (message) setError(message);
+  };
+
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -42,7 +47,13 @@ export function useSession() {
         const data = await apiFetch("/api/me");
         if (!cancelled) setMe(data || {});
       } catch (e) {
-        if (!cancelled) setError(e?.message || "Failed to load session");
+        if (cancelled) return;
+        const message = e?.message || "Failed to load session";
+        if (message.startsWith("401 ")) {
+          markSignedOut(message);
+        } else {
+          setError(message);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -81,9 +92,18 @@ export function useSession() {
     loading,
     error,
     refreshMe: async () => {
-      const data = await apiFetch("/api/me");
-      setMe(data || {});
-      return data;
+      try {
+        const data = await apiFetch("/api/me");
+        setMe(data || {});
+        return data;
+      } catch (e) {
+        const message = e?.message || "Failed to load session";
+        if (message.startsWith("401 ")) {
+          markSignedOut(message);
+          return { userId: "UNKNOWN", email: "UNKNOWN", memberships: [] };
+        }
+        throw e;
+      }
     },
   };
 }
