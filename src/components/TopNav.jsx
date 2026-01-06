@@ -1,7 +1,12 @@
+import { useEffect, useMemo, useState } from "react";
+import { apiFetch } from "../lib/api";
+
 export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
   const memberships = Array.isArray(me?.memberships) ? me.memberships : [];
   const email = me?.email || "";
   const isGlobalAdmin = !!me?.isGlobalAdmin;
+  const [globalLeagues, setGlobalLeagues] = useState([]);
+  const [globalErr, setGlobalErr] = useState("");
   const tabLabels = {
     home: "Home",
     calendar: "Calendar",
@@ -18,7 +23,54 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
     setLeagueId(id);
   }
 
-  const hasLeagues = memberships.length > 0;
+  useEffect(() => {
+    if (!isGlobalAdmin) return;
+    let cancelled = false;
+    (async () => {
+      setGlobalErr("");
+      try {
+        const list = await apiFetch("/api/global/leagues");
+        if (!cancelled) setGlobalLeagues(Array.isArray(list) ? list : []);
+      } catch (e) {
+        if (!cancelled) {
+          setGlobalErr(e?.message || "Failed to load leagues.");
+          setGlobalLeagues([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isGlobalAdmin]);
+
+  const roleByLeague = useMemo(() => {
+    const map = new Map();
+    for (const m of memberships) {
+      const id = (m?.leagueId || "").trim();
+      const role = (m?.role || "").trim();
+      if (id) map.set(id, role);
+    }
+    return map;
+  }, [memberships]);
+
+  const leagueOptions = useMemo(() => {
+    if (isGlobalAdmin && globalLeagues.length) {
+      return globalLeagues.map((l) => {
+        const id = (l?.leagueId || "").trim();
+        const name = (l?.name || "").trim();
+        const role = roleByLeague.get(id) || "";
+        const labelText = name ? `${name} (${id})${role ? ` — ${role}` : ""}` : `${id}${role ? ` — ${role}` : ""}`;
+        return { id, label: labelText };
+      }).filter((x) => x.id);
+    }
+    return memberships.map((m) => {
+      const id = (m?.leagueId || "").trim();
+      const role = (m?.role || "").trim();
+      return { id, label: role ? `${id} (${role})` : id };
+    }).filter((x) => x.id);
+  }, [isGlobalAdmin, globalLeagues, memberships, roleByLeague]);
+
+  const hasLeagues = leagueOptions.length > 0;
 
   return (
     <header className="topnav">
@@ -120,18 +172,14 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
                 {!hasLeagues ? (
                   <option value="">No leagues</option>
                 ) : (
-                  memberships.map((m) => {
-                    const id = (m?.leagueId || "").trim();
-                    const role = (m?.role || "").trim();
-                    if (!id) return null;
-                    return (
-                      <option key={id} value={id}>
-                        {role ? `${id} (${role})` : id}
-                      </option>
-                    );
-                  })
+                  leagueOptions.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.label}
+                    </option>
+                  ))
                 )}
               </select>
+              {globalErr ? <div className="muted text-xs">{globalErr}</div> : null}
             </div>
           </div>
         </div>
