@@ -305,6 +305,27 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
     }
   }
 
+  async function deleteLeague(league) {
+    const id = (league?.leagueId || "").trim();
+    if (!id) return;
+    const ok = window.confirm(`Delete league ${id}? This deletes all league data and cannot be undone.`);
+    if (!ok) return;
+    setGlobalLoading(true);
+    setGlobalErr("");
+    setGlobalOk("");
+    try {
+      await apiFetch(`/api/global/leagues/${encodeURIComponent(id)}`, { method: "DELETE" });
+      setGlobalOk(`Deleted league ${id}.`);
+      setToast({ tone: "success", message: `Deleted league ${id}.` });
+      if (seasonLeagueId === id) setSeasonLeagueId("");
+      await loadGlobalLeagues();
+    } catch (e) {
+      setGlobalErr(e?.message || "Delete league failed");
+    } finally {
+      setGlobalLoading(false);
+    }
+  }
+
   function applySeasonFromLeague(league) {
     const season = league?.season || {};
     setSeasonDraft({
@@ -707,6 +728,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
                     <th>Name</th>
                     <th>Timezone</th>
                     <th>Status</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -716,6 +738,11 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
                       <td>{l.name}</td>
                       <td>{l.timezone}</td>
                       <td>{l.status}</td>
+                      <td className="text-right">
+                        <button className="btn btn--ghost" onClick={() => deleteLeague(l)} disabled={globalLoading}>
+                          Delete
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
