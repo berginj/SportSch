@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../lib/api";
 
-const MEMBERSHIP_ROLES = ["LeagueAdmin", "Coach", "Viewer"];
-
 export default function DebugPage({ leagueId }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -11,9 +9,10 @@ export default function DebugPage({ leagueId }) {
   const [globalErr, setGlobalErr] = useState("");
   const [globalOk, setGlobalOk] = useState("");
   const [globalBusy, setGlobalBusy] = useState(false);
+  const [globalLoading, setGlobalLoading] = useState(true);
   const [globalDraft, setGlobalDraft] = useState({ userId: "", email: "" });
 
-  async function load() {
+  async function loadMemberships() {
     if (!leagueId) {
       setLoading(false);
       setMemberships([]);
@@ -34,6 +33,7 @@ export default function DebugPage({ leagueId }) {
   }
 
   async function loadGlobalAdmins() {
+    setGlobalLoading(true);
     setGlobalErr("");
     try {
       const data = await apiFetch("/api/admin/globaladmins");
@@ -41,6 +41,8 @@ export default function DebugPage({ leagueId }) {
     } catch (e) {
       setGlobalErr(e?.message || "Failed to load global admins.");
       setGlobalAdmins([]);
+    } finally {
+      setGlobalLoading(false);
     }
   }
 
@@ -71,17 +73,13 @@ export default function DebugPage({ leagueId }) {
   }
 
   useEffect(() => {
-    load();
+    loadMemberships();
+    loadGlobalAdmins();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leagueId]);
 
-  useEffect(() => {
-    loadGlobalAdmins();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   return (
-    <div className="page">
+    <div className="stack">
       <div className="card">
         <h2>Debug: global admins</h2>
         <p className="muted">
@@ -111,14 +109,16 @@ export default function DebugPage({ leagueId }) {
           <button className="btn" onClick={addGlobalAdmin} disabled={globalBusy}>
             {globalBusy ? "Saving..." : "Grant global admin"}
           </button>
-          <button className="btn btn--ghost" onClick={loadGlobalAdmins} disabled={globalBusy}>
+          <button className="btn btn--ghost" onClick={loadGlobalAdmins} disabled={globalLoading}>
             Refresh list
           </button>
         </div>
 
         {globalErr && <div className="error">{globalErr}</div>}
         {globalOk && <div className="ok">{globalOk}</div>}
-        {globalAdmins.length === 0 ? (
+        {globalLoading ? (
+          <div className="muted">Loading...</div>
+        ) : globalAdmins.length === 0 ? (
           <div className="muted">No global admins returned.</div>
         ) : (
           <div className="tableWrap">
@@ -126,6 +126,7 @@ export default function DebugPage({ leagueId }) {
               <thead>
                 <tr>
                   <th>User</th>
+                  <th>Email</th>
                   <th>Created</th>
                 </tr>
               </thead>
@@ -133,9 +134,9 @@ export default function DebugPage({ leagueId }) {
                 {globalAdmins.map((admin) => (
                   <tr key={admin.userId}>
                     <td>
-                      <div className="font-semibold">{admin.email || admin.userId}</div>
-                      <div className="muted text-xs">{admin.userId}</div>
+                      <div className="font-semibold">{admin.userId}</div>
                     </td>
+                    <td>{admin.email || ""}</td>
                     <td>{admin.createdUtc ? new Date(admin.createdUtc).toLocaleString() : ""}</td>
                   </tr>
                 ))}
@@ -143,6 +144,11 @@ export default function DebugPage({ leagueId }) {
             </table>
           </div>
         )}
+
+        <details className="mt-4">
+          <summary>Raw JSON</summary>
+          <pre className="codeblock">{JSON.stringify(globalAdmins, null, 2)}</pre>
+        </details>
       </div>
 
       <div className="card">
@@ -152,7 +158,7 @@ export default function DebugPage({ leagueId }) {
         </p>
 
         <div className="row gap-3 row--wrap mb-2">
-          <button className="btn" onClick={load} disabled={loading}>
+          <button className="btn" onClick={loadMemberships} disabled={loading}>
             Refresh
           </button>
         </div>
