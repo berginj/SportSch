@@ -20,6 +20,7 @@ public static class Constants
         public const string Leagues = "GameSwapLeagues";
         public const string Memberships = "GameSwapMemberships";
         public const string GlobalAdmins = "GameSwapGlobalAdmins";
+        public const string Users = "GameSwapUsers";
 
         public const string AccessRequests = "GameSwapAccessRequests";
         public const string Fields = "GameSwapFields";
@@ -43,6 +44,7 @@ public static class Constants
     {
         public const string Leagues = "LEAGUE"; // RK = leagueId
         public const string GlobalAdmins = "GLOBAL"; // RK = userId
+        public const string Users = "USER"; // RK = userId
 
         public static string AccessRequests(string leagueId) => $"ACCESSREQ|{leagueId}"; // RK = userId
         public static string Divisions(string leagueId) => $"DIV|{leagueId}"; // RK = divisionCode

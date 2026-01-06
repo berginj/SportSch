@@ -23,7 +23,11 @@ export function getInitialLeagueId(me) {
     // ignore
   }
 
-  // 2) First membership, if any
+  // 2) Home league preference
+  const homeLeagueId = (me?.homeLeagueId || "").trim();
+  if (homeLeagueId) return homeLeagueId;
+
+  // 3) First membership, if any
   const memberships = Array.isArray(me?.memberships) ? me.memberships : [];
   return (memberships[0]?.leagueId || "").trim();
 }

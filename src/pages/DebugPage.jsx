@@ -83,7 +83,7 @@ export default function DebugPage({ leagueId }) {
       <div className="card">
         <h2>Debug: global admins</h2>
         <p className="muted">
-          Data comes from <code>GameSwapGlobalAdmins</code> via <code>/api/admin/globaladmins</code>.
+          Data comes from <code>GameSwapGlobalAdmins</code> via <code>/api/globaladmins</code>.
         </p>
 
         <div className="formGrid">

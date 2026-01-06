@@ -69,12 +69,25 @@ public class GetMe
                 }
             }
 
+            string homeLeagueId = "";
+            try
+            {
+                var usersTable = await TableClients.GetTableAsync(_svc, Constants.Tables.Users);
+                var user = (await usersTable.GetEntityAsync<TableEntity>(Constants.Pk.Users, me.UserId)).Value;
+                homeLeagueId = (user.GetString("HomeLeagueId") ?? "").Trim();
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                homeLeagueId = "";
+            }
+
             return ApiResponses.Ok(req, new
             {
                 userId = me.UserId,
                 email = me.Email,
                 isGlobalAdmin,
-                memberships
+                memberships,
+                homeLeagueId
             });
         }
         catch (Exception ex)

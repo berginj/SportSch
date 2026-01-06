@@ -19,6 +19,7 @@ public sealed class TableStartup : IHostedService
             Constants.Tables.Leagues,
             Constants.Tables.Memberships,
             Constants.Tables.GlobalAdmins,
+            Constants.Tables.Users,
             Constants.Tables.AccessRequests,
             Constants.Tables.Fields,
             Constants.Tables.Divisions,

@@ -35,6 +35,10 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
   const [globalOk, setGlobalOk] = useState("");
   const [globalLoading, setGlobalLoading] = useState(false);
   const [globalLeagues, setGlobalLeagues] = useState([]);
+  const [userSearch, setUserSearch] = useState("");
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [users, setUsers] = useState([]);
+  const [userDraft, setUserDraft] = useState({ userId: "", email: "", homeLeagueId: "", role: "" });
   const [newLeague, setNewLeague] = useState({ leagueId: "", name: "" });
   const [seasonLeagueId, setSeasonLeagueId] = useState("");
   const [seasonDraft, setSeasonDraft] = useState({
@@ -182,6 +186,12 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isGlobalAdmin]);
 
+  useEffect(() => {
+    if (!isGlobalAdmin) return;
+    loadUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isGlobalAdmin]);
+
   async function loadGlobalLeagues() {
     setGlobalErr("");
     setGlobalLoading(true);
@@ -196,6 +206,47 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
       setGlobalLeagues([]);
     } finally {
       setGlobalLoading(false);
+    }
+  }
+
+  async function loadUsers() {
+    setUsersLoading(true);
+    try {
+      const qs = new URLSearchParams();
+      if (userSearch.trim()) qs.set("search", userSearch.trim());
+      const data = await apiFetch(`/api/users${qs.toString() ? `?${qs.toString()}` : ""}`);
+      setUsers(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setToast({ tone: "error", message: e?.message || "Failed to load users" });
+      setUsers([]);
+    } finally {
+      setUsersLoading(false);
+    }
+  }
+
+  async function saveUser() {
+    const userId = (userDraft.userId || "").trim();
+    const homeLeagueId = (userDraft.homeLeagueId || "").trim();
+    const role = (userDraft.role || "").trim();
+    if (!userId) return setToast({ tone: "error", message: "User ID is required." });
+    if (role && !homeLeagueId) return setToast({ tone: "error", message: "Home league is required when setting a role." });
+
+    try {
+      await apiFetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId,
+          email: (userDraft.email || "").trim(),
+          homeLeagueId,
+          role: role || undefined,
+        }),
+      });
+      setToast({ tone: "success", message: `Saved user ${userId}.` });
+      setUserDraft({ userId: "", email: "", homeLeagueId: "", role: "" });
+      await loadUsers();
+    } catch (e) {
+      setToast({ tone: "error", message: e?.message || "Failed to save user" });
     }
   }
 
@@ -770,6 +821,104 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
                 Reset
               </button>
             </div>
+          </div>
+
+          <div className="card mt-4">
+            <h4 className="m-0">User admin</h4>
+            <p className="muted">Set a user's home league and home-league role.</p>
+            <div className="row gap-3 row--wrap mb-3">
+              <label className="min-w-[220px]">
+                Search
+                <input
+                  value={userSearch}
+                  onChange={(e) => setUserSearch(e.target.value)}
+                  placeholder="userId or email"
+                />
+              </label>
+              <button className="btn" onClick={loadUsers} disabled={usersLoading}>
+                {usersLoading ? "Loading..." : "Refresh"}
+              </button>
+            </div>
+
+            <div className="grid2 mb-3">
+              <label>
+                User ID
+                <input
+                  value={userDraft.userId}
+                  onChange={(e) => setUserDraft((p) => ({ ...p, userId: e.target.value }))}
+                  placeholder="aad|..."
+                />
+              </label>
+              <label>
+                Email
+                <input
+                  value={userDraft.email}
+                  onChange={(e) => setUserDraft((p) => ({ ...p, email: e.target.value }))}
+                  placeholder="name@domain.com"
+                />
+              </label>
+              <label>
+                Home league
+                <select
+                  value={userDraft.homeLeagueId}
+                  onChange={(e) => setUserDraft((p) => ({ ...p, homeLeagueId: e.target.value }))}
+                >
+                  <option value="">(none)</option>
+                  {globalLeagues.map((l) => (
+                    <option key={l.leagueId} value={l.leagueId}>
+                      {l.name ? `${l.name} (${l.leagueId})` : l.leagueId}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Home role
+                <select
+                  value={userDraft.role}
+                  onChange={(e) => setUserDraft((p) => ({ ...p, role: e.target.value }))}
+                >
+                  <option value="">(leave unchanged)</option>
+                  {ROLE_OPTIONS.map((role) => (
+                    <option key={role} value={role}>{role}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="row gap-2">
+              <button className="btn btn--primary" onClick={saveUser}>
+                Save user
+              </button>
+              <button className="btn" onClick={() => setUserDraft({ userId: "", email: "", homeLeagueId: "", role: "" })}>
+                Clear
+              </button>
+            </div>
+
+            {users.length === 0 ? (
+              <div className="muted mt-3">No user profiles yet.</div>
+            ) : (
+              <div className="tableWrap mt-3">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>User</th>
+                      <th>Email</th>
+                      <th>Home league</th>
+                      <th>Home role</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map((u) => (
+                      <tr key={u.userId}>
+                        <td><code>{u.userId}</code></td>
+                        <td>{u.email || ""}</td>
+                        <td>{u.homeLeagueId || ""}</td>
+                        <td>{u.homeLeagueRole || ""}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       ) : null}

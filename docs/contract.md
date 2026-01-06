@@ -59,6 +59,7 @@ Canonical table names (do not introduce new variants):
 - GameSwapLeagues
 - GameSwapDivisions
 - GameSwapTeams
+- GameSwapUsers
 - GameSwapEvents
 - GameSwapScheduleRuns
 - GameSwapFieldAvailabilityRules
@@ -72,6 +73,7 @@ PartitionKey/RowKey conventions (canonical):
 - Access Requests: PK = `ACCESSREQ|{leagueId}`, RK = `<userId>`
 - Availability Rules: PK = `AVAILRULE|{leagueId}|{fieldKey}`, RK = `<ruleId>`
 - Availability Exceptions: PK = `AVAILRULEEX|{ruleId}`, RK = `<exceptionId>`
+- Users: PK = `USER`, RK = `<userId>`
 
 Legacy compatibility:
 - Reads may fall back to legacy PKs when needed, but all new writes must use canonical PKs above.
@@ -90,6 +92,7 @@ Response
     "userId": "<string>",
     "email": "<string>",
     "isGlobalAdmin": false,
+    "homeLeagueId": "ARL",
     "memberships": [
       { "leagueId": "ARL", "role": "LeagueAdmin" },
       { "leagueId": "ARL", "role": "Coach" },
@@ -161,6 +164,10 @@ the notes for required headers or roles.
 | PATCH | /accessrequests/{userId}/deny | `Functions/AccessRequestsFunctions.cs` | Deny access request (requires `x-league-id`, LeagueAdmin). |
 | POST | /admin/invites | `Functions/LeagueInvitesFunctions.cs` | Create invite (requires `x-league-id`, LeagueAdmin). |
 | POST | /invites | `Functions/LeagueInvitesFunctions.cs` | Create invite (alt route; requires `x-league-id`, LeagueAdmin). |
+| GET | /admin/users | `Functions/AdminUsersFunctions.cs` | Global admin list users. |
+| POST | /admin/users | `Functions/AdminUsersFunctions.cs` | Global admin upsert user profile + home role. |
+| GET | /users | `Functions/AdminUsersFunctions.cs` | Global admin list users (alt route). |
+| POST | /users | `Functions/AdminUsersFunctions.cs` | Global admin upsert user profile + home role (alt route). |
 | POST | /invites/accept | `Functions/LeagueInvitesFunctions.cs` | Accept invite. |
 | GET | /memberships | `Functions/MembershipsFunctions.cs` | List memberships (requires `x-league-id`, LeagueAdmin). |
 | PATCH | /memberships/{userId} | `Functions/MembershipsFunctions.cs` | Update membership (requires `x-league-id`, LeagueAdmin). |
@@ -336,6 +343,41 @@ Response
 ```json
 { "data": { "userId": "...", "removed": true } }
 ```
+
+### Admin: GET /admin/users
+Requires: global admin.  
+Query: `search` (optional; matches userId, email, homeLeagueId)
+
+Response
+```json
+{
+  "data": [
+    {
+      "userId": "aad|...",
+      "email": "admin@example.com",
+      "homeLeagueId": "ARL",
+      "homeLeagueRole": "LeagueAdmin",
+      "updatedUtc": "2026-01-05T12:00:00Z"
+    }
+  ]
+}
+```
+
+### Admin: POST /admin/users
+Requires: global admin.
+
+Body
+```json
+{
+  "userId": "aad|...",
+  "email": "admin@example.com",
+  "homeLeagueId": "ARL",
+  "role": "LeagueAdmin"
+}
+```
+
+Notes
+- `role` is applied to the `homeLeagueId` membership.
 
 ---
 
@@ -1207,3 +1249,4 @@ Legend: R = read, W = write/modify, A = approve/deny/admin action.
 | Schedule preview/apply | - | - | W | W |
 | Schedule validate | - | - | W | W |
 | Events | R | R | W | W |
+| Users (home league) | - | - | - | W |
