@@ -146,6 +146,9 @@ the notes for required headers or roles.
 | GET | /admin/globaladmins | `Functions/GlobalAdminsFunctions.cs` | Global admin list. |
 | POST | /admin/globaladmins | `Functions/GlobalAdminsFunctions.cs` | Add global admin. |
 | DELETE | /admin/globaladmins/{userId} | `Functions/GlobalAdminsFunctions.cs` | Remove global admin. |
+| GET | /globaladmins | `Functions/GlobalAdminsFunctions.cs` | Global admin list (alt route). |
+| POST | /globaladmins | `Functions/GlobalAdminsFunctions.cs` | Add global admin (alt route). |
+| DELETE | /globaladmins/{userId} | `Functions/GlobalAdminsFunctions.cs` | Remove global admin (alt route). |
 | POST | /admin/wipe | `Functions/AdminWipe.cs` | Global admin wipe for league-scoped tables (requires `x-league-id`). |
 | POST | /admin/migrate/fields | `Functions/AdminMigrateFields.cs` | Global admin migrate fields PKs from legacy format (requires `x-league-id`). |
 | POST | /global/migrate/fields | `Functions/AdminMigrateFields.cs` | Global admin migrate fields PKs from legacy format (alt route). |

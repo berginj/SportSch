@@ -32,8 +32,38 @@ public class GlobalAdminsFunctions
         );
 
     [Function("ListGlobalAdmins")]
-    public async Task<HttpResponseData> List(
+    public Task<HttpResponseData> List(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "admin/globaladmins")] HttpRequestData req)
+        => ListCore(req);
+
+    [Function("ListGlobalAdmins_Alt")]
+    public Task<HttpResponseData> ListAlt(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "globaladmins")] HttpRequestData req)
+        => ListCore(req);
+
+    [Function("UpsertGlobalAdmin")]
+    public Task<HttpResponseData> Upsert(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/globaladmins")] HttpRequestData req)
+        => UpsertCore(req);
+
+    [Function("UpsertGlobalAdmin_Alt")]
+    public Task<HttpResponseData> UpsertAlt(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "globaladmins")] HttpRequestData req)
+        => UpsertCore(req);
+
+    [Function("DeleteGlobalAdmin")]
+    public Task<HttpResponseData> Delete(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "admin/globaladmins/{userId}")] HttpRequestData req,
+        string userId)
+        => DeleteCore(req, userId);
+
+    [Function("DeleteGlobalAdmin_Alt")]
+    public Task<HttpResponseData> DeleteAlt(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "globaladmins/{userId}")] HttpRequestData req,
+        string userId)
+        => DeleteCore(req, userId);
+
+    private async Task<HttpResponseData> ListCore(HttpRequestData req)
     {
         try
         {
@@ -60,9 +90,7 @@ public class GlobalAdminsFunctions
         }
     }
 
-    [Function("UpsertGlobalAdmin")]
-    public async Task<HttpResponseData> Upsert(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/globaladmins")] HttpRequestData req)
+    private async Task<HttpResponseData> UpsertCore(HttpRequestData req)
     {
         try
         {
@@ -123,10 +151,7 @@ public class GlobalAdminsFunctions
         }
     }
 
-    [Function("DeleteGlobalAdmin")]
-    public async Task<HttpResponseData> Delete(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "admin/globaladmins/{userId}")] HttpRequestData req,
-        string userId)
+    private async Task<HttpResponseData> DeleteCore(HttpRequestData req, string userId)
     {
         try
         {

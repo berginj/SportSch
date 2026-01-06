@@ -36,7 +36,7 @@ export default function DebugPage({ leagueId }) {
     setGlobalLoading(true);
     setGlobalErr("");
     try {
-      const data = await apiFetch("/api/admin/globaladmins");
+      const data = await apiFetch("/api/globaladmins");
       setGlobalAdmins(Array.isArray(data) ? data : []);
     } catch (e) {
       setGlobalErr(e?.message || "Failed to load global admins.");
@@ -57,7 +57,7 @@ export default function DebugPage({ leagueId }) {
     }
     setGlobalBusy(true);
     try {
-      await apiFetch("/api/admin/globaladmins", {
+      await apiFetch("/api/globaladmins", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId, email }),
