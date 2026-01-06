@@ -16,6 +16,9 @@ export default function TeamsManager({ leagueId }) {
   const [teamsErrors, setTeamsErrors] = useState([]);
 
   const [coachDraft, setCoachDraft] = useState({});
+  const [teamEdits, setTeamEdits] = useState({});
+  const [savingKey, setSavingKey] = useState("");
+  const [deletingKey, setDeletingKey] = useState("");
 
   async function load() {
     if (!leagueId) return;
@@ -23,8 +26,20 @@ export default function TeamsManager({ leagueId }) {
     setLoading(true);
     try {
       const [t, m] = await Promise.all([apiFetch("/api/teams"), apiFetch("/api/memberships")]);
-      setTeams(Array.isArray(t) ? t : []);
+      const list = Array.isArray(t) ? t : [];
+      setTeams(list);
       setMemberships(Array.isArray(m) ? m : []);
+      const nextEdits = {};
+      for (const team of list) {
+        const key = teamKey(team);
+        nextEdits[key] = {
+          name: team?.name || "",
+          contactName: team?.primaryContact?.name || "",
+          contactEmail: team?.primaryContact?.email || "",
+          contactPhone: team?.primaryContact?.phone || "",
+        };
+      }
+      setTeamEdits(nextEdits);
     } catch (e) {
       setErr(e?.message || "Failed to load teams or memberships.");
     } finally {
@@ -61,6 +76,72 @@ export default function TeamsManager({ leagueId }) {
       const cur = prev[userId] || { division: "", teamId: "" };
       return { ...prev, [userId]: { ...cur, ...patch } };
     });
+  }
+
+  function teamKey(team) {
+    return `${team?.division || ""}::${team?.teamId || ""}`;
+  }
+
+  function updateTeamEdit(key, patch) {
+    setTeamEdits((prev) => ({
+      ...prev,
+      [key]: { ...(prev[key] || {}), ...patch },
+    }));
+  }
+
+  async function saveTeam(team) {
+    const key = teamKey(team);
+    const edit = teamEdits[key] || {};
+    const name = (edit.name || "").trim();
+    if (!name) {
+      setErr("Team name is required.");
+      return;
+    }
+    setSavingKey(key);
+    setErr("");
+    setOk("");
+    try {
+      await apiFetch(`/api/teams/${encodeURIComponent(team.division)}/${encodeURIComponent(team.teamId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          primaryContact: {
+            name: (edit.contactName || "").trim(),
+            email: (edit.contactEmail || "").trim(),
+            phone: (edit.contactPhone || "").trim(),
+          },
+        }),
+      });
+      setOk(`Saved ${team.teamId}.`);
+      setToast({ tone: "success", message: `Saved ${team.teamId}.` });
+      await load();
+    } catch (e) {
+      setErr(e?.message || "Failed to save team.");
+    } finally {
+      setSavingKey("");
+    }
+  }
+
+  async function deleteTeam(team) {
+    const key = teamKey(team);
+    const confirmDelete = window.confirm(`Delete team ${team.teamId} in ${team.division}? This cannot be undone.`);
+    if (!confirmDelete) return;
+    setDeletingKey(key);
+    setErr("");
+    setOk("");
+    try {
+      await apiFetch(`/api/teams/${encodeURIComponent(team.division)}/${encodeURIComponent(team.teamId)}`, {
+        method: "DELETE",
+      });
+      setOk(`Deleted ${team.teamId}.`);
+      setToast({ tone: "success", message: `Deleted ${team.teamId}.` });
+      await load();
+    } catch (e) {
+      setErr(e?.message || "Failed to delete team.");
+    } finally {
+      setDeletingKey("");
+    }
   }
 
   async function saveCoachAssignment(userId) {
@@ -182,22 +263,55 @@ export default function TeamsManager({ leagueId }) {
                   <th>Team</th>
                   <th>Name</th>
                   <th>Coach contact</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {teams.map((t) => (
-                  <tr key={`${t.division}-${t.teamId}`}>
-                    <td>{t.division}</td>
-                    <td>{t.teamId}</td>
-                    <td>{t.name}</td>
-                    <td>
-                      <div>{t?.primaryContact?.name || "-"}</div>
-                      <div className="muted text-xs">
-                        {(t?.primaryContact?.email || "") + (t?.primaryContact?.phone ? ` | ${t.primaryContact.phone}` : "")}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {teams.map((t) => {
+                  const key = teamKey(t);
+                  const edit = teamEdits[key] || {};
+                  return (
+                    <tr key={`${t.division}-${t.teamId}`}>
+                      <td>{t.division}</td>
+                      <td>{t.teamId}</td>
+                      <td>
+                        <input
+                          value={edit.name ?? ""}
+                          onChange={(e) => updateTeamEdit(key, { name: e.target.value })}
+                        />
+                      </td>
+                      <td>
+                        <div className="row row--wrap gap-2">
+                          <input
+                            value={edit.contactName ?? ""}
+                            onChange={(e) => updateTeamEdit(key, { contactName: e.target.value })}
+                            placeholder="Name"
+                          />
+                          <input
+                            value={edit.contactEmail ?? ""}
+                            onChange={(e) => updateTeamEdit(key, { contactEmail: e.target.value })}
+                            placeholder="Email"
+                          />
+                          <input
+                            value={edit.contactPhone ?? ""}
+                            onChange={(e) => updateTeamEdit(key, { contactPhone: e.target.value })}
+                            placeholder="Phone"
+                          />
+                        </div>
+                      </td>
+                      <td className="text-right">
+                        <div className="row row--wrap gap-2">
+                          <button className="btn" onClick={() => saveTeam(t)} disabled={savingKey === key || deletingKey === key}>
+                            {savingKey === key ? "Saving..." : "Save"}
+                          </button>
+                          <button className="btn btn--ghost" onClick={() => deleteTeam(t)} disabled={savingKey === key || deletingKey === key}>
+                            {deletingKey === key ? "Deleting..." : "Delete"}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
