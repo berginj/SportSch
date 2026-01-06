@@ -57,7 +57,7 @@ export default function InvitesManager({ leagueId, me }) {
 
     setBusy(true);
     try {
-      const res = await apiFetch("/api/admin/invites", {
+      const res = await apiFetch("/api/invites", {
         method: "POST",
         body: JSON.stringify(payload),
       });

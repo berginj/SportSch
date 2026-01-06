@@ -160,6 +160,7 @@ the notes for required headers or roles.
 | PATCH | /accessrequests/{userId}/approve | `Functions/AccessRequestsFunctions.cs` | Approve access request (requires `x-league-id`, LeagueAdmin). |
 | PATCH | /accessrequests/{userId}/deny | `Functions/AccessRequestsFunctions.cs` | Deny access request (requires `x-league-id`, LeagueAdmin). |
 | POST | /admin/invites | `Functions/LeagueInvitesFunctions.cs` | Create invite (requires `x-league-id`, LeagueAdmin). |
+| POST | /invites | `Functions/LeagueInvitesFunctions.cs` | Create invite (alt route; requires `x-league-id`, LeagueAdmin). |
 | POST | /invites/accept | `Functions/LeagueInvitesFunctions.cs` | Accept invite. |
 | GET | /memberships | `Functions/MembershipsFunctions.cs` | List memberships (requires `x-league-id`, LeagueAdmin). |
 | PATCH | /memberships/{userId} | `Functions/MembershipsFunctions.cs` | Update membership (requires `x-league-id`, LeagueAdmin). |
@@ -424,6 +425,10 @@ Response
   }
 }
 ```
+
+### POST /invites (league-scoped)
+Header: x-league-id
+Requires: LeagueAdmin or global admin.
 
 ### POST /invites/accept
 Accepts an invite using the invite id + league id.

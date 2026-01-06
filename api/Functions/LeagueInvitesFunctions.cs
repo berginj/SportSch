@@ -39,6 +39,18 @@ public class LeagueInvitesFunctions
     public async Task<HttpResponseData> CreateAdmin(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/invites")] HttpRequestData req)
     {
+        return await CreateCore(req);
+    }
+
+    [Function("CreateInvite_Alt")]
+    public async Task<HttpResponseData> CreateAlt(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "invites")] HttpRequestData req)
+    {
+        return await CreateCore(req);
+    }
+
+    private async Task<HttpResponseData> CreateCore(HttpRequestData req)
+    {
         try
         {
             var me = IdentityUtil.GetMe(req);
