@@ -39,6 +39,11 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
   const [usersLoading, setUsersLoading] = useState(false);
   const [users, setUsers] = useState([]);
   const [userDraft, setUserDraft] = useState({ userId: "", email: "", homeLeagueId: "", role: "" });
+  const [memberSearch, setMemberSearch] = useState("");
+  const [memberLeague, setMemberLeague] = useState("");
+  const [memberRole, setMemberRole] = useState("");
+  const [membersLoadingAll, setMembersLoadingAll] = useState(false);
+  const [membersAll, setMembersAll] = useState([]);
   const [newLeague, setNewLeague] = useState({ leagueId: "", name: "" });
   const [seasonLeagueId, setSeasonLeagueId] = useState("");
   const [seasonDraft, setSeasonDraft] = useState({
@@ -192,6 +197,12 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isGlobalAdmin]);
 
+  useEffect(() => {
+    if (!isGlobalAdmin) return;
+    loadAllMemberships();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isGlobalAdmin]);
+
   async function loadGlobalLeagues() {
     setGlobalErr("");
     setGlobalLoading(true);
@@ -247,6 +258,24 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
       await loadUsers();
     } catch (e) {
       setToast({ tone: "error", message: e?.message || "Failed to save user" });
+    }
+  }
+
+  async function loadAllMemberships() {
+    setMembersLoadingAll(true);
+    try {
+      const qs = new URLSearchParams();
+      qs.set("all", "true");
+      if (memberSearch.trim()) qs.set("search", memberSearch.trim());
+      if (memberLeague.trim()) qs.set("leagueId", memberLeague.trim());
+      if (memberRole.trim()) qs.set("role", memberRole.trim());
+      const data = await apiFetch(`/api/memberships?${qs.toString()}`);
+      setMembersAll(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setToast({ tone: "error", message: e?.message || "Failed to load memberships" });
+      setMembersAll([]);
+    } finally {
+      setMembersLoadingAll(false);
     }
   }
 
@@ -913,6 +942,75 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
                         <td>{u.email || ""}</td>
                         <td>{u.homeLeagueId || ""}</td>
                         <td>{u.homeLeagueRole || ""}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="card mt-4">
+            <h4 className="m-0">Memberships (all leagues)</h4>
+            <p className="muted">Review all memberships across leagues. Use filters to narrow results.</p>
+            <div className="row gap-3 row--wrap mb-3">
+              <label className="min-w-[200px]">
+                Search
+                <input
+                  value={memberSearch}
+                  onChange={(e) => setMemberSearch(e.target.value)}
+                  placeholder="userId or email"
+                />
+              </label>
+              <label className="min-w-[180px]">
+                League
+                <select value={memberLeague} onChange={(e) => setMemberLeague(e.target.value)}>
+                  <option value="">All leagues</option>
+                  {globalLeagues.map((l) => (
+                    <option key={l.leagueId} value={l.leagueId}>
+                      {l.name ? `${l.name} (${l.leagueId})` : l.leagueId}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="min-w-[160px]">
+                Role
+                <select value={memberRole} onChange={(e) => setMemberRole(e.target.value)}>
+                  <option value="">All roles</option>
+                  {ROLE_OPTIONS.map((role) => (
+                    <option key={role} value={role}>{role}</option>
+                  ))}
+                </select>
+              </label>
+              <button className="btn" onClick={loadAllMemberships} disabled={membersLoadingAll}>
+                {membersLoadingAll ? "Loading..." : "Refresh"}
+              </button>
+            </div>
+
+            {membersAll.length === 0 ? (
+              <div className="muted">No memberships found.</div>
+            ) : (
+              <div className="tableWrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>User</th>
+                      <th>Email</th>
+                      <th>League</th>
+                      <th>Role</th>
+                      <th>Division</th>
+                      <th>Team</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {membersAll.map((m) => (
+                      <tr key={`${m.userId}-${m.leagueId}-${m.role}`}>
+                        <td><code>{m.userId}</code></td>
+                        <td>{m.email || ""}</td>
+                        <td>{m.leagueId || ""}</td>
+                        <td>{m.role || ""}</td>
+                        <td>{m.team?.division || ""}</td>
+                        <td>{m.team?.teamId || ""}</td>
                       </tr>
                     ))}
                   </tbody>

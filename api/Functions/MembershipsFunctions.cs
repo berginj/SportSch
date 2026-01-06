@@ -27,6 +27,7 @@ public class MembershipsFunctions
     public record PatchMembershipReq(CoachTeam? team);
     public record CreateMembershipReq(string? userId, string? email, string? leagueId, string? role, CoachTeam? team);
     public record MembershipDto(string userId, string email, string role, CoachTeam? team);
+    public record MembershipAdminDto(string userId, string email, string leagueId, string role, CoachTeam? team);
 
     [Function("ListMemberships")]
     public async Task<HttpResponseData> List(
@@ -34,21 +35,70 @@ public class MembershipsFunctions
     {
         try
         {
-            var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
-            await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+            var all = ApiGuards.GetQueryParam(req, "all");
+            var isAll = all is not null && new[] { "1", "true", "yes" }.Contains(all.Trim().ToLowerInvariant());
+
+            if (isAll)
+                await ApiGuards.RequireGlobalAdminAsync(_svc, me.UserId);
+            else
+            {
+                var leagueId = ApiGuards.RequireLeagueId(req);
+                await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+            }
 
             var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Memberships);
-            // Memberships table uses PK=userId, RK=leagueId. Query by RowKey (leagueId) across partitions.
-            var filter = $"RowKey eq '{ApiGuards.EscapeOData(leagueId)}'";
-            var list = new List<MembershipDto>();
+            if (!isAll)
+            {
+                var leagueId = ApiGuards.RequireLeagueId(req);
+                // Memberships table uses PK=userId, RK=leagueId. Query by RowKey (leagueId) across partitions.
+                var filter = $"RowKey eq '{ApiGuards.EscapeOData(leagueId)}'";
+                var list = new List<MembershipDto>();
 
-            await foreach (var e in table.QueryAsync<TableEntity>(filter: filter))
+                await foreach (var e in table.QueryAsync<TableEntity>(filter: filter))
+                {
+                    var role = (e.GetString("Role") ?? "").Trim();
+                    var email = (e.GetString("Email") ?? "").Trim();
+                    var division = (e.GetString("Division") ?? "").Trim();
+                    var teamId = (e.GetString("TeamId") ?? "").Trim();
+
+                    CoachTeam? team = null;
+                    if (string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase)
+                        && !string.IsNullOrWhiteSpace(division)
+                        && !string.IsNullOrWhiteSpace(teamId))
+                        team = new CoachTeam(division, teamId);
+
+                    list.Add(new MembershipDto(
+                        userId: e.PartitionKey,
+                        email: email,
+                        role: role,
+                        team: team));
+                }
+
+                // stable-ish ordering for admin UX
+                var ordered = list
+                    .OrderBy(x => x.role)
+                    .ThenBy(x => string.IsNullOrWhiteSpace(x.email) ? x.userId : x.email);
+
+                return ApiResponses.Ok(req, ordered.ToList());
+            }
+
+            var leagueFilter = (ApiGuards.GetQueryParam(req, "leagueId") ?? "").Trim();
+            var roleFilter = (ApiGuards.GetQueryParam(req, "role") ?? "").Trim();
+            var search = (ApiGuards.GetQueryParam(req, "search") ?? "").Trim();
+            var filterAll = string.IsNullOrWhiteSpace(leagueFilter)
+                ? null
+                : $"RowKey eq '{ApiGuards.EscapeOData(leagueFilter)}'";
+
+            var listAll = new List<MembershipAdminDto>();
+
+            await foreach (var e in table.QueryAsync<TableEntity>(filter: filterAll))
             {
                 var role = (e.GetString("Role") ?? "").Trim();
                 var email = (e.GetString("Email") ?? "").Trim();
                 var division = (e.GetString("Division") ?? "").Trim();
                 var teamId = (e.GetString("TeamId") ?? "").Trim();
+                var rowLeagueId = (e.RowKey ?? "").Trim();
 
                 CoachTeam? team = null;
                 if (string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase)
@@ -56,19 +106,37 @@ public class MembershipsFunctions
                     && !string.IsNullOrWhiteSpace(teamId))
                     team = new CoachTeam(division, teamId);
 
-                list.Add(new MembershipDto(
+                listAll.Add(new MembershipAdminDto(
                     userId: e.PartitionKey,
                     email: email,
+                    leagueId: rowLeagueId,
                     role: role,
                     team: team));
             }
 
-            // stable-ish ordering for admin UX
-            var ordered = list
-                .OrderBy(x => x.role)
+            if (!string.IsNullOrWhiteSpace(roleFilter))
+            {
+                listAll = listAll
+                    .Where(x => string.Equals(x.role, roleFilter, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+            }
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                listAll = listAll.Where(x =>
+                        x.userId.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                        x.email.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                        x.leagueId.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                        x.role.Contains(search, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+            }
+
+            var orderedAll = listAll
+                .OrderBy(x => x.leagueId)
+                .ThenBy(x => x.role)
                 .ThenBy(x => string.IsNullOrWhiteSpace(x.email) ? x.userId : x.email);
 
-            return ApiResponses.Ok(req, ordered.ToList());
+            return ApiResponses.Ok(req, orderedAll.ToList());
         }
         catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
         catch (Exception ex)

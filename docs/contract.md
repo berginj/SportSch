@@ -169,7 +169,7 @@ the notes for required headers or roles.
 | GET | /users | `Functions/AdminUsersFunctions.cs` | Global admin list users (alt route). |
 | POST | /users | `Functions/AdminUsersFunctions.cs` | Global admin upsert user profile + home role (alt route). |
 | POST | /invites/accept | `Functions/LeagueInvitesFunctions.cs` | Accept invite. |
-| GET | /memberships | `Functions/MembershipsFunctions.cs` | List memberships (requires `x-league-id`, LeagueAdmin). |
+| GET | /memberships | `Functions/MembershipsFunctions.cs` | List memberships (requires `x-league-id`, LeagueAdmin). Global admins can use `all=true` to list across leagues. |
 | PATCH | /memberships/{userId} | `Functions/MembershipsFunctions.cs` | Update membership (requires `x-league-id`, LeagueAdmin). |
 | GET | /divisions | `Functions/DivisionsFunctions.cs` | List divisions (requires `x-league-id`). |
 | POST | /divisions | `Functions/DivisionsFunctions.cs` | Create division (requires `x-league-id`, LeagueAdmin). |
@@ -501,6 +501,20 @@ Response
     { "userId": "...", "email": "...", "role": "Coach" },
     { "userId": "...", "email": "...", "role": "Coach", "team": { "division": "10U", "teamId": "TIGERS" } },
     { "userId": "...", "email": "...", "role": "Viewer" }
+  ]
+}
+```
+
+### Admin: GET /memberships?all=true
+Requires: global admin.  
+Query (optional): `search`, `leagueId`, `role`
+
+Response
+```json
+{
+  "data": [
+    { "userId": "...", "email": "...", "leagueId": "ARL", "role": "LeagueAdmin" },
+    { "userId": "...", "email": "...", "leagueId": "ARL", "role": "Coach", "team": { "division": "10U", "teamId": "TIGERS" } }
   ]
 }
 ```
