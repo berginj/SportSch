@@ -77,7 +77,7 @@ public static class ScheduleExport
         return BuildCsv(rows);
     }
 
-    private static int? CalcDurationMinutes(string start, string end)
+    private static int? CalcDurationMinutes(string? start, string? end)
     {
         var s = ParseMinutes(start);
         var e = ParseMinutes(end);

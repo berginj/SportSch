@@ -400,8 +400,8 @@ public class SlotGenerationFunctions
         var prefix = $"SLOT|{leagueId}|";
         var next = prefix + "\uffff";
         var byKey = conflicts.ToDictionary(TimeKey, x => x, StringComparer.OrdinalIgnoreCase);
-        var dateFrom = conflicts.Min(c => c.gameDate);
-        var dateTo = conflicts.Max(c => c.gameDate);
+        var dateFrom = conflicts.Min(c => c.gameDate) ?? "";
+        var dateTo = conflicts.Max(c => c.gameDate) ?? "";
         var filter = $"PartitionKey ge '{ApiGuards.EscapeOData(prefix)}' and PartitionKey lt '{ApiGuards.EscapeOData(next)}' " +
                      $"and GameDate ge '{ApiGuards.EscapeOData(dateFrom)}' and GameDate le '{ApiGuards.EscapeOData(dateTo)}' " +
                      $"and FieldKey eq '{ApiGuards.EscapeOData(fieldKey)}'";
