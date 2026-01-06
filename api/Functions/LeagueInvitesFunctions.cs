@@ -145,10 +145,13 @@ public class LeagueInvitesFunctions
             var me = IdentityUtil.GetMe(req);
 
             var body = await HttpUtil.ReadJsonAsync<AcceptInviteReq>(req);
-            if (body is null) return HttpUtil.Json(req, HttpStatusCode.BadRequest, new { error = "Invalid JSON body" });
+            var leagueId = (body?.leagueId ?? "").Trim();
+            var inviteId = (body?.inviteId ?? "").Trim();
 
-            var leagueId = (body.leagueId ?? "").Trim();
-            var inviteId = (body.inviteId ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(leagueId))
+                leagueId = (ApiGuards.GetQueryParam(req, "leagueId") ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(inviteId))
+                inviteId = (ApiGuards.GetQueryParam(req, "inviteId") ?? "").Trim();
 
             if (string.IsNullOrWhiteSpace(leagueId) || string.IsNullOrWhiteSpace(inviteId))
                 return HttpUtil.Json(req, HttpStatusCode.BadRequest, new { error = "leagueId and inviteId are required" });
