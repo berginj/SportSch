@@ -87,7 +87,8 @@ public class AccessRequestsFunctions
         {
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
-            if (string.IsNullOrWhiteSpace(me.UserId) || me.UserId == "UNKNOWN")
+            if (string.IsNullOrWhiteSpace(me.UserId) || me.UserId == "UNKNOWN"
+                || string.IsNullOrWhiteSpace(me.Email) || me.Email == "UNKNOWN")
             {
                 return ApiResponses.Error(req, HttpStatusCode.Unauthorized,
                     "UNAUTHENTICATED", "You must be signed in.");
