@@ -157,7 +157,7 @@
   }
 
   .topNavInner, .topnav__inner {
-    @apply max-w-[1200px] mx-auto px-3 py-2 flex flex-wrap items-center justify-between gap-2;
+    @apply max-w-[1200px] mx-auto px-3 py-1.5 flex flex-wrap items-center justify-between gap-2;
   }
 
   .navPresence {
@@ -172,9 +172,9 @@
   .topnav__controls label { @apply text-[9px] uppercase tracking-[0.22em] text-muted; }
   .topnav__controls select { @apply min-w-[150px] text-sm; }
   .topnav__account {
-    @apply ml-auto flex flex-col items-end gap-1.5 border-l border-border pl-3;
+    @apply ml-auto flex items-center gap-2;
   }
-  .control--league { @apply min-w-[170px]; }
+  .control--league { @apply min-w-[150px]; }
   .leagueSelect { @apply text-xs py-2 px-2.5; }
 
   .whoami {

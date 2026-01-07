@@ -87,8 +87,6 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
   return (
     <header className="topnav">
       <div className="topnav__inner">
-        <div className="navPresence" aria-live="polite"></div>
-
         <div className="topnav__controls">
           <nav className="tabs" aria-label="Primary">
             <button
