@@ -100,24 +100,6 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
               Calendar
             </button>
             <button
-              className={tab === "schedule" ? "tab tab--active" : "tab"}
-              onClick={() => setTab("schedule")}
-              disabled={!hasLeagues}
-              title="View the schedule in list or calendar mode."
-              aria-current={tab === "schedule" ? "page" : undefined}
-            >
-              Schedule
-            </button>
-            <button
-              className={tab === "offers" ? "tab tab--active" : "tab"}
-              onClick={() => setTab("offers")}
-              disabled={!hasLeagues}
-              title="Create a new game offer or request."
-              aria-current={tab === "offers" ? "page" : undefined}
-            >
-              Create Offer/Request
-            </button>
-            <button
               className={tab === "manage" ? "tab tab--active" : "tab"}
               onClick={() => setTab("manage")}
               disabled={!hasLeagues}
