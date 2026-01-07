@@ -242,6 +242,172 @@ export default function HelpPage({ me, leagueId }) {
         This app helps leagues coordinate open game offers and requests ("slots") and get them scheduled (all times are US/Eastern). Coaches post slots and accept each other's offers or requests. League admins manage setup.
       </div>
 
+      <Section title="Prototype: Commissioner season setup">
+        <div className="layoutPreview layoutPreview--admin">
+          <div className="layoutHeader">
+            <div>
+              <div className="layoutTitle">Season setup flow</div>
+              <div className="layoutMeta">Guided checklist for league admins before publishing.</div>
+            </div>
+            <div className="layoutRow">
+              <button className="btn">Start setup</button>
+              <button className="btn btn--ghost">View validations</button>
+            </div>
+          </div>
+          <div className="layoutGrid">
+            <div className="layoutPanel">
+              <div className="layoutPanel__title">Checklist</div>
+              <div className="layoutList">
+                <div className="layoutItem layoutItem--link">1. Set season dates</div>
+                <div className="layoutItem layoutItem--link">2. Confirm fields and parks</div>
+                <div className="layoutItem layoutItem--link">3. Create availability rules</div>
+                <div className="layoutItem layoutItem--link">4. Generate slots (preview)</div>
+                <div className="layoutItem layoutItem--link">5. Run validations</div>
+                <div className="layoutItem layoutItem--link">6. Publish schedule</div>
+              </div>
+            </div>
+            <div className="layoutPanel">
+              <div className="layoutPanel__title">Validation blockers</div>
+              <div className="layoutList">
+                <div className="layoutItem">
+                  <div className="layoutRow layoutRow--space">
+                    <div>Division 10U missing slots</div>
+                    <div className="layoutBadge">Blocked</div>
+                  </div>
+                  <div className="layoutMeta">Add availability for 4/12 - 5/03.</div>
+                </div>
+                <div className="layoutItem">
+                  <div className="layoutRow layoutRow--space">
+                    <div>Home/away imbalance</div>
+                    <div className="layoutBadge">Warning</div>
+                  </div>
+                  <div className="layoutMeta">Balance games before publish.</div>
+                </div>
+              </div>
+            </div>
+            <div className="layoutPanel">
+              <div className="layoutPanel__title">Quick actions</div>
+              <div className="layoutRow">
+                <button className="btn btn--ghost">Invite coaches</button>
+                <button className="btn btn--ghost">Import teams</button>
+                <button className="btn btn--ghost">Review access</button>
+              </div>
+            </div>
+            <div className="layoutPanel">
+              <div className="layoutPanel__title">Publish readiness</div>
+              <div className="layoutList">
+                <div className="layoutItem">Validations: 2 blockers, 3 warnings</div>
+                <div className="layoutItem">Last run: 10:12 AM</div>
+                <div className="layoutItem">Schedule status: Draft</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Section>
+
+      <Section title="Prototype: Coach hub">
+        <div className="layoutPreview layoutPreview--coach">
+          <div className="layoutHero">
+            <div>
+              <div className="layoutTitle">Coach hub</div>
+              <div className="layoutMeta">Quick view of open offers and your next games.</div>
+            </div>
+            <div className="layoutRow">
+              <button className="btn">Create offer/request</button>
+              <button className="btn btn--ghost">Subscribe to team calendar</button>
+            </div>
+          </div>
+          <div className="layoutGrid layoutGrid--two">
+            <div className="layoutPanel">
+              <div className="layoutPanel__title">Open offers for my division</div>
+              <div className="layoutList">
+                <div className="layoutItem layoutItem--link">
+                  <div className="layoutRow layoutRow--space">
+                    <div>Apr 10 - 10U Tigers</div>
+                    <div className="layoutBadge">Open</div>
+                  </div>
+                  <div className="layoutMeta">Barcroft Elementary</div>
+                </div>
+                <div className="layoutItem layoutItem--link">
+                  <div className="layoutRow layoutRow--space">
+                    <div>Apr 12 - 10U Sharks</div>
+                    <div className="layoutBadge">Open</div>
+                  </div>
+                  <div className="layoutMeta">Tuckahoe Park</div>
+                </div>
+              </div>
+            </div>
+            <div className="layoutPanel">
+              <div className="layoutPanel__title">My next games</div>
+              <div className="layoutList">
+                <div className="layoutItem">
+                  <div className="layoutRow layoutRow--space">
+                    <div>Apr 15 - vs Owls</div>
+                    <div className="layoutBadge layoutBadge--confirm">Confirmed</div>
+                  </div>
+                  <div className="layoutMeta">Kenmore Field</div>
+                </div>
+                <div className="layoutItem">
+                  <div className="layoutRow layoutRow--space">
+                    <div>Apr 18 - Practice</div>
+                    <div className="layoutBadge layoutBadge--event">Event</div>
+                  </div>
+                  <div className="layoutMeta">Drop-off 30 mins early</div>
+                </div>
+              </div>
+            </div>
+            <div className="layoutPanel">
+              <div className="layoutPanel__title">Pending requests</div>
+              <div className="layoutList">
+                <div className="layoutItem">Apr 21 - Waiting on Sharks</div>
+                <div className="layoutItem">Apr 24 - Waiting on Eagles</div>
+              </div>
+            </div>
+            <div className="layoutPanel">
+              <div className="layoutPanel__title">Context</div>
+              <div className="layoutRow">
+                <div className="layoutPill">Division: 10U</div>
+                <div className="layoutPill">Team: Tigers</div>
+                <div className="layoutPill">Role: Coach</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Section>
+
+      <Section title="Prototype: Help tab feedback options">
+        <div className="layoutPreview layoutPreview--filters">
+          <div className="layoutSplit">
+            <div className="layoutPanel">
+              <div className="layoutPanel__title">Quick feedback</div>
+              <div className="layoutRow">
+                <button className="btn btn--ghost">This helped</button>
+                <button className="btn btn--ghost">Still stuck</button>
+                <button className="btn btn--ghost">Request feature</button>
+              </div>
+              <div className="layoutList mt-3">
+                <div className="layoutItem">Attach current page + league to report</div>
+                <div className="layoutItem">Capture last API error</div>
+              </div>
+            </div>
+            <div className="layoutPanel">
+              <div className="layoutPanel__title">Comment capture</div>
+              <div className="layoutForm">
+                <label>
+                  Tell us what happened
+                  <textarea placeholder="Steps, expected vs actual, and what you tried." />
+                </label>
+                <label>
+                  Email (optional)
+                  <input placeholder="name@domain.com" />
+                </label>
+                <button className="btn">Send feedback</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Section>
+
       <Section title="Layout options (preview)">
         <div className="row mb-3">
           {layouts.map((l) => (
