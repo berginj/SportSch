@@ -45,6 +45,7 @@ public static class ApiGuards
         if (string.IsNullOrWhiteSpace(userId) || userId == "UNKNOWN")
             throw new HttpError((int)HttpStatusCode.Unauthorized, "Not authenticated.");
 
+        if (await IsGlobalAdminAsync(svc, userId)) return;
         if (!await IsMemberAsync(svc, userId, leagueId))
             throw new HttpError((int)HttpStatusCode.Forbidden,
                 $"Access denied: no membership for league {leagueId}. Request access or ask a LeagueAdmin.");
@@ -55,6 +56,7 @@ public static class ApiGuards
         if (string.IsNullOrWhiteSpace(me.UserId) || me.UserId == "UNKNOWN")
             throw new HttpError((int)HttpStatusCode.Unauthorized, "Not authenticated.");
 
+        if (await IsGlobalAdminAsync(svc, me.UserId)) return;
         if (!await IsMemberAsync(svc, me.UserId, leagueId))
             throw new HttpError((int)HttpStatusCode.Forbidden,
                 $"Access denied: no membership for league {leagueId}. Request access or ask a LeagueAdmin.");
