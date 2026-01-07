@@ -55,7 +55,7 @@ public class DivisionsFunctions
         {
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
-            await ApiGuards.RequireMemberAsync(_svc, me.UserId, leagueId);
+            await ApiGuards.RequireMemberOrGlobalAdminAsync(_svc, me, leagueId);
 
             var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Divisions);
             var list = new List<DivisionDto>();
@@ -292,7 +292,7 @@ public class DivisionsFunctions
         {
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
-            await ApiGuards.RequireMemberAsync(_svc, me.UserId, leagueId);
+            await ApiGuards.RequireMemberOrGlobalAdminAsync(_svc, me, leagueId);
 
             var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Divisions);
             try
