@@ -46,7 +46,8 @@ public static class ApiGuards
             throw new HttpError((int)HttpStatusCode.Unauthorized, "Not authenticated.");
 
         if (!await IsMemberAsync(svc, userId, leagueId))
-            throw new HttpError((int)HttpStatusCode.Forbidden, "Forbidden");
+            throw new HttpError((int)HttpStatusCode.Forbidden,
+                $"Access denied: no membership for league {leagueId}. Request access or ask a LeagueAdmin.");
     }
 
     public static async Task RequireMemberAsync(TableServiceClient svc, IdentityUtil.Me me, string leagueId)
@@ -55,7 +56,8 @@ public static class ApiGuards
             throw new HttpError((int)HttpStatusCode.Unauthorized, "Not authenticated.");
 
         if (!await IsMemberAsync(svc, me.UserId, leagueId))
-            throw new HttpError((int)HttpStatusCode.Forbidden, "Forbidden");
+            throw new HttpError((int)HttpStatusCode.Forbidden,
+                $"Access denied: no membership for league {leagueId}. Request access or ask a LeagueAdmin.");
     }
 
     public static async Task RequireMemberOrGlobalAdminAsync(TableServiceClient svc, IdentityUtil.Me me, string leagueId)
@@ -65,7 +67,8 @@ public static class ApiGuards
 
         if (await IsGlobalAdminAsync(svc, me.UserId)) return;
         if (!await IsMemberAsync(svc, me.UserId, leagueId))
-            throw new HttpError((int)HttpStatusCode.Forbidden, "Forbidden");
+            throw new HttpError((int)HttpStatusCode.Forbidden,
+                $"Access denied: no membership for league {leagueId}. Request access or ask a LeagueAdmin.");
     }
 
     public static async Task<bool> IsMemberAsync(TableServiceClient svc, string userId, string leagueId)
@@ -110,7 +113,8 @@ public static class ApiGuards
         var mem = await GetMembershipAsync(svc, userId, leagueId);
         var role = GetRole(mem);
         if (string.Equals(role, Constants.Roles.Viewer, StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(role))
-            throw new HttpError((int)HttpStatusCode.Forbidden, "Forbidden");
+            throw new HttpError((int)HttpStatusCode.Forbidden,
+                "Access denied: Viewer role cannot perform this action. Ask a LeagueAdmin to upgrade your role.");
     }
 
     public static async Task RequireLeagueAdminAsync(TableServiceClient svc, string userId, string leagueId)
@@ -121,7 +125,8 @@ public static class ApiGuards
         var mem = await GetMembershipAsync(svc, userId, leagueId);
         var role = GetRole(mem);
         if (!string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
-            throw new HttpError((int)HttpStatusCode.Forbidden, "Forbidden");
+            throw new HttpError((int)HttpStatusCode.Forbidden,
+                "Access denied: LeagueAdmin role required for this action.");
     }
 
     // ==== Global admin gates ====
@@ -131,7 +136,8 @@ public static class ApiGuards
             throw new HttpError((int)HttpStatusCode.Unauthorized, "Not authenticated.");
 
         if (!await IsGlobalAdminAsync(svc, userId))
-            throw new HttpError((int)HttpStatusCode.Forbidden, "Forbidden");
+            throw new HttpError((int)HttpStatusCode.Forbidden,
+                "Access denied: global admin required for this action.");
     }
 
     public static async Task RequireGlobalAdminAsync(TableServiceClient svc, IdentityUtil.Me me)
@@ -140,7 +146,8 @@ public static class ApiGuards
             throw new HttpError((int)HttpStatusCode.Unauthorized, "Not authenticated.");
 
         if (!await IsGlobalAdminAsync(svc, me.UserId))
-            throw new HttpError((int)HttpStatusCode.Forbidden, "Forbidden");
+            throw new HttpError((int)HttpStatusCode.Forbidden,
+                "Access denied: global admin required for this action.");
     }
 
     public static async Task<bool> IsGlobalAdminAsync(TableServiceClient svc, string userId)
