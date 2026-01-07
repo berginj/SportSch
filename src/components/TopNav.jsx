@@ -5,6 +5,13 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
   const memberships = Array.isArray(me?.memberships) ? me.memberships : [];
   const email = me?.email || "";
   const isGlobalAdmin = !!me?.isGlobalAdmin;
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    if (typeof window === "undefined") return true;
+    const saved = window.localStorage.getItem("topnavCollapsed");
+    if (saved === "true") return true;
+    if (saved === "false") return false;
+    return true;
+  });
   const [globalLeagues, setGlobalLeagues] = useState([]);
   const [globalErr, setGlobalErr] = useState("");
   const tabLabels = {
@@ -72,6 +79,11 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
 
   const hasLeagues = leagueOptions.length > 0;
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("topnavCollapsed", isCollapsed ? "true" : "false");
+  }, [isCollapsed]);
+
   return (
     <header className="topnav">
       <div className="topnav__inner">
@@ -90,47 +102,59 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
             >
               Home
             </button>
-            <button
-              className={tab === "calendar" ? "tab tab--active" : "tab"}
-              onClick={() => setTab("calendar")}
-              disabled={!hasLeagues}
-              title="Browse and accept offers on the calendar."
-              aria-current={tab === "calendar" ? "page" : undefined}
-            >
-              Calendar
-            </button>
-            <button
-              className={tab === "manage" ? "tab tab--active" : "tab"}
-              onClick={() => setTab("manage")}
-              disabled={!hasLeagues}
-              aria-current={tab === "manage" ? "page" : undefined}
-            >
-              League Management
-            </button>
-            {isGlobalAdmin ? (
-              <button
-                className={tab === "admin" ? "tab tab--active" : "tab"}
-                onClick={() => setTab("admin")}
-                aria-current={tab === "admin" ? "page" : undefined}
-              >
-                Admin
-              </button>
+            {!isCollapsed ? (
+              <>
+                <button
+                  className={tab === "calendar" ? "tab tab--active" : "tab"}
+                  onClick={() => setTab("calendar")}
+                  disabled={!hasLeagues}
+                  title="Browse and accept offers on the calendar."
+                  aria-current={tab === "calendar" ? "page" : undefined}
+                >
+                  Calendar
+                </button>
+                <button
+                  className={tab === "manage" ? "tab tab--active" : "tab"}
+                  onClick={() => setTab("manage")}
+                  disabled={!hasLeagues}
+                  aria-current={tab === "manage" ? "page" : undefined}
+                >
+                  League Management
+                </button>
+                {isGlobalAdmin ? (
+                  <button
+                    className={tab === "admin" ? "tab tab--active" : "tab"}
+                    onClick={() => setTab("admin")}
+                    aria-current={tab === "admin" ? "page" : undefined}
+                  >
+                    Admin
+                  </button>
+                ) : null}
+                {isGlobalAdmin ? (
+                  <button
+                    className={tab === "debug" ? "tab tab--active" : "tab"}
+                    onClick={() => setTab("debug")}
+                    aria-current={tab === "debug" ? "page" : undefined}
+                  >
+                    Debug
+                  </button>
+                ) : null}
+                <button
+                  className={tab === "help" ? "tab tab--active" : "tab"}
+                  onClick={() => setTab("help")}
+                  aria-current={tab === "help" ? "page" : undefined}
+                >
+                  Help
+                </button>
+              </>
             ) : null}
-            {isGlobalAdmin ? (
-              <button
-                className={tab === "debug" ? "tab tab--active" : "tab"}
-                onClick={() => setTab("debug")}
-                aria-current={tab === "debug" ? "page" : undefined}
-              >
-                Debug
-              </button>
-            ) : null}
             <button
-              className={tab === "help" ? "tab tab--active" : "tab"}
-              onClick={() => setTab("help")}
-              aria-current={tab === "help" ? "page" : undefined}
+              className="tab"
+              onClick={() => setIsCollapsed((prev) => !prev)}
+              title={isCollapsed ? "Expand navigation" : "Minimize navigation"}
+              aria-label={isCollapsed ? "Expand navigation" : "Minimize navigation"}
             >
-              Help
+              {isCollapsed ? "[+]" : "[-]"}
             </button>
           </nav>
 
