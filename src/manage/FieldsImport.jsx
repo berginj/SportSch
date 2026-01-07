@@ -3,9 +3,9 @@ import { apiFetch } from "../lib/api";
 import { FIELD_STATUS } from "../lib/constants";
 import Toast from "../components/Toast";
 
-// Admin tool: CSV import is the ONLY fields workflow.
+// Admin tool: CSV import is the primary fields workflow.
 // Contract: POST /import/fields with required columns: fieldKey, parkName, fieldName.
-// Robust backend should accept multipart/form-data (file upload) and text/csv (raw body).
+// Single-field add/edit/delete uses /api/fields.
 
 const SAMPLE_CSV = `fieldKey,parkName,fieldName,displayName,address,city,state,notes,status
 gunston/turf,Gunston Park,Turf,Gunston Park > Turf,2701 S Lang St,Arlington,VA,,${FIELD_STATUS.ACTIVE}
@@ -15,6 +15,17 @@ tuckahoe/field-2,Tuckahoe Park,Field 2,Tuckahoe Park > Field 2,123 Park Ave,Arli
 export default function FieldsImport({ leagueId }) {
   const [fields, setFields] = useState([]);
   const [fieldEdits, setFieldEdits] = useState({});
+  const [newField, setNewField] = useState({
+    fieldKey: "",
+    parkName: "",
+    fieldName: "",
+    displayName: "",
+    address: "",
+    city: "",
+    state: "",
+    notes: "",
+    status: FIELD_STATUS.ACTIVE,
+  });
   const [busy, setBusy] = useState(false);
   const [savingKey, setSavingKey] = useState("");
   const [err, setErr] = useState("");
@@ -39,10 +50,14 @@ export default function FieldsImport({ leagueId }) {
         const next = { ...prev };
         for (const f of list || []) {
           next[f.fieldKey] = {
+            parkName: f.parkName ?? "",
+            fieldName: f.fieldName ?? "",
+            displayName: f.displayName ?? "",
             address: f.address ?? "",
             city: f.city ?? "",
             state: f.state ?? "",
             notes: f.notes ?? "",
+            status: f.status ?? FIELD_STATUS.ACTIVE,
           };
         }
         return next;
@@ -155,10 +170,14 @@ export default function FieldsImport({ leagueId }) {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          parkName: edits.parkName ?? "",
+          fieldName: edits.fieldName ?? "",
+          displayName: edits.displayName ?? "",
           address: edits.address ?? "",
           city: edits.city ?? "",
           state: edits.state ?? "",
           notes: edits.notes ?? "",
+          status: edits.status ?? FIELD_STATUS.ACTIVE,
         }),
       });
 
@@ -167,6 +186,80 @@ export default function FieldsImport({ leagueId }) {
       await load();
     } catch (e) {
       setErr(e?.message || "Save failed");
+    } finally {
+      setSavingKey("");
+    }
+  }
+
+  async function createField() {
+    setErr("");
+    setOk("");
+    if (!leagueId) return setErr("Select a league first.");
+
+    const payload = {
+      fieldKey: (newField.fieldKey || "").trim(),
+      parkName: (newField.parkName || "").trim(),
+      fieldName: (newField.fieldName || "").trim(),
+      displayName: (newField.displayName || "").trim(),
+      address: (newField.address || "").trim(),
+      city: (newField.city || "").trim(),
+      state: (newField.state || "").trim(),
+      notes: (newField.notes || "").trim(),
+      status: (newField.status || "").trim(),
+    };
+
+    if (!payload.fieldKey || !payload.parkName || !payload.fieldName) {
+      setErr("fieldKey, parkName, and fieldName are required.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      await apiFetch("/api/fields", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      setOk(`Created ${payload.fieldKey}.`);
+      setToast({ tone: "success", message: "Field created." });
+      setNewField({
+        fieldKey: "",
+        parkName: "",
+        fieldName: "",
+        displayName: "",
+        address: "",
+        city: "",
+        state: "",
+        notes: "",
+        status: FIELD_STATUS.ACTIVE,
+      });
+      await load();
+    } catch (e) {
+      setErr(e?.message || "Create failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteField(field) {
+    setErr("");
+    setOk("");
+    if (!leagueId) return setErr("Select a league first.");
+
+    const parts = (field.fieldKey || "").split("/");
+    if (parts.length !== 2) return setErr("Invalid fieldKey.");
+    const [parkCode, fieldCode] = parts;
+
+    if (!window.confirm(`Delete field ${field.displayName || field.fieldKey}?`)) return;
+
+    setSavingKey(field.fieldKey);
+    try {
+      await apiFetch(`/api/fields/${parkCode}/${fieldCode}`, { method: "DELETE" });
+      setOk(`Deleted ${field.displayName || field.fieldKey}.`);
+      setToast({ tone: "success", message: "Field deleted." });
+      await load();
+    } catch (e) {
+      setErr(e?.message || "Delete failed");
     } finally {
       setSavingKey("");
     }
@@ -262,10 +355,97 @@ export default function FieldsImport({ leagueId }) {
       </div>
 
       <div className="card">
-        <div className="font-bold mb-2">Field details (edit)</div>
-        <div className="subtle mb-2">
-          Address details can be edited after import. Changes are saved per field.
+        <div className="font-bold mb-2">Add a single field</div>
+        <div className="formGrid">
+          <label>
+            Field Key
+            <input
+              value={newField.fieldKey}
+              onChange={(e) => setNewField((prev) => ({ ...prev, fieldKey: e.target.value }))}
+              placeholder="park-code/field-code"
+              disabled={!canEdit}
+            />
+          </label>
+          <label>
+            Park Name
+            <input
+              value={newField.parkName}
+              onChange={(e) => setNewField((prev) => ({ ...prev, parkName: e.target.value }))}
+              disabled={!canEdit}
+            />
+          </label>
+          <label>
+            Field Name
+            <input
+              value={newField.fieldName}
+              onChange={(e) => setNewField((prev) => ({ ...prev, fieldName: e.target.value }))}
+              disabled={!canEdit}
+            />
+          </label>
+          <label>
+            Display Name
+            <input
+              value={newField.displayName}
+              onChange={(e) => setNewField((prev) => ({ ...prev, displayName: e.target.value }))}
+              placeholder="Park > Field"
+              disabled={!canEdit}
+            />
+          </label>
+          <label>
+            Address
+            <input
+              value={newField.address}
+              onChange={(e) => setNewField((prev) => ({ ...prev, address: e.target.value }))}
+              disabled={!canEdit}
+            />
+          </label>
+          <label>
+            City
+            <input
+              value={newField.city}
+              onChange={(e) => setNewField((prev) => ({ ...prev, city: e.target.value }))}
+              disabled={!canEdit}
+            />
+          </label>
+          <label>
+            State
+            <input
+              value={newField.state}
+              onChange={(e) => setNewField((prev) => ({ ...prev, state: e.target.value }))}
+              disabled={!canEdit}
+              className="fieldInputShort"
+            />
+          </label>
+          <label>
+            Status
+            <select
+              value={newField.status}
+              onChange={(e) => setNewField((prev) => ({ ...prev, status: e.target.value }))}
+              disabled={!canEdit}
+            >
+              <option value={FIELD_STATUS.ACTIVE}>{FIELD_STATUS.ACTIVE}</option>
+              <option value={FIELD_STATUS.INACTIVE}>{FIELD_STATUS.INACTIVE}</option>
+            </select>
+          </label>
         </div>
+        <label className="mt-3">
+          Notes
+          <textarea
+            value={newField.notes}
+            onChange={(e) => setNewField((prev) => ({ ...prev, notes: e.target.value }))}
+            disabled={!canEdit}
+          />
+        </label>
+        <div className="row mt-3">
+          <button className="btn" onClick={createField} disabled={!canEdit}>
+            Add field
+          </button>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="font-bold mb-2">Field details (edit)</div>
+        <div className="subtle mb-2">Edit field metadata, then save per field.</div>
         {fields.length === 0 ? (
           <div className="subtle">No fields yet.</div>
         ) : (
@@ -274,11 +454,15 @@ export default function FieldsImport({ leagueId }) {
               <tr>
                 <th>Field</th>
                 <th>Field Key</th>
+                <th>Park Name</th>
+                <th>Field Name</th>
+                <th>Display Name</th>
                 <th>Address</th>
                 <th>City</th>
                 <th>State</th>
                 <th>Status</th>
-                <th></th>
+                <th>Notes</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -287,6 +471,27 @@ export default function FieldsImport({ leagueId }) {
                   <td>{f.displayName}</td>
                   <td>
                     <code>{f.fieldKey}</code>
+                  </td>
+                  <td>
+                    <input
+                      value={fieldEdits[f.fieldKey]?.parkName ?? ""}
+                      onChange={(e) => updateEdit(f.fieldKey, "parkName", e.target.value)}
+                      disabled={!canEdit || savingKey === f.fieldKey}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      value={fieldEdits[f.fieldKey]?.fieldName ?? ""}
+                      onChange={(e) => updateEdit(f.fieldKey, "fieldName", e.target.value)}
+                      disabled={!canEdit || savingKey === f.fieldKey}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      value={fieldEdits[f.fieldKey]?.displayName ?? ""}
+                      onChange={(e) => updateEdit(f.fieldKey, "displayName", e.target.value)}
+                      disabled={!canEdit || savingKey === f.fieldKey}
+                    />
                   </td>
                   <td>
                     <input
@@ -310,10 +515,33 @@ export default function FieldsImport({ leagueId }) {
                       className="fieldInputShort"
                     />
                   </td>
-                  <td>{f.status}</td>
                   <td>
+                    <select
+                      value={fieldEdits[f.fieldKey]?.status ?? FIELD_STATUS.ACTIVE}
+                      onChange={(e) => updateEdit(f.fieldKey, "status", e.target.value)}
+                      disabled={!canEdit || savingKey === f.fieldKey}
+                    >
+                      <option value={FIELD_STATUS.ACTIVE}>{FIELD_STATUS.ACTIVE}</option>
+                      <option value={FIELD_STATUS.INACTIVE}>{FIELD_STATUS.INACTIVE}</option>
+                    </select>
+                  </td>
+                  <td>
+                    <textarea
+                      value={fieldEdits[f.fieldKey]?.notes ?? ""}
+                      onChange={(e) => updateEdit(f.fieldKey, "notes", e.target.value)}
+                      disabled={!canEdit || savingKey === f.fieldKey}
+                    />
+                  </td>
+                  <td className="row gap-2 row--wrap">
                     <button className="btn btn--ghost" onClick={() => saveField(f)} disabled={!canEdit || savingKey}>
                       {savingKey === f.fieldKey ? "Saving..." : "Save"}
+                    </button>
+                    <button
+                      className="btn btn--ghost"
+                      onClick={() => deleteField(f)}
+                      disabled={!canEdit || savingKey === f.fieldKey}
+                    >
+                      Delete
                     </button>
                   </td>
                 </tr>

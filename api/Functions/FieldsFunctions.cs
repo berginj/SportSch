@@ -105,13 +105,117 @@ public class FieldsFunctions
     }
 
     public record UpdateFieldRequest(
+        string? parkName,
+        string? fieldName,
         string? displayName,
         string? address,
         string? city,
         string? state,
         string? notes,
+        string? status,
         List<BlackoutRange>? blackouts
     );
+
+    public record CreateFieldRequest(
+        string? fieldKey,
+        string? parkName,
+        string? fieldName,
+        string? displayName,
+        string? address,
+        string? city,
+        string? state,
+        string? notes,
+        string? status,
+        List<BlackoutRange>? blackouts
+    );
+
+    [Function("CreateField")]
+    public async Task<HttpResponseData> CreateField(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "fields")] HttpRequestData req)
+    {
+        try
+        {
+            var leagueId = ApiGuards.RequireLeagueId(req);
+            var me = IdentityUtil.GetMe(req);
+            await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+
+            CreateFieldRequest? body;
+            try { body = await req.ReadFromJsonAsync<CreateFieldRequest>(); }
+            catch { return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Invalid JSON body"); }
+
+            if (body is null)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Invalid JSON body");
+
+            var fieldKey = (body.fieldKey ?? "").Trim();
+            var parkName = (body.parkName ?? "").Trim();
+            var fieldName = (body.fieldName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(fieldKey))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "fieldKey is required");
+            if (string.IsNullOrWhiteSpace(parkName))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "parkName is required");
+            if (string.IsNullOrWhiteSpace(fieldName))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "fieldName is required");
+
+            var parts = fieldKey.Split('/', 2, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length != 2)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "fieldKey must be parkCode/fieldCode");
+
+            var parkCode = parts[0].Trim();
+            var fieldCode = parts[1].Trim();
+            ApiGuards.EnsureValidTableKeyPart("parkCode", parkCode);
+            ApiGuards.EnsureValidTableKeyPart("fieldCode", fieldCode);
+
+            var status = NormalizeFieldStatus(body.status);
+            if (status is null)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "status must be Active or Inactive");
+
+            var displayName = (body.displayName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(displayName))
+                displayName = $"{parkName} > {fieldName}";
+
+            var pk = Constants.Pk.Fields(leagueId, parkCode);
+            var rk = fieldCode;
+            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Fields);
+
+            var now = DateTimeOffset.UtcNow;
+            var entity = new TableEntity(pk, rk)
+            {
+                ["ParkName"] = parkName,
+                ["FieldName"] = fieldName,
+                ["DisplayName"] = displayName,
+                ["Address"] = (body.address ?? "").Trim(),
+                ["City"] = (body.city ?? "").Trim(),
+                ["State"] = (body.state ?? "").Trim(),
+                ["Notes"] = (body.notes ?? "").Trim(),
+                ["IsActive"] = status == Constants.Status.FieldActive,
+                ["Blackouts"] = body.blackouts is null
+                    ? "[]"
+                    : System.Text.Json.JsonSerializer.Serialize(body.blackouts),
+                ["UpdatedUtc"] = now
+            };
+
+            await table.UpsertEntityAsync(entity, TableUpdateMode.Merge);
+
+            return ApiResponses.Ok(req, new FieldDto(
+                fieldKey: $"{parkCode}/{fieldCode}",
+                parkName: parkName,
+                fieldName: fieldName,
+                displayName: displayName,
+                address: entity.GetString("Address") ?? "",
+                city: entity.GetString("City") ?? "",
+                state: entity.GetString("State") ?? "",
+                notes: entity.GetString("Notes") ?? "",
+                status: status,
+                blackouts: ParseBlackouts(entity.GetString("Blackouts"))
+            ));
+        }
+        catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "CreateField failed");
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
+        }
+    }
 
     [Function("UpdateField")]
     public async Task<HttpResponseData> UpdateField(
@@ -154,11 +258,18 @@ public class FieldsFunctions
                 return ApiResponses.Error(req, HttpStatusCode.NotFound, "NOT_FOUND", "Field not found");
             }
 
+            var status = NormalizeFieldStatus(body.status);
+            if (body.status is not null && status is null)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "status must be Active or Inactive");
+
             if (body.displayName is not null) entity["DisplayName"] = body.displayName;
+            if (body.parkName is not null) entity["ParkName"] = body.parkName;
+            if (body.fieldName is not null) entity["FieldName"] = body.fieldName;
             if (body.address is not null) entity["Address"] = body.address;
             if (body.city is not null) entity["City"] = body.city;
             if (body.state is not null) entity["State"] = body.state;
             if (body.notes is not null) entity["Notes"] = body.notes;
+            if (status is not null) entity["IsActive"] = status == Constants.Status.FieldActive;
             if (body.blackouts is not null)
                 entity["Blackouts"] = System.Text.Json.JsonSerializer.Serialize(body.blackouts);
             entity["UpdatedUtc"] = DateTimeOffset.UtcNow;
@@ -173,6 +284,7 @@ public class FieldsFunctions
                 city = entity.GetString("City") ?? "",
                 state = entity.GetString("State") ?? "",
                 notes = entity.GetString("Notes") ?? "",
+                status = (entity.GetBoolean("IsActive") ?? true) ? Constants.Status.FieldActive : Constants.Status.FieldInactive,
                 blackouts = ParseBlackouts(entity.GetString("Blackouts"))
             });
         }
@@ -180,6 +292,49 @@ public class FieldsFunctions
         catch (Exception ex)
         {
             _log.LogError(ex, "UpdateField failed");
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
+        }
+    }
+
+    [Function("DeleteField")]
+    public async Task<HttpResponseData> DeleteField(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "fields/{parkCode}/{fieldCode}")]
+        HttpRequestData req,
+        string parkCode,
+        string fieldCode)
+    {
+        try
+        {
+            var leagueId = ApiGuards.RequireLeagueId(req);
+            var me = IdentityUtil.GetMe(req);
+            await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+
+            parkCode = (parkCode ?? "").Trim();
+            fieldCode = (fieldCode ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(parkCode) || string.IsNullOrWhiteSpace(fieldCode))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "parkCode and fieldCode are required");
+            ApiGuards.EnsureValidTableKeyPart("parkCode", parkCode);
+            ApiGuards.EnsureValidTableKeyPart("fieldCode", fieldCode);
+
+            var pk = Constants.Pk.Fields(leagueId, parkCode);
+            var rk = fieldCode;
+
+            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Fields);
+            try
+            {
+                await table.DeleteEntityAsync(pk, rk);
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                return ApiResponses.Error(req, HttpStatusCode.NotFound, "NOT_FOUND", "Field not found");
+            }
+
+            return ApiResponses.Ok(req, new { fieldKey = $"{parkCode}/{fieldCode}" });
+        }
+        catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "DeleteField failed");
             return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
         }
     }
@@ -196,5 +351,16 @@ public class FieldsFunctions
         {
             return new List<BlackoutRange>();
         }
+    }
+
+    private static string? NormalizeFieldStatus(string? status)
+    {
+        if (status is null) return null;
+        if (string.IsNullOrWhiteSpace(status)) return null;
+        if (status.Equals(Constants.Status.FieldActive, StringComparison.OrdinalIgnoreCase))
+            return Constants.Status.FieldActive;
+        if (status.Equals(Constants.Status.FieldInactive, StringComparison.OrdinalIgnoreCase))
+            return Constants.Status.FieldInactive;
+        return null;
     }
 }
