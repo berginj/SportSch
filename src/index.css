@@ -124,10 +124,26 @@
   .h2 { @apply text-xl font-semibold; }
 
   .tableWrap { @apply overflow-x-auto; }
+  .tableWrap--sticky { @apply max-h-[70vh] overflow-auto; }
   .table { @apply w-full text-sm border-collapse; }
   .table th { @apply text-left text-xs uppercase tracking-wide text-muted border-b border-border py-2 px-3; }
   .table td { @apply border-b border-border py-2 px-3 align-top; }
   .table tr:last-child td { @apply border-b-0; }
+  .table--compact th { @apply py-1.5 px-2 text-[11px]; }
+  .table--compact td { @apply py-1.5 px-2; }
+  .table--compact tbody tr:nth-child(odd) { @apply bg-white/[0.02]; }
+  .table--sticky thead th {
+    position: sticky;
+    top: 0;
+    background: rgba(17, 26, 45, 0.92);
+    z-index: 1;
+  }
+
+  .dataCards { @apply grid gap-3 min-[920px]:grid-cols-2; }
+  .dataCard { @apply rounded-2xl border border-border bg-black/20 p-3.5 grid gap-2; }
+  .dataCard__title { @apply text-base font-semibold; }
+  .dataCard__meta { @apply text-xs text-muted; }
+  .dataCard__grid { @apply grid gap-2.5 grid-cols-[repeat(auto-fit,minmax(180px,1fr))]; }
 
   .slotList { @apply grid gap-3; }
   .slotCard { @apply rounded-2xl border border-border bg-black/20 p-3.5; }

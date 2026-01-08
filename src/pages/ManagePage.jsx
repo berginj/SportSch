@@ -21,7 +21,7 @@ function Pill({ active, children, onClick }) {
   );
 }
 
-export default function ManagePage({ leagueId, me, setLeagueId }) {
+export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
   const memberships = Array.isArray(me?.memberships) ? me.memberships : [];
   const isGlobalAdmin = !!me?.isGlobalAdmin;
   const isLeagueAdmin = useMemo(() => {
@@ -112,7 +112,7 @@ export default function ManagePage({ leagueId, me, setLeagueId }) {
             <div className="subtle">Upload teams and manage coach assignments.</div>
           </div>
           <div className="card__body">
-            <TeamsManager leagueId={leagueId} />
+            <TeamsManager leagueId={leagueId} tableView={tableView} />
           </div>
         </div>
       )}
@@ -155,8 +155,8 @@ export default function ManagePage({ leagueId, me, setLeagueId }) {
                 Keep it consistent (example: <code>Tuckahoe Park &gt; Field 2</code>). fieldKey is stable and is how slots reference a field.
               </div>
             </div>
-            <div className="tableWrap mt-3">
-              <FieldsImport leagueId={leagueId} me={me} />
+            <div className="mt-3">
+              <FieldsImport leagueId={leagueId} me={me} tableView={tableView} />
             </div>
           </div>
         </div>

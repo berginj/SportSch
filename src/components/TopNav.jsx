@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 
-export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
+export default function TopNav({ tab, setTab, me, leagueId, setLeagueId, tableView, setTableView }) {
   const memberships = Array.isArray(me?.memberships) ? me.memberships : [];
   const email = me?.email || "";
   const isGlobalAdmin = !!me?.isGlobalAdmin;
@@ -161,6 +161,18 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
           <div className="topnav__account">
             <div className="whoami" title={email}>
               {email || "Signed in"}
+            </div>
+            <div className="control control--tableview">
+              <label>Table view</label>
+              <select
+                value={tableView || "A"}
+                onChange={(e) => setTableView(e.target.value)}
+                aria-label="Table view"
+              >
+                <option value="A">A: Table</option>
+                <option value="B">B: Compact</option>
+                <option value="C">C: Cards</option>
+              </select>
             </div>
             <div className="control control--league">
               <label>League</label>

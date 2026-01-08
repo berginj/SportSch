@@ -36,7 +36,7 @@ function downloadCsv(csv, filename) {
   URL.revokeObjectURL(url);
 }
 
-export default function TeamsManager({ leagueId }) {
+export default function TeamsManager({ leagueId, tableView = "A" }) {
   const [teams, setTeams] = useState([]);
   const [divisions, setDivisions] = useState([]);
   const [memberships, setMemberships] = useState([]);
@@ -72,6 +72,8 @@ export default function TeamsManager({ leagueId }) {
       for (const team of list) {
         const key = teamKey(team);
         nextEdits[key] = {
+          division: team?.division || "",
+          teamId: team?.teamId || "",
           name: team?.name || "",
           contactName: team?.primaryContact?.name || "",
           contactEmail: team?.primaryContact?.email || "",
@@ -132,28 +134,74 @@ export default function TeamsManager({ leagueId }) {
     const key = teamKey(team);
     const edit = teamEdits[key] || {};
     const name = (edit.name || "").trim();
+    const nextDivision = (edit.division || team.division || "").trim();
+    const nextTeamId = (edit.teamId || team.teamId || "").trim();
+    const changingKey = nextDivision !== team.division || nextTeamId !== team.teamId;
     if (!name) {
       setErr("Team name is required.");
+      return;
+    }
+    if (!nextDivision || !nextTeamId) {
+      setErr("Division and Team ID are required.");
       return;
     }
     setSavingKey(key);
     setErr("");
     setOk("");
     try {
-      await apiFetch(`/api/teams/${encodeURIComponent(team.division)}/${encodeURIComponent(team.teamId)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          primaryContact: {
-            name: (edit.contactName || "").trim(),
-            email: (edit.contactEmail || "").trim(),
-            phone: (edit.contactPhone || "").trim(),
-          },
-        }),
-      });
-      setOk(`Saved ${team.teamId}.`);
-      setToast({ tone: "success", message: `Saved ${team.teamId}.` });
+      const primaryContact = {
+        name: (edit.contactName || "").trim(),
+        email: (edit.contactEmail || "").trim(),
+        phone: (edit.contactPhone || "").trim(),
+      };
+
+      if (changingKey) {
+        const confirmChange = window.confirm(
+          `Change team ${team.division}/${team.teamId} to ${nextDivision}/${nextTeamId}? This creates a new team, deletes the old one, and updates coach assignments.`
+        );
+        if (!confirmChange) {
+          setSavingKey("");
+          return;
+        }
+
+        await apiFetch("/api/teams", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            division: nextDivision,
+            teamId: nextTeamId,
+            name,
+            primaryContact,
+          }),
+        });
+
+        const assignments = (memberships || []).filter(
+          (m) => m?.team?.division === team.division && m?.team?.teamId === team.teamId
+        );
+        for (const m of assignments) {
+          await apiFetch(`/api/memberships/${encodeURIComponent(m.userId)}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ team: { division: nextDivision, teamId: nextTeamId } }),
+          });
+        }
+
+        await apiFetch(`/api/teams/${encodeURIComponent(team.division)}/${encodeURIComponent(team.teamId)}`, {
+          method: "DELETE",
+        });
+      } else {
+        await apiFetch(`/api/teams/${encodeURIComponent(team.division)}/${encodeURIComponent(team.teamId)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name,
+            primaryContact,
+          }),
+        });
+      }
+
+      setOk(`Saved ${nextTeamId}.`);
+      setToast({ tone: "success", message: `Saved ${nextTeamId}.` });
       await load();
     } catch (e) {
       setErr(e?.message || "Failed to save team.");
@@ -310,9 +358,74 @@ export default function TeamsManager({ leagueId }) {
           <div className="subtle">Loading...</div>
         ) : teams.length === 0 ? (
           <div className="subtle">No teams yet.</div>
+        ) : tableView === "C" ? (
+          <div className="dataCards">
+            {teams.map((t) => {
+              const key = teamKey(t);
+              const edit = teamEdits[key] || {};
+              return (
+                <div key={`${t.division}-${t.teamId}`} className="dataCard">
+                  <div className="dataCard__title">{t.name || t.teamId}</div>
+                  <div className="dataCard__meta">{t.division} / {t.teamId}</div>
+                  <div className="dataCard__grid">
+                    <label>
+                      Division
+                      <input
+                        value={edit.division ?? ""}
+                        onChange={(e) => updateTeamEdit(key, { division: e.target.value })}
+                      />
+                    </label>
+                    <label>
+                      Team ID
+                      <input
+                        value={edit.teamId ?? ""}
+                        onChange={(e) => updateTeamEdit(key, { teamId: e.target.value })}
+                      />
+                    </label>
+                    <label>
+                      Name
+                      <input
+                        value={edit.name ?? ""}
+                        onChange={(e) => updateTeamEdit(key, { name: e.target.value })}
+                      />
+                    </label>
+                    <label>
+                      Coach name
+                      <input
+                        value={edit.contactName ?? ""}
+                        onChange={(e) => updateTeamEdit(key, { contactName: e.target.value })}
+                      />
+                    </label>
+                    <label>
+                      Coach email
+                      <input
+                        value={edit.contactEmail ?? ""}
+                        onChange={(e) => updateTeamEdit(key, { contactEmail: e.target.value })}
+                      />
+                    </label>
+                    <label>
+                      Coach phone
+                      <input
+                        value={edit.contactPhone ?? ""}
+                        onChange={(e) => updateTeamEdit(key, { contactPhone: e.target.value })}
+                      />
+                    </label>
+                  </div>
+                  <div className="row row--end gap-2">
+                    <button className="btn" onClick={() => saveTeam(t)} disabled={savingKey === key || deletingKey === key}>
+                      {savingKey === key ? "Saving..." : "Save"}
+                    </button>
+                    <button className="btn btn--ghost" onClick={() => deleteTeam(t)} disabled={savingKey === key || deletingKey === key}>
+                      {deletingKey === key ? "Deleting..." : "Delete"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         ) : (
-          <div className="tableWrap">
-            <table className="table">
+          <div className={`tableWrap ${tableView === "B" ? "tableWrap--sticky" : ""}`}>
+            <table className={`table ${tableView === "B" ? "table--compact table--sticky" : ""}`}>
               <thead>
                 <tr>
                   <th>Division</th>
@@ -328,8 +441,18 @@ export default function TeamsManager({ leagueId }) {
                   const edit = teamEdits[key] || {};
                   return (
                     <tr key={`${t.division}-${t.teamId}`}>
-                      <td>{t.division}</td>
-                      <td>{t.teamId}</td>
+                      <td>
+                        <input
+                          value={edit.division ?? ""}
+                          onChange={(e) => updateTeamEdit(key, { division: e.target.value })}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          value={edit.teamId ?? ""}
+                          onChange={(e) => updateTeamEdit(key, { teamId: e.target.value })}
+                        />
+                      </td>
                       <td>
                         <input
                           value={edit.name ?? ""}
