@@ -31,6 +31,7 @@ public static class Constants
         public const string ScheduleRuns = "GameSwapScheduleRuns";
         public const string FieldAvailabilityRules = "GameSwapFieldAvailabilityRules";
         public const string FieldAvailabilityExceptions = "GameSwapFieldAvailabilityExceptions";
+        public const string FieldAvailabilityAllocations = "GameSwapFieldAvailabilityAllocations";
 
         // Org / Team management
         public const string Teams = "GameSwapTeams";
@@ -67,6 +68,10 @@ public static class Constants
         // Secondary index rows for fast division/date range queries: PK = AVAILRULEIDX|{leagueId}|{divisionId}
         // Suggested RK: {startDate}|{endDate}|{ruleId}
         public static string FieldAvailabilityRuleIndex(string leagueId, string divisionId) => $"AVAILRULEIDX|{leagueId}|{divisionId}";
+
+        // Field allocations: PK = ALLOC|{leagueId}|{scope}|{fieldKey}, RK = allocationId
+        public static string FieldAvailabilityAllocations(string leagueId, string scope, string fieldKey)
+            => $"ALLOC|{leagueId}|{scope}|{fieldKey}";
     }
 
     public static class FieldAvailabilityColumns

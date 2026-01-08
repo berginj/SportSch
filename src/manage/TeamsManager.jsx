@@ -112,6 +112,14 @@ export default function TeamsManager({ leagueId, tableView = "A" }) {
     return map;
   }, [teams]);
 
+  const divisionOptions = useMemo(() => {
+    return (divisions || [])
+      .filter((d) => d && d.isActive !== false)
+      .map((d) => (typeof d === "string" ? d : d.code || d.division || ""))
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
+  }, [divisions]);
+
   function setDraftForCoach(userId, patch) {
     setCoachDraft((prev) => {
       const cur = prev[userId] || { division: "", teamId: "" };
@@ -370,10 +378,15 @@ export default function TeamsManager({ leagueId, tableView = "A" }) {
                   <div className="dataCard__grid">
                     <label>
                       Division
-                      <input
+                      <select
                         value={edit.division ?? ""}
                         onChange={(e) => updateTeamEdit(key, { division: e.target.value })}
-                      />
+                      >
+                        <option value="">Select division</option>
+                        {divisionOptions.map((code) => (
+                          <option key={code} value={code}>{code}</option>
+                        ))}
+                      </select>
                     </label>
                     <label>
                       Team ID
@@ -442,10 +455,15 @@ export default function TeamsManager({ leagueId, tableView = "A" }) {
                   return (
                     <tr key={`${t.division}-${t.teamId}`}>
                       <td>
-                        <input
+                        <select
                           value={edit.division ?? ""}
                           onChange={(e) => updateTeamEdit(key, { division: e.target.value })}
-                        />
+                        >
+                          <option value="">Select division</option>
+                          {divisionOptions.map((code) => (
+                            <option key={code} value={code}>{code}</option>
+                          ))}
+                        </select>
                       </td>
                       <td>
                         <input

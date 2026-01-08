@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { getDefaultRangeFallback, getSeasonRange } from "../lib/season";
+import AvailabilityAllocationsManager from "./AvailabilityAllocationsManager";
 
 const DAY_OPTIONS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -282,6 +283,8 @@ export default function AvailabilityManager({ leagueId }) {
     <div className="stack">
       {err ? <div className="callout callout--error">{err}</div> : null}
       {ok ? <div className="callout callout--ok">{ok}</div> : null}
+
+      <AvailabilityAllocationsManager leagueId={leagueId} />
 
       <div className="card">
         <div className="card__header">

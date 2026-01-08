@@ -166,7 +166,7 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
         <div className="card">
           <div className="card__header">
             <div className="h2">Field Availability</div>
-            <div className="subtle">Create recurring rules and add exclusions for fields.</div>
+            <div className="subtle">Import allocations, generate slots, and manage recurring rules.</div>
           </div>
           <div className="card__body">
             <AvailabilityManager leagueId={leagueId} />

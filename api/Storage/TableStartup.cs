@@ -29,6 +29,7 @@ public sealed class TableStartup : IHostedService
             Constants.Tables.ScheduleRuns,
             Constants.Tables.FieldAvailabilityRules,
             Constants.Tables.FieldAvailabilityExceptions,
+            Constants.Tables.FieldAvailabilityAllocations,
             Constants.Tables.Teams,
             Constants.Tables.TeamContacts,
             Constants.Tables.Seasons,

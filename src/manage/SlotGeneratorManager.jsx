@@ -238,12 +238,11 @@ export default function SlotGeneratorManager({ leagueId }) {
   }
 
   async function loadAvailabilitySlots() {
-    if (!availDivision) return;
     setAvailListLoading(true);
     setAvailErr("");
     try {
       const qs = new URLSearchParams();
-      qs.set("division", availDivision);
+      if (availDivision) qs.set("division", availDivision);
       if (availDateFrom) qs.set("dateFrom", availDateFrom);
       if (availDateTo) qs.set("dateTo", availDateTo);
       const data = await apiFetch(`/api/slots?${qs.toString()}`);
@@ -359,6 +358,7 @@ export default function SlotGeneratorManager({ leagueId }) {
           <label>
             Division
             <select value={availDivision} onChange={(e) => setAvailDivision(e.target.value)}>
+              <option value="">All divisions</option>
               {divisions.map((d) => (
                 <option key={d.code || d.division} value={d.code || d.division}>
                   {d.name ? `${d.name} (${d.code || d.division})` : d.code || d.division}
@@ -387,7 +387,7 @@ export default function SlotGeneratorManager({ leagueId }) {
           </label>
         </div>
         <div className="card__body row gap-2">
-          <button className="btn" onClick={loadAvailabilitySlots} disabled={availListLoading || !availDivision}>
+          <button className="btn" onClick={loadAvailabilitySlots} disabled={availListLoading}>
             {availListLoading ? "Loading..." : "Load availability slots"}
           </button>
           <button className="btn btn--danger" onClick={deleteAvailabilitySlots} disabled={availListLoading || !availDivision}>

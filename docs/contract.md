@@ -64,6 +64,7 @@ Canonical table names (do not introduce new variants):
 - GameSwapScheduleRuns
 - GameSwapFieldAvailabilityRules
 - GameSwapFieldAvailabilityExceptions
+- GameSwapFieldAvailabilityAllocations
 
 PartitionKey/RowKey conventions (canonical):
 - Memberships: PK = `<userId>`, RK = `<leagueId>`
@@ -73,6 +74,7 @@ PartitionKey/RowKey conventions (canonical):
 - Access Requests: PK = `ACCESSREQ|{leagueId}`, RK = `<userId>`
 - Availability Rules: PK = `AVAILRULE|{leagueId}|{fieldKey}`, RK = `<ruleId>`
 - Availability Exceptions: PK = `AVAILRULEEX|{ruleId}`, RK = `<exceptionId>`
+- Availability Allocations: PK = `ALLOC|{leagueId}|{scope}|{fieldKey}`, RK = `<allocationId>`
 - Users: PK = `USER`, RK = `<userId>`
 
 Legacy compatibility:
@@ -187,12 +189,17 @@ the notes for required headers or roles.
 | POST | /import/teams | `Functions/ImportTeams.cs` | CSV teams import (requires `x-league-id`, LeagueAdmin). |
 | POST | /import/slots | `Functions/ImportSlots.cs` | CSV slot import (requires `x-league-id`, LeagueAdmin). |
 | POST | /import/availability-slots | `Functions/ImportAvailabilitySlots.cs` | CSV availability slot import (requires `x-league-id`, LeagueAdmin). |
+| POST | /import/availability-allocations | `Functions/AvailabilityAllocationsFunctions.cs` | CSV availability allocation import (requires `x-league-id`, LeagueAdmin). |
 | GET | /slots | `Functions/GetSlots.cs` | List slots (requires `x-league-id`). |
 | POST | /slots | `Functions/CreateSlot.cs` | Create slot (requires `x-league-id`, Coach or LeagueAdmin). |
 | PATCH | /slots/{division}/{slotId}/cancel | `Functions/CancelSlot.cs` | Cancel slot (requires `x-league-id`, LeagueAdmin). |
 | GET | /slots/{division}/{slotId}/requests | `Functions/GetSlotRequests.cs` | List requests for slot (requires `x-league-id`). |
 | POST | /slots/{division}/{slotId}/requests | `Functions/CreateSlotRequest.cs` | Request slot (requires `x-league-id`, Coach). |
 | PATCH | /slots/{division}/{slotId}/requests/{requestId}/approve | `Functions/ApproveSlotRequest.cs` | Approve slot request (requires `x-league-id`, offering coach, LeagueAdmin, or global admin). |
+| GET | /availability/allocations | `Functions/AvailabilityAllocationsFunctions.cs` | List availability allocations (requires `x-league-id`, LeagueAdmin). |
+| POST | /availability/allocations/clear | `Functions/AvailabilityAllocationsFunctions.cs` | Clear allocations (requires `x-league-id`, LeagueAdmin). |
+| POST | /availability/allocations/slots/preview | `Functions/AvailabilityAllocationSlotsFunctions.cs` | Preview slots generated from allocations (requires `x-league-id`, LeagueAdmin). |
+| POST | /availability/allocations/slots/apply | `Functions/AvailabilityAllocationSlotsFunctions.cs` | Generate slots from allocations (requires `x-league-id`, LeagueAdmin). |
 | GET | /availability/rules | `Functions/AvailabilityFunctions.cs` | List availability rules for a field (requires `x-league-id`, LeagueAdmin). |
 | POST | /availability/rules | `Functions/AvailabilityFunctions.cs` | Create availability rule (requires `x-league-id`, LeagueAdmin). |
 | PATCH | /availability/rules/{ruleId} | `Functions/AvailabilityFunctions.cs` | Update availability rule (requires `x-league-id`, LeagueAdmin). |
@@ -873,6 +880,97 @@ Response
 
 ### PATCH /slots/{division}/{slotId}/cancel (league-scoped)
 Requires: offering team OR accepting team (confirmedTeamId) OR LeagueAdmin OR global admin.
+
+---
+
+## 8aa) Field availability allocations (admin)
+
+Allocations represent time blocks reserved for the league or for a specific division. Allocations are turned into availability slots for scheduling.
+
+### POST /import/availability-allocations (league-scoped)
+Requires: LeagueAdmin or global admin.
+
+Body: raw CSV (`Content-Type: text/csv`)
+
+Required columns:
+- `fieldKey` (format `parkCode/fieldCode`)
+- `dateFrom` (YYYY-MM-DD)
+- `dateTo` (YYYY-MM-DD)
+- `startTime` (HH:MM)
+- `endTime` (HH:MM)
+
+Optional columns:
+- `division` (blank or `LEAGUE` = league-wide allocation)
+- `daysOfWeek` (comma-separated, e.g. `Mon,Wed`)
+- `notes`
+- `isActive` (true/false)
+
+Import behavior:
+- Creates allocations (each CSV row is a new allocation id).
+- `division` values are treated as allocation scope; `LEAGUE` applies to all divisions.
+
+### GET /availability/allocations (league-scoped)
+Requires: LeagueAdmin or global admin.
+Query: `division` (scope filter), `fieldKey` (optional)
+
+### POST /availability/allocations/clear (league-scoped)
+Requires: LeagueAdmin or global admin.
+
+Body
+```json
+{
+  "scope": "LEAGUE",
+  "dateFrom": "2026-03-01",
+  "dateTo": "2026-06-30",
+  "fieldKey": "gunston/turf"
+}
+```
+
+Notes
+- `scope` should be `LEAGUE` or a division code.
+- `fieldKey` is optional; when omitted, clears allocations for all fields within the scope/date range.
+
+### POST /availability/allocations/slots/preview (league-scoped)
+Requires: LeagueAdmin or global admin.
+
+Body
+```json
+{
+  "division": "10U",
+  "dateFrom": "2026-03-01",
+  "dateTo": "2026-06-30",
+  "fieldKey": "gunston/turf"
+}
+```
+
+Response
+```json
+{
+  "data": {
+    "slots": [
+      { "gameDate": "2026-03-03", "startTime": "17:00", "endTime": "19:00", "fieldKey": "gunston/turf", "division": "10U" }
+    ],
+    "conflicts": []
+  }
+}
+```
+
+### POST /availability/allocations/slots/apply (league-scoped)
+Requires: LeagueAdmin or global admin.
+
+Body: same as preview.
+
+Response
+```json
+{
+  "data": {
+    "created": [
+      { "gameDate": "2026-03-03", "startTime": "17:00", "endTime": "19:00", "fieldKey": "gunston/turf", "division": "10U" }
+    ],
+    "conflicts": []
+  }
+}
+```
 
 ---
 
