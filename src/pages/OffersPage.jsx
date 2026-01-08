@@ -82,6 +82,15 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
   const { promptState, promptValue, setPromptValue, requestPrompt, handleConfirm, handleCancel } = usePromptDialog();
   const initializedRef = useRef(false);
 
+  const coachTeam = useMemo(() => {
+    if (canPickTeam) return null;
+    const mem = memberships.find(
+      (m) => (m?.leagueId || "").trim() === (leagueId || "").trim() && (m?.role || "").trim() === "Coach"
+    );
+    if (!mem?.team?.division || !mem?.team?.teamId) return null;
+    return { division: mem.team.division, teamId: mem.team.teamId };
+  }, [canPickTeam, memberships, leagueId]);
+
   const fieldByKey = useMemo(() => {
     const m = new Map();
     for (const f of fields || []) {
@@ -161,6 +170,12 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leagueId]);
 
+  useEffect(() => {
+    if (!coachTeam || canPickTeam) return;
+    if (coachTeam.division) setDivision(coachTeam.division);
+    if (coachTeam.teamId) setOfferingTeamId(coachTeam.teamId);
+  }, [coachTeam, canPickTeam]);
+
   async function reloadSlots(nextDivision) {
     const d = nextDivision ?? division;
     setDivision(d);
@@ -184,6 +199,19 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
     const next = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
     window.history.replaceState({}, "", next);
   }, [division, slotTypeFilter]);
+
+  const teamsForDivision = useMemo(() => {
+    const key = (division || "").trim().toUpperCase();
+    return teamsByDivision.get(key) || [];
+  }, [division, teamsByDivision]);
+
+  useEffect(() => {
+    if (!canPickTeam) return;
+    if (!offeringTeamId) return;
+    if (!teamsForDivision.some((t) => t.teamId === offeringTeamId)) {
+      setOfferingTeamId("");
+    }
+  }, [offeringTeamId, teamsForDivision, canPickTeam]);
 
   // --- Create slot ---
   const [entryType, setEntryType] = useState("Offer");
@@ -375,7 +403,23 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
           </label>
           <label title="Team making the offer/request (must match your coach assignment).">
             {entryType === "Request" ? "Requesting Team ID" : "Offering Team ID"}
-            <input value={offeringTeamId} onChange={(e) => setOfferingTeamId(e.target.value)} />
+            <select
+              value={offeringTeamId}
+              onChange={(e) => setOfferingTeamId(e.target.value)}
+              disabled={!canPickTeam && !!coachTeam?.teamId}
+            >
+              <option value="">Select team</option>
+              {teamsForDivision.map((t) => (
+                <option key={t.teamId} value={t.teamId}>
+                  {t.name || t.teamId}
+                </option>
+              ))}
+              {!canPickTeam && coachTeam?.teamId && !teamsForDivision.some((t) => t.teamId === coachTeam.teamId) ? (
+                <option value={coachTeam.teamId}>
+                  {coachTeam.teamId}
+                </option>
+              ) : null}
+            </select>
           </label>
           <label title="Field for this game.">
             Field

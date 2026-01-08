@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { ROLE } from "../lib/constants";
 import { PromptDialog } from "../components/Dialogs";
@@ -27,6 +27,9 @@ export default function InvitesManager({ leagueId, me }) {
   const [inviteRole, setInviteRole] = useState(ROLE.COACH);
   const [teamDivision, setTeamDivision] = useState("");
   const [teamId, setTeamId] = useState("");
+  const [divisions, setDivisions] = useState([]);
+  const [teams, setTeams] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [expiresHours, setExpiresHours] = useState("168");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -34,6 +37,56 @@ export default function InvitesManager({ leagueId, me }) {
   const [inviteUrl, setInviteUrl] = useState("");
   const [toast, setToast] = useState(null);
   const { promptState, promptValue, setPromptValue, requestPrompt, handleConfirm, handleCancel } = usePromptDialog();
+
+  useEffect(() => {
+    if (!leagueId) return;
+    (async () => {
+      setLoading(true);
+      try {
+        const [divs, tms] = await Promise.all([apiFetch("/api/divisions"), apiFetch("/api/teams")]);
+        setDivisions(Array.isArray(divs) ? divs : []);
+        setTeams(Array.isArray(tms) ? tms : []);
+      } catch {
+        setDivisions([]);
+        setTeams([]);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [leagueId]);
+
+  const divisionOptions = useMemo(() => {
+    return (divisions || [])
+      .filter((d) => d && d.isActive !== false)
+      .map((d) => (typeof d === "string" ? d : d.code || d.division || ""))
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
+  }, [divisions]);
+
+  const teamsByDivision = useMemo(() => {
+    const map = new Map();
+    for (const t of teams || []) {
+      const div = (t.division || "").trim();
+      if (!div) continue;
+      if (!map.has(div)) map.set(div, []);
+      map.get(div).push(t);
+    }
+    for (const [k, v] of map.entries()) {
+      v.sort((a, b) => (a.name || a.teamId || "").localeCompare(b.name || b.teamId || ""));
+      map.set(k, v);
+    }
+    return map;
+  }, [teams]);
+
+  useEffect(() => {
+    if (!teamDivision) setTeamId("");
+    if (teamDivision && teamId) {
+      const teamsForDivision = teamsByDivision.get(teamDivision) || [];
+      if (!teamsForDivision.some((t) => t.teamId === teamId)) {
+        setTeamId("");
+      }
+    }
+  }, [teamDivision, teamId, teamsByDivision]);
 
   async function createInvite() {
     setErr("");
@@ -144,11 +197,31 @@ export default function InvitesManager({ leagueId, me }) {
               <>
                 <label title="Optional division for coach assignment.">
                   Team division (optional)
-                  <input value={teamDivision} onChange={(e) => setTeamDivision(e.target.value)} placeholder="10U" />
+                  <select
+                    value={teamDivision}
+                    onChange={(e) => setTeamDivision(e.target.value)}
+                    disabled={loading || !divisionOptions.length}
+                  >
+                    <option value="">Select division</option>
+                    {divisionOptions.map((code) => (
+                      <option key={code} value={code}>{code}</option>
+                    ))}
+                  </select>
                 </label>
                 <label title="Optional team ID for coach assignment.">
                   Team ID (optional)
-                  <input value={teamId} onChange={(e) => setTeamId(e.target.value)} placeholder="TIGERS" />
+                  <select
+                    value={teamId}
+                    onChange={(e) => setTeamId(e.target.value)}
+                    disabled={!teamDivision}
+                  >
+                    <option value="">Select team</option>
+                    {(teamsByDivision.get(teamDivision) || []).map((t) => (
+                      <option key={t.teamId} value={t.teamId}>
+                        {t.name || t.teamId}
+                      </option>
+                    ))}
+                  </select>
                 </label>
               </>
             ) : null}
