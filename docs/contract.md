@@ -186,6 +186,7 @@ the notes for required headers or roles.
 | POST | /import/fields | `Functions/ImportFields.cs` | CSV field import (requires `x-league-id`, LeagueAdmin). |
 | POST | /import/teams | `Functions/ImportTeams.cs` | CSV teams import (requires `x-league-id`, LeagueAdmin). |
 | POST | /import/slots | `Functions/ImportSlots.cs` | CSV slot import (requires `x-league-id`, LeagueAdmin). |
+| POST | /import/availability-slots | `Functions/ImportAvailabilitySlots.cs` | CSV availability slot import (requires `x-league-id`, LeagueAdmin). |
 | GET | /slots | `Functions/GetSlots.cs` | List slots (requires `x-league-id`). |
 | POST | /slots | `Functions/CreateSlot.cs` | Create slot (requires `x-league-id`, Coach or LeagueAdmin). |
 | PATCH | /slots/{division}/{slotId}/cancel | `Functions/CancelSlot.cs` | Cancel slot (requires `x-league-id`, LeagueAdmin). |
@@ -712,6 +713,25 @@ Optional columns:
 
 Import behavior:
 - Creates slots for the specified league and division.
+- `fieldKey` must match an imported field.
+
+### POST /import/availability-slots (league-scoped)
+Requires: LeagueAdmin or global admin.
+
+Body: raw CSV (`Content-Type: text/csv`)
+
+Required columns:
+- `division`
+- `gameDate` (YYYY-MM-DD)
+- `startTime` (HH:MM)
+- `endTime` (HH:MM)
+- `fieldKey` (format `parkCode/fieldCode`)
+
+Optional columns:
+- `notes`
+
+Import behavior:
+- Creates availability slots (`IsAvailability=true`, `Status=Open`) for the specified league/division.
 - `fieldKey` must match an imported field.
 
 ### GET /slots (league-scoped)

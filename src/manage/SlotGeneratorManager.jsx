@@ -3,6 +3,51 @@ import { apiFetch } from "../lib/api";
 import Toast from "../components/Toast";
 import { getDefaultRangeFallback, getSeasonRange } from "../lib/season";
 
+function csvEscape(value) {
+  const raw = String(value ?? "");
+  if (!/[",\n]/.test(raw)) return raw;
+  return `"${raw.replace(/"/g, '""')}"`;
+}
+
+function downloadCsv(csv, filename) {
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function buildAvailabilityTemplateCsv(divisions, fields) {
+  const header = ["division", "gameDate", "startTime", "endTime", "fieldKey", "notes", "parkName", "fieldName", "displayName"];
+  const divs = (divisions || [])
+    .filter((d) => d && d.isActive !== false)
+    .map((d) => (typeof d === "string" ? d : d.code || d.division || ""))
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+  const rows = [];
+  for (const div of divs) {
+    for (const f of fields || []) {
+      if (!f?.fieldKey) continue;
+      rows.push([
+        div,
+        "",
+        "",
+        "",
+        f.fieldKey,
+        "",
+        f.parkName || "",
+        f.fieldName || "",
+        f.displayName || "",
+      ]);
+    }
+  }
+  return [header, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n");
+}
+
 const DEFAULT_DAYS = {
   Mon: false,
   Tue: false,
@@ -27,6 +72,11 @@ export default function SlotGeneratorManager({ leagueId }) {
   const [dateTo, setDateTo] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+  const [availFile, setAvailFile] = useState(null);
+  const [availBusy, setAvailBusy] = useState(false);
+  const [availErr, setAvailErr] = useState("");
+  const [availOk, setAvailOk] = useState("");
+  const [availErrors, setAvailErrors] = useState([]);
   const [toast, setToast] = useState(null);
 
   useEffect(() => {
@@ -138,6 +188,32 @@ export default function SlotGeneratorManager({ leagueId }) {
     }
   }
 
+  async function importAvailabilityCsv() {
+    setAvailErr("");
+    setAvailOk("");
+    setAvailErrors([]);
+    if (!availFile) return setAvailErr("Choose a CSV file to upload.");
+
+    setAvailBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", availFile);
+      const res = await apiFetch("/api/import/availability-slots", { method: "POST", body: fd });
+      setAvailOk(`Imported. Upserted: ${res?.upserted ?? 0}, Rejected: ${res?.rejected ?? 0}, Skipped: ${res?.skipped ?? 0}`);
+      if (Array.isArray(res?.errors) && res.errors.length) setAvailErrors(res.errors);
+    } catch (e) {
+      setAvailErr(e?.message || "Import failed");
+    } finally {
+      setAvailBusy(false);
+    }
+  }
+
+  function downloadAvailabilityTemplate() {
+    const csv = buildAvailabilityTemplateCsv(divisions, fields);
+    const safeLeague = (leagueId || "league").replace(/[^a-z0-9_-]+/gi, "_");
+    downloadCsv(csv, `availability_template_${safeLeague}.csv`);
+  }
+
   return (
     <div className="stack">
       <Toast
@@ -147,6 +223,58 @@ export default function SlotGeneratorManager({ leagueId }) {
         onClose={() => setToast(null)}
       />
       {err ? <div className="callout callout--error">{err}</div> : null}
+
+      <div className="card">
+        <div className="card__header">
+          <div className="h2">Availability CSV import</div>
+          <div className="subtle">
+            Upload bulk availability slots. Required columns: <code>division</code>, <code>gameDate</code>, <code>startTime</code>, <code>endTime</code>, <code>fieldKey</code>.
+          </div>
+        </div>
+        <div className="card__body">
+          {availErr ? <div className="callout callout--error">{availErr}</div> : null}
+          {availOk ? <div className="callout callout--ok">{availOk}</div> : null}
+          <div className="row items-end gap-3">
+            <label className="flex-1">
+              CSV file
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(e) => setAvailFile(e.target.files?.[0] || null)}
+                disabled={availBusy}
+              />
+            </label>
+            <button className="btn" onClick={importAvailabilityCsv} disabled={availBusy || !availFile}>
+              {availBusy ? "Importing..." : "Upload & Import"}
+            </button>
+            <button className="btn btn--ghost" onClick={downloadAvailabilityTemplate}>
+              Download CSV template
+            </button>
+          </div>
+          {availErrors.length ? (
+            <div className="mt-3">
+              <div className="font-bold mb-2">Rejected rows ({availErrors.length})</div>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Row</th>
+                    <th>Error</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {availErrors.slice(0, 50).map((x, idx) => (
+                    <tr key={idx}>
+                      <td>{x.row}</td>
+                      <td>{x.error}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {availErrors.length > 50 ? <div className="subtle">Showing first 50.</div> : null}
+            </div>
+          ) : null}
+        </div>
+      </div>
 
       <div className="card">
         <div className="card__header">
