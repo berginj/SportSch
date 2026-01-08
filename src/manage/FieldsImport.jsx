@@ -40,6 +40,7 @@ export default function FieldsImport({ leagueId, tableView = "A" }) {
 
   // Optional: show server row errors if provided
   const [rowErrors, setRowErrors] = useState([]);
+  const [rowWarnings, setRowWarnings] = useState([]);
   const [bulkDeleteBusy, setBulkDeleteBusy] = useState(false);
   const [bulkDeleteErrors, setBulkDeleteErrors] = useState([]);
   const [collapseImport, setCollapseImport] = useState(false);
@@ -85,6 +86,7 @@ export default function FieldsImport({ leagueId, tableView = "A" }) {
     setErr("");
     setOk("");
     setRowErrors([]);
+    setRowWarnings([]);
 
     if (!leagueId) return setErr("Select a league first.");
     if (!file) return setErr("Choose a CSV file to upload.");
@@ -107,6 +109,9 @@ export default function FieldsImport({ leagueId, tableView = "A" }) {
       if (Array.isArray(res?.errors) && res.errors.length) {
         setRowErrors(res.errors);
       }
+      if (Array.isArray(res?.warnings) && res.warnings.length) {
+        setRowWarnings(res.warnings);
+      }
 
       await load();
     } catch (e) {
@@ -120,6 +125,7 @@ export default function FieldsImport({ leagueId, tableView = "A" }) {
     setErr("");
     setOk("");
     setRowErrors([]);
+    setRowWarnings([]);
 
     if (!leagueId) return setErr("Select a league first.");
     if (!csvText.trim()) return setErr("Paste CSV content first.");
@@ -138,6 +144,9 @@ export default function FieldsImport({ leagueId, tableView = "A" }) {
 
       if (Array.isArray(res?.errors) && res.errors.length) {
         setRowErrors(res.errors);
+      }
+      if (Array.isArray(res?.warnings) && res.warnings.length) {
+        setRowWarnings(res.warnings);
       }
 
       await load();
@@ -413,6 +422,35 @@ export default function FieldsImport({ leagueId, tableView = "A" }) {
               </tbody>
             </table>
             {rowErrors.length > 50 ? <div className="subtle">Showing first 50.</div> : null}
+          </div>
+        ) : null}
+        {rowWarnings.length ? (
+          <div className="mt-3">
+            <div className="font-bold mb-2">Warnings ({rowWarnings.length})</div>
+            <div className="subtle mb-2">
+              These rows were accepted but had duplicate names or keys.
+            </div>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Row</th>
+                  <th>Field Key</th>
+                  <th>Warning</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rowWarnings.slice(0, 50).map((x, idx) => (
+                  <tr key={idx}>
+                    <td>{x.row}</td>
+                    <td>
+                      <code>{x.fieldKey || ""}</code>
+                    </td>
+                    <td>{x.warning}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {rowWarnings.length > 50 ? <div className="subtle">Showing first 50.</div> : null}
           </div>
         ) : null}
 

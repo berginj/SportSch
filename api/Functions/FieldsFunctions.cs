@@ -177,6 +177,18 @@ public class FieldsFunctions
             var rk = fieldCode;
             var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Fields);
 
+            var existingByName = await LoadFieldsByNameAsync(table, leagueId);
+            var nameKey = NormalizeNameKey(parkName, fieldName);
+            if (existingByName.TryGetValue(nameKey, out var existingKey))
+            {
+                var normalizedFieldKey = $"{parkCode}/{fieldCode}";
+                if (!string.Equals(existingKey, normalizedFieldKey, StringComparison.OrdinalIgnoreCase))
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.Conflict, "DUPLICATE_FIELD",
+                        $"Field already exists for {parkName} / {fieldName}. Use fieldKey {existingKey} instead.");
+                }
+            }
+
             var now = DateTimeOffset.UtcNow;
             var entity = new TableEntity(pk, rk)
             {
@@ -362,5 +374,34 @@ public class FieldsFunctions
         if (status.Equals(Constants.Status.FieldInactive, StringComparison.OrdinalIgnoreCase))
             return Constants.Status.FieldInactive;
         return null;
+    }
+
+    private static string NormalizeNameKey(string parkName, string fieldName)
+        => $"{Slug.Make(parkName)}|{Slug.Make(fieldName)}";
+
+    private static async Task<Dictionary<string, string>> LoadFieldsByNameAsync(TableClient table, string leagueId)
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var pkPrefix = $"FIELD|{leagueId}|";
+        var next = pkPrefix + "\uffff";
+        var filter = $"PartitionKey ge '{ApiGuards.EscapeOData(pkPrefix)}' and PartitionKey lt '{ApiGuards.EscapeOData(next)}'";
+
+        await foreach (var e in table.QueryAsync<TableEntity>(filter: filter))
+        {
+            var parkName = (e.GetString("ParkName") ?? "").Trim();
+            var fieldName = (e.GetString("FieldName") ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(parkName) || string.IsNullOrWhiteSpace(fieldName)) continue;
+
+            var parkCode = ExtractParkCodeFromPk(e.PartitionKey, leagueId);
+            var fieldCode = e.RowKey;
+            if (string.IsNullOrWhiteSpace(parkCode) || string.IsNullOrWhiteSpace(fieldCode)) continue;
+
+            var key = NormalizeNameKey(parkName, fieldName);
+            var fieldKey = $"{parkCode}/{fieldCode}";
+            if (!map.ContainsKey(key))
+                map[key] = fieldKey;
+        }
+
+        return map;
     }
 }

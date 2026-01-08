@@ -76,6 +76,8 @@ public class ImportSlots
             var slotsTable = await TableClients.GetTableAsync(_svc, SlotsTableName);
             var fieldsTable = await TableClients.GetTableAsync(_svc, FieldsTableName);
             var fieldLookup = await LoadFieldsLookupAsync(fieldsTable, leagueId);
+            var existingSlotRanges = await LoadExistingSlotRangesAsync(rows, idx, slotsTable, leagueId);
+            var seenInImportRanges = new Dictionary<string, List<(int startMin, int endMin)>>(StringComparer.OrdinalIgnoreCase);
 
             // PartitionKey batching (Azure Tables transactions are limited to 100 ops and must share the PK)
             var byPk = new Dictionary<string, List<TableTransactionAction>>(StringComparer.OrdinalIgnoreCase);
@@ -111,6 +113,13 @@ public class ImportSlots
                 {
                     rejected++;
                     errors.Add(new { row = i + 1, error = "Division, OfferingTeamId, GameDate, StartTime, EndTime, FieldKey are required." });
+                    continue;
+                }
+
+                if (!TryParseMinutesRange(startTime, endTime, out var startMin, out var endMin))
+                {
+                    rejected++;
+                    errors.Add(new { row = i + 1, error = "StartTime/EndTime must be HH:MM with endTime after startTime." });
                     continue;
                 }
 
@@ -159,6 +168,21 @@ public class ImportSlots
                     errors.Add(new { row = i + 1, error = "Field exists but IsActive=false.", fieldKey = fieldKeyRaw });
                     continue;
                 }
+
+                var rangeKey = BuildRangeKey($"{parkCode}/{fieldCode}", gameDate);
+                if (HasOverlap(existingSlotRanges, rangeKey, startMin, endMin))
+                {
+                    rejected++;
+                    errors.Add(new { row = i + 1, error = "Field already has a slot at this time.", fieldKey = fieldKeyRaw });
+                    continue;
+                }
+                if (!AddRange(seenInImportRanges, rangeKey, startMin, endMin))
+                {
+                    rejected++;
+                    errors.Add(new { row = i + 1, error = "Duplicate slot in CSV for this field/time.", fieldKey = fieldKeyRaw });
+                    continue;
+                }
+                AddRange(existingSlotRanges, rangeKey, startMin, endMin);
 
                 var pk = $"SLOT|{leagueId}|{division}";
                 var slotId = SafeKey($"{offeringTeamId}|{gameDate}|{startTime}|{endTime}|{parkCode}|{fieldCode}");
@@ -323,5 +347,104 @@ public class ImportSlots
         parkCode = Slug.Make(parts[0]);
         fieldCode = Slug.Make(parts[1]);
         return !string.IsNullOrWhiteSpace(parkCode) && !string.IsNullOrWhiteSpace(fieldCode);
+    }
+
+    private static string BuildRangeKey(string fieldKey, string gameDate)
+        => $"{fieldKey}|{gameDate}";
+
+    private static bool TryParseMinutesRange(string startTime, string endTime, out int startMin, out int endMin)
+    {
+        startMin = ParseMinutes(startTime);
+        endMin = ParseMinutes(endTime);
+        return startMin >= 0 && endMin > startMin;
+    }
+
+    private static int ParseMinutes(string value)
+    {
+        var parts = (value ?? "").Split(':');
+        if (parts.Length < 2) return -1;
+        if (!int.TryParse(parts[0], out var h)) return -1;
+        if (!int.TryParse(parts[1], out var m)) return -1;
+        return h * 60 + m;
+    }
+
+    private static bool HasOverlap(Dictionary<string, List<(int startMin, int endMin)>> ranges, string key, int startMin, int endMin)
+    {
+        if (!ranges.TryGetValue(key, out var list)) return false;
+        return list.Any(r => r.startMin < endMin && startMin < r.endMin);
+    }
+
+    private static bool AddRange(Dictionary<string, List<(int startMin, int endMin)>> ranges, string key, int startMin, int endMin)
+    {
+        if (!ranges.TryGetValue(key, out var list))
+        {
+            list = new List<(int startMin, int endMin)>();
+            ranges[key] = list;
+        }
+
+        if (list.Any(r => r.startMin < endMin && startMin < r.endMin))
+            return false;
+
+        list.Add((startMin, endMin));
+        return true;
+    }
+
+    private static async Task<Dictionary<string, List<(int startMin, int endMin)>>> LoadExistingSlotRangesAsync(
+        List<string[]> rows,
+        Dictionary<string, int> headerIndex,
+        TableClient slotsTable,
+        string leagueId)
+    {
+        DateOnly? minDate = null;
+        DateOnly? maxDate = null;
+        var fieldKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        for (int i = 1; i < rows.Count; i++)
+        {
+            var r = rows[i];
+            if (CsvMini.IsBlankRow(r)) continue;
+
+            var gameDate = CsvMini.Get(r, headerIndex, "gamedate").Trim();
+            if (DateOnly.TryParseExact(gameDate, "yyyy-MM-dd", out var date))
+            {
+                minDate = minDate is null || date < minDate.Value ? date : minDate.Value;
+                maxDate = maxDate is null || date > maxDate.Value ? date : maxDate.Value;
+            }
+
+            var fieldKeyRaw = CsvMini.Get(r, headerIndex, "fieldkey").Trim();
+            if (TryParseFieldKey(fieldKeyRaw, out var parkCode, out var fieldCode))
+            {
+                fieldKeys.Add($"{parkCode}/{fieldCode}");
+            }
+        }
+
+        if (minDate is null || maxDate is null || fieldKeys.Count == 0)
+            return new Dictionary<string, List<(int startMin, int endMin)>>(StringComparer.OrdinalIgnoreCase);
+
+        var prefix = $"SLOT|{leagueId}|";
+        var next = prefix + "\uffff";
+        var filter = $"PartitionKey ge '{ApiGuards.EscapeOData(prefix)}' and PartitionKey lt '{ApiGuards.EscapeOData(next)}' " +
+                     $"and GameDate ge '{minDate:yyyy-MM-dd}' and GameDate le '{maxDate:yyyy-MM-dd}'";
+
+        var existing = new Dictionary<string, List<(int startMin, int endMin)>>(StringComparer.OrdinalIgnoreCase);
+        await foreach (var e in slotsTable.QueryAsync<TableEntity>(filter: filter))
+        {
+            var status = (e.GetString("Status") ?? Constants.Status.SlotOpen).Trim();
+            if (string.Equals(status, Constants.Status.SlotCancelled, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var fieldKey = (e.GetString("FieldKey") ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(fieldKey) || !fieldKeys.Contains(fieldKey))
+                continue;
+
+            var gameDate = (e.GetString("GameDate") ?? "").Trim();
+            var startTime = (e.GetString("StartTime") ?? "").Trim();
+            var endTime = (e.GetString("EndTime") ?? "").Trim();
+            if (!TryParseMinutesRange(startTime, endTime, out var startMin, out var endMin)) continue;
+            var key = BuildRangeKey(fieldKey, gameDate);
+            AddRange(existing, key, startMin, endMin);
+        }
+
+        return existing;
     }
 }

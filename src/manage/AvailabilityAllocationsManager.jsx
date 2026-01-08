@@ -76,6 +76,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
   const [allocErr, setAllocErr] = useState("");
   const [allocOk, setAllocOk] = useState("");
   const [allocErrors, setAllocErrors] = useState([]);
+  const [allocWarnings, setAllocWarnings] = useState([]);
 
   const [allocations, setAllocations] = useState([]);
   const [allocScope, setAllocScope] = useState("");
@@ -147,6 +148,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
     setAllocErr("");
     setAllocOk("");
     setAllocErrors([]);
+    setAllocWarnings([]);
     if (!allocFile) return setAllocErr("Choose a CSV file to upload.");
 
     setAllocBusy(true);
@@ -157,6 +159,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
       setAllocOk(`Imported. Upserted: ${res?.upserted ?? 0}, Rejected: ${res?.rejected ?? 0}, Skipped: ${res?.skipped ?? 0}`);
       setToast({ tone: "success", message: "Availability allocations imported." });
       if (Array.isArray(res?.errors) && res.errors.length) setAllocErrors(res.errors);
+      if (Array.isArray(res?.warnings) && res.warnings.length) setAllocWarnings(res.warnings);
     } catch (e) {
       setAllocErr(e?.message || "Import failed");
     } finally {
@@ -338,6 +341,33 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
                 </tbody>
               </table>
               {allocErrors.length > 50 ? <div className="subtle">Showing first 50.</div> : null}
+            </div>
+          ) : null}
+          {allocWarnings.length ? (
+            <div className="mt-3">
+              <div className="font-bold mb-2">Warnings ({allocWarnings.length})</div>
+              <div className="subtle mb-2">
+                These rows were skipped because they already exist.
+              </div>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Row</th>
+                    <th>Field Key</th>
+                    <th>Warning</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allocWarnings.slice(0, 50).map((x, idx) => (
+                    <tr key={idx}>
+                      <td>{x.row}</td>
+                      <td>{x.fieldKey || ""}</td>
+                      <td>{x.warning}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {allocWarnings.length > 50 ? <div className="subtle">Showing first 50.</div> : null}
             </div>
           ) : null}
         </div>

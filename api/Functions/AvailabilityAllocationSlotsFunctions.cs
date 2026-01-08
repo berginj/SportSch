@@ -133,9 +133,30 @@ public class AvailabilityAllocationSlotsFunctions
 
             candidates = DeduplicateCandidates(candidates);
 
-            var existing = await LoadExistingSlotsAsync(leagueId, from, to);
-            var conflicts = candidates.Where(c => existing.Contains(TimeKey(c))).ToList();
-            var toCreate = candidates.Where(c => !existing.Contains(TimeKey(c))).ToList();
+            var existingRanges = await LoadExistingSlotRangesAsync(leagueId, from, to);
+            var conflicts = new List<SlotCandidate>();
+            var toCreate = new List<SlotCandidate>();
+            var newRanges = new Dictionary<string, List<(int startMin, int endMin)>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var c in candidates)
+            {
+                var startMin = ParseMinutes(c.startTime);
+                var endMin = ParseMinutes(c.endTime);
+                if (startMin < 0 || endMin <= startMin)
+                {
+                    conflicts.Add(c);
+                    continue;
+                }
+
+                var key = BuildRangeKey(c.fieldKey, c.gameDate);
+                if (HasOverlap(existingRanges, key, startMin, endMin) || HasOverlap(newRanges, key, startMin, endMin))
+                {
+                    conflicts.Add(c);
+                    continue;
+                }
+
+                AddRange(newRanges, key, startMin, endMin);
+                toCreate.Add(c);
+            }
 
             if (!apply)
                 return ApiResponses.Ok(req, new GenerateSlotsPreview(toCreate, conflicts));
@@ -227,7 +248,10 @@ public class AvailabilityAllocationSlotsFunctions
         return list;
     }
 
-    private async Task<HashSet<string>> LoadExistingSlotsAsync(string leagueId, DateOnly from, DateOnly to)
+    private async Task<Dictionary<string, List<(int startMin, int endMin)>>> LoadExistingSlotRangesAsync(
+        string leagueId,
+        DateOnly from,
+        DateOnly to)
     {
         var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Slots);
         var prefix = $"SLOT|{leagueId}|";
@@ -235,7 +259,7 @@ public class AvailabilityAllocationSlotsFunctions
         var filter = $"PartitionKey ge '{ApiGuards.EscapeOData(prefix)}' and PartitionKey lt '{ApiGuards.EscapeOData(next)}' " +
                      $"and GameDate ge '{from:yyyy-MM-dd}' and GameDate le '{to:yyyy-MM-dd}'";
 
-        var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var existing = new Dictionary<string, List<(int startMin, int endMin)>>(StringComparer.OrdinalIgnoreCase);
         await foreach (var e in table.QueryAsync<TableEntity>(filter: filter))
         {
             var status = (e.GetString("Status") ?? Constants.Status.SlotOpen).Trim();
@@ -243,14 +267,17 @@ public class AvailabilityAllocationSlotsFunctions
                 continue;
 
             var fieldKey = (e.GetString("FieldKey") ?? "").Trim();
-            var candidate = new SlotCandidate(
-                (e.GetString("GameDate") ?? "").Trim(),
-                (e.GetString("StartTime") ?? "").Trim(),
-                (e.GetString("EndTime") ?? "").Trim(),
-                fieldKey,
-                ExtractDivision(e.PartitionKey, leagueId)
-            );
-            existing.Add(TimeKey(candidate));
+            if (string.IsNullOrWhiteSpace(fieldKey)) continue;
+
+            var gameDate = (e.GetString("GameDate") ?? "").Trim();
+            var startTime = (e.GetString("StartTime") ?? "").Trim();
+            var endTime = (e.GetString("EndTime") ?? "").Trim();
+            var startMin = ParseMinutes(startTime);
+            var endMin = ParseMinutes(endTime);
+            if (startMin < 0 || endMin <= startMin) continue;
+
+            var key = BuildRangeKey(fieldKey, gameDate);
+            AddRange(existing, key, startMin, endMin);
         }
 
         return existing;
@@ -358,6 +385,26 @@ public class AvailabilityAllocationSlotsFunctions
 
     private static string TimeKey(SlotCandidate s)
         => $"{s.gameDate}|{s.startTime}|{s.endTime}|{s.fieldKey}";
+
+    private static string BuildRangeKey(string fieldKey, string gameDate)
+        => $"{fieldKey}|{gameDate}";
+
+    private static bool HasOverlap(Dictionary<string, List<(int startMin, int endMin)>> ranges, string key, int startMin, int endMin)
+    {
+        if (!ranges.TryGetValue(key, out var list)) return false;
+        return list.Any(r => r.startMin < endMin && startMin < r.endMin);
+    }
+
+    private static void AddRange(Dictionary<string, List<(int startMin, int endMin)>> ranges, string key, int startMin, int endMin)
+    {
+        if (!ranges.TryGetValue(key, out var list))
+        {
+            list = new List<(int startMin, int endMin)>();
+            ranges[key] = list;
+        }
+
+        list.Add((startMin, endMin));
+    }
 
     private static List<SlotCandidate> DeduplicateCandidates(IEnumerable<SlotCandidate> candidates)
     {

@@ -80,7 +80,7 @@ public class CreateSlot
             if (!DateOnly.TryParseExact(gameDate, "yyyy-MM-dd", out _))
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "gameDate must be YYYY-MM-DD.");
 
-            if (!TimeUtil.IsValidRange(startTime, endTime, out _, out _, out var timeErr))
+            if (!TimeUtil.IsValidRange(startTime, endTime, out var startMin, out var endMin, out var timeErr))
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", timeErr);
 
             // Enforce Coach restrictions: coach can only create slots for their assigned team/division.
@@ -128,6 +128,13 @@ public class CreateSlot
             var displayName = field.GetString("DisplayName") ?? $"{normalizedParkName} > {normalizedFieldName}";
 
             var slotsTable = await TableClients.GetTableAsync(_svc, SlotsTableName);
+            var normalizedFieldKey = $"{parkCode}/{fieldCode}";
+            if (await HasSlotConflictAsync(slotsTable, leagueId, normalizedFieldKey, gameDate, startMin, endMin))
+            {
+                return ApiResponses.Error(req, HttpStatusCode.Conflict, "FIELD_IN_USE",
+                    "Field already has a slot at the requested time.");
+            }
+
             var slotId = Guid.NewGuid().ToString("N");
             var pk = Constants.Pk.Slots(leagueId, division);
             var now = DateTimeOffset.UtcNow;
@@ -152,7 +159,7 @@ public class CreateSlot
                 ["ParkName"] = normalizedParkName,
                 ["FieldName"] = normalizedFieldName,
                 ["DisplayName"] = displayName,
-                ["FieldKey"] = $"{parkCode}/{fieldCode}",
+                ["FieldKey"] = normalizedFieldKey,
 
                 ["GameType"] = gameType,
                 ["Status"] = Constants.Status.SlotOpen,
@@ -200,5 +207,43 @@ public class CreateSlot
         parkCode = Slug.Make(parts[0]);
         fieldCode = Slug.Make(parts[1]);
         return !string.IsNullOrWhiteSpace(parkCode) && !string.IsNullOrWhiteSpace(fieldCode);
+    }
+
+    private static async Task<bool> HasSlotConflictAsync(
+        TableClient slotsTable,
+        string leagueId,
+        string fieldKey,
+        string gameDate,
+        int startMin,
+        int endMin)
+    {
+        var prefix = $"SLOT|{leagueId}|";
+        var next = prefix + "\uffff";
+        var filter = $"PartitionKey ge '{ApiGuards.EscapeOData(prefix)}' and PartitionKey lt '{ApiGuards.EscapeOData(next)}' " +
+                     $"and GameDate eq '{ApiGuards.EscapeOData(gameDate)}' " +
+                     $"and FieldKey eq '{ApiGuards.EscapeOData(fieldKey)}'";
+
+        await foreach (var e in slotsTable.QueryAsync<TableEntity>(filter: filter))
+        {
+            var status = (e.GetString("Status") ?? Constants.Status.SlotOpen).Trim();
+            if (string.Equals(status, Constants.Status.SlotCancelled, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var existingStart = ParseMinutes(e.GetString("StartTime") ?? "");
+            var existingEnd = ParseMinutes(e.GetString("EndTime") ?? "");
+            if (existingStart < 0 || existingEnd <= existingStart) continue;
+            if (existingStart < endMin && startMin < existingEnd) return true;
+        }
+
+        return false;
+    }
+
+    private static int ParseMinutes(string value)
+    {
+        var parts = (value ?? "").Split(':');
+        if (parts.Length < 2) return -1;
+        if (!int.TryParse(parts[0], out var h)) return -1;
+        if (!int.TryParse(parts[1], out var m)) return -1;
+        return h * 60 + m;
     }
 }

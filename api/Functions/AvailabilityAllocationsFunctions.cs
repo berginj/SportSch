@@ -43,6 +43,14 @@ public class AvailabilityAllocationsFunctions
 
     private const string ScopeLeague = "LEAGUE";
 
+    private record AllocationSpec(
+        string fieldKey,
+        DateOnly dateFrom,
+        DateOnly dateTo,
+        int startMin,
+        int endMin,
+        HashSet<DayOfWeek> days);
+
     [Function("ImportAvailabilityAllocations")]
     public async Task<HttpResponseData> Import(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "import/availability-allocations")] HttpRequestData req)
@@ -75,9 +83,13 @@ public class AvailabilityAllocationsFunctions
             }
 
             var table = await TableClients.GetTableAsync(_svc, Constants.Tables.FieldAvailabilityAllocations);
+            var fieldsTable = await TableClients.GetTableAsync(_svc, Constants.Tables.Fields);
+            var fieldKeys = await LoadFieldKeysAsync(fieldsTable, leagueId);
+            var existing = await LoadExistingAllocationsAsync(table, leagueId);
 
             int upserted = 0, rejected = 0, skipped = 0;
             var errors = new List<object>();
+            var warnings = new List<object>();
             var actionsByPartition = new Dictionary<string, List<TableTransactionAction>>(StringComparer.OrdinalIgnoreCase);
 
             for (int i = 1; i < rows.Count; i++)
@@ -109,16 +121,22 @@ public class AvailabilityAllocationsFunctions
                     errors.Add(new { row = i + 1, error = "Invalid fieldKey. Use parkCode/fieldCode." });
                     continue;
                 }
-                if (!DateOnly.TryParseExact(dateFrom, "yyyy-MM-dd", out _))
+                if (!DateOnly.TryParseExact(dateFrom, "yyyy-MM-dd", out var dateFromVal))
                 {
                     rejected++;
                     errors.Add(new { row = i + 1, error = "dateFrom must be YYYY-MM-DD." });
                     continue;
                 }
-                if (!DateOnly.TryParseExact(dateTo, "yyyy-MM-dd", out _))
+                if (!DateOnly.TryParseExact(dateTo, "yyyy-MM-dd", out var dateToVal))
                 {
                     rejected++;
                     errors.Add(new { row = i + 1, error = "dateTo must be YYYY-MM-DD." });
+                    continue;
+                }
+                if (dateToVal < dateFromVal)
+                {
+                    rejected++;
+                    errors.Add(new { row = i + 1, error = "dateTo must be on or after dateFrom." });
                     continue;
                 }
 
@@ -128,16 +146,59 @@ public class AvailabilityAllocationsFunctions
                     ApiGuards.EnsureValidTableKeyPart("division", scope);
                 }
 
-                var pk = Constants.Pk.FieldAvailabilityAllocations(leagueId, scope, $"{parkCode}/{fieldCode}");
+                var normalizedFieldKey = $"{parkCode}/{fieldCode}";
+                if (!fieldKeys.Contains(normalizedFieldKey))
+                {
+                    rejected++;
+                    errors.Add(new { row = i + 1, error = "Field not found in GameSwapFields (import fields first).", fieldKey = fieldKeyRaw });
+                    continue;
+                }
+
+                if (!TryParseDays(daysRaw, out var daysSet))
+                {
+                    rejected++;
+                    errors.Add(new { row = i + 1, error = "daysOfWeek must use Mon/Tue/Wed/Thu/Fri/Sat/Sun.", fieldKey = fieldKeyRaw });
+                    continue;
+                }
+
+                var startMin = ParseMinutes(startTime);
+                var endMin = ParseMinutes(endTime);
+                if (startMin < 0 || endMin <= startMin)
+                {
+                    rejected++;
+                    errors.Add(new { row = i + 1, error = "startTime/endTime must be valid HH:MM and endTime after startTime." });
+                    continue;
+                }
+
+                var allocKey = BuildAllocationKey(normalizedFieldKey, dateFromVal, dateToVal, startTime, endTime, daysSet);
+                if (existing.exactKeys.Contains(allocKey))
+                {
+                    skipped++;
+                    warnings.Add(new { row = i + 1, warning = "Allocation already exists for this field/time window.", fieldKey = fieldKeyRaw });
+                    continue;
+                }
+
+                var spec = new AllocationSpec(normalizedFieldKey, dateFromVal, dateToVal, startMin, endMin, daysSet);
+                if (HasAllocationOverlap(existing.byField, spec))
+                {
+                    rejected++;
+                    errors.Add(new { row = i + 1, error = "Allocation overlaps an existing allocation for this field.", fieldKey = fieldKeyRaw });
+                    continue;
+                }
+
+                existing.exactKeys.Add(allocKey);
+                AddAllocation(existing.byField, spec);
+
+                var pk = Constants.Pk.FieldAvailabilityAllocations(leagueId, scope, normalizedFieldKey);
                 var allocationId = Guid.NewGuid().ToString("N");
-                var daysList = NormalizeDays(daysRaw);
+                var daysList = FormatDays(daysSet);
                 var isActive = !string.IsNullOrWhiteSpace(isActiveRaw) ? bool.TryParse(isActiveRaw, out var b) && b : true;
 
                 var entity = new TableEntity(pk, allocationId)
                 {
                     ["LeagueId"] = leagueId,
                     ["Scope"] = scope,
-                    ["FieldKey"] = $"{parkCode}/{fieldCode}",
+                    ["FieldKey"] = normalizedFieldKey,
                     ["Division"] = scope,
                     ["StartsOn"] = dateFrom,
                     ["EndsOn"] = dateTo,
@@ -171,7 +232,7 @@ public class AvailabilityAllocationsFunctions
                 upserted += result.Value.Count;
             }
 
-            return ApiResponses.Ok(req, new { leagueId, upserted, rejected, skipped, errors });
+            return ApiResponses.Ok(req, new { leagueId, upserted, rejected, skipped, errors, warnings });
         }
         catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
         catch (RequestFailedException ex)
@@ -316,13 +377,165 @@ public class AvailabilityAllocationsFunctions
         }
     }
 
-    private static List<string> NormalizeDays(string raw)
+    private static bool TryParseDays(string raw, out HashSet<DayOfWeek> days)
     {
-        if (string.IsNullOrWhiteSpace(raw)) return new List<string>();
-        return raw
-            .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(x => x.Length > 3 ? x.Substring(0, 3) : x)
-            .ToList();
+        days = new HashSet<DayOfWeek>();
+        if (string.IsNullOrWhiteSpace(raw)) return true;
+
+        var tokens = raw.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (tokens.Length == 0) return true;
+
+        foreach (var token in tokens)
+        {
+            var key = token.Trim().ToLowerInvariant();
+            if (key.StartsWith("sun")) days.Add(DayOfWeek.Sunday);
+            else if (key.StartsWith("mon")) days.Add(DayOfWeek.Monday);
+            else if (key.StartsWith("tue")) days.Add(DayOfWeek.Tuesday);
+            else if (key.StartsWith("wed")) days.Add(DayOfWeek.Wednesday);
+            else if (key.StartsWith("thu")) days.Add(DayOfWeek.Thursday);
+            else if (key.StartsWith("fri")) days.Add(DayOfWeek.Friday);
+            else if (key.StartsWith("sat")) days.Add(DayOfWeek.Saturday);
+            else return false;
+        }
+
+        return true;
+    }
+
+    private static List<string> FormatDays(HashSet<DayOfWeek> days)
+    {
+        if (days.Count == 0) return new List<string>();
+        var ordered = new[]
+        {
+            DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday,
+            DayOfWeek.Friday, DayOfWeek.Saturday, DayOfWeek.Sunday
+        };
+        return ordered.Where(days.Contains).Select(ToDayToken).ToList();
+    }
+
+    private static string ToDayToken(DayOfWeek day)
+        => day switch
+        {
+            DayOfWeek.Sunday => "Sun",
+            DayOfWeek.Monday => "Mon",
+            DayOfWeek.Tuesday => "Tue",
+            DayOfWeek.Wednesday => "Wed",
+            DayOfWeek.Thursday => "Thu",
+            DayOfWeek.Friday => "Fri",
+            DayOfWeek.Saturday => "Sat",
+            _ => ""
+        };
+
+    private static int ParseMinutes(string value)
+    {
+        var parts = (value ?? "").Split(':');
+        if (parts.Length < 2) return -1;
+        if (!int.TryParse(parts[0], out var h)) return -1;
+        if (!int.TryParse(parts[1], out var m)) return -1;
+        return h * 60 + m;
+    }
+
+    private static string BuildAllocationKey(
+        string fieldKey,
+        DateOnly dateFrom,
+        DateOnly dateTo,
+        string startTime,
+        string endTime,
+        HashSet<DayOfWeek> days)
+    {
+        var dayToken = string.Join(",", FormatDays(days));
+        return $"{fieldKey}|{dateFrom:yyyy-MM-dd}|{dateTo:yyyy-MM-dd}|{startTime}|{endTime}|{dayToken}";
+    }
+
+    private static bool RangesOverlap(DateOnly aStart, DateOnly aEnd, DateOnly bStart, DateOnly bEnd)
+        => !(aEnd < bStart || bEnd < aStart);
+
+    private static bool TimesOverlap(int aStart, int aEnd, int bStart, int bEnd)
+        => !(aEnd <= bStart || bEnd <= aStart);
+
+    private static bool DaysOverlap(HashSet<DayOfWeek> a, HashSet<DayOfWeek> b)
+    {
+        if (a.Count == 0 || b.Count == 0) return true;
+        return a.Overlaps(b);
+    }
+
+    private static bool HasAllocationOverlap(
+        Dictionary<string, List<AllocationSpec>> byField,
+        AllocationSpec candidate)
+    {
+        if (!byField.TryGetValue(candidate.fieldKey, out var list)) return false;
+        foreach (var existing in list)
+        {
+            if (!RangesOverlap(existing.dateFrom, existing.dateTo, candidate.dateFrom, candidate.dateTo)) continue;
+            if (!TimesOverlap(existing.startMin, existing.endMin, candidate.startMin, candidate.endMin)) continue;
+            if (!DaysOverlap(existing.days, candidate.days)) continue;
+            return true;
+        }
+        return false;
+    }
+
+    private static void AddAllocation(Dictionary<string, List<AllocationSpec>> byField, AllocationSpec spec)
+    {
+        if (!byField.TryGetValue(spec.fieldKey, out var list))
+        {
+            list = new List<AllocationSpec>();
+            byField[spec.fieldKey] = list;
+        }
+        list.Add(spec);
+    }
+
+    private static async Task<HashSet<string>> LoadFieldKeysAsync(TableClient fieldsTable, string leagueId)
+    {
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var pkPrefix = $"FIELD|{leagueId}|";
+        var next = pkPrefix + "\uffff";
+        var filter = $"PartitionKey ge '{ApiGuards.EscapeOData(pkPrefix)}' and PartitionKey lt '{ApiGuards.EscapeOData(next)}'";
+
+        await foreach (var e in fieldsTable.QueryAsync<TableEntity>(filter: filter))
+        {
+            var parkCode = ExtractParkCodeFromPk(e.PartitionKey, leagueId);
+            var fieldCode = e.RowKey;
+            if (string.IsNullOrWhiteSpace(parkCode) || string.IsNullOrWhiteSpace(fieldCode)) continue;
+            keys.Add($"{parkCode}/{fieldCode}");
+        }
+
+        return keys;
+    }
+
+    private static async Task<(Dictionary<string, List<AllocationSpec>> byField, HashSet<string> exactKeys)>
+        LoadExistingAllocationsAsync(TableClient table, string leagueId)
+    {
+        var byField = new Dictionary<string, List<AllocationSpec>>(StringComparer.OrdinalIgnoreCase);
+        var exactKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var pkPrefix = $"ALLOC|{leagueId}|";
+        var next = pkPrefix + "\uffff";
+        var filter = $"PartitionKey ge '{ApiGuards.EscapeOData(pkPrefix)}' and PartitionKey lt '{ApiGuards.EscapeOData(next)}'";
+
+        await foreach (var e in table.QueryAsync<TableEntity>(filter: filter))
+        {
+            var isActive = e.GetBoolean("IsActive") ?? true;
+            if (!isActive) continue;
+
+            var fieldKey = (e.GetString("FieldKey") ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(fieldKey)) continue;
+
+            if (!DateOnly.TryParseExact((e.GetString("StartsOn") ?? "").Trim(), "yyyy-MM-dd", out var dateFrom)) continue;
+            if (!DateOnly.TryParseExact((e.GetString("EndsOn") ?? "").Trim(), "yyyy-MM-dd", out var dateTo)) continue;
+
+            var startTime = (e.GetString("StartTimeLocal") ?? "").Trim();
+            var endTime = (e.GetString("EndTimeLocal") ?? "").Trim();
+            var startMin = ParseMinutes(startTime);
+            var endMin = ParseMinutes(endTime);
+            if (startMin < 0 || endMin <= startMin) continue;
+
+            var daysRaw = (e.GetString("DaysOfWeek") ?? "").Trim();
+            if (!TryParseDays(daysRaw, out var days)) continue;
+
+            var spec = new AllocationSpec(fieldKey, dateFrom, dateTo, startMin, endMin, days);
+            AddAllocation(byField, spec);
+            exactKeys.Add(BuildAllocationKey(fieldKey, dateFrom, dateTo, startTime, endTime, days));
+        }
+
+        return (byField, exactKeys);
     }
 
     private static bool TryParseFieldKey(string raw, out string parkCode, out string fieldCode)
@@ -336,5 +549,12 @@ public class AvailabilityAllocationsFunctions
         parkCode = Slug.Make(parts[0]);
         fieldCode = Slug.Make(parts[1]);
         return !string.IsNullOrWhiteSpace(parkCode) && !string.IsNullOrWhiteSpace(fieldCode);
+    }
+
+    private static string ExtractParkCodeFromPk(string pk, string leagueId)
+    {
+        var prefix = $"FIELD|{leagueId}|";
+        if (!pk.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return "";
+        return pk[prefix.Length..];
     }
 }

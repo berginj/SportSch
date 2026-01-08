@@ -60,9 +60,11 @@ public class ImportFields
             }
 
             var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Fields);
+            var fieldsByName = await LoadFieldsByNameAsync(table, leagueId);
 
             int upserted = 0, rejected = 0, skipped = 0;
             var errors = new List<object>();
+            var warnings = new List<object>();
             var actionsByPartition = new Dictionary<string, List<TableTransactionAction>>();
 
             for (int i = 1; i < rows.Count; i++)
@@ -113,6 +115,29 @@ public class ImportFields
 
                 var isActive = ParseIsActive(statusRaw, isActiveRaw);
 
+                var nameKey = NormalizeNameKey(parkName, fieldName);
+                if (!string.IsNullOrWhiteSpace(nameKey) && fieldsByName.TryGetValue(nameKey, out var existing))
+                {
+                    // Reuse existing field key when parkName+fieldName matches a prior field.
+                    var previousKey = $"{existing.parkCode}/{existing.fieldCode}";
+                    if (!string.Equals(previousKey, normalizedFieldKey, StringComparison.OrdinalIgnoreCase))
+                    {
+                        warnings.Add(new
+                        {
+                            row = i + 1,
+                            fieldKey = fieldKeyRaw,
+                            warning = $"Field name matches existing {previousKey}; reusing that fieldKey."
+                        });
+                    }
+                    parkCode = existing.parkCode;
+                    fieldCode = existing.fieldCode;
+                    normalizedFieldKey = $"{parkCode}/{fieldCode}";
+                }
+                else if (!string.IsNullOrWhiteSpace(nameKey))
+                {
+                    fieldsByName[nameKey] = (parkCode, fieldCode);
+                }
+
                 var pk = Constants.Pk.Fields(leagueId, parkCode);
                 var rk = fieldCode;
 
@@ -158,7 +183,7 @@ public class ImportFields
                 upserted += result.Value.Count;
             }
 
-            return ApiResponses.Ok(req, new { leagueId, upserted, rejected, skipped, errors });
+            return ApiResponses.Ok(req, new { leagueId, upserted, rejected, skipped, errors, warnings });
         }
         catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
         catch (RequestFailedException ex)
@@ -304,6 +329,43 @@ public class ImportFields
         if (string.IsNullOrWhiteSpace(notes)) return extraText;
         if (notes.Contains(extraText, StringComparison.OrdinalIgnoreCase)) return notes;
         return $"{notes} | {extraText}";
+    }
+
+    private static string NormalizeNameKey(string parkName, string fieldName)
+        => $"{Slug.Make(parkName)}|{Slug.Make(fieldName)}";
+
+    private static string ExtractParkCodeFromPk(string pk, string leagueId)
+    {
+        var prefix = $"FIELD|{leagueId}|";
+        if (!pk.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return "";
+        return pk[prefix.Length..];
+    }
+
+    private static async Task<Dictionary<string, (string parkCode, string fieldCode)>> LoadFieldsByNameAsync(
+        TableClient table,
+        string leagueId)
+    {
+        var map = new Dictionary<string, (string parkCode, string fieldCode)>(StringComparer.OrdinalIgnoreCase);
+        var pkPrefix = $"FIELD|{leagueId}|";
+        var next = pkPrefix + "\uffff";
+        var filter = $"PartitionKey ge '{ApiGuards.EscapeOData(pkPrefix)}' and PartitionKey lt '{ApiGuards.EscapeOData(next)}'";
+
+        await foreach (var e in table.QueryAsync<TableEntity>(filter: filter))
+        {
+            var parkName = (e.GetString("ParkName") ?? "").Trim();
+            var fieldName = (e.GetString("FieldName") ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(parkName) || string.IsNullOrWhiteSpace(fieldName)) continue;
+
+            var parkCode = ExtractParkCodeFromPk(e.PartitionKey, leagueId);
+            var fieldCode = e.RowKey;
+            if (string.IsNullOrWhiteSpace(parkCode) || string.IsNullOrWhiteSpace(fieldCode)) continue;
+
+            var key = NormalizeNameKey(parkName, fieldName);
+            if (!map.ContainsKey(key))
+                map[key] = (parkCode, fieldCode);
+        }
+
+        return map;
     }
 
     private static class MultipartFormData
