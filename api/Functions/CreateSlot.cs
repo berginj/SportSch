@@ -229,21 +229,12 @@ public class CreateSlot
             if (string.Equals(status, Constants.Status.SlotCancelled, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            var existingStart = ParseMinutes(e.GetString("StartTime") ?? "");
-            var existingEnd = ParseMinutes(e.GetString("EndTime") ?? "");
+            var existingStart = SlotOverlap.ParseMinutes(e.GetString("StartTime") ?? "");
+            var existingEnd = SlotOverlap.ParseMinutes(e.GetString("EndTime") ?? "");
             if (existingStart < 0 || existingEnd <= existingStart) continue;
             if (existingStart < endMin && startMin < existingEnd) return true;
         }
 
         return false;
-    }
-
-    private static int ParseMinutes(string value)
-    {
-        var parts = (value ?? "").Split(':');
-        if (parts.Length < 2) return -1;
-        if (!int.TryParse(parts[0], out var h)) return -1;
-        if (!int.TryParse(parts[1], out var m)) return -1;
-        return h * 60 + m;
     }
 }

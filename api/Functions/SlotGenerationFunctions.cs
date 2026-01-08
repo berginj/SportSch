@@ -313,40 +313,6 @@ public class SlotGenerationFunctions
     private static string TimeKey(SlotCandidate s)
         => $"{s.gameDate}|{s.startTime}|{s.endTime}|{s.fieldKey}";
 
-    private static string BuildRangeKey(string fieldKey, string gameDate)
-        => $"{fieldKey}|{gameDate}";
-
-    private static bool TryParseMinutesRange(string startTime, string endTime, out int startMin, out int endMin)
-    {
-        startMin = ParseMinutes(startTime);
-        endMin = ParseMinutes(endTime);
-        return startMin >= 0 && endMin > startMin;
-    }
-
-    private static int ParseMinutes(string value)
-    {
-        var parts = (value ?? "").Split(':');
-        if (parts.Length < 2) return -1;
-        if (!int.TryParse(parts[0], out var h)) return -1;
-        if (!int.TryParse(parts[1], out var m)) return -1;
-        return h * 60 + m;
-    }
-
-    private static bool HasOverlap(Dictionary<string, List<(int startMin, int endMin)>> ranges, string key, int startMin, int endMin)
-    {
-        if (!ranges.TryGetValue(key, out var list)) return false;
-        return list.Any(r => r.startMin < endMin && startMin < r.endMin);
-    }
-
-    private static void AddRange(Dictionary<string, List<(int startMin, int endMin)>> ranges, string key, int startMin, int endMin)
-    {
-        if (!ranges.TryGetValue(key, out var list))
-        {
-            list = new List<(int startMin, int endMin)>();
-            ranges[key] = list;
-        }
-        list.Add((startMin, endMin));
-    }
 
     private static (List<SlotCandidate> conflicts, List<SlotCandidate> toCreate) SplitByOverlap(
         IEnumerable<SlotCandidate> candidates,
@@ -358,20 +324,20 @@ public class SlotGenerationFunctions
 
         foreach (var c in candidates)
         {
-            if (!TryParseMinutesRange(c.startTime, c.endTime, out var startMin, out var endMin))
+            if (!SlotOverlap.TryParseMinutesRange(c.startTime, c.endTime, out var startMin, out var endMin))
             {
                 conflicts.Add(c);
                 continue;
             }
 
-            var key = BuildRangeKey(c.fieldKey, c.gameDate);
-            if (HasOverlap(existingRanges, key, startMin, endMin) || HasOverlap(newRanges, key, startMin, endMin))
+            var key = SlotOverlap.BuildRangeKey(c.fieldKey, c.gameDate);
+            if (SlotOverlap.HasOverlap(existingRanges, key, startMin, endMin) || SlotOverlap.HasOverlap(newRanges, key, startMin, endMin))
             {
                 conflicts.Add(c);
                 continue;
             }
 
-            AddRange(newRanges, key, startMin, endMin);
+            SlotOverlap.AddRange(newRanges, key, startMin, endMin);
             toCreate.Add(c);
         }
 
@@ -408,9 +374,9 @@ public class SlotGenerationFunctions
             var gameDate = (e.GetString("GameDate") ?? "").Trim();
             var startTime = (e.GetString("StartTime") ?? "").Trim();
             var endTime = (e.GetString("EndTime") ?? "").Trim();
-            if (!TryParseMinutesRange(startTime, endTime, out var startMin, out var endMin)) continue;
-            var key = BuildRangeKey(fieldKey, gameDate);
-            AddRange(existing, key, startMin, endMin);
+            if (!SlotOverlap.TryParseMinutesRange(startTime, endTime, out var startMin, out var endMin)) continue;
+            var key = SlotOverlap.BuildRangeKey(fieldKey, gameDate);
+            SlotOverlap.AddRange(existing, key, startMin, endMin);
         }
 
         return existing;

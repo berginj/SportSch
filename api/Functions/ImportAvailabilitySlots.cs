@@ -106,7 +106,7 @@ public class ImportAvailabilitySlots
                     continue;
                 }
 
-                if (!TryParseMinutesRange(startTime, endTime, out var startMin, out var endMin))
+                if (!SlotOverlap.TryParseMinutesRange(startTime, endTime, out var startMin, out var endMin))
                 {
                     rejected++;
                     errors.Add(new { row = i + 1, error = "StartTime/EndTime must be HH:MM with endTime after startTime." });
@@ -156,20 +156,20 @@ public class ImportAvailabilitySlots
                     continue;
                 }
 
-                var rangeKey = BuildRangeKey($"{parkCode}/{fieldCode}", gameDate);
-                if (HasOverlap(existingSlotRanges, rangeKey, startMin, endMin))
+                var rangeKey = SlotOverlap.BuildRangeKey($"{parkCode}/{fieldCode}", gameDate);
+                if (SlotOverlap.HasOverlap(existingSlotRanges, rangeKey, startMin, endMin))
                 {
                     skipped++;
                     warnings.Add(new { row = i + 1, warning = "Field already has a slot at this time.", fieldKey = fieldKeyRaw });
                     continue;
                 }
-                if (!AddRange(seenInImportRanges, rangeKey, startMin, endMin))
+                if (!SlotOverlap.AddRange(seenInImportRanges, rangeKey, startMin, endMin))
                 {
                     skipped++;
                     warnings.Add(new { row = i + 1, warning = "Duplicate slot in CSV for this field/time.", fieldKey = fieldKeyRaw });
                     continue;
                 }
-                AddRange(existingSlotRanges, rangeKey, startMin, endMin);
+                SlotOverlap.AddRange(existingSlotRanges, rangeKey, startMin, endMin);
 
                 var pk = $"SLOT|{leagueId}|{division}";
                 var slotId = SafeKey($"|{gameDate}|{startTime}|{endTime}|{parkCode}|{fieldCode}");
@@ -334,46 +334,6 @@ public class ImportAvailabilitySlots
         return !string.IsNullOrWhiteSpace(parkCode) && !string.IsNullOrWhiteSpace(fieldCode);
     }
 
-    private static string BuildRangeKey(string fieldKey, string gameDate)
-        => $"{fieldKey}|{gameDate}";
-
-    private static bool TryParseMinutesRange(string startTime, string endTime, out int startMin, out int endMin)
-    {
-        startMin = ParseMinutes(startTime);
-        endMin = ParseMinutes(endTime);
-        return startMin >= 0 && endMin > startMin;
-    }
-
-    private static int ParseMinutes(string value)
-    {
-        var parts = (value ?? "").Split(':');
-        if (parts.Length < 2) return -1;
-        if (!int.TryParse(parts[0], out var h)) return -1;
-        if (!int.TryParse(parts[1], out var m)) return -1;
-        return h * 60 + m;
-    }
-
-    private static bool HasOverlap(Dictionary<string, List<(int startMin, int endMin)>> ranges, string key, int startMin, int endMin)
-    {
-        if (!ranges.TryGetValue(key, out var list)) return false;
-        return list.Any(r => r.startMin < endMin && startMin < r.endMin);
-    }
-
-    private static bool AddRange(Dictionary<string, List<(int startMin, int endMin)>> ranges, string key, int startMin, int endMin)
-    {
-        if (!ranges.TryGetValue(key, out var list))
-        {
-            list = new List<(int startMin, int endMin)>();
-            ranges[key] = list;
-        }
-
-        if (list.Any(r => r.startMin < endMin && startMin < r.endMin))
-            return false;
-
-        list.Add((startMin, endMin));
-        return true;
-    }
-
     private static async Task<Dictionary<string, List<(int startMin, int endMin)>>> LoadExistingSlotRangesAsync(
         List<string[]> rows,
         Dictionary<string, int> headerIndex,
@@ -425,9 +385,9 @@ public class ImportAvailabilitySlots
             var gameDate = (e.GetString("GameDate") ?? "").Trim();
             var startTime = (e.GetString("StartTime") ?? "").Trim();
             var endTime = (e.GetString("EndTime") ?? "").Trim();
-            if (!TryParseMinutesRange(startTime, endTime, out var startMin, out var endMin)) continue;
-            var key = BuildRangeKey(fieldKey, gameDate);
-            AddRange(existing, key, startMin, endMin);
+            if (!SlotOverlap.TryParseMinutesRange(startTime, endTime, out var startMin, out var endMin)) continue;
+            var key = SlotOverlap.BuildRangeKey(fieldKey, gameDate);
+            SlotOverlap.AddRange(existing, key, startMin, endMin);
         }
 
         return existing;

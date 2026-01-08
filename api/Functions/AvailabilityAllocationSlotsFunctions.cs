@@ -100,8 +100,8 @@ public class AvailabilityAllocationSlotsFunctions
                 if (IsBlackoutRange(alloc.startsOn, alloc.endsOn, from, to) == false) continue;
 
                 var days = NormalizeDays(alloc.daysOfWeek);
-                var startMin = ParseMinutes(alloc.startTimeLocal);
-                var endMin = ParseMinutes(alloc.endTimeLocal);
+                var startMin = SlotOverlap.ParseMinutes(alloc.startTimeLocal);
+                var endMin = SlotOverlap.ParseMinutes(alloc.endTimeLocal);
                 if (startMin < 0 || endMin <= startMin) continue;
 
                 var allocStart = DateOnly.ParseExact(alloc.startsOn, "yyyy-MM-dd");
@@ -139,22 +139,22 @@ public class AvailabilityAllocationSlotsFunctions
             var newRanges = new Dictionary<string, List<(int startMin, int endMin)>>(StringComparer.OrdinalIgnoreCase);
             foreach (var c in candidates)
             {
-                var startMin = ParseMinutes(c.startTime);
-                var endMin = ParseMinutes(c.endTime);
+                var startMin = SlotOverlap.ParseMinutes(c.startTime);
+                var endMin = SlotOverlap.ParseMinutes(c.endTime);
                 if (startMin < 0 || endMin <= startMin)
                 {
                     conflicts.Add(c);
                     continue;
                 }
 
-                var key = BuildRangeKey(c.fieldKey, c.gameDate);
-                if (HasOverlap(existingRanges, key, startMin, endMin) || HasOverlap(newRanges, key, startMin, endMin))
+                var key = SlotOverlap.BuildRangeKey(c.fieldKey, c.gameDate);
+                if (SlotOverlap.HasOverlap(existingRanges, key, startMin, endMin) || SlotOverlap.HasOverlap(newRanges, key, startMin, endMin))
                 {
                     conflicts.Add(c);
                     continue;
                 }
 
-                AddRange(newRanges, key, startMin, endMin);
+                SlotOverlap.AddRange(newRanges, key, startMin, endMin);
                 toCreate.Add(c);
             }
 
@@ -272,12 +272,12 @@ public class AvailabilityAllocationSlotsFunctions
             var gameDate = (e.GetString("GameDate") ?? "").Trim();
             var startTime = (e.GetString("StartTime") ?? "").Trim();
             var endTime = (e.GetString("EndTime") ?? "").Trim();
-            var startMin = ParseMinutes(startTime);
-            var endMin = ParseMinutes(endTime);
+            var startMin = SlotOverlap.ParseMinutes(startTime);
+            var endMin = SlotOverlap.ParseMinutes(endTime);
             if (startMin < 0 || endMin <= startMin) continue;
 
-            var key = BuildRangeKey(fieldKey, gameDate);
-            AddRange(existing, key, startMin, endMin);
+            var key = SlotOverlap.BuildRangeKey(fieldKey, gameDate);
+            SlotOverlap.AddRange(existing, key, startMin, endMin);
         }
 
         return existing;
@@ -367,15 +367,6 @@ public class AvailabilityAllocationSlotsFunctions
         return set;
     }
 
-    private static int ParseMinutes(string value)
-    {
-        var parts = (value ?? "").Split(':');
-        if (parts.Length < 2) return -1;
-        if (!int.TryParse(parts[0], out var h)) return -1;
-        if (!int.TryParse(parts[1], out var m)) return -1;
-        return h * 60 + m;
-    }
-
     private static string FormatTime(int minutes)
     {
         var h = minutes / 60;
@@ -385,26 +376,6 @@ public class AvailabilityAllocationSlotsFunctions
 
     private static string TimeKey(SlotCandidate s)
         => $"{s.gameDate}|{s.startTime}|{s.endTime}|{s.fieldKey}";
-
-    private static string BuildRangeKey(string fieldKey, string gameDate)
-        => $"{fieldKey}|{gameDate}";
-
-    private static bool HasOverlap(Dictionary<string, List<(int startMin, int endMin)>> ranges, string key, int startMin, int endMin)
-    {
-        if (!ranges.TryGetValue(key, out var list)) return false;
-        return list.Any(r => r.startMin < endMin && startMin < r.endMin);
-    }
-
-    private static void AddRange(Dictionary<string, List<(int startMin, int endMin)>> ranges, string key, int startMin, int endMin)
-    {
-        if (!ranges.TryGetValue(key, out var list))
-        {
-            list = new List<(int startMin, int endMin)>();
-            ranges[key] = list;
-        }
-
-        list.Add((startMin, endMin));
-    }
 
     private static List<SlotCandidate> DeduplicateCandidates(IEnumerable<SlotCandidate> candidates)
     {

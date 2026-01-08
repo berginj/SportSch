@@ -163,8 +163,8 @@ public class AvailabilityAllocationsFunctions
                     continue;
                 }
 
-                var startMin = ParseMinutes(startTime);
-                var endMin = ParseMinutes(endTime);
+                var startMin = SlotOverlap.ParseMinutes(startTime);
+                var endMin = SlotOverlap.ParseMinutes(endTime);
                 if (startMin < 0 || endMin <= startMin)
                 {
                     rejected++;
@@ -432,15 +432,6 @@ public class AvailabilityAllocationsFunctions
             _ => ""
         };
 
-    private static int ParseMinutes(string value)
-    {
-        var parts = (value ?? "").Split(':');
-        if (parts.Length < 2) return -1;
-        if (!int.TryParse(parts[0], out var h)) return -1;
-        if (!int.TryParse(parts[1], out var m)) return -1;
-        return h * 60 + m;
-    }
-
     private static string BuildAllocationKey(
         string fieldKey,
         DateOnly dateFrom,
@@ -452,9 +443,6 @@ public class AvailabilityAllocationsFunctions
         var dayToken = string.Join(",", FormatDays(days));
         return $"{fieldKey}|{dateFrom:yyyy-MM-dd}|{dateTo:yyyy-MM-dd}|{startTime}|{endTime}|{dayToken}";
     }
-
-    private static string BuildRangeKey(string fieldKey, DateOnly date)
-        => $"{fieldKey}|{date:yyyy-MM-dd}";
 
     private static bool RangesOverlap(DateOnly aStart, DateOnly aEnd, DateOnly bStart, DateOnly bEnd)
         => !(aEnd < bStart || bEnd < aStart);
@@ -505,8 +493,8 @@ public class AvailabilityAllocationsFunctions
         for (var date = dateFrom; date <= dateTo; date = date.AddDays(1))
         {
             if (days.Count > 0 && !days.Contains(date.DayOfWeek)) continue;
-            var key = BuildRangeKey(fieldKey, date);
-            if (HasOverlap(slotRanges, key, startMin, endMin)) return true;
+            var key = SlotOverlap.BuildRangeKey(fieldKey, date);
+            if (SlotOverlap.HasOverlap(slotRanges, key, startMin, endMin)) return true;
         }
         return false;
     }
@@ -571,12 +559,12 @@ public class AvailabilityAllocationsFunctions
 
             var startTime = (e.GetString("StartTime") ?? "").Trim();
             var endTime = (e.GetString("EndTime") ?? "").Trim();
-            var startMin = ParseMinutes(startTime);
-            var endMin = ParseMinutes(endTime);
+            var startMin = SlotOverlap.ParseMinutes(startTime);
+            var endMin = SlotOverlap.ParseMinutes(endTime);
             if (startMin < 0 || endMin <= startMin) continue;
 
-            var key = BuildRangeKey(fieldKey, gameDate);
-            AddRange(existing, key, startMin, endMin);
+            var key = SlotOverlap.BuildRangeKey(fieldKey, gameDate);
+            SlotOverlap.AddRange(existing, key, startMin, endMin);
         }
 
         return existing;
@@ -622,8 +610,8 @@ public class AvailabilityAllocationsFunctions
 
             var startTime = (e.GetString("StartTimeLocal") ?? "").Trim();
             var endTime = (e.GetString("EndTimeLocal") ?? "").Trim();
-            var startMin = ParseMinutes(startTime);
-            var endMin = ParseMinutes(endTime);
+            var startMin = SlotOverlap.ParseMinutes(startTime);
+            var endMin = SlotOverlap.ParseMinutes(endTime);
             if (startMin < 0 || endMin <= startMin) continue;
 
             var daysRaw = (e.GetString("DaysOfWeek") ?? "").Trim();
