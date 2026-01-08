@@ -209,6 +209,7 @@ the notes for required headers or roles.
 | POST | /schedule/wizard/apply | `Functions/ScheduleWizardFunctions.cs` | Apply wizard-built season schedule (requires `x-league-id`, LeagueAdmin). |
 | POST | /schedule/slots/preview | `Functions/SlotGenerationFunctions.cs` | Preview generated availability slots (requires `x-league-id`, LeagueAdmin). |
 | POST | /schedule/slots/apply | `Functions/SlotGenerationFunctions.cs` | Generate availability slots (requires `x-league-id`, LeagueAdmin). |
+| POST | /availability-slots/clear | `Functions/ClearAvailabilitySlots.cs` | Delete availability slots for a division/date range (requires `x-league-id`, LeagueAdmin). |
 | GET | /calendar/ics | `Functions/CalendarFeed.cs` | Calendar subscription feed (requires `x-league-id` or leagueId query). |
 | GET | /events | `Functions/GetEvents.cs` | List events (requires `x-league-id`). |
 | POST | /events | `Functions/CreateEvent.cs` | Create event (requires `x-league-id`, LeagueAdmin). |
@@ -733,6 +734,23 @@ Optional columns:
 Import behavior:
 - Creates availability slots (`IsAvailability=true`, `Status=Open`) for the specified league/division.
 - `fieldKey` must match an imported field.
+
+### POST /availability-slots/clear (league-scoped)
+Requires: LeagueAdmin or global admin.
+
+Body
+```json
+{
+  "division": "10U",
+  "dateFrom": "2026-03-01",
+  "dateTo": "2026-06-30",
+  "fieldKey": "gunston/turf"
+}
+```
+
+Notes
+- `fieldKey` is optional; when omitted, clears all availability for the division/date range.
+- Only availability slots with Status=Open are deleted.
 
 ### GET /slots (league-scoped)
 Query (all optional): division, status (comma-separated), dateFrom (YYYY-MM-DD), dateTo (YYYY-MM-DD)  

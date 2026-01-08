@@ -77,6 +77,12 @@ export default function SlotGeneratorManager({ leagueId }) {
   const [availErr, setAvailErr] = useState("");
   const [availOk, setAvailOk] = useState("");
   const [availErrors, setAvailErrors] = useState([]);
+  const [availDivision, setAvailDivision] = useState("");
+  const [availFieldKey, setAvailFieldKey] = useState("");
+  const [availDateFrom, setAvailDateFrom] = useState("");
+  const [availDateTo, setAvailDateTo] = useState("");
+  const [availSlots, setAvailSlots] = useState([]);
+  const [availListLoading, setAvailListLoading] = useState(false);
   const [toast, setToast] = useState(null);
 
   useEffect(() => {
@@ -115,16 +121,33 @@ export default function SlotGeneratorManager({ leagueId }) {
   }, [seasonRange, dateFrom, dateTo]);
 
   useEffect(() => {
+    if (!availDateFrom) setAvailDateFrom(seasonRange.from);
+    if (!availDateTo) setAvailDateTo(seasonRange.to);
+  }, [seasonRange, availDateFrom, availDateTo]);
+
+  useEffect(() => {
     if (!slotGenDivision && divisions.length) {
       setSlotGenDivision(divisions[0].code || divisions[0].division || "");
     }
   }, [divisions, slotGenDivision]);
 
   useEffect(() => {
+    if (!availDivision && divisions.length) {
+      setAvailDivision(divisions[0].code || divisions[0].division || "");
+    }
+  }, [divisions, availDivision]);
+
+  useEffect(() => {
     if (!slotGenFieldKey && fields.length) {
       setSlotGenFieldKey(fields[0].fieldKey || "");
     }
   }, [fields, slotGenFieldKey]);
+
+  useEffect(() => {
+    if (!availFieldKey && fields.length) {
+      setAvailFieldKey("");
+    }
+  }, [fields, availFieldKey]);
 
   function toggleDay(day) {
     setSlotGenDays((prev) => ({ ...prev, [day]: !prev[day] }));
@@ -214,6 +237,57 @@ export default function SlotGeneratorManager({ leagueId }) {
     downloadCsv(csv, `availability_template_${safeLeague}.csv`);
   }
 
+  async function loadAvailabilitySlots() {
+    if (!availDivision) return;
+    setAvailListLoading(true);
+    setAvailErr("");
+    try {
+      const qs = new URLSearchParams();
+      qs.set("division", availDivision);
+      if (availDateFrom) qs.set("dateFrom", availDateFrom);
+      if (availDateTo) qs.set("dateTo", availDateTo);
+      const data = await apiFetch(`/api/slots?${qs.toString()}`);
+      const list = Array.isArray(data) ? data : [];
+      const filtered = list.filter((s) => s.isAvailability && (!availFieldKey || s.fieldKey === availFieldKey));
+      setAvailSlots(filtered);
+      if (filtered.length === 0) setAvailOk("No availability slots found for this filter.");
+    } catch (e) {
+      setAvailErr(e?.message || "Failed to load availability slots.");
+      setAvailSlots([]);
+    } finally {
+      setAvailListLoading(false);
+    }
+  }
+
+  async function deleteAvailabilitySlots() {
+    if (!availDivision) return;
+    const confirmText = window.prompt(
+      "Type DELETE AVAILABILITY to remove availability slots for the selected filters."
+    );
+    if (confirmText !== "DELETE AVAILABILITY") return;
+
+    setAvailListLoading(true);
+    setAvailErr("");
+    try {
+      const res = await apiFetch("/api/availability-slots/clear", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          division: availDivision,
+          dateFrom: availDateFrom,
+          dateTo: availDateTo,
+          fieldKey: availFieldKey || undefined,
+        }),
+      });
+      setAvailOk(`Deleted ${res?.deleted ?? 0} availability slots.`);
+      await loadAvailabilitySlots();
+    } catch (e) {
+      setAvailErr(e?.message || "Delete failed.");
+    } finally {
+      setAvailListLoading(false);
+    }
+  }
+
   return (
     <div className="stack">
       <Toast
@@ -274,6 +348,77 @@ export default function SlotGeneratorManager({ leagueId }) {
             </div>
           ) : null}
         </div>
+      </div>
+
+      <div className="card">
+        <div className="card__header">
+          <div className="h2">Availability slots</div>
+          <div className="subtle">Review and bulk delete availability slots.</div>
+        </div>
+        <div className="card__body grid2">
+          <label>
+            Division
+            <select value={availDivision} onChange={(e) => setAvailDivision(e.target.value)}>
+              {divisions.map((d) => (
+                <option key={d.code || d.division} value={d.code || d.division}>
+                  {d.name ? `${d.name} (${d.code || d.division})` : d.code || d.division}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Field (optional)
+            <select value={availFieldKey} onChange={(e) => setAvailFieldKey(e.target.value)}>
+              <option value="">All fields</option>
+              {fields.map((f) => (
+                <option key={f.fieldKey} value={f.fieldKey}>
+                  {f.displayName}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Date from
+            <input value={availDateFrom} onChange={(e) => setAvailDateFrom(e.target.value)} placeholder="YYYY-MM-DD" />
+          </label>
+          <label>
+            Date to
+            <input value={availDateTo} onChange={(e) => setAvailDateTo(e.target.value)} placeholder="YYYY-MM-DD" />
+          </label>
+        </div>
+        <div className="card__body row gap-2">
+          <button className="btn" onClick={loadAvailabilitySlots} disabled={availListLoading || !availDivision}>
+            {availListLoading ? "Loading..." : "Load availability slots"}
+          </button>
+          <button className="btn btn--danger" onClick={deleteAvailabilitySlots} disabled={availListLoading || !availDivision}>
+            Delete filtered availability
+          </button>
+        </div>
+        {availSlots.length ? (
+          <div className="card__body tableWrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Time</th>
+                  <th>Field</th>
+                  <th>Division</th>
+                </tr>
+              </thead>
+              <tbody>
+                {availSlots.slice(0, 200).map((s) => (
+                  <tr key={s.slotId}>
+                    <td>{s.gameDate}</td>
+                    <td>{s.startTime}-{s.endTime}</td>
+                    <td>{s.displayName || s.fieldKey}</td>
+                    <td>{s.division}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {availSlots.length > 200 ? <div className="subtle">Showing first 200.</div> : null}
+          </div>
+        ) : null}
       </div>
 
       <div className="card">
