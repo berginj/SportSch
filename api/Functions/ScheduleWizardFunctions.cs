@@ -253,11 +253,9 @@ public class ScheduleWizardFunctions
         if (slots.Count == 0)
             return new PhaseAssignments(new List<ScheduleAssignment>(), new List<ScheduleAssignment>(), new List<MatchupPair>(matchups));
 
-        var orderedSlots = OrderSlotsByPreference(slots, preferredDays)
-            .Select(s => new ScheduleSlot(s.slotId, s.gameDate, s.startTime, s.endTime, s.fieldKey, s.offeringTeamId))
-            .ToList();
+        var orderedSlots = OrderSlotsByPreference(slots, preferredDays);
 
-        var constraints = new ScheduleConstraints(maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek: 0);
+        var constraints = new ScheduleConstraints(maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, 0);
         var result = ScheduleEngine.AssignMatchups(orderedSlots, matchups, teams, constraints);
         return new PhaseAssignments(result.Assignments, result.UnassignedSlots, result.UnassignedMatchups);
     }
