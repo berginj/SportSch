@@ -63,6 +63,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
   const [slotsOk, setSlotsOk] = useState("");
   const [teamsOk, setTeamsOk] = useState("");
   const [slotsErrors, setSlotsErrors] = useState([]);
+  const [slotsWarnings, setSlotsWarnings] = useState([]);
   const [teamsErrors, setTeamsErrors] = useState([]);
   const [globalErr, setGlobalErr] = useState("");
   const [globalOk, setGlobalOk] = useState("");
@@ -537,6 +538,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
     setSlotsErr("");
     setSlotsOk("");
     setSlotsErrors([]);
+    setSlotsWarnings([]);
     if (!slotsFile) return setSlotsErr("Choose a CSV file to upload.");
 
     setSlotsBusy(true);
@@ -546,6 +548,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
       const res = await apiFetch("/api/import/slots", { method: "POST", body: fd });
       setSlotsOk(`Imported. Upserted: ${res?.upserted ?? 0}, Rejected: ${res?.rejected ?? 0}, Skipped: ${res?.skipped ?? 0}`);
       if (Array.isArray(res?.errors) && res.errors.length) setSlotsErrors(res.errors);
+      if (Array.isArray(res?.warnings) && res.warnings.length) setSlotsWarnings(res.warnings);
     } catch (e) {
       setSlotsErr(e?.message || "Import failed");
     } finally {
@@ -1228,6 +1231,31 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
                 </tbody>
               </table>
               {slotsErrors.length > 50 ? <div className="subtle">Showing first 50.</div> : null}
+            </div>
+          ) : null}
+          {slotsWarnings.length ? (
+            <div className="mt-3">
+              <div className="font-bold mb-2">Warnings ({slotsWarnings.length})</div>
+              <div className="subtle mb-2">
+                These rows were skipped because they overlapped existing slots or duplicates in the CSV.
+              </div>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Row</th>
+                    <th>Warning</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {slotsWarnings.slice(0, 50).map((x, idx) => (
+                    <tr key={idx}>
+                      <td>{x.row}</td>
+                      <td>{x.warning}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {slotsWarnings.length > 50 ? <div className="subtle">Showing first 50.</div> : null}
             </div>
           ) : null}
         </div>

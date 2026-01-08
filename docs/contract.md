@@ -629,6 +629,7 @@ Optional columns:
 Import behavior:
 - Upserts by `fieldKey`.
 - `status=Inactive` deactivates the field (it will not appear in slot creation pickers when `activeOnly=true`).
+- Response may include `warnings` for duplicate parkName+fieldName matches (the importer will reuse the existing fieldKey).
 
 ### POST /import/teams (league-scoped)
 Requires: LeagueAdmin or global admin.
@@ -722,6 +723,7 @@ Optional columns:
 Import behavior:
 - Creates slots for the specified league and division.
 - `fieldKey` must match an imported field.
+- Response may include `warnings` for skipped rows that overlap existing field/time slots or duplicates in the CSV.
 
 ### POST /import/availability-slots (league-scoped)
 Requires: LeagueAdmin or global admin.
@@ -741,6 +743,7 @@ Optional columns:
 Import behavior:
 - Creates availability slots (`IsAvailability=true`, `Status=Open`) for the specified league/division.
 - `fieldKey` must match an imported field.
+- Response may include `warnings` for skipped rows that overlap existing field/time slots or duplicates in the CSV.
 
 ### POST /availability-slots/clear (league-scoped)
 Requires: LeagueAdmin or global admin.
@@ -908,6 +911,7 @@ Optional columns:
 Import behavior:
 - Creates allocations (each CSV row is a new allocation id).
 - `division` values are treated as allocation scope; `LEAGUE` applies to all divisions.
+- Response may include `warnings` for duplicate allocations (skipped) or overlaps with existing non-availability slots.
 
 ### GET /availability/allocations (league-scoped)
 Requires: LeagueAdmin or global admin.

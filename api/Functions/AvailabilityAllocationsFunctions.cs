@@ -86,6 +86,8 @@ public class AvailabilityAllocationsFunctions
             var fieldsTable = await TableClients.GetTableAsync(_svc, Constants.Tables.Fields);
             var fieldKeys = await LoadFieldKeysAsync(fieldsTable, leagueId);
             var existing = await LoadExistingAllocationsAsync(table, leagueId);
+            var slotsTable = await TableClients.GetTableAsync(_svc, Constants.Tables.Slots);
+            var slotRanges = await LoadExistingSlotRangesAsync(rows, idx, slotsTable, leagueId);
 
             int upserted = 0, rejected = 0, skipped = 0;
             var errors = new List<object>();
@@ -188,6 +190,11 @@ public class AvailabilityAllocationsFunctions
 
                 existing.exactKeys.Add(allocKey);
                 AddAllocation(existing.byField, spec);
+
+                if (AllocationOverlapsSlots(slotRanges, normalizedFieldKey, dateFromVal, dateToVal, startMin, endMin, daysSet))
+                {
+                    warnings.Add(new { row = i + 1, warning = "Allocation overlaps an existing non-availability slot.", fieldKey = fieldKeyRaw });
+                }
 
                 var pk = Constants.Pk.FieldAvailabilityAllocations(leagueId, scope, normalizedFieldKey);
                 var allocationId = Guid.NewGuid().ToString("N");
@@ -446,6 +453,9 @@ public class AvailabilityAllocationsFunctions
         return $"{fieldKey}|{dateFrom:yyyy-MM-dd}|{dateTo:yyyy-MM-dd}|{startTime}|{endTime}|{dayToken}";
     }
 
+    private static string BuildRangeKey(string fieldKey, DateOnly date)
+        => $"{fieldKey}|{date:yyyy-MM-dd}";
+
     private static bool RangesOverlap(DateOnly aStart, DateOnly aEnd, DateOnly bStart, DateOnly bEnd)
         => !(aEnd < bStart || bEnd < aStart);
 
@@ -481,6 +491,95 @@ public class AvailabilityAllocationsFunctions
             byField[spec.fieldKey] = list;
         }
         list.Add(spec);
+    }
+
+    private static bool AllocationOverlapsSlots(
+        Dictionary<string, List<(int startMin, int endMin)>> slotRanges,
+        string fieldKey,
+        DateOnly dateFrom,
+        DateOnly dateTo,
+        int startMin,
+        int endMin,
+        HashSet<DayOfWeek> days)
+    {
+        for (var date = dateFrom; date <= dateTo; date = date.AddDays(1))
+        {
+            if (days.Count > 0 && !days.Contains(date.DayOfWeek)) continue;
+            var key = BuildRangeKey(fieldKey, date);
+            if (HasOverlap(slotRanges, key, startMin, endMin)) return true;
+        }
+        return false;
+    }
+
+    private static async Task<Dictionary<string, List<(int startMin, int endMin)>>> LoadExistingSlotRangesAsync(
+        List<string[]> rows,
+        Dictionary<string, int> headerIndex,
+        TableClient slotsTable,
+        string leagueId)
+    {
+        DateOnly? minDate = null;
+        DateOnly? maxDate = null;
+        var fieldKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        for (int i = 1; i < rows.Count; i++)
+        {
+            var r = rows[i];
+            if (CsvMini.IsBlankRow(r)) continue;
+
+            var dateFromRaw = CsvMini.Get(r, headerIndex, "datefrom").Trim();
+            var dateToRaw = CsvMini.Get(r, headerIndex, "dateto").Trim();
+            if (DateOnly.TryParseExact(dateFromRaw, "yyyy-MM-dd", out var dFrom))
+            {
+                minDate = minDate is null || dFrom < minDate.Value ? dFrom : minDate.Value;
+            }
+            if (DateOnly.TryParseExact(dateToRaw, "yyyy-MM-dd", out var dTo))
+            {
+                maxDate = maxDate is null || dTo > maxDate.Value ? dTo : maxDate.Value;
+            }
+
+            var fieldKeyRaw = CsvMini.Get(r, headerIndex, "fieldkey").Trim();
+            if (TryParseFieldKey(fieldKeyRaw, out var parkCode, out var fieldCode))
+            {
+                fieldKeys.Add($"{parkCode}/{fieldCode}");
+            }
+        }
+
+        if (minDate is null || maxDate is null || fieldKeys.Count == 0)
+            return new Dictionary<string, List<(int startMin, int endMin)>>(StringComparer.OrdinalIgnoreCase);
+
+        var prefix = $"SLOT|{leagueId}|";
+        var next = prefix + "\uffff";
+        var filter = $"PartitionKey ge '{ApiGuards.EscapeOData(prefix)}' and PartitionKey lt '{ApiGuards.EscapeOData(next)}' " +
+                     $"and GameDate ge '{minDate:yyyy-MM-dd}' and GameDate le '{maxDate:yyyy-MM-dd}'";
+
+        var existing = new Dictionary<string, List<(int startMin, int endMin)>>(StringComparer.OrdinalIgnoreCase);
+        await foreach (var e in slotsTable.QueryAsync<TableEntity>(filter: filter))
+        {
+            var status = (e.GetString("Status") ?? Constants.Status.SlotOpen).Trim();
+            if (string.Equals(status, Constants.Status.SlotCancelled, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var isAvailability = e.GetBoolean("IsAvailability") ?? false;
+            if (isAvailability) continue;
+
+            var fieldKey = (e.GetString("FieldKey") ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(fieldKey) || !fieldKeys.Contains(fieldKey))
+                continue;
+
+            var gameDateRaw = (e.GetString("GameDate") ?? "").Trim();
+            if (!DateOnly.TryParseExact(gameDateRaw, "yyyy-MM-dd", out var gameDate)) continue;
+
+            var startTime = (e.GetString("StartTime") ?? "").Trim();
+            var endTime = (e.GetString("EndTime") ?? "").Trim();
+            var startMin = ParseMinutes(startTime);
+            var endMin = ParseMinutes(endTime);
+            if (startMin < 0 || endMin <= startMin) continue;
+
+            var key = BuildRangeKey(fieldKey, gameDate);
+            AddRange(existing, key, startMin, endMin);
+        }
+
+        return existing;
     }
 
     private static async Task<HashSet<string>> LoadFieldKeysAsync(TableClient fieldsTable, string leagueId)

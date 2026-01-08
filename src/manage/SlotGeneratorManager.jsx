@@ -77,6 +77,7 @@ export default function SlotGeneratorManager({ leagueId }) {
   const [availErr, setAvailErr] = useState("");
   const [availOk, setAvailOk] = useState("");
   const [availErrors, setAvailErrors] = useState([]);
+  const [availWarnings, setAvailWarnings] = useState([]);
   const [availDivision, setAvailDivision] = useState("");
   const [availFieldKey, setAvailFieldKey] = useState("");
   const [availDateFrom, setAvailDateFrom] = useState("");
@@ -215,6 +216,7 @@ export default function SlotGeneratorManager({ leagueId }) {
     setAvailErr("");
     setAvailOk("");
     setAvailErrors([]);
+    setAvailWarnings([]);
     if (!availFile) return setAvailErr("Choose a CSV file to upload.");
 
     setAvailBusy(true);
@@ -224,6 +226,7 @@ export default function SlotGeneratorManager({ leagueId }) {
       const res = await apiFetch("/api/import/availability-slots", { method: "POST", body: fd });
       setAvailOk(`Imported. Upserted: ${res?.upserted ?? 0}, Rejected: ${res?.rejected ?? 0}, Skipped: ${res?.skipped ?? 0}`);
       if (Array.isArray(res?.errors) && res.errors.length) setAvailErrors(res.errors);
+      if (Array.isArray(res?.warnings) && res.warnings.length) setAvailWarnings(res.warnings);
     } catch (e) {
       setAvailErr(e?.message || "Import failed");
     } finally {
@@ -344,6 +347,31 @@ export default function SlotGeneratorManager({ leagueId }) {
                 </tbody>
               </table>
               {availErrors.length > 50 ? <div className="subtle">Showing first 50.</div> : null}
+            </div>
+          ) : null}
+          {availWarnings.length ? (
+            <div className="mt-3">
+              <div className="font-bold mb-2">Warnings ({availWarnings.length})</div>
+              <div className="subtle mb-2">
+                These rows were skipped because they overlapped existing slots or duplicates in the CSV.
+              </div>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Row</th>
+                    <th>Warning</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {availWarnings.slice(0, 50).map((x, idx) => (
+                    <tr key={idx}>
+                      <td>{x.row}</td>
+                      <td>{x.warning}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {availWarnings.length > 50 ? <div className="subtle">Showing first 50.</div> : null}
             </div>
           ) : null}
         </div>

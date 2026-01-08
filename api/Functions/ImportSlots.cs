@@ -84,6 +84,7 @@ public class ImportSlots
 
             int upserted = 0, rejected = 0, skipped = 0;
             var errors = new List<object>();
+            var warnings = new List<object>();
 
             for (int i = 1; i < rows.Count; i++)
             {
@@ -172,14 +173,14 @@ public class ImportSlots
                 var rangeKey = BuildRangeKey($"{parkCode}/{fieldCode}", gameDate);
                 if (HasOverlap(existingSlotRanges, rangeKey, startMin, endMin))
                 {
-                    rejected++;
-                    errors.Add(new { row = i + 1, error = "Field already has a slot at this time.", fieldKey = fieldKeyRaw });
+                    skipped++;
+                    warnings.Add(new { row = i + 1, warning = "Field already has a slot at this time.", fieldKey = fieldKeyRaw });
                     continue;
                 }
                 if (!AddRange(seenInImportRanges, rangeKey, startMin, endMin))
                 {
-                    rejected++;
-                    errors.Add(new { row = i + 1, error = "Duplicate slot in CSV for this field/time.", fieldKey = fieldKeyRaw });
+                    skipped++;
+                    warnings.Add(new { row = i + 1, warning = "Duplicate slot in CSV for this field/time.", fieldKey = fieldKeyRaw });
                     continue;
                 }
                 AddRange(existingSlotRanges, rangeKey, startMin, endMin);
@@ -252,7 +253,8 @@ public class ImportSlots
                 upserted,
                 rejected,
                 skipped,
-                errors
+                errors,
+                warnings
             });
         }
         catch (InvalidOperationException inv)
