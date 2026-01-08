@@ -3,8 +3,42 @@ import { apiFetch } from "../lib/api";
 import { ROLE } from "../lib/constants";
 import Toast from "../components/Toast";
 
+function csvEscape(value) {
+  const raw = String(value ?? "");
+  if (!/[",\n]/.test(raw)) return raw;
+  return `"${raw.replace(/"/g, '""')}"`;
+}
+
+function buildTeamsTemplateCsv(divisions) {
+  const header = ["division", "teamId", "name", "coachName", "coachEmail", "coachPhone"];
+  const rows = (divisions || [])
+    .map((d) => {
+      if (!d) return "";
+      if (typeof d === "string") return d;
+      if (d.isActive === false) return "";
+      return d.code || d.division || "";
+    })
+    .filter(Boolean)
+    .map((code) => [code, "", "", "", "", ""]);
+
+  return [header, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n");
+}
+
+function downloadCsv(csv, filename) {
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 export default function TeamsManager({ leagueId }) {
   const [teams, setTeams] = useState([]);
+  const [divisions, setDivisions] = useState([]);
   const [memberships, setMemberships] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -25,10 +59,15 @@ export default function TeamsManager({ leagueId }) {
     setErr("");
     setLoading(true);
     try {
-      const [t, m] = await Promise.all([apiFetch("/api/teams"), apiFetch("/api/memberships")]);
+      const [t, m, d] = await Promise.all([
+        apiFetch("/api/teams"),
+        apiFetch("/api/memberships"),
+        apiFetch("/api/divisions"),
+      ]);
       const list = Array.isArray(t) ? t : [];
       setTeams(list);
       setMemberships(Array.isArray(m) ? m : []);
+      setDivisions(Array.isArray(d) ? d : []);
       const nextEdits = {};
       for (const team of list) {
         const key = teamKey(team);
@@ -190,6 +229,12 @@ export default function TeamsManager({ leagueId }) {
     }
   }
 
+  function downloadTeamsTemplate() {
+    const csv = buildTeamsTemplateCsv(divisions);
+    const safeLeague = (leagueId || "league").replace(/[^a-z0-9_-]+/gi, "_");
+    downloadCsv(csv, `teams_template_${safeLeague}.csv`);
+  }
+
   return (
     <div className="stack">
       {err ? <div className="callout callout--error">{err}</div> : null}
@@ -207,6 +252,9 @@ export default function TeamsManager({ leagueId }) {
           Required columns: <code>division</code>, <code>teamId</code>, <code>name</code>. Optional:{" "}
           <code>coachName</code>, <code>coachEmail</code>, <code>coachPhone</code>.
         </div>
+        <div className="subtle mb-2">
+          Need a starting point? Download a template prefilled with this league's division codes.
+        </div>
         <div className="row items-end gap-3">
           <label className="flex-1" title="Upload a CSV of teams to create or update.">
             CSV file
@@ -219,6 +267,14 @@ export default function TeamsManager({ leagueId }) {
           </label>
           <button className="btn" onClick={importTeamsCsv} disabled={teamsBusy || !teamsFile} title="Import teams from CSV.">
             {teamsBusy ? "Importing..." : "Upload & Import"}
+          </button>
+          <button
+            className="btn btn--ghost"
+            onClick={downloadTeamsTemplate}
+            disabled={!leagueId}
+            title="Download a CSV template with division codes."
+          >
+            Download CSV template
           </button>
           <button className="btn btn--ghost" onClick={load} disabled={loading} title="Refresh teams and coaches.">
             Refresh

@@ -12,6 +12,39 @@ const ROLE_OPTIONS = [
   "Viewer",
 ];
 
+function csvEscape(value) {
+  const raw = String(value ?? "");
+  if (!/[",\n]/.test(raw)) return raw;
+  return `"${raw.replace(/"/g, '""')}"`;
+}
+
+function buildTeamsTemplateCsv(divisions) {
+  const header = ["division", "teamId", "name", "coachName", "coachEmail", "coachPhone"];
+  const rows = (divisions || [])
+    .map((d) => {
+      if (!d) return "";
+      if (typeof d === "string") return d;
+      if (d.isActive === false) return "";
+      return d.code || d.division || "";
+    })
+    .filter(Boolean)
+    .map((code) => [code, "", "", "", "", ""]);
+
+  return [header, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n");
+}
+
+function downloadCsv(csv, filename) {
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 export default function AdminPage({ me, leagueId, setLeagueId }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -539,6 +572,12 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
     } finally {
       setTeamsBusy(false);
     }
+  }
+
+  function downloadTeamsTemplate() {
+    const csv = buildTeamsTemplateCsv(divisions);
+    const safeLeague = (leagueId || "league").replace(/[^a-z0-9_-]+/gi, "_");
+    downloadCsv(csv, `teams_template_${safeLeague}.csv`);
   }
 
   return (
@@ -1199,6 +1238,9 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
             Required columns: <code>division</code>, <code>teamId</code>, <code>name</code>. Optional:{" "}
             <code>coachName</code>, <code>coachEmail</code>, <code>coachPhone</code>.
           </div>
+          <div className="subtle mb-2">
+            Need a starting point? Download a template prefilled with this league's division codes.
+          </div>
           {teamsErr ? <div className="callout callout--error">{teamsErr}</div> : null}
           {teamsOk ? <div className="callout callout--ok">{teamsOk}</div> : null}
           <div className="row items-end gap-3">
@@ -1213,6 +1255,14 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
             </label>
             <button className="btn" onClick={importTeamsCsv} disabled={teamsBusy || !teamsFile}>
               {teamsBusy ? "Importing..." : "Upload & Import"}
+            </button>
+            <button
+              className="btn btn--ghost"
+              onClick={downloadTeamsTemplate}
+              disabled={!leagueId}
+              title="Download a CSV template with division codes."
+            >
+              Download CSV template
             </button>
           </div>
           {teamsErrors.length ? (
