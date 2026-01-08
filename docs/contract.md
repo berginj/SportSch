@@ -204,6 +204,8 @@ the notes for required headers or roles.
 | POST | /schedule/preview | `Functions/ScheduleFunctions.cs` | Preview schedule for a division (requires `x-league-id`, LeagueAdmin). |
 | POST | /schedule/apply | `Functions/ScheduleFunctions.cs` | Apply schedule assignments (requires `x-league-id`, LeagueAdmin). Blocks if validation issues exist. |
 | POST | /schedule/validate | `Functions/ScheduleFunctions.cs` | Validate scheduled games for a division (requires `x-league-id`, LeagueAdmin). |
+| POST | /schedule/wizard/preview | `Functions/ScheduleWizardFunctions.cs` | Preview wizard-built season schedule (requires `x-league-id`, LeagueAdmin). |
+| POST | /schedule/wizard/apply | `Functions/ScheduleWizardFunctions.cs` | Apply wizard-built season schedule (requires `x-league-id`, LeagueAdmin). |
 | POST | /schedule/slots/preview | `Functions/SlotGenerationFunctions.cs` | Preview generated availability slots (requires `x-league-id`, LeagueAdmin). |
 | POST | /schedule/slots/apply | `Functions/SlotGenerationFunctions.cs` | Generate availability slots (requires `x-league-id`, LeagueAdmin). |
 | GET | /calendar/ics | `Functions/CalendarFeed.cs` | Calendar subscription feed (requires `x-league-id` or leagueId query). |
@@ -1103,6 +1105,54 @@ Response
   }
 }
 ```
+
+### POST /schedule/wizard/preview (league-scoped)
+Requires: LeagueAdmin or global admin.
+
+Body
+```json
+{
+  "division": "10U",
+  "seasonStart": "2026-03-01",
+  "seasonEnd": "2026-06-30",
+  "poolStart": "2026-06-22",
+  "poolEnd": "2026-06-28",
+  "bracketStart": "2026-06-29",
+  "bracketEnd": "2026-07-05",
+  "minGamesPerTeam": 8,
+  "poolGamesPerTeam": 2,
+  "preferredWeeknights": ["Mon", "Wed"],
+  "maxGamesPerWeek": 2,
+  "noDoubleHeaders": true,
+  "balanceHomeAway": true
+}
+```
+
+Response
+```json
+{
+  "data": {
+    "summary": {
+      "regularSeason": { "phase": "Regular Season", "slotsTotal": 20, "slotsAssigned": 18, "matchupsTotal": 24, "matchupsAssigned": 18, "unassignedSlots": 2, "unassignedMatchups": 6 },
+      "poolPlay": { "phase": "Pool Play", "slotsTotal": 6, "slotsAssigned": 6, "matchupsTotal": 6, "matchupsAssigned": 6, "unassignedSlots": 0, "unassignedMatchups": 0 },
+      "bracket": { "phase": "Bracket", "slotsTotal": 3, "slotsAssigned": 3, "matchupsTotal": 3, "matchupsAssigned": 3, "unassignedSlots": 0, "unassignedMatchups": 0 },
+      "totalSlots": 29,
+      "totalAssigned": 27
+    },
+    "assignments": [
+      { "phase": "Regular Season", "slotId": "slot_1", "gameDate": "2026-04-10", "startTime": "18:00", "endTime": "19:30", "fieldKey": "gunston/turf", "homeTeamId": "TIGERS", "awayTeamId": "EAGLES", "isExternalOffer": false }
+    ],
+    "unassignedSlots": [],
+    "unassignedMatchups": [],
+    "warnings": []
+  }
+}
+```
+
+### POST /schedule/wizard/apply (league-scoped)
+Requires: LeagueAdmin or global admin.
+
+Body: same as preview.
 
 Scheduler export formats
 - Internal CSV: division, gameDate, startTime, endTime, fieldKey, homeTeamId, awayTeamId, isExternalOffer

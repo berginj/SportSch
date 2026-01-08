@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import Toast from "../components/Toast";
+import SeasonWizard from "./SeasonWizard";
 
 const EMPTY_SEASON = {
   springStart: "",
@@ -85,7 +86,7 @@ function buildSeasonPayload(draft) {
   };
 }
 
-export default function CommissionerHub({ leagueId }) {
+export default function CommissionerHub({ leagueId, tableView = "A" }) {
   const [divisions, setDivisions] = useState([]);
   const [fields, setFields] = useState([]);
   const [division, setDivision] = useState("");
@@ -374,6 +375,16 @@ export default function CommissionerHub({ leagueId }) {
               Save field blackouts
             </button>
           </div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card__header">
+          <div className="h3">Season setup wizard</div>
+          <div className="subtle">Plan backwards from pool play and bracket, then schedule regular season games.</div>
+        </div>
+        <div className="card__body">
+          <SeasonWizard leagueId={leagueId} tableView={tableView} />
         </div>
       </div>
     </div>

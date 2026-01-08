@@ -125,7 +125,7 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
               <div className="subtle">Season settings, blackouts, and scheduling tools in one place.</div>
             </div>
             <div className="card__body">
-              <CommissionerHub leagueId={leagueId} />
+              <CommissionerHub leagueId={leagueId} tableView={tableView} />
             </div>
           </div>
 
