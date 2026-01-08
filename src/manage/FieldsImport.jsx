@@ -42,6 +42,9 @@ export default function FieldsImport({ leagueId, tableView = "A" }) {
   const [rowErrors, setRowErrors] = useState([]);
   const [bulkDeleteBusy, setBulkDeleteBusy] = useState(false);
   const [bulkDeleteErrors, setBulkDeleteErrors] = useState([]);
+  const [collapseImport, setCollapseImport] = useState(false);
+  const [collapseAdd, setCollapseAdd] = useState(false);
+  const [collapseEdit, setCollapseEdit] = useState(false);
 
   async function load() {
     setErr("");
@@ -314,8 +317,36 @@ export default function FieldsImport({ leagueId, tableView = "A" }) {
         onClose={() => setToast(null)}
       />
 
+      <div className="row row--wrap gap-2">
+        <button className="btn btn--ghost" type="button" onClick={() => {
+          setCollapseImport(true);
+          setCollapseAdd(true);
+          setCollapseEdit(true);
+        }}>
+          Collapse all
+        </button>
+        <button className="btn btn--ghost" type="button" onClick={() => {
+          setCollapseImport(false);
+          setCollapseAdd(false);
+          setCollapseEdit(false);
+        }}>
+          Expand all
+        </button>
+      </div>
+
       <div className="card">
-        <div className="font-bold mb-2">Field CSV import</div>
+        <div className="row row--between">
+          <div className="font-bold mb-2">Field CSV import</div>
+          <button
+            className="btn btn--ghost"
+            type="button"
+            onClick={() => setCollapseImport((prev) => !prev)}
+          >
+            {collapseImport ? "Expand" : "Collapse"}
+          </button>
+        </div>
+        {collapseImport ? null : (
+          <>
         <div className="subtle mb-3 leading-relaxed">
           Required columns: <code>fieldKey</code>, <code>parkName</code>, <code>fieldName</code>. Optional:{" "}
           <code>displayName</code>, <code>address</code>, <code>city</code>, <code>state</code>, <code>notes</code>,{" "}
@@ -423,10 +454,23 @@ export default function FieldsImport({ leagueId, tableView = "A" }) {
             {bulkDeleteErrors.length > 50 ? <div className="subtle">Showing first 50.</div> : null}
           </div>
         ) : null}
+          </>
+        )}
       </div>
 
       <div className="card">
-        <div className="font-bold mb-2">Add a single field</div>
+        <div className="row row--between">
+          <div className="font-bold mb-2">Add a single field</div>
+          <button
+            className="btn btn--ghost"
+            type="button"
+            onClick={() => setCollapseAdd((prev) => !prev)}
+          >
+            {collapseAdd ? "Expand" : "Collapse"}
+          </button>
+        </div>
+        {collapseAdd ? null : (
+          <>
         <div className="formGrid">
           <label>
             Field Key
@@ -512,191 +556,104 @@ export default function FieldsImport({ leagueId, tableView = "A" }) {
             Add field
           </button>
         </div>
+          </>
+        )}
       </div>
 
       <div className="card">
-        <div className="font-bold mb-2">Field details (edit)</div>
-        <div className="subtle mb-2">Edit field metadata, then save per field.</div>
-        {fields.length === 0 ? (
-          <div className="subtle">No fields yet.</div>
-        ) : tableView === "C" ? (
-          <div className="dataCards">
-            {fields.map((f) => (
-              <div key={f.fieldKey} className="dataCard">
-                <div className="dataCard__title">{f.displayName}</div>
-                <div className="dataCard__meta">
-                  <code>{f.fieldKey}</code>
-                </div>
-                <div className="dataCard__grid">
-                  <label>
-                    Park name
-                    <input
-                      value={fieldEdits[f.fieldKey]?.parkName ?? ""}
-                      onChange={(e) => updateEdit(f.fieldKey, "parkName", e.target.value)}
-                      disabled={!canEdit || savingKey === f.fieldKey}
-                    />
-                  </label>
-                  <label>
-                    Field name
-                    <input
-                      value={fieldEdits[f.fieldKey]?.fieldName ?? ""}
-                      onChange={(e) => updateEdit(f.fieldKey, "fieldName", e.target.value)}
-                      disabled={!canEdit || savingKey === f.fieldKey}
-                    />
-                  </label>
-                  <label>
-                    Display name
-                    <input
-                      value={fieldEdits[f.fieldKey]?.displayName ?? ""}
-                      onChange={(e) => updateEdit(f.fieldKey, "displayName", e.target.value)}
-                      disabled={!canEdit || savingKey === f.fieldKey}
-                    />
-                  </label>
-                  <label>
-                    Address
-                    <input
-                      value={fieldEdits[f.fieldKey]?.address ?? ""}
-                      onChange={(e) => updateEdit(f.fieldKey, "address", e.target.value)}
-                      disabled={!canEdit || savingKey === f.fieldKey}
-                    />
-                  </label>
-                  <label>
-                    City
-                    <input
-                      value={fieldEdits[f.fieldKey]?.city ?? ""}
-                      onChange={(e) => updateEdit(f.fieldKey, "city", e.target.value)}
-                      disabled={!canEdit || savingKey === f.fieldKey}
-                    />
-                  </label>
-                  <label>
-                    State
-                    <input
-                      value={fieldEdits[f.fieldKey]?.state ?? ""}
-                      onChange={(e) => updateEdit(f.fieldKey, "state", e.target.value)}
-                      disabled={!canEdit || savingKey === f.fieldKey}
-                    />
-                  </label>
-                  <label>
-                    Status
-                    <select
-                      value={fieldEdits[f.fieldKey]?.status ?? FIELD_STATUS.ACTIVE}
-                      onChange={(e) => updateEdit(f.fieldKey, "status", e.target.value)}
-                      disabled={!canEdit || savingKey === f.fieldKey}
-                    >
-                      <option value={FIELD_STATUS.ACTIVE}>{FIELD_STATUS.ACTIVE}</option>
-                      <option value={FIELD_STATUS.INACTIVE}>{FIELD_STATUS.INACTIVE}</option>
-                    </select>
-                  </label>
-                  <label>
-                    Notes
-                    <textarea
-                      value={fieldEdits[f.fieldKey]?.notes ?? ""}
-                      onChange={(e) => updateEdit(f.fieldKey, "notes", e.target.value)}
-                      disabled={!canEdit || savingKey === f.fieldKey}
-                    />
-                  </label>
-                </div>
-                <div className="row row--end gap-2">
-                  <button className="btn btn--ghost" onClick={() => saveField(f)} disabled={!canEdit || savingKey}>
-                    {savingKey === f.fieldKey ? "Saving..." : "Save"}
-                  </button>
-                  <button
-                    className="btn btn--ghost"
-                    onClick={() => deleteField(f)}
-                    disabled={!canEdit || savingKey === f.fieldKey}
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className={`tableWrap ${tableView === "B" ? "tableWrap--sticky" : ""}`}>
-            <table className={`table ${tableView === "B" ? "table--compact table--sticky" : ""}`}>
-              <thead>
-                <tr>
-                  <th>Field</th>
-                  <th>Field Key</th>
-                  <th>Park Name</th>
-                  <th>Field Name</th>
-                  <th>Display Name</th>
-                  <th>Address</th>
-                  <th>City</th>
-                  <th>State</th>
-                  <th>Status</th>
-                  <th>Notes</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
+        <div className="row row--between">
+          <div className="font-bold mb-2">Field details (edit)</div>
+          <button
+            className="btn btn--ghost"
+            type="button"
+            onClick={() => setCollapseEdit((prev) => !prev)}
+          >
+            {collapseEdit ? "Expand" : "Collapse"}
+          </button>
+        </div>
+        {collapseEdit ? null : (
+          <>
+            <div className="subtle mb-2">Edit field metadata, then save per field.</div>
+            {fields.length === 0 ? (
+              <div className="subtle">No fields yet.</div>
+            ) : tableView === "C" ? (
+              <div className="dataCards">
                 {fields.map((f) => (
-                  <tr key={f.fieldKey}>
-                    <td>{f.displayName}</td>
-                    <td>
+                  <div key={f.fieldKey} className="dataCard">
+                    <div className="dataCard__title">{f.displayName}</div>
+                    <div className="dataCard__meta">
                       <code>{f.fieldKey}</code>
-                    </td>
-                    <td>
-                      <input
-                        value={fieldEdits[f.fieldKey]?.parkName ?? ""}
-                        onChange={(e) => updateEdit(f.fieldKey, "parkName", e.target.value)}
-                        disabled={!canEdit || savingKey === f.fieldKey}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        value={fieldEdits[f.fieldKey]?.fieldName ?? ""}
-                        onChange={(e) => updateEdit(f.fieldKey, "fieldName", e.target.value)}
-                        disabled={!canEdit || savingKey === f.fieldKey}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        value={fieldEdits[f.fieldKey]?.displayName ?? ""}
-                        onChange={(e) => updateEdit(f.fieldKey, "displayName", e.target.value)}
-                        disabled={!canEdit || savingKey === f.fieldKey}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        value={fieldEdits[f.fieldKey]?.address ?? ""}
-                        onChange={(e) => updateEdit(f.fieldKey, "address", e.target.value)}
-                        disabled={!canEdit || savingKey === f.fieldKey}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        value={fieldEdits[f.fieldKey]?.city ?? ""}
-                        onChange={(e) => updateEdit(f.fieldKey, "city", e.target.value)}
-                        disabled={!canEdit || savingKey === f.fieldKey}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        value={fieldEdits[f.fieldKey]?.state ?? ""}
-                        onChange={(e) => updateEdit(f.fieldKey, "state", e.target.value)}
-                        disabled={!canEdit || savingKey === f.fieldKey}
-                        className="fieldInputShort"
-                      />
-                    </td>
-                    <td>
-                      <select
-                        value={fieldEdits[f.fieldKey]?.status ?? FIELD_STATUS.ACTIVE}
-                        onChange={(e) => updateEdit(f.fieldKey, "status", e.target.value)}
-                        disabled={!canEdit || savingKey === f.fieldKey}
-                      >
-                        <option value={FIELD_STATUS.ACTIVE}>{FIELD_STATUS.ACTIVE}</option>
-                        <option value={FIELD_STATUS.INACTIVE}>{FIELD_STATUS.INACTIVE}</option>
-                      </select>
-                    </td>
-                    <td>
-                      <textarea
-                        value={fieldEdits[f.fieldKey]?.notes ?? ""}
-                        onChange={(e) => updateEdit(f.fieldKey, "notes", e.target.value)}
-                        disabled={!canEdit || savingKey === f.fieldKey}
-                      />
-                    </td>
-                    <td className="row gap-2 row--wrap">
+                    </div>
+                    <div className="dataCard__grid">
+                      <label>
+                        Park name
+                        <input
+                          value={fieldEdits[f.fieldKey]?.parkName ?? ""}
+                          onChange={(e) => updateEdit(f.fieldKey, "parkName", e.target.value)}
+                          disabled={!canEdit || savingKey === f.fieldKey}
+                        />
+                      </label>
+                      <label>
+                        Field name
+                        <input
+                          value={fieldEdits[f.fieldKey]?.fieldName ?? ""}
+                          onChange={(e) => updateEdit(f.fieldKey, "fieldName", e.target.value)}
+                          disabled={!canEdit || savingKey === f.fieldKey}
+                        />
+                      </label>
+                      <label>
+                        Display name
+                        <input
+                          value={fieldEdits[f.fieldKey]?.displayName ?? ""}
+                          onChange={(e) => updateEdit(f.fieldKey, "displayName", e.target.value)}
+                          disabled={!canEdit || savingKey === f.fieldKey}
+                        />
+                      </label>
+                      <label>
+                        Address
+                        <input
+                          value={fieldEdits[f.fieldKey]?.address ?? ""}
+                          onChange={(e) => updateEdit(f.fieldKey, "address", e.target.value)}
+                          disabled={!canEdit || savingKey === f.fieldKey}
+                        />
+                      </label>
+                      <label>
+                        City
+                        <input
+                          value={fieldEdits[f.fieldKey]?.city ?? ""}
+                          onChange={(e) => updateEdit(f.fieldKey, "city", e.target.value)}
+                          disabled={!canEdit || savingKey === f.fieldKey}
+                        />
+                      </label>
+                      <label>
+                        State
+                        <input
+                          value={fieldEdits[f.fieldKey]?.state ?? ""}
+                          onChange={(e) => updateEdit(f.fieldKey, "state", e.target.value)}
+                          disabled={!canEdit || savingKey === f.fieldKey}
+                        />
+                      </label>
+                      <label>
+                        Status
+                        <select
+                          value={fieldEdits[f.fieldKey]?.status ?? FIELD_STATUS.ACTIVE}
+                          onChange={(e) => updateEdit(f.fieldKey, "status", e.target.value)}
+                          disabled={!canEdit || savingKey === f.fieldKey}
+                        >
+                          <option value={FIELD_STATUS.ACTIVE}>{FIELD_STATUS.ACTIVE}</option>
+                          <option value={FIELD_STATUS.INACTIVE}>{FIELD_STATUS.INACTIVE}</option>
+                        </select>
+                      </label>
+                      <label>
+                        Notes
+                        <textarea
+                          value={fieldEdits[f.fieldKey]?.notes ?? ""}
+                          onChange={(e) => updateEdit(f.fieldKey, "notes", e.target.value)}
+                          disabled={!canEdit || savingKey === f.fieldKey}
+                        />
+                      </label>
+                    </div>
+                    <div className="row row--end gap-2">
                       <button className="btn btn--ghost" onClick={() => saveField(f)} disabled={!canEdit || savingKey}>
                         {savingKey === f.fieldKey ? "Saving..." : "Save"}
                       </button>
@@ -707,12 +664,114 @@ export default function FieldsImport({ leagueId, tableView = "A" }) {
                       >
                         Delete
                       </button>
-                    </td>
-                  </tr>
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </div>
+            ) : (
+              <div className={`tableWrap ${tableView === "B" ? "tableWrap--sticky" : ""}`}>
+                <table className={`table ${tableView === "B" ? "table--compact table--sticky" : ""}`}>
+                  <thead>
+                    <tr>
+                      <th>Field</th>
+                      <th>Field Key</th>
+                      <th>Park Name</th>
+                      <th>Field Name</th>
+                      <th>Display Name</th>
+                      <th>Address</th>
+                      <th>City</th>
+                      <th>State</th>
+                      <th>Status</th>
+                      <th>Notes</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {fields.map((f) => (
+                      <tr key={f.fieldKey}>
+                        <td>{f.displayName}</td>
+                        <td>
+                          <code>{f.fieldKey}</code>
+                        </td>
+                        <td>
+                          <input
+                            value={fieldEdits[f.fieldKey]?.parkName ?? ""}
+                            onChange={(e) => updateEdit(f.fieldKey, "parkName", e.target.value)}
+                            disabled={!canEdit || savingKey === f.fieldKey}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            value={fieldEdits[f.fieldKey]?.fieldName ?? ""}
+                            onChange={(e) => updateEdit(f.fieldKey, "fieldName", e.target.value)}
+                            disabled={!canEdit || savingKey === f.fieldKey}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            value={fieldEdits[f.fieldKey]?.displayName ?? ""}
+                            onChange={(e) => updateEdit(f.fieldKey, "displayName", e.target.value)}
+                            disabled={!canEdit || savingKey === f.fieldKey}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            value={fieldEdits[f.fieldKey]?.address ?? ""}
+                            onChange={(e) => updateEdit(f.fieldKey, "address", e.target.value)}
+                            disabled={!canEdit || savingKey === f.fieldKey}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            value={fieldEdits[f.fieldKey]?.city ?? ""}
+                            onChange={(e) => updateEdit(f.fieldKey, "city", e.target.value)}
+                            disabled={!canEdit || savingKey === f.fieldKey}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            value={fieldEdits[f.fieldKey]?.state ?? ""}
+                            onChange={(e) => updateEdit(f.fieldKey, "state", e.target.value)}
+                            disabled={!canEdit || savingKey === f.fieldKey}
+                            className="fieldInputShort"
+                          />
+                        </td>
+                        <td>
+                          <select
+                            value={fieldEdits[f.fieldKey]?.status ?? FIELD_STATUS.ACTIVE}
+                            onChange={(e) => updateEdit(f.fieldKey, "status", e.target.value)}
+                            disabled={!canEdit || savingKey === f.fieldKey}
+                          >
+                            <option value={FIELD_STATUS.ACTIVE}>{FIELD_STATUS.ACTIVE}</option>
+                            <option value={FIELD_STATUS.INACTIVE}>{FIELD_STATUS.INACTIVE}</option>
+                          </select>
+                        </td>
+                        <td>
+                          <textarea
+                            value={fieldEdits[f.fieldKey]?.notes ?? ""}
+                            onChange={(e) => updateEdit(f.fieldKey, "notes", e.target.value)}
+                            disabled={!canEdit || savingKey === f.fieldKey}
+                          />
+                        </td>
+                        <td className="row gap-2 row--wrap">
+                          <button className="btn btn--ghost" onClick={() => saveField(f)} disabled={!canEdit || savingKey}>
+                            {savingKey === f.fieldKey ? "Saving..." : "Save"}
+                          </button>
+                          <button
+                            className="btn btn--ghost"
+                            onClick={() => deleteField(f)}
+                            disabled={!canEdit || savingKey === f.fieldKey}
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
