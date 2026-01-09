@@ -4,6 +4,13 @@ import { validateIsoDates } from "../lib/date";
 import Toast from "../components/Toast";
 
 const WEEKDAY_OPTIONS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const ISSUE_HINTS = {
+  "unassigned-matchups": "Not enough availability slots, or constraints are too tight for the slot pool.",
+  "unassigned-slots": "More availability than matchups. These can become extra offers or remain unused.",
+  "double-header": "Not enough slots to spread games across dates. Add slots or relax no-doubleheaders.",
+  "max-games-per-week": "Max games/week is too low for available slots. Increase the limit or add more slots.",
+  "missing-opponent": "A slot is missing an opponent. Check team count or external/guest game settings.",
+};
 
 function StepButton({ active, onClick, children }) {
   return (
@@ -161,6 +168,22 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     } finally {
       setLoading(false);
     }
+  }
+
+  function buildIssueHint(issue, summary) {
+    if (!issue) return "";
+    const base = ISSUE_HINTS[issue.ruleId] || "";
+    if (!summary) return base;
+    if (issue.ruleId === "unassigned-matchups") {
+      const phase = summary.regularSeason || {};
+      if (phase.matchupsTotal > phase.slotsTotal) {
+        return `${base} Regular season has fewer slots (${phase.slotsTotal}) than matchups (${phase.matchupsTotal}).`;
+      }
+    }
+    if (issue.ruleId === "double-header" && summary.teamCount && summary.teamCount % 2 === 1) {
+      return `${base} With an odd team count (${summary.teamCount}), some byes help reduce doubleheaders.`;
+    }
+    return base;
   }
 
   return (
@@ -370,6 +393,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                           <th>Rule</th>
                           <th>Severity</th>
                           <th>Message</th>
+                          <th>Hint</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -378,6 +402,37 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                             <td>{issue.ruleId || ""}</td>
                             <td>{issue.severity || ""}</td>
                             <td>{issue.message || ""}</td>
+                            <td>{buildIssueHint(issue, preview.summary)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : null}
+              {preview.summary ? (
+                <div className="callout">
+                  <div className="font-bold mb-2">Scheduling context</div>
+                  <div className="subtle">Teams: {preview.summary.teamCount || 0} {preview.summary.teamCount % 2 === 1 ? "(odd team count adds byes)" : ""}</div>
+                  <div className="tableWrap mt-2">
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>Phase</th>
+                          <th>Slots</th>
+                          <th>Matchups</th>
+                          <th>Assigned</th>
+                          <th>Unassigned</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[preview.summary.regularSeason, preview.summary.poolPlay, preview.summary.bracket].map((phase) => (
+                          <tr key={phase.phase}>
+                            <td>{phase.phase}</td>
+                            <td>{phase.slotsTotal}</td>
+                            <td>{phase.matchupsTotal}</td>
+                            <td>{phase.slotsAssigned}</td>
+                            <td>{phase.unassignedMatchups}</td>
                           </tr>
                         ))}
                       </tbody>

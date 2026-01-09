@@ -53,7 +53,8 @@ public class ScheduleWizardFunctions
         PhaseSummary poolPlay,
         PhaseSummary bracket,
         int totalSlots,
-        int totalAssigned
+        int totalAssigned,
+        int teamCount
     );
 
     public record WizardSlotDto(
@@ -172,7 +173,8 @@ public class ScheduleWizardFunctions
                 poolPlay: BuildPhaseSummary("Pool Play", poolSlots.Count, poolAssignments.Assignments.Count, poolMatchups.Count, poolAssignments.UnassignedMatchups.Count),
                 bracket: BuildPhaseSummary("Bracket", bracketSlots.Count, bracketAssignments.Assignments.Count, bracketMatchups.Count, bracketAssignments.UnassignedMatchups.Count),
                 totalSlots: allSlots.Count,
-                totalAssigned: regularAssignments.Assignments.Count + poolAssignments.Assignments.Count + bracketAssignments.Assignments.Count
+                totalAssigned: regularAssignments.Assignments.Count + poolAssignments.Assignments.Count + bracketAssignments.Assignments.Count,
+                teamCount: teams.Count
             );
 
             var assignments = new List<WizardSlotDto>();
