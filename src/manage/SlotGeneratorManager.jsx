@@ -77,6 +77,8 @@ export default function SlotGeneratorManager({ leagueId }) {
   const [availBusy, setAvailBusy] = useState(false);
   const [availErr, setAvailErr] = useState("");
   const [availOk, setAvailOk] = useState("");
+  const [availListErr, setAvailListErr] = useState("");
+  const [availListMsg, setAvailListMsg] = useState("");
   const [availErrors, setAvailErrors] = useState([]);
   const [availWarnings, setAvailWarnings] = useState([]);
   const [availDivision, setAvailDivision] = useState("");
@@ -134,12 +136,6 @@ export default function SlotGeneratorManager({ leagueId }) {
   }, [divisions, slotGenDivision]);
 
   useEffect(() => {
-    if (!availDivision && divisions.length) {
-      setAvailDivision(divisions[0].code || divisions[0].division || "");
-    }
-  }, [divisions, availDivision]);
-
-  useEffect(() => {
     if (!slotGenFieldKey && fields.length) {
       setSlotGenFieldKey(fields[0].fieldKey || "");
     }
@@ -150,6 +146,11 @@ export default function SlotGeneratorManager({ leagueId }) {
       setAvailFieldKey("");
     }
   }, [fields, availFieldKey]);
+
+  useEffect(() => {
+    if (!leagueId || !availDateFrom || !availDateTo) return;
+    loadAvailabilitySlots().catch(() => {});
+  }, [leagueId, availDivision, availDateFrom, availDateTo, availFieldKey]);
 
   function toggleDay(day) {
     setSlotGenDays((prev) => ({ ...prev, [day]: !prev[day] }));
@@ -253,14 +254,15 @@ export default function SlotGeneratorManager({ leagueId }) {
 
   async function loadAvailabilitySlots() {
     setAvailListLoading(true);
-    setAvailErr("");
+    setAvailListErr("");
+    setAvailListMsg("");
     const dateError = validateIsoDates([
       { label: "Date from", value: availDateFrom, required: false },
       { label: "Date to", value: availDateTo, required: false },
     ]);
     if (dateError) {
       setAvailListLoading(false);
-      return setAvailErr(dateError);
+      return setAvailListErr(dateError);
     }
     try {
       const qs = new URLSearchParams();
@@ -271,9 +273,11 @@ export default function SlotGeneratorManager({ leagueId }) {
       const list = Array.isArray(data) ? data : [];
       const filtered = list.filter((s) => s.isAvailability && (!availFieldKey || s.fieldKey === availFieldKey));
       setAvailSlots(filtered);
-      if (filtered.length === 0) setAvailOk("No availability slots found for this filter.");
+      setAvailListMsg(filtered.length === 0
+        ? "No availability slots found for this filter."
+        : `Loaded ${filtered.length} availability slots.`);
     } catch (e) {
-      setAvailErr(e?.message || "Failed to load availability slots.");
+      setAvailListErr(e?.message || "Failed to load availability slots.");
       setAvailSlots([]);
     } finally {
       setAvailListLoading(false);
@@ -286,14 +290,14 @@ export default function SlotGeneratorManager({ leagueId }) {
       { label: "Date from", value: availDateFrom, required: true },
       { label: "Date to", value: availDateTo, required: true },
     ]);
-    if (dateError) return setAvailErr(dateError);
+    if (dateError) return setAvailListErr(dateError);
     const confirmText = window.prompt(
       "Type DELETE AVAILABILITY to remove availability slots for the selected filters."
     );
     if (confirmText !== "DELETE AVAILABILITY") return;
 
     setAvailListLoading(true);
-    setAvailErr("");
+    setAvailListErr("");
     try {
       const res = await apiFetch("/api/availability-slots/clear", {
         method: "POST",
@@ -305,10 +309,10 @@ export default function SlotGeneratorManager({ leagueId }) {
           fieldKey: availFieldKey || undefined,
         }),
       });
-      setAvailOk(`Deleted ${res?.deleted ?? 0} availability slots.`);
+      setAvailListMsg(`Deleted ${res?.deleted ?? 0} availability slots.`);
       await loadAvailabilitySlots();
     } catch (e) {
-      setAvailErr(e?.message || "Delete failed.");
+      setAvailListErr(e?.message || "Delete failed.");
     } finally {
       setAvailListLoading(false);
     }
@@ -405,6 +409,10 @@ export default function SlotGeneratorManager({ leagueId }) {
         <div className="card__header">
           <div className="h2">Availability slots</div>
           <div className="subtle">Review and bulk delete availability slots.</div>
+        </div>
+        <div className="card__body">
+          {availListErr ? <div className="callout callout--error">{availListErr}</div> : null}
+          {availListMsg ? <div className="callout callout--ok">{availListMsg}</div> : null}
         </div>
         <div className="card__body grid2">
           <label>
