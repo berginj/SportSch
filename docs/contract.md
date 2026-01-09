@@ -74,7 +74,7 @@ PartitionKey/RowKey conventions (canonical):
 - Access Requests: PK = `ACCESSREQ|{leagueId}`, RK = `<userId>`
 - Availability Rules: PK = `AVAILRULE|{leagueId}|{fieldKey}`, RK = `<ruleId>`
 - Availability Exceptions: PK = `AVAILRULEEX|{ruleId}`, RK = `<exceptionId>`
-- Availability Allocations: PK = `ALLOC|{leagueId}|{scope}|{fieldKey}`, RK = `<allocationId>`
+- Availability Allocations: PK = `ALLOC|{leagueId}|{scope}|{fieldKeySafe}`, RK = `<allocationId>` (fieldKeySafe replaces `/` with `|`)
 - Users: PK = `USER`, RK = `<userId>`
 
 Legacy compatibility:

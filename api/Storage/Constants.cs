@@ -71,7 +71,10 @@ public static class Constants
 
         // Field allocations: PK = ALLOC|{leagueId}|{scope}|{fieldKey}, RK = allocationId
         public static string FieldAvailabilityAllocations(string leagueId, string scope, string fieldKey)
-            => $"ALLOC|{leagueId}|{scope}|{fieldKey}";
+            => $"ALLOC|{leagueId}|{scope}|{NormalizeAllocFieldKey(fieldKey)}";
+
+        private static string NormalizeAllocFieldKey(string fieldKey)
+            => (fieldKey ?? "").Trim().Replace("/", "|");
     }
 
     public static class FieldAvailabilityColumns
