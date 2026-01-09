@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
+import { validateIsoDates } from "../lib/date";
 import Toast from "../components/Toast";
 
 const WEEKDAY_OPTIONS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -76,6 +77,15 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
   async function runPreview() {
     setErr("");
+    const dateError = validateIsoDates([
+      { label: "Season start", value: seasonStart, required: true },
+      { label: "Season end", value: seasonEnd, required: true },
+      { label: "Pool start", value: poolStart, required: false },
+      { label: "Pool end", value: poolEnd, required: false },
+      { label: "Bracket start", value: bracketStart, required: false },
+      { label: "Bracket end", value: bracketEnd, required: false },
+    ]);
+    if (dateError) return setErr(dateError);
     setLoading(true);
     try {
       const payload = {
@@ -111,6 +121,15 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   async function applySchedule() {
     if (!preview) return;
     setErr("");
+    const dateError = validateIsoDates([
+      { label: "Season start", value: seasonStart, required: true },
+      { label: "Season end", value: seasonEnd, required: true },
+      { label: "Pool start", value: poolStart, required: false },
+      { label: "Pool end", value: poolEnd, required: false },
+      { label: "Bracket start", value: bracketStart, required: false },
+      { label: "Bracket end", value: bracketEnd, required: false },
+    ]);
+    if (dateError) return setErr(dateError);
     setLoading(true);
     try {
       const payload = {

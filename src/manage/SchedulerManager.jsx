@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
+import { validateIsoDates } from "../lib/date";
 import Toast from "../components/Toast";
 import { getDefaultRangeFallback, getSeasonRange } from "../lib/season";
 
@@ -320,6 +321,11 @@ export default function SchedulerManager({ leagueId }) {
 
   async function runPreview() {
     setErr("");
+    const dateError = validateIsoDates([
+      { label: "Date from", value: dateFrom, required: false },
+      { label: "Date to", value: dateTo, required: false },
+    ]);
+    if (dateError) return setErr(dateError);
     setLoading(true);
     try {
       const data = await apiFetch("/api/schedule/preview", {
@@ -338,6 +344,11 @@ export default function SchedulerManager({ leagueId }) {
 
   async function applySchedule() {
     setErr("");
+    const dateError = validateIsoDates([
+      { label: "Date from", value: dateFrom, required: false },
+      { label: "Date to", value: dateTo, required: false },
+    ]);
+    if (dateError) return setErr(dateError);
     setLoading(true);
     try {
       const data = await apiFetch("/api/schedule/apply", {
@@ -356,6 +367,11 @@ export default function SchedulerManager({ leagueId }) {
 
   async function runValidation() {
     setErr("");
+    const dateError = validateIsoDates([
+      { label: "Date from", value: dateFrom, required: false },
+      { label: "Date to", value: dateTo, required: false },
+    ]);
+    if (dateError) return setErr(dateError);
     setValidationLoading(true);
     try {
       const data = await apiFetch("/api/schedule/validate", {
@@ -374,6 +390,11 @@ export default function SchedulerManager({ leagueId }) {
 
   async function loadAvailabilityInsights() {
     setAvailabilityErr("");
+    const dateError = validateIsoDates([
+      { label: "Date from", value: dateFrom, required: false },
+      { label: "Date to", value: dateTo, required: false },
+    ]);
+    if (dateError) return setAvailabilityErr(dateError);
     setAvailabilityLoading(true);
     try {
       const qs = new URLSearchParams();
@@ -411,6 +432,11 @@ export default function SchedulerManager({ leagueId }) {
 
   async function loadOverlay() {
     setErr("");
+    const dateError = validateIsoDates([
+      { label: "Date from", value: dateFrom, required: false },
+      { label: "Date to", value: dateTo, required: false },
+    ]);
+    if (dateError) return setErr(dateError);
     setOverlayLoading(true);
     try {
       const baseQuery = new URLSearchParams();

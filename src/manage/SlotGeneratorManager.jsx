@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
+import { validateIsoDates } from "../lib/date";
 import Toast from "../components/Toast";
 import { getDefaultRangeFallback, getSeasonRange } from "../lib/season";
 
@@ -156,6 +157,11 @@ export default function SlotGeneratorManager({ leagueId }) {
 
   async function previewSlotGeneration() {
     setErr("");
+    const dateError = validateIsoDates([
+      { label: "Season start", value: dateFrom, required: true },
+      { label: "Season end", value: dateTo, required: true },
+    ]);
+    if (dateError) return setErr(dateError);
     setLoading(true);
     try {
       const days = Object.entries(slotGenDays)
@@ -185,6 +191,11 @@ export default function SlotGeneratorManager({ leagueId }) {
 
   async function applySlotGeneration(mode) {
     setErr("");
+    const dateError = validateIsoDates([
+      { label: "Season start", value: dateFrom, required: true },
+      { label: "Season end", value: dateTo, required: true },
+    ]);
+    if (dateError) return setErr(dateError);
     setLoading(true);
     try {
       const days = Object.entries(slotGenDays)
@@ -243,6 +254,14 @@ export default function SlotGeneratorManager({ leagueId }) {
   async function loadAvailabilitySlots() {
     setAvailListLoading(true);
     setAvailErr("");
+    const dateError = validateIsoDates([
+      { label: "Date from", value: availDateFrom, required: false },
+      { label: "Date to", value: availDateTo, required: false },
+    ]);
+    if (dateError) {
+      setAvailListLoading(false);
+      return setAvailErr(dateError);
+    }
     try {
       const qs = new URLSearchParams();
       if (availDivision) qs.set("division", availDivision);
@@ -263,6 +282,11 @@ export default function SlotGeneratorManager({ leagueId }) {
 
   async function deleteAvailabilitySlots() {
     if (!availDivision) return;
+    const dateError = validateIsoDates([
+      { label: "Date from", value: availDateFrom, required: true },
+      { label: "Date to", value: availDateTo, required: true },
+    ]);
+    if (dateError) return setAvailErr(dateError);
     const confirmText = window.prompt(
       "Type DELETE AVAILABILITY to remove availability slots for the selected filters."
     );

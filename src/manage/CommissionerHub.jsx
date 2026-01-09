@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
+import { validateIsoDates } from "../lib/date";
 import Toast from "../components/Toast";
 import SeasonWizard from "./SeasonWizard";
 
@@ -158,6 +159,18 @@ export default function CommissionerHub({ leagueId, tableView = "A" }) {
   async function saveLeagueSeason() {
     if (!leagueId) return;
     const payload = buildSeasonPayload(leagueDraft);
+    const blackoutFields = (payload.blackouts || []).flatMap((b, idx) => ([
+      { label: `Blackout ${idx + 1} start`, value: b.startDate, required: !!b.endDate },
+      { label: `Blackout ${idx + 1} end`, value: b.endDate, required: !!b.startDate },
+    ]));
+    const dateError = validateIsoDates([
+      { label: "Spring start", value: payload.springStart, required: false },
+      { label: "Spring end", value: payload.springEnd, required: false },
+      { label: "Fall start", value: payload.fallStart, required: false },
+      { label: "Fall end", value: payload.fallEnd, required: false },
+      ...blackoutFields,
+    ]);
+    if (dateError) return setToast({ tone: "error", message: dateError });
     if (!payload.gameLengthMinutes) {
       return setToast({ tone: "error", message: "League game length must be set." });
     }
@@ -178,12 +191,25 @@ export default function CommissionerHub({ leagueId, tableView = "A" }) {
 
   async function saveDivisionSeason() {
     if (!leagueId || !division) return;
+    const payload = buildSeasonPayload(divisionDraft);
+    const blackoutFields = (payload.blackouts || []).flatMap((b, idx) => ([
+      { label: `Blackout ${idx + 1} start`, value: b.startDate, required: !!b.endDate },
+      { label: `Blackout ${idx + 1} end`, value: b.endDate, required: !!b.startDate },
+    ]));
+    const dateError = validateIsoDates([
+      { label: "Spring start", value: payload.springStart, required: false },
+      { label: "Spring end", value: payload.springEnd, required: false },
+      { label: "Fall start", value: payload.fallStart, required: false },
+      { label: "Fall end", value: payload.fallEnd, required: false },
+      ...blackoutFields,
+    ]);
+    if (dateError) return setToast({ tone: "error", message: dateError });
     setLoading(true);
     try {
       await apiFetch(`/api/divisions/${encodeURIComponent(division)}/season`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ season: buildSeasonPayload(divisionDraft) }),
+        body: JSON.stringify({ season: payload }),
       });
       setToast({ tone: "success", message: "Division season overrides saved." });
     } catch (e) {

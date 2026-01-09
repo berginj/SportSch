@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
+import { validateIsoDates } from "../lib/date";
 import { getDefaultRangeFallback, getSeasonRange } from "../lib/season";
 import Toast from "../components/Toast";
 
@@ -170,6 +171,14 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
   async function loadAllocations() {
     setAllocErr("");
     setAllocListLoading(true);
+    const dateError = validateIsoDates([
+      { label: "Date from", value: allocDateFrom, required: false },
+      { label: "Date to", value: allocDateTo, required: false },
+    ]);
+    if (dateError) {
+      setAllocListLoading(false);
+      return setAllocErr(dateError);
+    }
     try {
       const qs = new URLSearchParams();
       if (allocScope) qs.set("division", allocScope);
@@ -187,6 +196,11 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
 
   async function clearAllocations() {
     if (!allocScope) return;
+    const dateError = validateIsoDates([
+      { label: "Date from", value: allocDateFrom, required: true },
+      { label: "Date to", value: allocDateTo, required: true },
+    ]);
+    if (dateError) return setAllocErr(dateError);
     const confirmText = window.prompt(
       "Type DELETE ALLOCATIONS to remove allocations for the selected filter."
     );
@@ -219,6 +233,14 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
     if (!genDivision) return;
     setGenLoading(true);
     setAllocErr("");
+    const dateError = validateIsoDates([
+      { label: "Date from", value: genDateFrom, required: true },
+      { label: "Date to", value: genDateTo, required: true },
+    ]);
+    if (dateError) {
+      setGenLoading(false);
+      return setAllocErr(dateError);
+    }
     try {
       const data = await apiFetch("/api/availability/allocations/slots/preview", {
         method: "POST",
@@ -243,6 +265,14 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
     if (!genDivision) return;
     setGenLoading(true);
     setAllocErr("");
+    const dateError = validateIsoDates([
+      { label: "Date from", value: genDateFrom, required: true },
+      { label: "Date to", value: genDateTo, required: true },
+    ]);
+    if (dateError) {
+      setGenLoading(false);
+      return setAllocErr(dateError);
+    }
     try {
       const data = await apiFetch("/api/availability/allocations/slots/apply", {
         method: "POST",

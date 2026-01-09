@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
+import { validateIsoDates } from "../lib/date";
 import { getDefaultRangeFallback, getSeasonRange } from "../lib/season";
 import AvailabilityAllocationsManager from "./AvailabilityAllocationsManager";
 
@@ -134,6 +135,11 @@ export default function AvailabilityManager({ leagueId }) {
     if (!fieldKey) return setErr("Pick a field.");
     if (!ruleDraft.division) return setErr("Pick a division.");
     if (!ruleDraft.startsOn || !ruleDraft.endsOn) return setErr("Start and end dates are required.");
+    const dateError = validateIsoDates([
+      { label: "Starts on", value: ruleDraft.startsOn, required: true },
+      { label: "Ends on", value: ruleDraft.endsOn, required: true },
+    ]);
+    if (dateError) return setErr(dateError);
     if (!ruleDraft.startTimeLocal || !ruleDraft.endTimeLocal) return setErr("Start and end times are required.");
     if (!ruleDraft.daysOfWeek?.length) return setErr("Select at least one day of week.");
 
@@ -220,6 +226,11 @@ export default function AvailabilityManager({ leagueId }) {
     setOk("");
     const draft = exceptionDrafts[ruleId] || emptyException;
     if (!draft.dateFrom || !draft.dateTo) return setErr("Exception date range is required.");
+    const dateError = validateIsoDates([
+      { label: "Exception date from", value: draft.dateFrom, required: true },
+      { label: "Exception date to", value: draft.dateTo, required: true },
+    ]);
+    if (dateError) return setErr(dateError);
     if (!draft.startTimeLocal || !draft.endTimeLocal) return setErr("Exception time range is required.");
 
     setBusy(true);
@@ -260,6 +271,11 @@ export default function AvailabilityManager({ leagueId }) {
     setErr("");
     setOk("");
     if (!previewRange.dateFrom || !previewRange.dateTo) return setErr("Pick preview date range.");
+    const dateError = validateIsoDates([
+      { label: "Preview date from", value: previewRange.dateFrom, required: true },
+      { label: "Preview date to", value: previewRange.dateTo, required: true },
+    ]);
+    if (dateError) return setErr(dateError);
     setBusy(true);
     try {
       const data = await apiFetch(`/api/availability/preview?dateFrom=${encodeURIComponent(previewRange.dateFrom)}&dateTo=${encodeURIComponent(previewRange.dateTo)}`);
