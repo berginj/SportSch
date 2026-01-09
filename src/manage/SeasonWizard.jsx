@@ -30,6 +30,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [minGamesPerTeam, setMinGamesPerTeam] = useState(0);
   const [poolGamesPerTeam, setPoolGamesPerTeam] = useState(1);
   const [preferredWeeknights, setPreferredWeeknights] = useState([]);
+  const [guestGamesPerWeek, setGuestGamesPerWeek] = useState(0);
   const [maxGamesPerWeek, setMaxGamesPerWeek] = useState(2);
   const [noDoubleHeaders, setNoDoubleHeaders] = useState(true);
   const [balanceHomeAway, setBalanceHomeAway] = useState(true);
@@ -99,6 +100,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         minGamesPerTeam: Number(minGamesPerTeam) || 0,
         poolGamesPerTeam: Number(poolGamesPerTeam) || 1,
         preferredWeeknights,
+        externalOfferPerWeek: Number(guestGamesPerWeek) || 0,
         maxGamesPerWeek: Number(maxGamesPerWeek) || 0,
         noDoubleHeaders,
         balanceHomeAway,
@@ -143,6 +145,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         minGamesPerTeam: Number(minGamesPerTeam) || 0,
         poolGamesPerTeam: Number(poolGamesPerTeam) || 1,
         preferredWeeknights,
+        externalOfferPerWeek: Number(guestGamesPerWeek) || 0,
         maxGamesPerWeek: Number(maxGamesPerWeek) || 0,
         noDoubleHeaders,
         balanceHomeAway,
@@ -265,6 +268,15 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                 min="0"
                 value={poolGamesPerTeam}
                 onChange={(e) => setPoolGamesPerTeam(e.target.value)}
+              />
+            </label>
+            <label>
+              Guest games per week
+              <input
+                type="number"
+                min="0"
+                value={guestGamesPerWeek}
+                onChange={(e) => setGuestGamesPerWeek(e.target.value)}
               />
             </label>
             <label>

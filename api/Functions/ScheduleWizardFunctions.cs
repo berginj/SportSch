@@ -32,6 +32,7 @@ public class ScheduleWizardFunctions
         int? minGamesPerTeam,
         int? poolGamesPerTeam,
         List<string>? preferredWeeknights,
+        int? externalOfferPerWeek,
         int? maxGamesPerWeek,
         bool? noDoubleHeaders,
         bool? balanceHomeAway
@@ -135,6 +136,7 @@ public class ScheduleWizardFunctions
 
             var minGamesPerTeam = Math.Max(0, body.minGamesPerTeam ?? 0);
             var poolGamesPerTeam = Math.Max(0, body.poolGamesPerTeam ?? 1);
+            var externalOfferPerWeek = Math.Max(0, body.externalOfferPerWeek ?? 0);
             var maxGamesPerWeek = (body.maxGamesPerWeek ?? 0) <= 0 ? (int?)null : body.maxGamesPerWeek;
             var noDoubleHeaders = body.noDoubleHeaders ?? true;
             var balanceHomeAway = body.balanceHomeAway ?? true;
@@ -161,8 +163,8 @@ public class ScheduleWizardFunctions
             var poolMatchups = BuildTargetMatchups(teams, poolGamesPerTeam);
             var bracketMatchups = BuildBracketMatchups();
 
-            var regularAssignments = AssignPhaseSlots("Regular Season", regularSlots, regularMatchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, preferredDays);
-            var poolAssignments = AssignPhaseSlots("Pool Play", poolSlots, poolMatchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, preferredDays: new List<DayOfWeek>());
+            var regularAssignments = AssignPhaseSlots("Regular Season", regularSlots, regularMatchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek, preferredDays);
+            var poolAssignments = AssignPhaseSlots("Pool Play", poolSlots, poolMatchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, 0, preferredDays: new List<DayOfWeek>());
             var bracketAssignments = AssignBracketSlots(bracketSlots, bracketMatchups);
 
             var summary = new WizardSummary(
@@ -192,6 +194,18 @@ public class ScheduleWizardFunctions
             if (regularSlots.Count == 0) warnings.Add(new { code = "NO_REGULAR_SLOTS", message = "No regular season slots available." });
             if (poolStart.HasValue && poolSlots.Count == 0) warnings.Add(new { code = "NO_POOL_SLOTS", message = "No pool play slots available." });
             if (bracketStart.HasValue && bracketSlots.Count == 0) warnings.Add(new { code = "NO_BRACKET_SLOTS", message = "No bracket slots available." });
+            if (externalOfferPerWeek > 0)
+            {
+                var externalAssignments = regularAssignments.Assignments.Where(a => a.IsExternalOffer).ToList();
+                if (externalAssignments.Count == 0)
+                {
+                    warnings.Add(new { code = "NO_GUEST_GAMES", message = "No guest game offers could be created with the current slots and constraints." });
+                }
+                else if (externalAssignments.Count < teams.Count)
+                {
+                    warnings.Add(new { code = "GUEST_GAMES_INCOMPLETE", message = "Not every team has a guest game offer yet." });
+                }
+            }
 
             var allAssignments = regularAssignments.Assignments
                 .Concat(poolAssignments.Assignments)
@@ -277,6 +291,7 @@ public class ScheduleWizardFunctions
         int? maxGamesPerWeek,
         bool noDoubleHeaders,
         bool balanceHomeAway,
+        int externalOfferPerWeek,
         List<DayOfWeek> preferredDays)
     {
         if (slots.Count == 0)
@@ -284,7 +299,7 @@ public class ScheduleWizardFunctions
 
         var orderedSlots = OrderSlotsByPreference(slots, preferredDays);
 
-        var constraints = new ScheduleConstraints(maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, 0);
+        var constraints = new ScheduleConstraints(maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek);
         var result = ScheduleEngine.AssignMatchups(orderedSlots, matchups, teams, constraints);
         return new PhaseAssignments(result.Assignments, result.UnassignedSlots, result.UnassignedMatchups);
     }
@@ -514,13 +529,24 @@ public class ScheduleWizardFunctions
 
             slot["OfferingTeamId"] = a.homeTeamId ?? "";
             slot["HomeTeamId"] = a.homeTeamId ?? "";
-            slot["AwayTeamId"] = a.awayTeamId ?? "";
-            slot["IsExternalOffer"] = false;
+            slot["AwayTeamId"] = a.isExternalOffer ? "" : (a.awayTeamId ?? "");
+            slot["IsExternalOffer"] = a.isExternalOffer;
             slot["IsAvailability"] = false;
-            slot["Status"] = Constants.Status.SlotConfirmed;
-            slot["ConfirmedTeamId"] = a.awayTeamId ?? "";
-            slot["ConfirmedBy"] = "Wizard";
-            slot["ConfirmedUtc"] = DateTimeOffset.UtcNow;
+            if (a.isExternalOffer)
+            {
+                slot["Status"] = Constants.Status.SlotOpen;
+                slot["ConfirmedTeamId"] = "";
+                slot["ConfirmedRequestId"] = "";
+                slot["ConfirmedBy"] = "";
+                slot["ConfirmedUtc"] = "";
+            }
+            else
+            {
+                slot["Status"] = Constants.Status.SlotConfirmed;
+                slot["ConfirmedTeamId"] = a.awayTeamId ?? "";
+                slot["ConfirmedBy"] = "Wizard";
+                slot["ConfirmedUtc"] = DateTimeOffset.UtcNow;
+            }
             slot["ScheduleRunId"] = runId;
 
             var notes = (slot.GetString("Notes") ?? "").Trim();
