@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-export default function Toast({ open, tone = "info", message, duration = 2400, onClose }) {
+export default function Toast({ open = true, tone = "info", message, duration = 2400, onClose }) {
   useEffect(() => {
     if (!open) return;
     const id = setTimeout(() => onClose?.(), duration);

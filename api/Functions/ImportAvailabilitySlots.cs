@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Globalization;
 using Azure;
 using Azure.Data.Tables;
 using Microsoft.Azure.Functions.Worker;
@@ -89,20 +90,27 @@ public class ImportAvailabilitySlots
                 if (CsvMini.IsBlankRow(r)) { skipped++; continue; }
 
                 var division = CsvMini.Get(r, idx, "division").Trim();
-                var gameDate = CsvMini.Get(r, idx, "gamedate").Trim();
+                var gameDateRaw = CsvMini.Get(r, idx, "gamedate").Trim();
                 var startTime = CsvMini.Get(r, idx, "starttime").Trim();
                 var endTime = CsvMini.Get(r, idx, "endtime").Trim();
                 var fieldKeyRaw = CsvMini.Get(r, idx, "fieldkey").Trim();
                 var notes = CsvMini.Get(r, idx, "notes").Trim();
 
                 if (string.IsNullOrWhiteSpace(division) ||
-                    string.IsNullOrWhiteSpace(gameDate) ||
+                    string.IsNullOrWhiteSpace(gameDateRaw) ||
                     string.IsNullOrWhiteSpace(startTime) ||
                     string.IsNullOrWhiteSpace(endTime) ||
                     string.IsNullOrWhiteSpace(fieldKeyRaw))
                 {
                     rejected++;
                     errors.Add(new { row = i + 1, error = "Division, GameDate, StartTime, EndTime, FieldKey are required." });
+                    continue;
+                }
+
+                if (!TryNormalizeGameDate(gameDateRaw, out var gameDate))
+                {
+                    rejected++;
+                    errors.Add(new { row = i + 1, error = "GameDate must be YYYY-MM-DD (or M/D/YYYY).", value = gameDateRaw });
                     continue;
                 }
 
@@ -334,6 +342,20 @@ public class ImportAvailabilitySlots
         return !string.IsNullOrWhiteSpace(parkCode) && !string.IsNullOrWhiteSpace(fieldCode);
     }
 
+    private static bool TryNormalizeGameDate(string raw, out string normalized)
+    {
+        normalized = "";
+        var value = (raw ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(value)) return false;
+
+        var formats = new[] { "yyyy-MM-dd", "M/d/yyyy", "M-d-yyyy", "MM/dd/yyyy", "MM-dd-yyyy" };
+        if (!DateOnly.TryParseExact(value, formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+            return false;
+
+        normalized = date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        return true;
+    }
+
     private static async Task<Dictionary<string, List<(int startMin, int endMin)>>> LoadExistingSlotRangesAsync(
         List<string[]> rows,
         Dictionary<string, int> headerIndex,
@@ -349,8 +371,9 @@ public class ImportAvailabilitySlots
             var r = rows[i];
             if (CsvMini.IsBlankRow(r)) continue;
 
-            var gameDate = CsvMini.Get(r, headerIndex, "gamedate").Trim();
-            if (DateOnly.TryParseExact(gameDate, "yyyy-MM-dd", out var date))
+            var gameDateRaw = CsvMini.Get(r, headerIndex, "gamedate").Trim();
+            if (TryNormalizeGameDate(gameDateRaw, out var normalized) &&
+                DateOnly.TryParseExact(normalized, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
             {
                 minDate = minDate is null || date < minDate.Value ? date : minDate.Value;
                 maxDate = maxDate is null || date > maxDate.Value ? date : maxDate.Value;

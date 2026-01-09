@@ -304,7 +304,7 @@ export default function SlotGeneratorManager({ leagueId }) {
         <div className="card__header">
           <div className="h2">Availability CSV import</div>
           <div className="subtle">
-            Upload bulk availability slots. Required columns: <code>division</code>, <code>gameDate</code>, <code>startTime</code>, <code>endTime</code>, <code>fieldKey</code>.
+            Upload bulk availability slots. Required columns: <code>division</code>, <code>gameDate</code>, <code>startTime</code>, <code>endTime</code>, <code>fieldKey</code>. GameDate should be <code>YYYY-MM-DD</code> (M/D/YYYY is accepted and normalized).
           </div>
         </div>
         <div className="card__body">
