@@ -146,7 +146,8 @@ the notes for required headers or roles.
 | POST | /admin/leagues | `Functions/LeaguesFunctions.cs` | Global admin create league. |
 | GET | /global/leagues | `Functions/LeaguesFunctions.cs` | Global admin list of leagues (alt route). |
 | POST | /global/leagues | `Functions/LeaguesFunctions.cs` | Global admin create league (alt route). |
-| PATCH | /admin/leagues/{leagueId}/season | `Functions/LeaguesFunctions.cs` | Global admin update season settings. |
+| PATCH | /admin/leagues/{leagueId}/season | `Functions/LeaguesFunctions.cs` | League/global admin update season settings. |
+| PATCH | /league/season | `Functions/LeaguesFunctions.cs` | League/global admin update season settings (header-scoped). |
 | PATCH | /global/leagues/{leagueId}/season | `Functions/LeaguesFunctions.cs` | Global admin update season settings (alt route). |
 | DELETE | /global/leagues/{leagueId} | `Functions/LeaguesFunctions.cs` | Global admin delete league (data wipe). |
 | GET | /admin/globaladmins | `Functions/GlobalAdminsFunctions.cs` | Global admin list. |

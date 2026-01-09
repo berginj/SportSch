@@ -384,6 +384,14 @@ public class LeaguesFunctions
         return await PatchSeasonCore(req, leagueId, requireGlobal: false);
     }
 
+    [Function("PatchLeagueSeason")]
+    public async Task<HttpResponseData> PatchSeason(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "league/season")] HttpRequestData req)
+    {
+        var leagueId = ApiGuards.RequireLeagueId(req);
+        return await PatchSeasonCore(req, leagueId, requireGlobal: false);
+    }
+
     [Function("PatchLeagueSeason_Global")]
     public async Task<HttpResponseData> PatchSeasonGlobal(
         [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "global/leagues/{leagueId}/season")] HttpRequestData req,

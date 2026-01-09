@@ -163,7 +163,7 @@ export default function CommissionerHub({ leagueId, tableView = "A" }) {
     }
     setLoading(true);
     try {
-      await apiFetch(`/api/admin/leagues/${encodeURIComponent(leagueId)}/season`, {
+      await apiFetch("/api/league/season", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ season: payload }),
