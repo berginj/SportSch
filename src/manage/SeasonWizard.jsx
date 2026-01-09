@@ -341,13 +341,38 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                   </div>
                 </div>
 
-                {preview.warnings?.length ? (
-                  <div className="callout">
-                    {preview.warnings.map((w, idx) => (
-                      <div key={idx} className="subtle">{w.message}</div>
-                    ))}
+              {preview.warnings?.length ? (
+                <div className="callout">
+                  {preview.warnings.map((w, idx) => (
+                    <div key={idx} className="subtle">{w.message}</div>
+                  ))}
+                </div>
+              ) : null}
+              {preview.issues?.length ? (
+                <div className="callout callout--error">
+                  <div className="font-bold mb-2">Schedule rule issues ({preview.totalIssues || preview.issues.length})</div>
+                  <div className="tableWrap">
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>Rule</th>
+                          <th>Severity</th>
+                          <th>Message</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {preview.issues.map((issue, idx) => (
+                          <tr key={`${issue.ruleId || "issue"}-${idx}`}>
+                            <td>{issue.ruleId || ""}</td>
+                            <td>{issue.severity || ""}</td>
+                            <td>{issue.message || ""}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                ) : null}
+                </div>
+              ) : null}
 
                 <div className={`tableWrap ${tableView === "B" ? "tableWrap--sticky" : ""}`}>
                   <table className={`table ${tableView === "B" ? "table--compact table--sticky" : ""}`}>

@@ -72,7 +72,9 @@ public class ScheduleWizardFunctions
         List<WizardSlotDto> assignments,
         List<WizardSlotDto> unassignedSlots,
         List<object> unassignedMatchups,
-        List<object> warnings
+        List<object> warnings,
+        List<object> issues,
+        int totalIssues
     );
 
     [Function("ScheduleWizardPreview")]
@@ -191,6 +193,33 @@ public class ScheduleWizardFunctions
             if (poolStart.HasValue && poolSlots.Count == 0) warnings.Add(new { code = "NO_POOL_SLOTS", message = "No pool play slots available." });
             if (bracketStart.HasValue && bracketSlots.Count == 0) warnings.Add(new { code = "NO_BRACKET_SLOTS", message = "No bracket slots available." });
 
+            var allAssignments = regularAssignments.Assignments
+                .Concat(poolAssignments.Assignments)
+                .Concat(bracketAssignments.Assignments)
+                .ToList();
+            var allUnassignedSlots = regularAssignments.UnassignedSlots
+                .Concat(poolAssignments.UnassignedSlots)
+                .Concat(bracketAssignments.UnassignedSlots)
+                .ToList();
+            var allUnassignedMatchups = regularAssignments.UnassignedMatchups
+                .Concat(poolAssignments.UnassignedMatchups)
+                .Concat(bracketAssignments.UnassignedMatchups)
+                .ToList();
+            var constraints = new ScheduleConstraints(maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, 0);
+            var validationSummary = new ScheduleSummary(
+                SlotsTotal: allSlots.Count,
+                SlotsAssigned: allAssignments.Count,
+                MatchupsTotal: regularMatchups.Count + poolMatchups.Count + bracketMatchups.Count,
+                MatchupsAssigned: (regularMatchups.Count + poolMatchups.Count + bracketMatchups.Count) - allUnassignedMatchups.Count,
+                ExternalOffers: 0,
+                UnassignedSlots: allUnassignedSlots.Count,
+                UnassignedMatchups: allUnassignedMatchups.Count);
+            var validationResult = new ScheduleResult(validationSummary, allAssignments, allUnassignedSlots, allUnassignedMatchups);
+            var validation = ScheduleValidation.Validate(validationResult, constraints);
+            var issues = validation.Issues
+                .Select(i => (object)new { ruleId = i.RuleId, severity = i.Severity, message = i.Message, details = i.Details })
+                .ToList();
+
             if (apply)
             {
                 var runId = Guid.NewGuid().ToString("N");
@@ -198,7 +227,7 @@ public class ScheduleWizardFunctions
                 await SaveWizardRunAsync(leagueId, division, runId, me.Email ?? me.UserId, summary, body);
             }
 
-            return ApiResponses.Ok(req, new WizardPreviewDto(summary, assignments, unassignedSlots, unassignedMatchups, warnings));
+            return ApiResponses.Ok(req, new WizardPreviewDto(summary, assignments, unassignedSlots, unassignedMatchups, warnings, issues, validation.TotalIssues));
         }
         catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
         catch (Exception ex)
@@ -488,6 +517,10 @@ public class ScheduleWizardFunctions
             slot["AwayTeamId"] = a.awayTeamId ?? "";
             slot["IsExternalOffer"] = false;
             slot["IsAvailability"] = false;
+            slot["Status"] = Constants.Status.SlotConfirmed;
+            slot["ConfirmedTeamId"] = a.awayTeamId ?? "";
+            slot["ConfirmedBy"] = "Wizard";
+            slot["ConfirmedUtc"] = DateTimeOffset.UtcNow;
             slot["ScheduleRunId"] = runId;
 
             var notes = (slot.GetString("Notes") ?? "").Trim();

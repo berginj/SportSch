@@ -407,7 +407,16 @@ export default function SchedulerManager({ leagueId }) {
       const list = Array.isArray(data) ? data : [];
       const availability = list.filter((s) => s.isAvailability);
       setAvailabilitySlots(availability);
-      setAvailabilityInsights(buildAvailabilityInsights(availability));
+      const insights = buildAvailabilityInsights(availability);
+      setAvailabilityInsights(insights);
+      const hasPreferred = Object.values(preferredDays).some(Boolean);
+      if (!hasPreferred && insights.suggested.length) {
+        setPreferredDays((prev) => {
+          const next = { ...prev };
+          insights.suggested.forEach((day) => { next[day] = true; });
+          return next;
+        });
+      }
     } catch (e) {
       setAvailabilityErr(e?.message || "Failed to load availability slots.");
       setAvailabilitySlots([]);
