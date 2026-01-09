@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { validateIsoDates } from "../lib/date";
 import Toast from "../components/Toast";
-import { getDefaultRangeFallback, getSeasonRange } from "../lib/season";
+import { getDefaultRangeFallback, getSeasonRange, getSlotsDefaultRange } from "../lib/season";
 
 function csvEscape(value) {
   const raw = String(value ?? "");
@@ -49,6 +49,62 @@ function buildAvailabilityTemplateCsv(divisions, fields) {
   return [header, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n");
 }
 
+function parseCsvRows(text) {
+  const rows = [];
+  let row = [];
+  let field = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i += 1;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += c;
+      }
+      continue;
+    }
+
+    if (c === '"') {
+      inQuotes = true;
+      continue;
+    }
+    if (c === ",") {
+      row.push(field);
+      field = "";
+      continue;
+    }
+    if (c === "\n") {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+      continue;
+    }
+    if (c === "\r") continue;
+    field += c;
+  }
+
+  row.push(field);
+  rows.push(row);
+  return rows.filter((r) => r.some((cell) => String(cell || "").trim() !== ""));
+}
+
+function buildHeaderIndex(header) {
+  const index = {};
+  (header || []).forEach((h, idx) => {
+    const key = String(h || "").trim().toLowerCase();
+    if (key) index[key] = idx;
+  });
+  return index;
+}
+
 const DEFAULT_DAYS = {
   Mon: false,
   Tue: false,
@@ -87,6 +143,9 @@ export default function SlotGeneratorManager({ leagueId }) {
   const [availDateTo, setAvailDateTo] = useState("");
   const [availSlots, setAvailSlots] = useState([]);
   const [availListLoading, setAvailListLoading] = useState(false);
+  const [availImportUnknowns, setAvailImportUnknowns] = useState([]);
+  const [availImportRows, setAvailImportRows] = useState([]);
+  const [availImportFixes, setAvailImportFixes] = useState({});
   const [toast, setToast] = useState(null);
 
   useEffect(() => {
@@ -119,15 +178,20 @@ export default function SlotGeneratorManager({ leagueId }) {
     return range || fallback;
   }, [leagueSeason]);
 
+  const slotsRange = useMemo(
+    () => getSlotsDefaultRange(leagueSeason, new Date()),
+    [leagueSeason]
+  );
+
   useEffect(() => {
     if (!dateFrom) setDateFrom(seasonRange.from);
     if (!dateTo) setDateTo(seasonRange.to);
   }, [seasonRange, dateFrom, dateTo]);
 
   useEffect(() => {
-    if (!availDateFrom) setAvailDateFrom(seasonRange.from);
-    if (!availDateTo) setAvailDateTo(seasonRange.to);
-  }, [seasonRange, availDateFrom, availDateTo]);
+    if (!availDateFrom) setAvailDateFrom(slotsRange.from);
+    if (!availDateTo) setAvailDateTo(slotsRange.to);
+  }, [slotsRange, availDateFrom, availDateTo]);
 
   useEffect(() => {
     if (!slotGenDivision && divisions.length) {
@@ -229,16 +293,96 @@ export default function SlotGeneratorManager({ leagueId }) {
     setAvailOk("");
     setAvailErrors([]);
     setAvailWarnings([]);
+    setAvailImportUnknowns([]);
+    setAvailImportRows([]);
+    setAvailImportFixes({});
     if (!availFile) return setAvailErr("Choose a CSV file to upload.");
 
     setAvailBusy(true);
     try {
+      const text = await availFile.text();
+      const rows = parseCsvRows(text);
+      if (rows.length < 2) {
+        setAvailErr("No CSV rows found.");
+        return;
+      }
+      const header = rows[0];
+      const idx = buildHeaderIndex(header);
+      if (!("division" in idx)) {
+        setAvailErr("Missing required column: division.");
+        return;
+      }
+
+      const knownDivisions = new Set(
+        (divisions || [])
+          .map((d) => (d?.code || d?.division || "").trim())
+          .filter(Boolean)
+      );
+      const unknowns = new Set();
+      for (let i = 1; i < rows.length; i += 1) {
+        const raw = String(rows[i][idx.division] || "").trim();
+        if (!raw) unknowns.add("(blank)");
+        else if (!knownDivisions.has(raw)) unknowns.add(raw);
+      }
+
+      if (unknowns.size > 0) {
+        const list = Array.from(unknowns);
+        const defaultDivision = knownDivisions.size === 1 ? Array.from(knownDivisions)[0] : "";
+        const fixes = {};
+        list.forEach((key) => { fixes[key] = defaultDivision; });
+        setAvailImportUnknowns(list);
+        setAvailImportRows(rows);
+        setAvailImportFixes(fixes);
+        setAvailErr("Division cleanup required before import.");
+        return;
+      }
+
       const fd = new FormData();
       fd.append("file", availFile);
       const res = await apiFetch("/api/import/availability-slots", { method: "POST", body: fd });
       setAvailOk(`Imported. Upserted: ${res?.upserted ?? 0}, Rejected: ${res?.rejected ?? 0}, Skipped: ${res?.skipped ?? 0}`);
       if (Array.isArray(res?.errors) && res.errors.length) setAvailErrors(res.errors);
       if (Array.isArray(res?.warnings) && res.warnings.length) setAvailWarnings(res.warnings);
+    } catch (e) {
+      setAvailErr(e?.message || "Import failed");
+    } finally {
+      setAvailBusy(false);
+    }
+  }
+
+  async function applyAvailabilityDivisionFixes() {
+    setAvailErr("");
+    setAvailOk("");
+    if (!availImportRows.length) return;
+    const missing = availImportUnknowns.filter((u) => !availImportFixes[u]);
+    if (missing.length > 0) {
+      return setAvailErr("Choose a replacement division for all unknown values.");
+    }
+
+    setAvailBusy(true);
+    try {
+      const header = availImportRows[0];
+      const idx = buildHeaderIndex(header);
+      const rows = availImportRows.map((r, i) => {
+        if (i === 0) return r;
+        const next = [...r];
+        const raw = String(next[idx.division] || "").trim();
+        const key = raw || "(blank)";
+        if (availImportFixes[key]) next[idx.division] = availImportFixes[key];
+        return next;
+      });
+      const csv = rows.map((row) => row.map(csvEscape).join(",")).join("\n");
+
+      const fd = new FormData();
+      const name = availFile?.name || "availability.csv";
+      fd.append("file", new Blob([csv], { type: "text/csv" }), name);
+      const res = await apiFetch("/api/import/availability-slots", { method: "POST", body: fd });
+      setAvailOk(`Imported. Upserted: ${res?.upserted ?? 0}, Rejected: ${res?.rejected ?? 0}, Skipped: ${res?.skipped ?? 0}`);
+      if (Array.isArray(res?.errors) && res.errors.length) setAvailErrors(res.errors);
+      if (Array.isArray(res?.warnings) && res.warnings.length) setAvailWarnings(res.warnings);
+      setAvailImportUnknowns([]);
+      setAvailImportRows([]);
+      setAvailImportFixes({});
     } catch (e) {
       setAvailErr(e?.message || "Import failed");
     } finally {
@@ -285,16 +429,16 @@ export default function SlotGeneratorManager({ leagueId }) {
   }
 
   async function deleteAvailabilitySlots() {
-    if (!availDivision) return;
     const dateError = validateIsoDates([
       { label: "Date from", value: availDateFrom, required: true },
       { label: "Date to", value: availDateTo, required: true },
     ]);
     if (dateError) return setAvailListErr(dateError);
+    const confirmPhrase = availDivision ? "DELETE AVAILABILITY" : "DELETE ALL AVAILABILITY";
     const confirmText = window.prompt(
-      "Type DELETE AVAILABILITY to remove availability slots for the selected filters."
+      `Type ${confirmPhrase} to remove availability slots for the selected filters.`
     );
-    if (confirmText !== "DELETE AVAILABILITY") return;
+    if (confirmText !== confirmPhrase) return;
 
     setAvailListLoading(true);
     setAvailListErr("");
@@ -344,7 +488,12 @@ export default function SlotGeneratorManager({ leagueId }) {
               <input
                 type="file"
                 accept=".csv,text/csv"
-                onChange={(e) => setAvailFile(e.target.files?.[0] || null)}
+                onChange={(e) => {
+                  setAvailFile(e.target.files?.[0] || null);
+                  setAvailImportUnknowns([]);
+                  setAvailImportRows([]);
+                  setAvailImportFixes({});
+                }}
                 disabled={availBusy}
               />
             </label>
@@ -355,6 +504,51 @@ export default function SlotGeneratorManager({ leagueId }) {
               Download CSV template
             </button>
           </div>
+          {availImportUnknowns.length ? (
+            <div className="mt-3">
+              <div className="font-bold mb-2">Division cleanup</div>
+              <div className="subtle mb-2">
+                Map missing/unknown divisions to a valid league division before importing.
+              </div>
+              <div className="stack gap-2">
+                {availImportUnknowns.map((value) => (
+                  <label key={value} className="row row--wrap gap-2 items-center">
+                    <span className="muted">{value === "(blank)" ? "Blank division" : value}</span>
+                    <select
+                      value={availImportFixes[value] || ""}
+                      onChange={(e) => setAvailImportFixes((prev) => ({ ...prev, [value]: e.target.value }))}
+                    >
+                      <option value="">Select division</option>
+                      {divisions.map((d) => {
+                        const code = d.code || d.division;
+                        if (!code) return null;
+                        return (
+                          <option key={code} value={code}>
+                            {d.name ? `${d.name} (${code})` : code}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </label>
+                ))}
+              </div>
+              <div className="row gap-2 mt-2">
+                <button className="btn btn--primary" onClick={applyAvailabilityDivisionFixes} disabled={availBusy}>
+                  Apply mapping & import
+                </button>
+                <button
+                  className="btn btn--ghost"
+                  onClick={() => {
+                    setAvailImportUnknowns([]);
+                    setAvailImportRows([]);
+                    setAvailImportFixes({});
+                  }}
+                >
+                  Cancel cleanup
+                </button>
+              </div>
+            </div>
+          ) : null}
           {availErrors.length ? (
             <div className="mt-3">
               <div className="font-bold mb-2">Rejected rows ({availErrors.length})</div>
@@ -450,7 +644,7 @@ export default function SlotGeneratorManager({ leagueId }) {
           <button className="btn" onClick={loadAvailabilitySlots} disabled={availListLoading}>
             {availListLoading ? "Loading..." : "Load availability slots"}
           </button>
-          <button className="btn btn--danger" onClick={deleteAvailabilitySlots} disabled={availListLoading || !availDivision}>
+          <button className="btn btn--danger" onClick={deleteAvailabilitySlots} disabled={availListLoading}>
             Delete filtered availability
           </button>
         </div>

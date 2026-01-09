@@ -45,9 +45,8 @@ public class ClearAvailabilitySlots
             var dateTo = (body.dateTo ?? "").Trim();
             var fieldKey = (body.fieldKey ?? "").Trim();
 
-            if (string.IsNullOrWhiteSpace(division))
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "division is required");
-            ApiGuards.EnsureValidTableKeyPart("division", division);
+            if (!string.IsNullOrWhiteSpace(division))
+                ApiGuards.EnsureValidTableKeyPart("division", division);
 
             if (!DateOnly.TryParseExact(dateFrom, "yyyy-MM-dd", out _))
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "dateFrom must be YYYY-MM-DD.");
@@ -55,10 +54,20 @@ public class ClearAvailabilitySlots
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "dateTo must be YYYY-MM-DD.");
 
             var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Slots);
-            var pk = Constants.Pk.Slots(leagueId, division);
-            var filter = $"PartitionKey eq '{ApiGuards.EscapeOData(pk)}' " +
-                         $"and GameDate ge '{ApiGuards.EscapeOData(dateFrom)}' and GameDate le '{ApiGuards.EscapeOData(dateTo)}' " +
-                         $"and IsAvailability eq true";
+            var filter = "";
+            if (!string.IsNullOrWhiteSpace(division))
+            {
+                var pk = Constants.Pk.Slots(leagueId, division);
+                filter = $"PartitionKey eq '{ApiGuards.EscapeOData(pk)}'";
+            }
+            else
+            {
+                var prefix = $"SLOT|{leagueId}|";
+                filter = $"PartitionKey ge '{ApiGuards.EscapeOData(prefix)}' and PartitionKey lt '{ApiGuards.EscapeOData(prefix + \"~\")}'";
+            }
+
+            filter += $" and GameDate ge '{ApiGuards.EscapeOData(dateFrom)}' and GameDate le '{ApiGuards.EscapeOData(dateTo)}' " +
+                      $"and IsAvailability eq true";
 
             if (!string.IsNullOrWhiteSpace(fieldKey))
                 filter += $" and FieldKey eq '{ApiGuards.EscapeOData(fieldKey)}'";

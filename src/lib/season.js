@@ -53,3 +53,31 @@ export function getDefaultRangeFallback(today = new Date(), days = 30) {
   to.setDate(to.getDate() + days);
   return { from: toIsoDate(from), to: toIsoDate(to) };
 }
+
+export function getSlotsDefaultRange(season, today = new Date()) {
+  const springStart = parseDate(season?.springStart);
+  const springEnd = parseDate(season?.springEnd);
+  const fallStart = parseDate(season?.fallStart);
+  const fallEnd = parseDate(season?.fallEnd);
+
+  const base = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const inRange = (start, end) => start && end && base >= start && base <= end;
+  const before = (start) => start && base < start;
+  const addYears = (d, years) => new Date(d.getFullYear() + years, d.getMonth(), d.getDate());
+
+  let to = null;
+  if (before(springStart) && springEnd) to = springEnd;
+  else if (inRange(springStart, springEnd)) to = springEnd;
+  else if (before(fallStart) && fallEnd) to = fallEnd;
+  else if (inRange(fallStart, fallEnd)) to = fallEnd;
+  else if (springEnd) to = addYears(springEnd, 1);
+  else if (fallEnd) to = addYears(fallEnd, 1);
+
+  if (!to) {
+    const next = new Date(base);
+    next.setDate(next.getDate() + 180);
+    to = next;
+  }
+
+  return { from: toIsoDate(base), to: toIsoDate(to) };
+}
