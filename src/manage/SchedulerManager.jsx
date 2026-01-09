@@ -215,6 +215,9 @@ export default function SchedulerManager({ leagueId }) {
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [availabilityErr, setAvailabilityErr] = useState("");
   const [availabilityAllDivisions, setAvailabilityAllDivisions] = useState(true);
+  const [availabilityDivision, setAvailabilityDivision] = useState("");
+  const [availabilityDateFrom, setAvailabilityDateFrom] = useState("");
+  const [availabilityDateTo, setAvailabilityDateTo] = useState("");
 
   useEffect(() => {
     if (!leagueId) return;
@@ -302,6 +305,15 @@ export default function SchedulerManager({ leagueId }) {
       setOverlayDivisions(divisions.map((d) => d.code || d.division).filter(Boolean));
     }
   }, [divisions, overlayDivisions.length]);
+
+  useEffect(() => {
+    if (!availabilityDivision && division) setAvailabilityDivision(division);
+  }, [availabilityDivision, division]);
+
+  useEffect(() => {
+    if (!availabilityDateFrom && dateFrom) setAvailabilityDateFrom(dateFrom);
+    if (!availabilityDateTo && dateTo) setAvailabilityDateTo(dateTo);
+  }, [availabilityDateFrom, availabilityDateTo, dateFrom, dateTo]);
 
   const payload = useMemo(() => {
     return {
@@ -392,16 +404,16 @@ export default function SchedulerManager({ leagueId }) {
   async function loadAvailabilityInsights() {
     setAvailabilityErr("");
     const dateError = validateIsoDates([
-      { label: "Date from", value: dateFrom, required: false },
-      { label: "Date to", value: dateTo, required: false },
+      { label: "Date from", value: availabilityDateFrom, required: false },
+      { label: "Date to", value: availabilityDateTo, required: false },
     ]);
     if (dateError) return setAvailabilityErr(dateError);
     setAvailabilityLoading(true);
     try {
       const qs = new URLSearchParams();
-      if (!availabilityAllDivisions && division) qs.set("division", division);
-      if (dateFrom) qs.set("dateFrom", dateFrom);
-      if (dateTo) qs.set("dateTo", dateTo);
+      if (!availabilityAllDivisions && availabilityDivision) qs.set("division", availabilityDivision);
+      if (availabilityDateFrom) qs.set("dateFrom", availabilityDateFrom);
+      if (availabilityDateTo) qs.set("dateTo", availabilityDateTo);
       qs.set("status", "Open");
       const data = await apiFetch(`/api/slots?${qs.toString()}`);
       const list = Array.isArray(data) ? data : [];
@@ -654,7 +666,7 @@ export default function SchedulerManager({ leagueId }) {
         <div className="card__body">
           {availabilityErr ? <div className="callout callout--error">{availabilityErr}</div> : null}
           <div className="row gap-2">
-            <button className="btn" onClick={loadAvailabilityInsights} disabled={availabilityLoading || (!availabilityAllDivisions && !division)}>
+            <button className="btn" onClick={loadAvailabilityInsights} disabled={availabilityLoading || (!availabilityAllDivisions && !availabilityDivision)}>
               {availabilityLoading ? "Analyzing..." : "Analyze availability"}
             </button>
             <label className="inlineCheck">
@@ -666,6 +678,31 @@ export default function SchedulerManager({ leagueId }) {
               All divisions
             </label>
           </div>
+        </div>
+        <div className="card__body grid2">
+          {!availabilityAllDivisions ? (
+            <label>
+              Division
+              <select value={availabilityDivision} onChange={(e) => setAvailabilityDivision(e.target.value)}>
+                <option value="">Select division</option>
+                {divisions.map((d) => (
+                  <option key={d.code || d.division} value={d.code || d.division}>
+                    {d.name ? `${d.name} (${d.code || d.division})` : d.code || d.division}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <div />
+          )}
+          <label>
+            Date from
+            <input value={availabilityDateFrom} onChange={(e) => setAvailabilityDateFrom(e.target.value)} placeholder="YYYY-MM-DD" />
+          </label>
+          <label>
+            Date to
+            <input value={availabilityDateTo} onChange={(e) => setAvailabilityDateTo(e.target.value)} placeholder="YYYY-MM-DD" />
+          </label>
         </div>
         {availabilityInsights ? (
           <div className="card__body">
