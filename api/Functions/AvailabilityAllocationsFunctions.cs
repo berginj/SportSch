@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Globalization;
 using Azure;
 using Azure.Data.Tables;
 using GameSwap.Functions.Storage;
@@ -123,13 +124,15 @@ public class AvailabilityAllocationsFunctions
                     errors.Add(new { row = i + 1, error = "Invalid fieldKey. Use parkCode/fieldCode." });
                     continue;
                 }
-                if (!DateOnly.TryParseExact(dateFrom, "yyyy-MM-dd", out var dateFromVal))
+                if (!TryNormalizeDate(dateFrom, out var dateFromNorm) ||
+                    !DateOnly.TryParseExact(dateFromNorm, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var dateFromVal))
                 {
                     rejected++;
                     errors.Add(new { row = i + 1, error = "dateFrom must be YYYY-MM-DD." });
                     continue;
                 }
-                if (!DateOnly.TryParseExact(dateTo, "yyyy-MM-dd", out var dateToVal))
+                if (!TryNormalizeDate(dateTo, out var dateToNorm) ||
+                    !DateOnly.TryParseExact(dateToNorm, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var dateToVal))
                 {
                     rejected++;
                     errors.Add(new { row = i + 1, error = "dateTo must be YYYY-MM-DD." });
@@ -207,8 +210,8 @@ public class AvailabilityAllocationsFunctions
                     ["Scope"] = scope,
                     ["FieldKey"] = normalizedFieldKey,
                     ["Division"] = scope,
-                    ["StartsOn"] = dateFrom,
-                    ["EndsOn"] = dateTo,
+                    ["StartsOn"] = dateFromNorm,
+                    ["EndsOn"] = dateToNorm,
                     ["DaysOfWeek"] = string.Join(",", daysList),
                     ["StartTimeLocal"] = startTime,
                     ["EndTimeLocal"] = endTime,
@@ -351,9 +354,13 @@ public class AvailabilityAllocationsFunctions
             var dateTo = (body.dateTo ?? "").Trim();
             var fieldKey = (body.fieldKey ?? "").Trim();
 
-            if (!string.IsNullOrWhiteSpace(dateFrom) && !DateOnly.TryParseExact(dateFrom, "yyyy-MM-dd", out _))
+            if (!string.IsNullOrWhiteSpace(dateFrom) &&
+                (!TryNormalizeDate(dateFrom, out var dateFromNorm) ||
+                 !DateOnly.TryParseExact(dateFromNorm, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _)))
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "dateFrom must be YYYY-MM-DD.");
-            if (!string.IsNullOrWhiteSpace(dateTo) && !DateOnly.TryParseExact(dateTo, "yyyy-MM-dd", out _))
+            if (!string.IsNullOrWhiteSpace(dateTo) &&
+                (!TryNormalizeDate(dateTo, out var dateToNorm) ||
+                 !DateOnly.TryParseExact(dateToNorm, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _)))
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "dateTo must be YYYY-MM-DD.");
 
             var table = await TableClients.GetTableAsync(_svc, Constants.Tables.FieldAvailabilityAllocations);
@@ -516,11 +523,13 @@ public class AvailabilityAllocationsFunctions
 
             var dateFromRaw = CsvMini.Get(r, headerIndex, "datefrom").Trim();
             var dateToRaw = CsvMini.Get(r, headerIndex, "dateto").Trim();
-            if (DateOnly.TryParseExact(dateFromRaw, "yyyy-MM-dd", out var dFrom))
+            if (TryNormalizeDate(dateFromRaw, out var dFromNorm) &&
+                DateOnly.TryParseExact(dFromNorm, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var dFrom))
             {
                 minDate = minDate is null || dFrom < minDate.Value ? dFrom : minDate.Value;
             }
-            if (DateOnly.TryParseExact(dateToRaw, "yyyy-MM-dd", out var dTo))
+            if (TryNormalizeDate(dateToRaw, out var dToNorm) &&
+                DateOnly.TryParseExact(dToNorm, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var dTo))
             {
                 maxDate = maxDate is null || dTo > maxDate.Value ? dTo : maxDate.Value;
             }
@@ -555,7 +564,8 @@ public class AvailabilityAllocationsFunctions
                 continue;
 
             var gameDateRaw = (e.GetString("GameDate") ?? "").Trim();
-            if (!DateOnly.TryParseExact(gameDateRaw, "yyyy-MM-dd", out var gameDate)) continue;
+            if (!TryNormalizeDate(gameDateRaw, out var gameDateNorm) ||
+                !DateOnly.TryParseExact(gameDateNorm, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var gameDate)) continue;
 
             var startTime = (e.GetString("StartTime") ?? "").Trim();
             var endTime = (e.GetString("EndTime") ?? "").Trim();
@@ -605,8 +615,12 @@ public class AvailabilityAllocationsFunctions
             var fieldKey = (e.GetString("FieldKey") ?? "").Trim();
             if (string.IsNullOrWhiteSpace(fieldKey)) continue;
 
-            if (!DateOnly.TryParseExact((e.GetString("StartsOn") ?? "").Trim(), "yyyy-MM-dd", out var dateFrom)) continue;
-            if (!DateOnly.TryParseExact((e.GetString("EndsOn") ?? "").Trim(), "yyyy-MM-dd", out var dateTo)) continue;
+            var startsOnRaw = (e.GetString("StartsOn") ?? "").Trim();
+            var endsOnRaw = (e.GetString("EndsOn") ?? "").Trim();
+            if (!TryNormalizeDate(startsOnRaw, out var startsOnNorm) ||
+                !DateOnly.TryParseExact(startsOnNorm, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var dateFrom)) continue;
+            if (!TryNormalizeDate(endsOnRaw, out var endsOnNorm) ||
+                !DateOnly.TryParseExact(endsOnNorm, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var dateTo)) continue;
 
             var startTime = (e.GetString("StartTimeLocal") ?? "").Trim();
             var endTime = (e.GetString("EndTimeLocal") ?? "").Trim();
@@ -643,5 +657,19 @@ public class AvailabilityAllocationsFunctions
         var prefix = $"FIELD|{leagueId}|";
         if (!pk.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return "";
         return pk[prefix.Length..];
+    }
+
+    private static bool TryNormalizeDate(string raw, out string normalized)
+    {
+        normalized = "";
+        var value = (raw ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(value)) return false;
+
+        var formats = new[] { "yyyy-MM-dd", "M/d/yyyy", "M-d-yyyy", "MM/dd/yyyy", "MM-dd-yyyy" };
+        if (!DateOnly.TryParseExact(value, formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+            return false;
+
+        normalized = date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        return true;
     }
 }
