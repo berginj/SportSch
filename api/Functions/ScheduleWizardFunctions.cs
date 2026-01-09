@@ -32,6 +32,7 @@ public class ScheduleWizardFunctions
         int? minGamesPerTeam,
         int? poolGamesPerTeam,
         List<string>? preferredWeeknights,
+        bool? strictPreferredWeeknights,
         int? externalOfferPerWeek,
         int? maxGamesPerWeek,
         bool? noDoubleHeaders,
@@ -142,6 +143,7 @@ public class ScheduleWizardFunctions
             var noDoubleHeaders = body.noDoubleHeaders ?? true;
             var balanceHomeAway = body.balanceHomeAway ?? true;
             var preferredDays = NormalizePreferredDays(body.preferredWeeknights);
+            var strictPreferredWeeknights = body.strictPreferredWeeknights ?? false;
 
             var teams = await LoadTeamsAsync(leagueId, division);
             if (teams.Count < 2)
@@ -164,8 +166,8 @@ public class ScheduleWizardFunctions
             var poolMatchups = BuildTargetMatchups(teams, poolGamesPerTeam);
             var bracketMatchups = BuildBracketMatchups();
 
-            var regularAssignments = AssignPhaseSlots("Regular Season", regularSlots, regularMatchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek, preferredDays);
-            var poolAssignments = AssignPhaseSlots("Pool Play", poolSlots, poolMatchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, 0, preferredDays: new List<DayOfWeek>());
+            var regularAssignments = AssignPhaseSlots("Regular Season", regularSlots, regularMatchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek, preferredDays, strictPreferredWeeknights);
+            var poolAssignments = AssignPhaseSlots("Pool Play", poolSlots, poolMatchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, 0, preferredDays: new List<DayOfWeek>(), strictPreferredWeeknights: false);
             var bracketAssignments = AssignBracketSlots(bracketSlots, bracketMatchups);
 
             var summary = new WizardSummary(
@@ -294,10 +296,18 @@ public class ScheduleWizardFunctions
         bool noDoubleHeaders,
         bool balanceHomeAway,
         int externalOfferPerWeek,
-        List<DayOfWeek> preferredDays)
+        List<DayOfWeek> preferredDays,
+        bool strictPreferredWeeknights)
     {
         if (slots.Count == 0)
             return new PhaseAssignments(new List<ScheduleAssignment>(), new List<ScheduleAssignment>(), new List<MatchupPair>(matchups));
+
+        if (strictPreferredWeeknights && preferredDays.Count > 0)
+        {
+            slots = slots.Where(s => IsPreferredDay(s.gameDate, preferredDays)).ToList();
+            if (slots.Count == 0)
+                return new PhaseAssignments(new List<ScheduleAssignment>(), new List<ScheduleAssignment>(), new List<MatchupPair>(matchups));
+        }
 
         var orderedSlots = OrderSlotsByPreference(slots, preferredDays);
 
@@ -377,6 +387,14 @@ public class ScheduleWizardFunctions
             return int.MaxValue;
         var index = preferredDays.IndexOf(dt.DayOfWeek);
         return index >= 0 ? index : int.MaxValue;
+    }
+
+    private static bool IsPreferredDay(string gameDate, List<DayOfWeek> preferredDays)
+    {
+        if (preferredDays.Count == 0) return true;
+        if (!DateTime.TryParseExact(gameDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
+            return false;
+        return preferredDays.Contains(dt.DayOfWeek);
     }
 
     private static List<DayOfWeek> NormalizePreferredDays(List<string>? days)

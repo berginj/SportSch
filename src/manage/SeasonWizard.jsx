@@ -37,6 +37,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [minGamesPerTeam, setMinGamesPerTeam] = useState(0);
   const [poolGamesPerTeam, setPoolGamesPerTeam] = useState(1);
   const [preferredWeeknights, setPreferredWeeknights] = useState([]);
+  const [strictPreferredWeeknights, setStrictPreferredWeeknights] = useState(false);
   const [guestGamesPerWeek, setGuestGamesPerWeek] = useState(0);
   const [maxGamesPerWeek, setMaxGamesPerWeek] = useState(2);
   const [noDoubleHeaders, setNoDoubleHeaders] = useState(true);
@@ -107,6 +108,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         minGamesPerTeam: Number(minGamesPerTeam) || 0,
         poolGamesPerTeam: Number(poolGamesPerTeam) || 1,
         preferredWeeknights,
+        strictPreferredWeeknights,
         externalOfferPerWeek: Number(guestGamesPerWeek) || 0,
         maxGamesPerWeek: Number(maxGamesPerWeek) || 0,
         noDoubleHeaders,
@@ -152,6 +154,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         minGamesPerTeam: Number(minGamesPerTeam) || 0,
         poolGamesPerTeam: Number(poolGamesPerTeam) || 1,
         preferredWeeknights,
+        strictPreferredWeeknights,
         externalOfferPerWeek: Number(guestGamesPerWeek) || 0,
         maxGamesPerWeek: Number(maxGamesPerWeek) || 0,
         noDoubleHeaders,
@@ -320,7 +323,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
               Balance home/away
             </label>
             <div className="stack gap-2">
-              <div className="muted text-sm">Preferred weeknights (pick two)</div>
+              <div className="muted text-sm">Preferred weeknights (pick two; other nights can still be used)</div>
               <div className="row row--wrap gap-2">
                 {WEEKDAY_OPTIONS.map((day) => (
                   <button
@@ -333,6 +336,14 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                   </button>
                 ))}
               </div>
+              <label className="inlineCheck">
+                <input
+                  type="checkbox"
+                  checked={strictPreferredWeeknights}
+                  onChange={(e) => setStrictPreferredWeeknights(e.target.checked)}
+                />
+                Only use preferred nights (ignore other days)
+              </label>
             </div>
           </div>
           <div className="row row--end gap-2">
