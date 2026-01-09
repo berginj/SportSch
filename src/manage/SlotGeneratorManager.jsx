@@ -146,6 +146,7 @@ export default function SlotGeneratorManager({ leagueId }) {
   const [availImportUnknowns, setAvailImportUnknowns] = useState([]);
   const [availImportRows, setAvailImportRows] = useState([]);
   const [availImportFixes, setAvailImportFixes] = useState({});
+  const [availImportDefault, setAvailImportDefault] = useState("");
   const [toast, setToast] = useState(null);
 
   useEffect(() => {
@@ -296,6 +297,7 @@ export default function SlotGeneratorManager({ leagueId }) {
     setAvailImportUnknowns([]);
     setAvailImportRows([]);
     setAvailImportFixes({});
+    setAvailImportDefault("");
     if (!availFile) return setAvailErr("Choose a CSV file to upload.");
 
     setAvailBusy(true);
@@ -318,6 +320,10 @@ export default function SlotGeneratorManager({ leagueId }) {
           .map((d) => (d?.code || d?.division || "").trim())
           .filter(Boolean)
       );
+      if (knownDivisions.size === 0) {
+        setAvailErr("No divisions loaded. Add divisions before importing availability.");
+        return;
+      }
       const unknowns = new Set();
       for (let i = 1; i < rows.length; i += 1) {
         const raw = String(rows[i][idx.division] || "").trim();
@@ -333,6 +339,7 @@ export default function SlotGeneratorManager({ leagueId }) {
         setAvailImportUnknowns(list);
         setAvailImportRows(rows);
         setAvailImportFixes(fixes);
+        setAvailImportDefault(defaultDivision);
         setAvailErr("Division cleanup required before import.");
         return;
       }
@@ -493,6 +500,7 @@ export default function SlotGeneratorManager({ leagueId }) {
                   setAvailImportUnknowns([]);
                   setAvailImportRows([]);
                   setAvailImportFixes({});
+                  setAvailImportDefault("");
                 }}
                 disabled={availBusy}
               />
@@ -509,6 +517,32 @@ export default function SlotGeneratorManager({ leagueId }) {
               <div className="font-bold mb-2">Division cleanup</div>
               <div className="subtle mb-2">
                 Map missing/unknown divisions to a valid league division before importing.
+              </div>
+              <div className="row row--wrap gap-2 items-center mb-2">
+                <span className="muted">Apply to all</span>
+                <select
+                  value={availImportDefault}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setAvailImportDefault(next);
+                    setAvailImportFixes((prev) => {
+                      const updated = { ...prev };
+                      availImportUnknowns.forEach((key) => { updated[key] = next; });
+                      return updated;
+                    });
+                  }}
+                >
+                  <option value="">Select division</option>
+                  {divisions.map((d) => {
+                    const code = d.code || d.division;
+                    if (!code) return null;
+                    return (
+                      <option key={code} value={code}>
+                        {d.name ? `${d.name} (${code})` : code}
+                      </option>
+                    );
+                  })}
+                </select>
               </div>
               <div className="stack gap-2">
                 {availImportUnknowns.map((value) => (
