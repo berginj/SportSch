@@ -214,6 +214,7 @@ export default function SchedulerManager({ leagueId }) {
   const [availabilitySlots, setAvailabilitySlots] = useState([]);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [availabilityErr, setAvailabilityErr] = useState("");
+  const [availabilityAllDivisions, setAvailabilityAllDivisions] = useState(true);
 
   useEffect(() => {
     if (!leagueId) return;
@@ -398,7 +399,7 @@ export default function SchedulerManager({ leagueId }) {
     setAvailabilityLoading(true);
     try {
       const qs = new URLSearchParams();
-      if (division) qs.set("division", division);
+      if (!availabilityAllDivisions && division) qs.set("division", division);
       if (dateFrom) qs.set("dateFrom", dateFrom);
       if (dateTo) qs.set("dateTo", dateTo);
       qs.set("status", "Open");
@@ -644,9 +645,17 @@ export default function SchedulerManager({ leagueId }) {
         <div className="card__body">
           {availabilityErr ? <div className="callout callout--error">{availabilityErr}</div> : null}
           <div className="row gap-2">
-            <button className="btn" onClick={loadAvailabilityInsights} disabled={availabilityLoading || !division}>
+            <button className="btn" onClick={loadAvailabilityInsights} disabled={availabilityLoading || (!availabilityAllDivisions && !division)}>
               {availabilityLoading ? "Analyzing..." : "Analyze availability"}
             </button>
+            <label className="inlineCheck">
+              <input
+                type="checkbox"
+                checked={availabilityAllDivisions}
+                onChange={(e) => setAvailabilityAllDivisions(e.target.checked)}
+              />
+              All divisions
+            </label>
           </div>
         </div>
         {availabilityInsights ? (
