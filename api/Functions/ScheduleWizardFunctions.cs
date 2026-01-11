@@ -167,7 +167,7 @@ public class ScheduleWizardFunctions
             var bracketMatchups = BuildBracketMatchups();
 
             var regularAssignments = AssignPhaseSlots("Regular Season", regularSlots, regularMatchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek, preferredDays, strictPreferredWeeknights);
-            var poolAssignments = AssignPhaseSlots("Pool Play", poolSlots, poolMatchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, 0, preferredDays: new List<DayOfWeek>(), strictPreferredWeeknights: false);
+            var poolAssignments = AssignPhaseSlots("Pool Play", poolSlots, poolMatchups, teams, null, noDoubleHeaders, balanceHomeAway, 0, preferredDays: new List<DayOfWeek>(), strictPreferredWeeknights: false);
             var bracketAssignments = AssignBracketSlots(bracketSlots, bracketMatchups);
 
             var summary = new WizardSummary(
@@ -211,28 +211,16 @@ public class ScheduleWizardFunctions
                 }
             }
 
-            var allAssignments = regularAssignments.Assignments
-                .Concat(poolAssignments.Assignments)
-                .Concat(bracketAssignments.Assignments)
-                .ToList();
-            var allUnassignedSlots = regularAssignments.UnassignedSlots
-                .Concat(poolAssignments.UnassignedSlots)
-                .Concat(bracketAssignments.UnassignedSlots)
-                .ToList();
-            var allUnassignedMatchups = regularAssignments.UnassignedMatchups
-                .Concat(poolAssignments.UnassignedMatchups)
-                .Concat(bracketAssignments.UnassignedMatchups)
-                .ToList();
             var constraints = new ScheduleConstraints(maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, 0);
             var validationSummary = new ScheduleSummary(
-                SlotsTotal: allSlots.Count,
-                SlotsAssigned: allAssignments.Count,
-                MatchupsTotal: regularMatchups.Count + poolMatchups.Count + bracketMatchups.Count,
-                MatchupsAssigned: (regularMatchups.Count + poolMatchups.Count + bracketMatchups.Count) - allUnassignedMatchups.Count,
+                SlotsTotal: regularSlots.Count,
+                SlotsAssigned: regularAssignments.Assignments.Count,
+                MatchupsTotal: regularMatchups.Count,
+                MatchupsAssigned: regularMatchups.Count - regularAssignments.UnassignedMatchups.Count,
                 ExternalOffers: 0,
-                UnassignedSlots: allUnassignedSlots.Count,
-                UnassignedMatchups: allUnassignedMatchups.Count);
-            var validationResult = new ScheduleResult(validationSummary, allAssignments, allUnassignedSlots, allUnassignedMatchups);
+                UnassignedSlots: regularAssignments.UnassignedSlots.Count,
+                UnassignedMatchups: regularAssignments.UnassignedMatchups.Count);
+            var validationResult = new ScheduleResult(validationSummary, regularAssignments.Assignments, regularAssignments.UnassignedSlots, regularAssignments.UnassignedMatchups);
             var validation = ScheduleValidation.Validate(validationResult, constraints);
             var issues = validation.Issues
                 .Select(i => (object)new { ruleId = i.RuleId, severity = i.Severity, message = i.Message, details = i.Details })

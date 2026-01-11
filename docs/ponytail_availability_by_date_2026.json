@@ -1,0 +1,5672 @@
+[
+  {
+    "date": "2026-03-15",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "08:00",
+            "endTimeLocal": "10:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "10:30",
+            "endTimeLocal": "12:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-03-16",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:00",
+            "endTimeLocal": "19:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "19:00",
+            "endTimeLocal": "22:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-03-17",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:15",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "19:15",
+            "endTimeLocal": "20:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-03-18",
+    "fields": [
+      {
+        "fieldKey": "greenbrier/field-2",
+        "displayName": "Greenbrier > Field 2",
+        "parkName": "Greenbrier",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "key/field-1",
+        "displayName": "Key > Field 1",
+        "parkName": "Key",
+        "fieldName": "Field 1",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "20:00",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:15",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-03-19",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "19:00",
+            "endTimeLocal": "20:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-03-20",
+    "fields": [
+      {
+        "fieldKey": "alcova-heights/field",
+        "displayName": "Alcova Heights > Field",
+        "parkName": "Alcova Heights",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:00",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quincy/field-3",
+        "displayName": "Quincy > Field 3",
+        "parkName": "Quincy",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:15",
+            "endTimeLocal": "19:45",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-03-21",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "gunston/field",
+        "displayName": "Gunston > Field",
+        "parkName": "Gunston",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-03-22",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "08:00",
+            "endTimeLocal": "10:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "10:30",
+            "endTimeLocal": "12:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-03-23",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:00",
+            "endTimeLocal": "19:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "19:00",
+            "endTimeLocal": "22:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-03-24",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:15",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "19:15",
+            "endTimeLocal": "20:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-03-25",
+    "fields": [
+      {
+        "fieldKey": "greenbrier/field-2",
+        "displayName": "Greenbrier > Field 2",
+        "parkName": "Greenbrier",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "key/field-1",
+        "displayName": "Key > Field 1",
+        "parkName": "Key",
+        "fieldName": "Field 1",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "20:00",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:15",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-03-26",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "19:00",
+            "endTimeLocal": "20:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-03-27",
+    "fields": [
+      {
+        "fieldKey": "alcova-heights/field",
+        "displayName": "Alcova Heights > Field",
+        "parkName": "Alcova Heights",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:00",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quincy/field-3",
+        "displayName": "Quincy > Field 3",
+        "parkName": "Quincy",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:15",
+            "endTimeLocal": "19:45",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-03-28",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "gunston/field",
+        "displayName": "Gunston > Field",
+        "parkName": "Gunston",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-03-29",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "08:00",
+            "endTimeLocal": "10:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "10:30",
+            "endTimeLocal": "12:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-03-30",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:00",
+            "endTimeLocal": "19:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "19:00",
+            "endTimeLocal": "22:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-03-31",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:15",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "19:15",
+            "endTimeLocal": "20:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-01",
+    "fields": [
+      {
+        "fieldKey": "greenbrier/field-2",
+        "displayName": "Greenbrier > Field 2",
+        "parkName": "Greenbrier",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "key/field-1",
+        "displayName": "Key > Field 1",
+        "parkName": "Key",
+        "fieldName": "Field 1",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "20:00",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:15",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-02",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "19:00",
+            "endTimeLocal": "20:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-03",
+    "fields": [
+      {
+        "fieldKey": "alcova-heights/field",
+        "displayName": "Alcova Heights > Field",
+        "parkName": "Alcova Heights",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:00",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quincy/field-3",
+        "displayName": "Quincy > Field 3",
+        "parkName": "Quincy",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:15",
+            "endTimeLocal": "19:45",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-04",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "gunston/field",
+        "displayName": "Gunston > Field",
+        "parkName": "Gunston",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-05",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "08:00",
+            "endTimeLocal": "10:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "10:30",
+            "endTimeLocal": "12:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-06",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:00",
+            "endTimeLocal": "19:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "19:00",
+            "endTimeLocal": "22:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-07",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:15",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "19:15",
+            "endTimeLocal": "20:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-08",
+    "fields": [
+      {
+        "fieldKey": "greenbrier/field-2",
+        "displayName": "Greenbrier > Field 2",
+        "parkName": "Greenbrier",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "key/field-1",
+        "displayName": "Key > Field 1",
+        "parkName": "Key",
+        "fieldName": "Field 1",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "20:00",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:15",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-09",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "19:00",
+            "endTimeLocal": "20:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-10",
+    "fields": [
+      {
+        "fieldKey": "alcova-heights/field",
+        "displayName": "Alcova Heights > Field",
+        "parkName": "Alcova Heights",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:00",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quincy/field-3",
+        "displayName": "Quincy > Field 3",
+        "parkName": "Quincy",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:15",
+            "endTimeLocal": "19:45",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-11",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "gunston/field",
+        "displayName": "Gunston > Field",
+        "parkName": "Gunston",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-12",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "08:00",
+            "endTimeLocal": "10:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "10:30",
+            "endTimeLocal": "12:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-13",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:00",
+            "endTimeLocal": "19:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "19:00",
+            "endTimeLocal": "22:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-14",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:15",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "19:15",
+            "endTimeLocal": "20:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-15",
+    "fields": [
+      {
+        "fieldKey": "greenbrier/field-2",
+        "displayName": "Greenbrier > Field 2",
+        "parkName": "Greenbrier",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "key/field-1",
+        "displayName": "Key > Field 1",
+        "parkName": "Key",
+        "fieldName": "Field 1",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "20:00",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:15",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-16",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "19:00",
+            "endTimeLocal": "20:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-17",
+    "fields": [
+      {
+        "fieldKey": "alcova-heights/field",
+        "displayName": "Alcova Heights > Field",
+        "parkName": "Alcova Heights",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:00",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quincy/field-3",
+        "displayName": "Quincy > Field 3",
+        "parkName": "Quincy",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:15",
+            "endTimeLocal": "19:45",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-18",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "gunston/field",
+        "displayName": "Gunston > Field",
+        "parkName": "Gunston",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-19",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "08:00",
+            "endTimeLocal": "10:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "10:30",
+            "endTimeLocal": "12:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-20",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:00",
+            "endTimeLocal": "19:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "19:00",
+            "endTimeLocal": "22:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-21",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:15",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "19:15",
+            "endTimeLocal": "20:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-22",
+    "fields": [
+      {
+        "fieldKey": "greenbrier/field-2",
+        "displayName": "Greenbrier > Field 2",
+        "parkName": "Greenbrier",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "key/field-1",
+        "displayName": "Key > Field 1",
+        "parkName": "Key",
+        "fieldName": "Field 1",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "20:00",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:15",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-23",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "19:00",
+            "endTimeLocal": "20:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-24",
+    "fields": [
+      {
+        "fieldKey": "alcova-heights/field",
+        "displayName": "Alcova Heights > Field",
+        "parkName": "Alcova Heights",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:00",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quincy/field-3",
+        "displayName": "Quincy > Field 3",
+        "parkName": "Quincy",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:15",
+            "endTimeLocal": "19:45",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-25",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "gunston/field",
+        "displayName": "Gunston > Field",
+        "parkName": "Gunston",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-26",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "08:00",
+            "endTimeLocal": "10:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "10:30",
+            "endTimeLocal": "12:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-27",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:00",
+            "endTimeLocal": "19:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "19:00",
+            "endTimeLocal": "22:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-28",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:15",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "19:15",
+            "endTimeLocal": "20:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-29",
+    "fields": [
+      {
+        "fieldKey": "greenbrier/field-2",
+        "displayName": "Greenbrier > Field 2",
+        "parkName": "Greenbrier",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "key/field-1",
+        "displayName": "Key > Field 1",
+        "parkName": "Key",
+        "fieldName": "Field 1",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "20:00",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:15",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-04-30",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "19:00",
+            "endTimeLocal": "20:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-01",
+    "fields": [
+      {
+        "fieldKey": "alcova-heights/field",
+        "displayName": "Alcova Heights > Field",
+        "parkName": "Alcova Heights",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:00",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quincy/field-3",
+        "displayName": "Quincy > Field 3",
+        "parkName": "Quincy",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:15",
+            "endTimeLocal": "19:45",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-02",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "gunston/field",
+        "displayName": "Gunston > Field",
+        "parkName": "Gunston",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-03",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "08:00",
+            "endTimeLocal": "10:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "10:30",
+            "endTimeLocal": "12:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-04",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:00",
+            "endTimeLocal": "19:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "19:00",
+            "endTimeLocal": "22:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-05",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:15",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "19:15",
+            "endTimeLocal": "20:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-06",
+    "fields": [
+      {
+        "fieldKey": "greenbrier/field-2",
+        "displayName": "Greenbrier > Field 2",
+        "parkName": "Greenbrier",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "key/field-1",
+        "displayName": "Key > Field 1",
+        "parkName": "Key",
+        "fieldName": "Field 1",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "20:00",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:15",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-07",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "19:00",
+            "endTimeLocal": "20:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-08",
+    "fields": [
+      {
+        "fieldKey": "alcova-heights/field",
+        "displayName": "Alcova Heights > Field",
+        "parkName": "Alcova Heights",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:00",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quincy/field-3",
+        "displayName": "Quincy > Field 3",
+        "parkName": "Quincy",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:15",
+            "endTimeLocal": "19:45",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-09",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "gunston/field",
+        "displayName": "Gunston > Field",
+        "parkName": "Gunston",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-10",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "08:00",
+            "endTimeLocal": "10:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "10:30",
+            "endTimeLocal": "12:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-11",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:00",
+            "endTimeLocal": "19:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "19:00",
+            "endTimeLocal": "22:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-12",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:15",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "19:15",
+            "endTimeLocal": "20:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-13",
+    "fields": [
+      {
+        "fieldKey": "greenbrier/field-2",
+        "displayName": "Greenbrier > Field 2",
+        "parkName": "Greenbrier",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "key/field-1",
+        "displayName": "Key > Field 1",
+        "parkName": "Key",
+        "fieldName": "Field 1",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "20:00",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:15",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-14",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "19:00",
+            "endTimeLocal": "20:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-15",
+    "fields": [
+      {
+        "fieldKey": "alcova-heights/field",
+        "displayName": "Alcova Heights > Field",
+        "parkName": "Alcova Heights",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:00",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quincy/field-3",
+        "displayName": "Quincy > Field 3",
+        "parkName": "Quincy",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:15",
+            "endTimeLocal": "19:45",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-16",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "gunston/field",
+        "displayName": "Gunston > Field",
+        "parkName": "Gunston",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-17",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "08:00",
+            "endTimeLocal": "10:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "10:30",
+            "endTimeLocal": "12:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-18",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:00",
+            "endTimeLocal": "19:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "19:00",
+            "endTimeLocal": "22:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-19",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:15",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "19:15",
+            "endTimeLocal": "20:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-20",
+    "fields": [
+      {
+        "fieldKey": "greenbrier/field-2",
+        "displayName": "Greenbrier > Field 2",
+        "parkName": "Greenbrier",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "key/field-1",
+        "displayName": "Key > Field 1",
+        "parkName": "Key",
+        "fieldName": "Field 1",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "20:00",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:15",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-21",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "19:00",
+            "endTimeLocal": "20:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-22",
+    "fields": [
+      {
+        "fieldKey": "alcova-heights/field",
+        "displayName": "Alcova Heights > Field",
+        "parkName": "Alcova Heights",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:00",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quincy/field-3",
+        "displayName": "Quincy > Field 3",
+        "parkName": "Quincy",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:15",
+            "endTimeLocal": "19:45",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-23",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "gunston/field",
+        "displayName": "Gunston > Field",
+        "parkName": "Gunston",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-24",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "08:00",
+            "endTimeLocal": "10:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "10:30",
+            "endTimeLocal": "12:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-25",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:00",
+            "endTimeLocal": "19:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "19:00",
+            "endTimeLocal": "22:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-26",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:15",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "19:15",
+            "endTimeLocal": "20:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-27",
+    "fields": [
+      {
+        "fieldKey": "greenbrier/field-2",
+        "displayName": "Greenbrier > Field 2",
+        "parkName": "Greenbrier",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "key/field-1",
+        "displayName": "Key > Field 1",
+        "parkName": "Key",
+        "fieldName": "Field 1",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "20:00",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:15",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-28",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "19:00",
+            "endTimeLocal": "20:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-29",
+    "fields": [
+      {
+        "fieldKey": "alcova-heights/field",
+        "displayName": "Alcova Heights > Field",
+        "parkName": "Alcova Heights",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:00",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quincy/field-3",
+        "displayName": "Quincy > Field 3",
+        "parkName": "Quincy",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:15",
+            "endTimeLocal": "19:45",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-30",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "gunston/field",
+        "displayName": "Gunston > Field",
+        "parkName": "Gunston",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-05-31",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "08:00",
+            "endTimeLocal": "10:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "10:30",
+            "endTimeLocal": "12:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-06-01",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:00",
+            "endTimeLocal": "19:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "19:00",
+            "endTimeLocal": "22:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-06-02",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:15",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "19:15",
+            "endTimeLocal": "20:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-06-03",
+    "fields": [
+      {
+        "fieldKey": "greenbrier/field-2",
+        "displayName": "Greenbrier > Field 2",
+        "parkName": "Greenbrier",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "key/field-1",
+        "displayName": "Key > Field 1",
+        "parkName": "Key",
+        "fieldName": "Field 1",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "20:00",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:15",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-06-04",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "19:00",
+            "endTimeLocal": "20:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-06-05",
+    "fields": [
+      {
+        "fieldKey": "alcova-heights/field",
+        "displayName": "Alcova Heights > Field",
+        "parkName": "Alcova Heights",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:00",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quincy/field-3",
+        "displayName": "Quincy > Field 3",
+        "parkName": "Quincy",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:15",
+            "endTimeLocal": "19:45",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-06-06",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "gunston/field",
+        "displayName": "Gunston > Field",
+        "parkName": "Gunston",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-06-07",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "08:00",
+            "endTimeLocal": "10:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "10:30",
+            "endTimeLocal": "12:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-06-08",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:00",
+            "endTimeLocal": "19:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "19:00",
+            "endTimeLocal": "22:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-06-09",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:15",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "19:15",
+            "endTimeLocal": "20:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-06-10",
+    "fields": [
+      {
+        "fieldKey": "greenbrier/field-2",
+        "displayName": "Greenbrier > Field 2",
+        "parkName": "Greenbrier",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "key/field-1",
+        "displayName": "Key > Field 1",
+        "parkName": "Key",
+        "fieldName": "Field 1",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "20:00",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:15",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-06-11",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "19:00",
+            "endTimeLocal": "20:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-06-12",
+    "fields": [
+      {
+        "fieldKey": "alcova-heights/field",
+        "displayName": "Alcova Heights > Field",
+        "parkName": "Alcova Heights",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "17:30",
+            "endTimeLocal": "19:00",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quincy/field-3",
+        "displayName": "Quincy > Field 3",
+        "parkName": "Quincy",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:15",
+            "endTimeLocal": "19:45",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-06-13",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "gunston/field",
+        "displayName": "Gunston > Field",
+        "parkName": "Gunston",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-06-14",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "08:00",
+            "endTimeLocal": "10:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "10:30",
+            "endTimeLocal": "12:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-06-20",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "gunston/field",
+        "displayName": "Gunston > Field",
+        "parkName": "Gunston",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-06-21",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "08:00",
+            "endTimeLocal": "10:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "10:30",
+            "endTimeLocal": "12:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-06-27",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "gunston/field",
+        "displayName": "Gunston > Field",
+        "parkName": "Gunston",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-06-28",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "08:00",
+            "endTimeLocal": "10:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "10:30",
+            "endTimeLocal": "12:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-07-04",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "gunston/field",
+        "displayName": "Gunston > Field",
+        "parkName": "Gunston",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-07-05",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "08:00",
+            "endTimeLocal": "10:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "10:30",
+            "endTimeLocal": "12:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-07-11",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "gunston/field",
+        "displayName": "Gunston > Field",
+        "parkName": "Gunston",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-07-12",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "08:00",
+            "endTimeLocal": "10:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "10:30",
+            "endTimeLocal": "12:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-07-18",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "gunston/field",
+        "displayName": "Gunston > Field",
+        "parkName": "Gunston",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-07-19",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "08:00",
+            "endTimeLocal": "10:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "10:30",
+            "endTimeLocal": "12:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-07-25",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "gunston/field",
+        "displayName": "Gunston > Field",
+        "parkName": "Gunston",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-07-26",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "08:00",
+            "endTimeLocal": "10:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "10:30",
+            "endTimeLocal": "12:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-08-01",
+    "fields": [
+      {
+        "fieldKey": "barcroft/field-3",
+        "displayName": "Barcroft > Field 3",
+        "parkName": "Barcroft",
+        "fieldName": "Field 3",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "gunston/field",
+        "displayName": "Gunston > Field",
+        "parkName": "Gunston",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Game",
+            "startTimeLocal": "09:00",
+            "endTimeLocal": "11:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "11:00",
+            "endTimeLocal": "13:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "13:00",
+            "endTimeLocal": "15:00",
+            "division": "PYGAME"
+          },
+          {
+            "slotType": "Game",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "17:00",
+            "division": "PYGAME"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "date": "2026-08-02",
+    "fields": [
+      {
+        "fieldKey": "highview/field",
+        "displayName": "Highview > Field",
+        "parkName": "Highview",
+        "fieldName": "Field",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "08:00",
+            "endTimeLocal": "10:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "10:30",
+            "endTimeLocal": "12:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      },
+      {
+        "fieldKey": "tuckahoe/field-2",
+        "displayName": "Tuckahoe > Field 2",
+        "parkName": "Tuckahoe",
+        "fieldName": "Field 2",
+        "slots": [
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "12:00",
+            "endTimeLocal": "13:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "13:30",
+            "endTimeLocal": "15:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "15:00",
+            "endTimeLocal": "16:30",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "16:30",
+            "endTimeLocal": "18:00",
+            "division": "PY Practice"
+          },
+          {
+            "slotType": "Practice",
+            "startTimeLocal": "18:00",
+            "endTimeLocal": "19:30",
+            "division": "PY Practice"
+          }
+        ]
+      }
+    ]
+  }
+]

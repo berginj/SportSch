@@ -36,11 +36,7 @@ export default function App() {
   const { me, memberships, activeLeagueId, setActiveLeagueId, refreshMe } = useSession();
   const [tab, setTab] = useState(() => readTabFromHash());
   const [invite, setInvite] = useState(() => readInviteFromUrl());
-  const [tableView, setTableView] = useState(() => {
-    if (typeof window === "undefined") return "A";
-    const saved = window.localStorage.getItem("tableViewMode");
-    return saved === "B" || saved === "C" ? saved : "A";
-  });
+  const tableView = "A";
 
   const isSignedIn = !!me && me.userId && me.userId !== "UNKNOWN";
   const isGlobalAdmin = !!me?.isGlobalAdmin;
@@ -66,11 +62,6 @@ export default function App() {
       window.history.replaceState({}, "", `${window.location.pathname}${window.location.search}${nextHash}`);
     }
   }, [effectiveTab]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem("tableViewMode", tableView);
-  }, [tableView]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -159,8 +150,6 @@ export default function App() {
         me={me}
         leagueId={activeLeagueId}
         setLeagueId={setActiveLeagueId}
-        tableView={tableView}
-        setTableView={setTableView}
       />
 
       <main className="main">

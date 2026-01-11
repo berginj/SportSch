@@ -242,6 +242,39 @@ export default function HelpPage({ me, leagueId }) {
         This app helps leagues coordinate open game offers and requests ("slots") and get them scheduled (all times are US/Eastern). Coaches post slots and accept each other's offers or requests. League admins manage setup.
       </div>
 
+      <Section title="Prototype: Help tab feedback options">
+        <div className="layoutPreview layoutPreview--filters">
+          <div className="layoutSplit">
+            <div className="layoutPanel">
+              <div className="layoutPanel__title">Quick feedback</div>
+              <div className="layoutRow">
+                <button className="btn btn--ghost">This helped</button>
+                <button className="btn btn--ghost">Still stuck</button>
+                <button className="btn btn--ghost">Request feature</button>
+              </div>
+              <div className="layoutList mt-3">
+                <div className="layoutItem">Attach current page + league to report</div>
+                <div className="layoutItem">Capture last API error</div>
+              </div>
+            </div>
+            <div className="layoutPanel">
+              <div className="layoutPanel__title">Comment capture</div>
+              <div className="layoutForm">
+                <label>
+                  Tell us what happened
+                  <textarea placeholder="Steps, expected vs actual, and what you tried." />
+                </label>
+                <label>
+                  Email (optional)
+                  <input placeholder="name@domain.com" />
+                </label>
+                <button className="btn">Send feedback</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Section>
+
       <Section title="Prototype: Commissioner season setup">
         <div className="layoutPreview layoutPreview--admin">
           <div className="layoutHeader">
@@ -375,39 +408,6 @@ export default function HelpPage({ me, leagueId }) {
         </div>
       </Section>
 
-      <Section title="Prototype: Help tab feedback options">
-        <div className="layoutPreview layoutPreview--filters">
-          <div className="layoutSplit">
-            <div className="layoutPanel">
-              <div className="layoutPanel__title">Quick feedback</div>
-              <div className="layoutRow">
-                <button className="btn btn--ghost">This helped</button>
-                <button className="btn btn--ghost">Still stuck</button>
-                <button className="btn btn--ghost">Request feature</button>
-              </div>
-              <div className="layoutList mt-3">
-                <div className="layoutItem">Attach current page + league to report</div>
-                <div className="layoutItem">Capture last API error</div>
-              </div>
-            </div>
-            <div className="layoutPanel">
-              <div className="layoutPanel__title">Comment capture</div>
-              <div className="layoutForm">
-                <label>
-                  Tell us what happened
-                  <textarea placeholder="Steps, expected vs actual, and what you tried." />
-                </label>
-                <label>
-                  Email (optional)
-                  <input placeholder="name@domain.com" />
-                </label>
-                <button className="btn">Send feedback</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </Section>
-
       <Section title="Layout options (preview)">
         <div className="row mb-3">
           {layouts.map((l) => (
@@ -432,6 +432,12 @@ export default function HelpPage({ me, leagueId }) {
             </p>
             <p className="muted m-0">
               Current league: <code>{leagueId || "(none selected)"}</code>
+            </p>
+          </Section>
+
+          <Section title="Check who I am">
+            <p className="m-0">
+              Open <a href="/api/me" target="_blank" rel="noreferrer">/api/me</a> to confirm your current user identity and memberships.
             </p>
           </Section>
 

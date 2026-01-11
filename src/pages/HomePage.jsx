@@ -16,6 +16,14 @@ function isPracticeSlot(slot) {
   return (slot?.gameType || "").trim().toLowerCase() === "practice";
 }
 
+function formatTimeRange(startTime, endTime) {
+  const start = (startTime || "").trim();
+  const end = (endTime || "").trim();
+  if (!start && !end) return "";
+  if (start && end) return `${start}-${end}`;
+  return start || end;
+}
+
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -251,6 +259,19 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
       .slice(0, 5);
   }, [events, confirmedSlots, practiceSlots, today]);
 
+  const nextAvailableOffers = useMemo(() => {
+    const todayKey = toDateInputValue(today);
+    return openSlots
+      .filter((s) => s.gameDate && s.gameDate >= todayKey)
+      .map((s) => ({
+        date: s.gameDate,
+        label: `${s.offeringTeamId || ""} @ ${s.displayName || s.fieldKey || ""}`,
+        time: formatTimeRange(s.startTime, s.endTime),
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(0, 5);
+  }, [openSlots, today]);
+
   const layoutKey = isMobile ? "mobile" : isAdmin ? "admin" : role === "Coach" ? "filters" : "coach";
 
   function renderFilters() {
@@ -375,7 +396,19 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
                   {i.date} - {i.label}
                 </div>
               ))}
-              {nextItems.length === 0 ? <div className="layoutMeta">No upcoming items.</div> : null}
+              {nextItems.length === 0 && nextAvailableOffers.length > 0 ? (
+                <>
+                  <div className="layoutMeta">Next available offers</div>
+                  {nextAvailableOffers.map((i, idx) => (
+                    <div className="layoutItem" key={`offer-${idx}`}>
+                      {i.date} - {i.label}{i.time ? ` (${i.time})` : ""}
+                    </div>
+                  ))}
+                </>
+              ) : null}
+              {nextItems.length === 0 && nextAvailableOffers.length === 0 ? (
+                <div className="layoutMeta">No upcoming items.</div>
+              ) : null}
             </div>
           </div>
           <div className="layoutPanel">
