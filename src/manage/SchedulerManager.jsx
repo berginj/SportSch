@@ -502,7 +502,7 @@ export default function SchedulerManager({ leagueId }) {
   const overlayItems = useMemo(() => {
     const allowed = new Set(overlayDivisions);
     const slotItems = (overlaySlots || [])
-      .filter((s) => !allowed.size || allowed.has(s.division))
+      .filter((s) => !allowed.size || !s.division || allowed.has(s.division))
       .map((s) => ({
         kind: s.isAvailability ? "availability" : "slot",
         date: s.gameDate,
