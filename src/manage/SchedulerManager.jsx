@@ -502,14 +502,15 @@ export default function SchedulerManager({ leagueId }) {
   const overlayItems = useMemo(() => {
     const allowed = new Set(overlayDivisions);
     const slotItems = (overlaySlots || [])
-      .filter((s) => !s.isAvailability)
       .filter((s) => !allowed.size || allowed.has(s.division))
       .map((s) => ({
-        kind: "slot",
+        kind: s.isAvailability ? "availability" : "slot",
         date: s.gameDate,
         time: `${s.startTime}-${s.endTime}`,
         division: s.division,
-        label: `${s.homeTeamId || s.offeringTeamId || "TBD"} vs ${s.awayTeamId || "TBD"}`,
+        label: s.isAvailability
+          ? "Availability"
+          : `${s.homeTeamId || s.offeringTeamId || "TBD"} vs ${s.awayTeamId || "TBD"}`,
         field: s.displayName || s.fieldKey || "",
         status: s.status,
         isExternal: !!s.isExternalOffer,
@@ -1003,9 +1004,11 @@ export default function SchedulerManager({ leagueId }) {
                     const color = divisionColors.get(i.division) || "#333";
                     const typeLabel = i.kind === "event"
                       ? "Event"
-                      : i.isExternal
-                        ? (i.status === "Confirmed" ? "External (filled)" : "External (open)")
-                        : "Matchup";
+                      : i.kind === "availability"
+                        ? "Availability"
+                        : i.isExternal
+                          ? (i.status === "Confirmed" ? "External (filled)" : "External (open)")
+                          : "Matchup";
                     return (
                       <tr key={`${i.kind}-${i.date}-${i.time}-${idx}`}>
                         <td>{i.date}</td>
@@ -1118,6 +1121,7 @@ export default function SchedulerManager({ leagueId }) {
                           const dayItems = overlayByDate.get(key) || [];
                           const matchups = dayItems.filter((i) => i.kind === "slot" && !i.isExternal).length;
                           const externals = dayItems.filter((i) => i.kind === "slot" && i.isExternal).length;
+                          const availability = dayItems.filter((i) => i.kind === "availability").length;
                           const events = dayItems.filter((i) => i.kind === "event").length;
                           const monthBase = overlayMonthWeeks[0][0];
                           const inMonth = day.getMonth() === monthBase.getMonth();
@@ -1125,6 +1129,7 @@ export default function SchedulerManager({ leagueId }) {
                           const badgeItems = [
                             matchups ? { label: `M${matchups}`, color: "#1f4d7a" } : null,
                             externals ? { label: `X${externals}`, color: "#8c4b2f" } : null,
+                            availability ? { label: `A${availability}`, color: "#4f5b6a" } : null,
                             events ? { label: `E${events}`, color: "#2a6f6f" } : null,
                           ].filter(Boolean);
                           return (
@@ -1183,9 +1188,11 @@ export default function SchedulerManager({ leagueId }) {
                                 const color = divisionColors.get(i.division) || "#333";
                                 const typeLabel = i.kind === "event"
                                   ? "Event"
-                                  : i.isExternal
-                                    ? (i.status === "Confirmed" ? "External (filled)" : "External (open)")
-                                    : "Matchup";
+                                  : i.kind === "availability"
+                                    ? "Availability"
+                                    : i.isExternal
+                                      ? (i.status === "Confirmed" ? "External (filled)" : "External (open)")
+                                      : "Matchup";
                                 return (
                                   <div key={`${key}-${idx}`} className="subtle" style={{ borderLeft: `4px solid ${color}`, paddingLeft: 6 }}>
                                     <div className="text-xs">{i.time} {typeLabel}</div>
