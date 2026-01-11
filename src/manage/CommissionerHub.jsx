@@ -98,35 +98,43 @@ export default function CommissionerHub({ leagueId, tableView = "A" }) {
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
   const [err, setErr] = useState("");
+  const [backupInfo, setBackupInfo] = useState(null);
+  const [backupLoading, setBackupLoading] = useState(false);
+
+  async function loadCommissionerData() {
+    if (!leagueId) return;
+    setLoading(true);
+    setErr("");
+    try {
+      const [divs, league, flds, backup] = await Promise.all([
+        apiFetch("/api/divisions"),
+        apiFetch("/api/league"),
+        apiFetch("/api/fields"),
+        apiFetch("/api/league/backup"),
+      ]);
+      setDivisions(Array.isArray(divs) ? divs : []);
+      setFields(Array.isArray(flds) ? flds : []);
+      setLeagueDraft(normalizeSeason(league?.season));
+      setBackupInfo(backup?.backup || null);
+      if (!division && Array.isArray(divs) && divs.length) {
+        setDivision(divs[0].code || divs[0].division || "");
+      }
+      if (!fieldKey && Array.isArray(flds) && flds.length) {
+        setFieldKey(flds[0].fieldKey || "");
+      }
+    } catch (e) {
+      setErr(e?.message || "Failed to load commissioner data");
+      setDivisions([]);
+      setFields([]);
+      setBackupInfo(null);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    if (!leagueId) return;
-    (async () => {
-      setLoading(true);
-      setErr("");
-      try {
-        const [divs, league, flds] = await Promise.all([
-          apiFetch("/api/divisions"),
-          apiFetch("/api/league"),
-          apiFetch("/api/fields"),
-        ]);
-        setDivisions(Array.isArray(divs) ? divs : []);
-        setFields(Array.isArray(flds) ? flds : []);
-        setLeagueDraft(normalizeSeason(league?.season));
-        if (!division && Array.isArray(divs) && divs.length) {
-          setDivision(divs[0].code || divs[0].division || "");
-        }
-        if (!fieldKey && Array.isArray(flds) && flds.length) {
-          setFieldKey(flds[0].fieldKey || "");
-        }
-      } catch (e) {
-        setErr(e?.message || "Failed to load commissioner data");
-        setDivisions([]);
-        setFields([]);
-      } finally {
-        setLoading(false);
-      }
-    })();
+    loadCommissionerData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leagueId]);
 
   useEffect(() => {
@@ -239,11 +247,95 @@ export default function CommissionerHub({ leagueId, tableView = "A" }) {
     }
   }
 
+  async function saveBackup() {
+    if (!leagueId) return;
+    setBackupLoading(true);
+    try {
+      const data = await apiFetch("/api/league/backup", { method: "POST" });
+      setBackupInfo(data?.backup || null);
+      setToast({ tone: "success", message: "Backup saved." });
+    } catch (e) {
+      setToast({ tone: "error", message: e?.message || "Failed to save backup." });
+    } finally {
+      setBackupLoading(false);
+    }
+  }
+
+  async function restoreBackup() {
+    if (!leagueId) return;
+    if (!backupInfo) return setToast({ tone: "error", message: "No backup found to restore." });
+    const ok = window.confirm("Restore fields, divisions, and league season settings from the saved backup? This will overwrite current data.");
+    if (!ok) return;
+    setBackupLoading(true);
+    try {
+      const result = await apiFetch("/api/league/backup/restore", { method: "POST" });
+      await loadCommissionerData();
+      setToast({
+        tone: "success",
+        message: `Backup restored. Fields: ${result?.fieldsRestored ?? 0}, divisions: ${result?.divisionsRestored ?? 0}.`
+      });
+    } catch (e) {
+      setToast({ tone: "error", message: e?.message || "Failed to restore backup." });
+    } finally {
+      setBackupLoading(false);
+    }
+  }
+
   return (
     <div className="stack gap-4">
       {toast ? <Toast {...toast} onClose={() => setToast(null)} /> : null}
       {err ? <div className="callout callout--error">{err}</div> : null}
 
+      <div className="card">
+        <div className="card__header">
+          <div className="h3">League backup</div>
+          <div className="subtle">Save a snapshot of fields, divisions, and season dates for quick recovery.</div>
+        </div>
+        <div className="card__body stack gap-3">
+          {backupInfo ? (
+            <>
+              <div className="row row--wrap gap-3">
+                <div className="stack gap-1">
+                  <span className="muted">Last saved</span>
+                  <div>{backupInfo.savedUtc || "Unknown time"}</div>
+                </div>
+                <div className="stack gap-1">
+                  <span className="muted">Saved by</span>
+                  <div>{backupInfo.savedBy || "Unknown user"}</div>
+                </div>
+                <div className="stack gap-1">
+                  <span className="muted">Fields</span>
+                  <div>{backupInfo.fieldsCount ?? 0}</div>
+                </div>
+                <div className="stack gap-1">
+                  <span className="muted">Divisions</span>
+                  <div>{backupInfo.divisionsCount ?? 0}</div>
+                </div>
+              </div>
+              <div className="row row--wrap gap-3">
+                <div className="stack gap-1">
+                  <span className="muted">Spring</span>
+                  <div>{backupInfo.season?.springStart || "TBD"} to {backupInfo.season?.springEnd || "TBD"}</div>
+                </div>
+                <div className="stack gap-1">
+                  <span className="muted">Fall</span>
+                  <div>{backupInfo.season?.fallStart || "TBD"} to {backupInfo.season?.fallEnd || "TBD"}</div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="muted">No backup saved yet.</div>
+          )}
+          <div className="row row--wrap gap-2">
+            <button className="btn btn--primary" type="button" onClick={saveBackup} disabled={backupLoading}>
+              {backupLoading ? "Saving..." : "Save backup"}
+            </button>
+            <button className="btn btn--ghost" type="button" onClick={restoreBackup} disabled={backupLoading || !backupInfo}>
+              Restore backup
+            </button>
+          </div>
+        </div>
+      </div>
 
       <div className="card">
         <div className="card__header">

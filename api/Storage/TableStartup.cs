@@ -34,7 +34,8 @@ public sealed class TableStartup : IHostedService
             Constants.Tables.TeamContacts,
             Constants.Tables.Seasons,
             Constants.Tables.SeasonDivisions,
-            Constants.Tables.LeagueInvites
+            Constants.Tables.LeagueInvites,
+            Constants.Tables.LeagueBackups
         };
 
         foreach (var tableName in tableNames)
