@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { validateIsoDates } from "../lib/date";
+import { buildAvailabilityInsights } from "../lib/availabilityInsights";
 import Toast from "../components/Toast";
 
 const WEEKDAY_OPTIONS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -48,6 +49,10 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [toast, setToast] = useState(null);
+  const [availabilityInsights, setAvailabilityInsights] = useState(null);
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [availabilityErr, setAvailabilityErr] = useState("");
+  const [preferredTouched, setPreferredTouched] = useState(false);
 
   useEffect(() => {
     if (!leagueId) return;
@@ -78,11 +83,47 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   );
 
   function toggleWeeknight(day) {
+    setPreferredTouched(true);
     setPreferredWeeknights((prev) => {
       if (prev.includes(day)) return prev.filter((d) => d !== day);
       return [...prev, day].slice(0, 2);
     });
   }
+
+  useEffect(() => {
+    if (!division) return;
+    setPreferredTouched(false);
+    setPreferredWeeknights([]);
+  }, [division]);
+
+  useEffect(() => {
+    if (!leagueId || !division) return;
+    if (!seasonStart || !seasonEnd) return;
+    (async () => {
+      setAvailabilityErr("");
+      setAvailabilityLoading(true);
+      try {
+        const qs = new URLSearchParams();
+        qs.set("division", division);
+        qs.set("dateFrom", seasonStart);
+        qs.set("dateTo", seasonEnd);
+        qs.set("status", "Open");
+        const data = await apiFetch(`/api/slots?${qs.toString()}`);
+        const list = Array.isArray(data) ? data : [];
+        const availability = list.filter((s) => s.isAvailability);
+        const insights = buildAvailabilityInsights(availability);
+        setAvailabilityInsights(insights);
+        if (!preferredTouched && insights.suggested.length) {
+          setPreferredWeeknights(insights.suggested);
+        }
+      } catch (e) {
+        setAvailabilityErr(e?.message || "Failed to load availability insights.");
+        setAvailabilityInsights(null);
+      } finally {
+        setAvailabilityLoading(false);
+      }
+    })();
+  }, [leagueId, division, seasonStart, seasonEnd, preferredTouched]);
 
   async function runPreview() {
     setErr("");
@@ -355,6 +396,15 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
             </label>
             <div className="stack gap-2">
               <div className="muted text-sm">Preferred weeknights (pick two; other nights can still be used)</div>
+              {availabilityLoading ? (
+                <div className="muted text-sm">Analyzing availability for recommended nights...</div>
+              ) : availabilityInsights?.suggested?.length ? (
+                <div className="callout">
+                  Recommended nights based on availability: <b>{availabilityInsights.suggested.join(", ")}</b>
+                </div>
+              ) : availabilityErr ? (
+                <div className="callout callout--error">{availabilityErr}</div>
+              ) : null}
               <div className="row row--wrap gap-2">
                 {WEEKDAY_OPTIONS.map((day) => (
                   <button

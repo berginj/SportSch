@@ -141,29 +141,6 @@ function formatMonthLabel(date) {
   return `${months[date.getMonth()]} ${date.getFullYear()}`;
 }
 
-const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-function buildAvailabilityInsights(slots) {
-  const dayStats = DAY_LABELS.map((day) => ({ day, slots: 0, minutes: 0 }));
-  for (const s of slots || []) {
-    const dt = parseIsoDate(s.gameDate);
-    if (!dt) continue;
-    const idx = dt.getDay();
-    const bucket = dayStats[idx];
-    if (!bucket) continue;
-    bucket.slots += 1;
-    const start = parseTimeMinutes(s.startTime);
-    const end = parseTimeMinutes(s.endTime);
-    if (start != null && end != null && end > start) bucket.minutes += end - start;
-  }
-  const totalSlots = dayStats.reduce((sum, d) => sum + d.slots, 0);
-  const totalMinutes = dayStats.reduce((sum, d) => sum + d.minutes, 0);
-  const ranked = [...dayStats].filter((d) => d.slots > 0)
-    .sort((a, b) => (b.slots - a.slots) || (b.minutes - a.minutes));
-  const suggested = ranked.slice(0, 2).map((d) => d.day);
-  return { dayStats, totalSlots, totalMinutes, suggested };
-}
-
 function buildMonthWeeks(monthStart) {
   if (!monthStart) return [];
   const weeks = [];
@@ -210,14 +187,6 @@ export default function SchedulerManager({ leagueId }) {
   const [overlayMonthStart, setOverlayMonthStart] = useState("");
   const [validation, setValidation] = useState(null);
   const [validationLoading, setValidationLoading] = useState(false);
-  const [availabilityInsights, setAvailabilityInsights] = useState(null);
-  const [availabilitySlots, setAvailabilitySlots] = useState([]);
-  const [availabilityLoading, setAvailabilityLoading] = useState(false);
-  const [availabilityErr, setAvailabilityErr] = useState("");
-  const [availabilityAllDivisions, setAvailabilityAllDivisions] = useState(true);
-  const [availabilityDivision, setAvailabilityDivision] = useState("");
-  const [availabilityDateFrom, setAvailabilityDateFrom] = useState("");
-  const [availabilityDateTo, setAvailabilityDateTo] = useState("");
 
   useEffect(() => {
     if (!leagueId) return;
@@ -306,14 +275,6 @@ export default function SchedulerManager({ leagueId }) {
     }
   }, [divisions, overlayDivisions.length]);
 
-  useEffect(() => {
-    if (!availabilityDivision && division) setAvailabilityDivision(division);
-  }, [availabilityDivision, division]);
-
-  useEffect(() => {
-    if (!availabilityDateFrom && dateFrom) setAvailabilityDateFrom(dateFrom);
-    if (!availabilityDateTo && dateTo) setAvailabilityDateTo(dateTo);
-  }, [availabilityDateFrom, availabilityDateTo, dateFrom, dateTo]);
 
   const payload = useMemo(() => {
     return {
@@ -398,43 +359,6 @@ export default function SchedulerManager({ leagueId }) {
       setValidation(null);
     } finally {
       setValidationLoading(false);
-    }
-  }
-
-  async function loadAvailabilityInsights() {
-    setAvailabilityErr("");
-    const dateError = validateIsoDates([
-      { label: "Date from", value: availabilityDateFrom, required: false },
-      { label: "Date to", value: availabilityDateTo, required: false },
-    ]);
-    if (dateError) return setAvailabilityErr(dateError);
-    setAvailabilityLoading(true);
-    try {
-      const qs = new URLSearchParams();
-      if (!availabilityAllDivisions && availabilityDivision) qs.set("division", availabilityDivision);
-      if (availabilityDateFrom) qs.set("dateFrom", availabilityDateFrom);
-      if (availabilityDateTo) qs.set("dateTo", availabilityDateTo);
-      qs.set("status", "Open");
-      const data = await apiFetch(`/api/slots?${qs.toString()}`);
-      const list = Array.isArray(data) ? data : [];
-      const availability = list.filter((s) => s.isAvailability);
-      setAvailabilitySlots(availability);
-      const insights = buildAvailabilityInsights(availability);
-      setAvailabilityInsights(insights);
-      const hasPreferred = Object.values(preferredDays).some(Boolean);
-      if (!hasPreferred && insights.suggested.length) {
-        setPreferredDays((prev) => {
-          const next = { ...prev };
-          insights.suggested.forEach((day) => { next[day] = true; });
-          return next;
-        });
-      }
-    } catch (e) {
-      setAvailabilityErr(e?.message || "Failed to load availability slots.");
-      setAvailabilitySlots([]);
-      setAvailabilityInsights(null);
-    } finally {
-      setAvailabilityLoading(false);
     }
   }
 
@@ -657,123 +581,6 @@ export default function SchedulerManager({ leagueId }) {
             Export SportsEngine CSV
           </button>
         </div>
-      </div>
-
-      <div className="card">
-        <div className="card__header">
-          <div className="h2">Availability insights</div>
-          <div className="subtle">Analyze open availability slots to suggest the best game nights.</div>
-        </div>
-        <div className="card__body">
-          {availabilityErr ? <div className="callout callout--error">{availabilityErr}</div> : null}
-          <div className="row gap-2">
-            <button className="btn" onClick={loadAvailabilityInsights} disabled={availabilityLoading || (!availabilityAllDivisions && !availabilityDivision)}>
-              {availabilityLoading ? "Analyzing..." : "Analyze availability"}
-            </button>
-            <label className="inlineCheck">
-              <input
-                type="checkbox"
-                checked={availabilityAllDivisions}
-                onChange={(e) => setAvailabilityAllDivisions(e.target.checked)}
-              />
-              All divisions
-            </label>
-          </div>
-        </div>
-        <div className="card__body grid2">
-          {!availabilityAllDivisions ? (
-            <label>
-              Division
-              <select value={availabilityDivision} onChange={(e) => setAvailabilityDivision(e.target.value)}>
-                <option value="">Select division</option>
-                {divisions.map((d) => (
-                  <option key={d.code || d.division} value={d.code || d.division}>
-                    {d.name ? `${d.name} (${d.code || d.division})` : d.code || d.division}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            <div />
-          )}
-          <label>
-            Date from
-            <input value={availabilityDateFrom} onChange={(e) => setAvailabilityDateFrom(e.target.value)} placeholder="YYYY-MM-DD" />
-          </label>
-          <label>
-            Date to
-            <input value={availabilityDateTo} onChange={(e) => setAvailabilityDateTo(e.target.value)} placeholder="YYYY-MM-DD" />
-          </label>
-        </div>
-        {availabilityInsights ? (
-          <div className="card__body">
-            <div className="row row--wrap gap-4">
-              <div className="layoutStat">
-                <div className="layoutStat__value">{availabilityInsights.totalSlots}</div>
-                <div className="layoutStat__label">Total slots</div>
-              </div>
-              <div className="layoutStat">
-                <div className="layoutStat__value">{(availabilityInsights.totalMinutes / 60).toFixed(1)}</div>
-                <div className="layoutStat__label">Total hours</div>
-              </div>
-              <div className="layoutStat">
-                <div className="layoutStat__value">
-                  {availabilityInsights.suggested.length ? availabilityInsights.suggested.join(", ") : "—"}
-                </div>
-                <div className="layoutStat__label">Suggested nights</div>
-              </div>
-            </div>
-          </div>
-        ) : null}
-        {availabilityInsights?.dayStats?.length ? (
-          <div className="card__body tableWrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Day</th>
-                  <th>Slots</th>
-                  <th>Hours</th>
-                </tr>
-              </thead>
-              <tbody>
-                {availabilityInsights.dayStats.map((d) => (
-                  <tr key={d.day}>
-                    <td>{d.day}</td>
-                    <td>{d.slots}</td>
-                    <td>{(d.minutes / 60).toFixed(1)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
-        {availabilitySlots.length ? (
-          <div className="card__body tableWrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Time</th>
-                  <th>Field</th>
-                  <th>Division</th>
-                </tr>
-              </thead>
-              <tbody>
-                {availabilitySlots.slice(0, 200).map((s) => (
-                  <tr key={s.slotId}>
-                    <td>{s.gameDate}</td>
-                    <td>{s.startTime}-{s.endTime}</td>
-                    <td>{s.displayName || s.fieldKey}</td>
-                    <td>{s.division}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {availabilitySlots.length > 200 ? <div className="subtle">Showing first 200.</div> : null}
-          </div>
-        ) : availabilityInsights ? (
-          <div className="card__body muted">No availability slots found for this range.</div>
-        ) : null}
       </div>
 
       {preview ? (

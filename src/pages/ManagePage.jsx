@@ -7,6 +7,7 @@ import SchedulerManager from "../manage/SchedulerManager";
 import CommissionerHub from "../manage/CommissionerHub";
 import AvailabilityManager from "../manage/AvailabilityManager";
 import SlotGeneratorManager from "../manage/SlotGeneratorManager";
+import LeagueSettings from "../manage/LeagueSettings";
 import LeaguePicker from "../components/LeaguePicker";
 
 function Pill({ active, children, onClick }) {
@@ -35,6 +36,7 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
   const tabs = useMemo(
     () => [
       ...(canSchedule ? [{ id: "commissioner", label: "Commissioner Hub" }] : []),
+      ...(canSchedule ? [{ id: "settings", label: "League Settings" }] : []),
       { id: "teams", label: "Teams & Coaches" },
       { id: "invites", label: "Invites" },
       { id: "notes", label: "Notes" },
@@ -122,7 +124,7 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
           <div className="card">
             <div className="card__header">
               <div className="h2">Commissioner Hub</div>
-              <div className="subtle">Season settings, blackouts, and scheduling tools in one place.</div>
+              <div className="subtle">Start the season setup wizard and build the schedule from availability.</div>
             </div>
             <div className="card__body">
               <CommissionerHub leagueId={leagueId} tableView={tableView} />
@@ -158,6 +160,18 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
             <div className="mt-3">
               <FieldsImport leagueId={leagueId} me={me} tableView={tableView} />
             </div>
+          </div>
+        </div>
+      )}
+
+      {active === "settings" && canSchedule && (
+        <div className="card">
+          <div className="card__header">
+            <div className="h2">League Settings</div>
+            <div className="subtle">Backups, season configuration, and availability analysis.</div>
+          </div>
+          <div className="card__body">
+            <LeagueSettings leagueId={leagueId} />
           </div>
         </div>
       )}
