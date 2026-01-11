@@ -81,6 +81,9 @@ public class LeagueBackupFunctions
             var me = IdentityUtil.GetMe(req);
             await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
 
+            var includeSnapshot = string.Equals(ApiGuards.GetQueryParam(req, "includeSnapshot"), "1", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(ApiGuards.GetQueryParam(req, "includeSnapshot"), "true", StringComparison.OrdinalIgnoreCase);
+
             var table = await TableClients.GetTableAsync(_svc, Constants.Tables.LeagueBackups);
             try
             {
@@ -100,7 +103,24 @@ public class LeagueBackupFunctions
                         blackouts: ParseBlackouts(e.GetString(SeasonBlackouts))
                     )
                 );
-                return ApiResponses.Ok(req, new { exists = true, backup = summary });
+                if (!includeSnapshot)
+                    return ApiResponses.Ok(req, new { exists = true, backup = summary });
+
+                var json = (e.GetString("SnapshotJson") ?? "").Trim();
+                LeagueBackupSnapshot? snapshot = null;
+                if (!string.IsNullOrWhiteSpace(json))
+                {
+                    try
+                    {
+                        snapshot = JsonSerializer.Deserialize<LeagueBackupSnapshot>(json, JsonOptions);
+                    }
+                    catch
+                    {
+                        snapshot = null;
+                    }
+                }
+
+                return ApiResponses.Ok(req, new { exists = true, backup = summary, snapshot });
             }
             catch (RequestFailedException ex) when (ex.Status == 404)
             {

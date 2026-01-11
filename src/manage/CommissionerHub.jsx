@@ -281,6 +281,36 @@ export default function CommissionerHub({ leagueId, tableView = "A" }) {
     }
   }
 
+  async function downloadBackup() {
+    if (!leagueId) return;
+    if (!backupInfo) return setToast({ tone: "error", message: "No backup found to download." });
+    setBackupLoading(true);
+    try {
+      const data = await apiFetch("/api/league/backup?includeSnapshot=1");
+      if (!data?.snapshot) {
+        setToast({ tone: "error", message: "Backup snapshot is missing." });
+        return;
+      }
+      const safeLeague = (leagueId || "league").replace(/[^a-z0-9_-]+/gi, "_");
+      const stamp = (backupInfo?.savedUtc || new Date().toISOString()).replace(/[:.]/g, "-");
+      const filename = `${safeLeague}_backup_${stamp}.json`;
+      const blob = new Blob([JSON.stringify(data.snapshot, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setToast({ tone: "success", message: "Backup downloaded." });
+    } catch (e) {
+      setToast({ tone: "error", message: e?.message || "Failed to download backup." });
+    } finally {
+      setBackupLoading(false);
+    }
+  }
+
   return (
     <div className="stack gap-4">
       {toast ? <Toast {...toast} onClose={() => setToast(null)} /> : null}
@@ -292,6 +322,9 @@ export default function CommissionerHub({ leagueId, tableView = "A" }) {
           <div className="subtle">Save a snapshot of fields, divisions, and season dates for quick recovery.</div>
         </div>
         <div className="card__body stack gap-3">
+          <div className="callout callout--warning">
+            Backups store a full snapshot in a single row. If your league has a very large number of fields or divisions, the snapshot may exceed storage limits.
+          </div>
           {backupInfo ? (
             <>
               <div className="row row--wrap gap-3">
@@ -329,6 +362,9 @@ export default function CommissionerHub({ leagueId, tableView = "A" }) {
           <div className="row row--wrap gap-2">
             <button className="btn btn--primary" type="button" onClick={saveBackup} disabled={backupLoading}>
               {backupLoading ? "Saving..." : "Save backup"}
+            </button>
+            <button className="btn btn--ghost" type="button" onClick={downloadBackup} disabled={backupLoading || !backupInfo}>
+              Download snapshot
             </button>
             <button className="btn btn--ghost" type="button" onClick={restoreBackup} disabled={backupLoading || !backupInfo}>
               Restore backup
