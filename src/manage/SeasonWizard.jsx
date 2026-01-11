@@ -50,6 +50,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [err, setErr] = useState("");
   const [toast, setToast] = useState(null);
   const [availabilityInsights, setAvailabilityInsights] = useState(null);
+  const [autoAppliedPreferred, setAutoAppliedPreferred] = useState(false);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [availabilityErr, setAvailabilityErr] = useState("");
   const [preferredTouched, setPreferredTouched] = useState(false);
@@ -94,6 +95,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     if (!division) return;
     setPreferredTouched(false);
     setPreferredWeeknights([]);
+    setAutoAppliedPreferred(false);
   }, [division]);
 
   useEffect(() => {
@@ -115,6 +117,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         setAvailabilityInsights(insights);
         if (!preferredTouched && insights.suggested.length) {
           setPreferredWeeknights(insights.suggested);
+          setAutoAppliedPreferred(true);
         }
       } catch (e) {
         setAvailabilityErr(e?.message || "Failed to load availability insights.");
@@ -401,6 +404,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
               ) : availabilityInsights?.suggested?.length ? (
                 <div className="callout">
                   Recommended nights based on availability: <b>{availabilityInsights.suggested.join(", ")}</b>
+                  {autoAppliedPreferred ? (
+                    <span className="pill ml-2">Auto-selected</span>
+                  ) : null}
                 </div>
               ) : availabilityErr ? (
                 <div className="callout callout--error">{availabilityErr}</div>
