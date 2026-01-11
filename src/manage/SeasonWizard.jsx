@@ -189,6 +189,37 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     return base;
   }
 
+  function buildContextNotes(summary, issues) {
+    if (!summary) return [];
+    const notes = [];
+    const regular = summary.regularSeason || {};
+    const pool = summary.poolPlay || {};
+    const bracket = summary.bracket || {};
+
+    if (regular.slotsTotal < regular.matchupsTotal) {
+      notes.push(`Regular season has ${regular.slotsTotal} slots for ${regular.matchupsTotal} matchups.`);
+    }
+    if (pool.matchupsTotal > 0 && pool.slotsTotal < pool.matchupsTotal) {
+      notes.push(`Pool play has ${pool.slotsTotal} slots for ${pool.matchupsTotal} matchups.`);
+    }
+    if (bracket.matchupsTotal > 0 && bracket.slotsTotal < bracket.matchupsTotal) {
+      notes.push(`Bracket has ${bracket.slotsTotal} slots for ${bracket.matchupsTotal} matchups.`);
+    }
+    if (summary.teamCount % 2 === 1) {
+      notes.push(`Odd team count (${summary.teamCount}) adds BYEs and can create gaps.`);
+    }
+    if ((issues || []).some((i) => i.ruleId === "double-header")) {
+      notes.push("Doubleheaders indicate tight slot density or too few usable dates.");
+    }
+    if ((issues || []).some((i) => i.ruleId === "max-games-per-week")) {
+      notes.push("Max games/week is restricting assignments; increase it or add slots.");
+    }
+    if ((issues || []).some((i) => i.ruleId === "missing-opponent")) {
+      notes.push("Guest games or external offers may be enabled; missing opponents are expected there.");
+    }
+    return notes;
+  }
+
   return (
     <div className="stack gap-3">
       {toast ? <Toast {...toast} onClose={() => setToast(null)} /> : null}
@@ -419,6 +450,20 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                       </tbody>
                     </table>
                   </div>
+                </div>
+              ) : null}
+              {preview.summary ? (
+                <div className="callout">
+                  <div className="font-bold mb-2">Why issues happen</div>
+                  {buildContextNotes(preview.summary, preview.issues).length ? (
+                    <div className="stack gap-1">
+                      {buildContextNotes(preview.summary, preview.issues).map((note, idx) => (
+                        <div key={idx} className="subtle">{note}</div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="subtle">No extra context available for these issues.</div>
+                  )}
                 </div>
               ) : null}
               {preview.summary ? (
