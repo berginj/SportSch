@@ -335,6 +335,17 @@ Notes
 - Overwrites fields, divisions, and league season settings with the saved snapshot.
 - Does not modify slots, events, teams, or access requests.
 
+Response
+```json
+{
+  "data": {
+    "restored": true,
+    "fieldsRestored": 12,
+    "divisionsRestored": 6
+  }
+}
+```
+
 ### Admin: GET /admin/leagues
 Requires: global admin.
 
