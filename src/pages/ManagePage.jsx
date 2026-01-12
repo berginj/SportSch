@@ -1,14 +1,14 @@
 import { useMemo, useState, useEffect } from "react";
 import FieldsImport from "../manage/FieldsImport";
-import DivisionsManager from "../manage/DivisionsManager";
 import InvitesManager from "../manage/InvitesManager";
-import TeamsManager from "../manage/TeamsManager";
 import SchedulerManager from "../manage/SchedulerManager";
 import CommissionerHub from "../manage/CommissionerHub";
 import AvailabilityManager from "../manage/AvailabilityManager";
 import SlotGeneratorManager from "../manage/SlotGeneratorManager";
 import LeagueSettings from "../manage/LeagueSettings";
 import LeaguePicker from "../components/LeaguePicker";
+import TeamsManager from "../manage/TeamsManager";
+import DivisionsManager from "../manage/DivisionsManager";
 
 function Pill({ active, children, onClick }) {
   return (
@@ -37,44 +37,41 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
     () => [
       ...(canSchedule ? [{ id: "commissioner", label: "Commissioner Hub" }] : []),
       ...(canSchedule ? [{ id: "settings", label: "League Settings" }] : []),
-      { id: "teams", label: "Teams & Coaches" },
       { id: "invites", label: "Invites" },
-      { id: "notes", label: "Notes" },
-      { id: "divisions", label: "Divisions" },
       { id: "fields", label: "Fields" },
-      ...(canSchedule ? [{ id: "availability", label: "Availability" }] : []),
       ...(canSchedule ? [{ id: "scheduler", label: "Scheduler" }] : []),
     ],
     [canSchedule]
   );
   const tabIds = useMemo(() => new Set(tabs.map((t) => t.id)), [tabs]);
+  const defaultTabId = tabs[0]?.id || "";
   const [active, setActive] = useState(() => {
-    if (typeof window === "undefined") return "teams";
+    if (typeof window === "undefined") return defaultTabId;
     const params = new URLSearchParams(window.location.search);
     const next = (params.get("manageTab") || "").trim();
     if (next && tabIds.has(next)) return next;
-    return canSchedule ? "commissioner" : "teams";
+    return defaultTabId;
   });
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
-    const next = (params.get("manageTab") || "teams").trim();
-    const safeNext = tabIds.has(next) ? next : "teams";
+    const next = (params.get("manageTab") || defaultTabId).trim();
+    const safeNext = tabIds.has(next) ? next : defaultTabId;
     if (safeNext !== active) setActive(safeNext);
-  }, [leagueId, tabIds]);
+  }, [leagueId, tabIds, defaultTabId, active]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const onPopState = () => {
       const params = new URLSearchParams(window.location.search);
-      const next = (params.get("manageTab") || "teams").trim();
-      const safeNext = tabIds.has(next) ? next : "teams";
+      const next = (params.get("manageTab") || defaultTabId).trim();
+      const safeNext = tabIds.has(next) ? next : defaultTabId;
       if (safeNext !== active) setActive(safeNext);
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, [active, tabIds]);
+  }, [active, tabIds, defaultTabId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -106,106 +103,91 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
         </div>
       </div>
 
-      {active === "teams" && (
+      {active === "commissioner" && canSchedule && (
         <div className="card">
           <div className="card__header">
-            <div className="h2">Teams & Coaches</div>
-            <div className="subtle">Upload teams and manage coach assignments.</div>
+            <div className="h2">Commissioner Hub</div>
+            <div className="subtle">Start the season setup wizard and build the schedule from availability.</div>
           </div>
           <div className="card__body">
-            <TeamsManager leagueId={leagueId} tableView={tableView} />
-          </div>
-        </div>
-      )}
-
-      {active === "commissioner" && canSchedule && (
-        <div className="stack gap-4">
-          <div className="card">
-            <div className="card__header">
-              <div className="h2">Commissioner Hub</div>
-              <div className="subtle">Start the season setup wizard and build the schedule from availability.</div>
-            </div>
-            <div className="card__body">
-              <CommissionerHub leagueId={leagueId} tableView={tableView} />
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="card__header">
-              <div className="h2">Scheduling</div>
-              <div className="subtle">Preview schedules here. Generate slots in the Field Slots tab first.</div>
-            </div>
-            <div className="card__body">
-              <SchedulerManager leagueId={leagueId} />
-            </div>
+            <CommissionerHub leagueId={leagueId} tableView={tableView} />
           </div>
         </div>
       )}
 
       {active === "fields" && (
-        <div className="card">
-          <div className="card__header">
-            <div className="h2">Fields</div>
-            <div className="subtle">Import fields via CSV (the only supported fields workflow).</div>
-          </div>
-          <div className="card__body">
-            <div className="callout">
-              <div className="font-bold mb-2">CSV rules</div>
-              <div className="subtle leading-relaxed">
-                CSV must include <b>fieldKey</b> + <b>parkName</b> + <b>fieldName</b> (and optionally displayName, address, notes, status). DisplayName should be what you want coaches to see.
-                Keep it consistent (example: <code>Tuckahoe Park &gt; Field 2</code>). fieldKey is stable and is how slots reference a field.
+        <div className="stack gap-4">
+          <div className="card">
+            <div className="card__header">
+              <div className="h2">Fields</div>
+              <div className="subtle">Import fields via CSV (the only supported fields workflow).</div>
+            </div>
+            <div className="card__body">
+              <div className="callout">
+                <div className="font-bold mb-2">CSV rules</div>
+                <div className="subtle leading-relaxed">
+                  CSV must include <b>fieldKey</b> + <b>parkName</b> + <b>fieldName</b> (and optionally displayName, address, notes, status). DisplayName should be what you want coaches to see.
+                  Keep it consistent (example: <code>Tuckahoe Park &gt; Field 2</code>). fieldKey is stable and is how slots reference a field.
+                </div>
+              </div>
+              <div className="mt-3">
+                <FieldsImport leagueId={leagueId} me={me} tableView={tableView} />
               </div>
             </div>
-            <div className="mt-3">
-              <FieldsImport leagueId={leagueId} me={me} tableView={tableView} />
-            </div>
           </div>
+          {canSchedule && (
+            <>
+              <div className="card">
+                <div className="card__header">
+                  <div className="h2">Availability setup</div>
+                  <div className="subtle">Import allocations, define recurring rules, and review generated availability.</div>
+                </div>
+                <div className="card__body">
+                  <AvailabilityManager leagueId={leagueId} />
+                </div>
+              </div>
+              <div className="card">
+                <div className="card__header">
+                  <div className="h2">Availability slots</div>
+                  <div className="subtle">Generate and manage slot-level availability for scheduling.</div>
+                </div>
+                <div className="card__body">
+                  <SlotGeneratorManager leagueId={leagueId} />
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
       {active === "settings" && canSchedule && (
-        <div className="card">
-          <div className="card__header">
-            <div className="h2">League Settings</div>
-            <div className="subtle">Backups, season configuration, and availability analysis.</div>
-          </div>
-          <div className="card__body">
-            <LeagueSettings leagueId={leagueId} />
-          </div>
-        </div>
-      )}
-
-      {active === "availability" && canSchedule && (
         <div className="stack gap-4">
           <div className="card">
             <div className="card__header">
-              <div className="h2">Availability setup</div>
-              <div className="subtle">Import allocations, define recurring rules, and review generated availability.</div>
+              <div className="h2">League Settings</div>
+              <div className="subtle">Backups, season configuration, and shared league configuration.</div>
             </div>
             <div className="card__body">
-              <AvailabilityManager leagueId={leagueId} />
+              <LeagueSettings leagueId={leagueId} />
             </div>
           </div>
           <div className="card">
             <div className="card__header">
-              <div className="h2">Availability slots</div>
-              <div className="subtle">Generate and manage slot-level availability for scheduling.</div>
+              <div className="h2">Teams & Coaches</div>
+              <div className="subtle">Upload teams and manage coach assignments.</div>
             </div>
             <div className="card__body">
-              <SlotGeneratorManager leagueId={leagueId} />
+              <TeamsManager leagueId={leagueId} tableView={tableView} />
             </div>
           </div>
-        </div>
-      )}
-
-      {active === "divisions" && (
-        <div className="card">
-          <div className="card__header">
-            <div className="h2">Divisions</div>
-            <div className="subtle">Divisions are used to group slots and requests (e.g., "Ponytail 4th Grade").</div>
-          </div>
-          <div className="card__body">
-            <DivisionsManager leagueId={leagueId} />
+          <div className="card">
+            <div className="card__header">
+              <div className="h2">Divisions</div>
+              <div className="subtle">Divisions group teams, slots, and requests.</div>
+            </div>
+            <div className="card__body">
+              <DivisionsManager leagueId={leagueId} />
+            </div>
           </div>
         </div>
       )}
@@ -222,27 +204,6 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
         </div>
       )}
 
-      {active === "notes" && (
-        <div className="card">
-          <div className="card__header">
-            <div className="h2">Notes</div>
-            <div className="subtle">Admin-ish reminders (not secret; just pragmatic).</div>
-          </div>
-          <div className="card__body leading-relaxed">
-            <ul className="m-0 pl-4">
-              <li>
-                <b>League selection persists</b> via <code>gameswap_leagueId</code> in localStorage. Every API call sends <code>x-league-id</code>.
-              </li>
-              <li>
-                If the UI says <b>No league access</b>, add a row in <code>GameSwapMemberships</code> for your UserId + LeagueId.
-              </li>
-              <li>
-                The portal is currently built for speed, not for perfect security. Auth will tighten later (EasyAuth now, Entra later).
-              </li>
-            </ul>
-          </div>
-        </div>
-      )}
 
       {active === "scheduler" && canSchedule && (
         <div className="card">
