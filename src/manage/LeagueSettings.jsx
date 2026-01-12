@@ -483,11 +483,11 @@ export default function LeagueSettings({ leagueId }) {
         </div>
       </div>
 
-      <div className="card">
-        <div className="card__header">
+      <details className="card">
+        <summary className="card__header cursor-pointer">
           <div className="h3">Division season overrides</div>
           <div className="subtle">Override season dates, game length, and blackout windows for a division.</div>
-        </div>
+        </summary>
         <div className="card__body stack gap-3">
           <div className="row row--wrap gap-3 items-end">
             <label className="stack gap-1">
@@ -558,13 +558,13 @@ export default function LeagueSettings({ leagueId }) {
             </button>
           </div>
         </div>
-      </div>
+      </details>
 
-      <div className="card">
-        <div className="card__header">
+      <details className="card">
+        <summary className="card__header cursor-pointer">
           <div className="h3">Field blackouts</div>
           <div className="subtle">Block specific fields during school breaks, tournaments, or facility conflicts.</div>
-        </div>
+        </summary>
         <div className="card__body stack gap-3">
           <label className="stack gap-1 max-w-md">
             <span className="muted">Field</span>
@@ -583,13 +583,13 @@ export default function LeagueSettings({ leagueId }) {
             </button>
           </div>
         </div>
-      </div>
+      </details>
 
-      <div className="card">
-        <div className="card__header">
+      <details className="card">
+        <summary className="card__header cursor-pointer">
           <div className="h3">Availability insights</div>
           <div className="subtle">Analyze open availability slots to suggest the best game nights.</div>
-        </div>
+        </summary>
         <div className="card__body">
           {availabilityErr ? <div className="callout callout--error">{availabilityErr}</div> : null}
           <div className="row gap-2">
@@ -700,7 +700,7 @@ export default function LeagueSettings({ leagueId }) {
         ) : availabilityInsights ? (
           <div className="card__body muted">No availability slots found for this range.</div>
         ) : null}
-      </div>
+      </details>
     </div>
   );
 }

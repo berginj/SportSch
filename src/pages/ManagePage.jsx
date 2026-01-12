@@ -42,8 +42,7 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
       { id: "notes", label: "Notes" },
       { id: "divisions", label: "Divisions" },
       { id: "fields", label: "Fields" },
-      ...(canSchedule ? [{ id: "availability", label: "Field Availability" }] : []),
-      ...(canSchedule ? [{ id: "slots", label: "Field Slots" }] : []),
+      ...(canSchedule ? [{ id: "availability", label: "Availability" }] : []),
       ...(canSchedule ? [{ id: "scheduler", label: "Scheduler" }] : []),
     ],
     [canSchedule]
@@ -177,25 +176,24 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
       )}
 
       {active === "availability" && canSchedule && (
-        <div className="card">
-          <div className="card__header">
-            <div className="h2">Field Availability</div>
-            <div className="subtle">Import allocations, generate slots, and manage recurring rules.</div>
+        <div className="stack gap-4">
+          <div className="card">
+            <div className="card__header">
+              <div className="h2">Availability setup</div>
+              <div className="subtle">Import allocations, define recurring rules, and review generated availability.</div>
+            </div>
+            <div className="card__body">
+              <AvailabilityManager leagueId={leagueId} />
+            </div>
           </div>
-          <div className="card__body">
-            <AvailabilityManager leagueId={leagueId} />
-          </div>
-        </div>
-      )}
-
-      {active === "slots" && canSchedule && (
-        <div className="card">
-          <div className="card__header">
-            <div className="h2">Field Slots</div>
-            <div className="subtle">Generate availability slots separately from schedule generation.</div>
-          </div>
-          <div className="card__body">
-            <SlotGeneratorManager leagueId={leagueId} />
+          <div className="card">
+            <div className="card__header">
+              <div className="h2">Availability slots</div>
+              <div className="subtle">Generate and manage slot-level availability for scheduling.</div>
+            </div>
+            <div className="card__body">
+              <SlotGeneratorManager leagueId={leagueId} />
+            </div>
           </div>
         </div>
       )}
