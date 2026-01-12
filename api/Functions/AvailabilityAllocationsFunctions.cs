@@ -7,6 +7,7 @@ using GameSwap.Functions.Storage;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
+using GameSwap.Functions.Telemetry;
 
 namespace GameSwap.Functions.Functions;
 
@@ -241,6 +242,13 @@ public class AvailabilityAllocationsFunctions
                 var result = await table.SubmitTransactionAsync(actions);
                 upserted += result.Value.Count;
             }
+
+            UsageTelemetry.Track(_log, "api_import_availability_allocations", leagueId, me.UserId, new
+            {
+                upserted,
+                rejected,
+                skipped
+            });
 
             return ApiResponses.Ok(req, new { leagueId, upserted, rejected, skipped, errors, warnings });
         }

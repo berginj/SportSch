@@ -11,6 +11,7 @@ using GameSwap.Functions.Storage;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
+using GameSwap.Functions.Telemetry;
 
 namespace GameSwap.Functions.Functions;
 
@@ -184,9 +185,22 @@ public class ScheduleFunctions
                 var runId = Guid.NewGuid().ToString("N");
                 await SaveScheduleRunAsync(leagueId, division, runId, me.Email ?? me.UserId, dateFrom, dateTo, scheduleConstraints, result);
                 await ApplyAssignmentsAsync(leagueId, division, runId, result.Assignments);
+                UsageTelemetry.Track(_log, "api_schedule_apply", leagueId, me.UserId, new
+                {
+                    division,
+                    runId,
+                    slotsAssigned = result.Assignments.Count,
+                    issues = validation.TotalIssues
+                });
                 return ApiResponses.Ok(req, new { runId, result.Summary, assignments, unassignedSlots, unassignedMatchups, failures });
             }
 
+            UsageTelemetry.Track(_log, "api_schedule_preview", leagueId, me.UserId, new
+            {
+                division,
+                slotsAssigned = result.Assignments.Count,
+                issues = validation.TotalIssues
+            });
             return ApiResponses.Ok(req, new SchedulePreviewDto(result.Summary, assignments, unassignedSlots, unassignedMatchups, failures));
         }
         catch (ApiGuards.HttpError ex)

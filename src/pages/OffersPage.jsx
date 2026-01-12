@@ -5,6 +5,7 @@ import StatusCard from "../components/StatusCard";
 import Toast from "../components/Toast";
 import { PromptDialog } from "../components/Dialogs";
 import { usePromptDialog } from "../lib/useDialogs";
+import { trackEvent } from "../lib/telemetry";
 
 function fmtDate(d) {
   return d || "";
@@ -296,6 +297,12 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
       const verb = entryType === "Request" ? "Request" : "Offer";
       const countLabel = occurrenceDates.length > 1 ? ` (${occurrenceDates.length})` : "";
       setToast({ tone: "success", message: `${verb} posted${countLabel}.` });
+      trackEvent("ui_slot_create_success", {
+        leagueId,
+        division,
+        entryType,
+        occurrences: occurrenceDates.length,
+      });
     } catch (e) {
       setErr(e?.message || String(e));
     }
@@ -328,6 +335,11 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
       });
       await reloadSlots(division);
       setToast({ tone: "success", message: "Slot accepted." });
+      trackEvent("ui_slot_request_success", {
+        leagueId,
+        division: div,
+        slotId: slot?.slotId,
+      });
     } catch (e) {
       setErr(e?.message || String(e));
     }

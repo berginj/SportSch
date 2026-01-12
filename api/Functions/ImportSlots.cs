@@ -7,6 +7,7 @@ using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 using GameSwap.Functions.Storage;
 using System.Linq;
+using GameSwap.Functions.Telemetry;
 
 namespace GameSwap.Functions.Functions;
 
@@ -245,6 +246,13 @@ public class ImportSlots
                     }
                 }
             }
+
+            UsageTelemetry.Track(_log, "api_import_slots", leagueId, me.UserId, new
+            {
+                upserted,
+                rejected,
+                skipped
+            });
 
             return HttpUtil.Json(req, HttpStatusCode.OK, new
             {

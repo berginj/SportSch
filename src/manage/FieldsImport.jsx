@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { FIELD_STATUS } from "../lib/constants";
+import { trackEvent } from "../lib/telemetry";
 import Toast from "../components/Toast";
 
 // Admin tool: CSV import is the primary fields workflow.
@@ -105,6 +106,13 @@ export default function FieldsImport({ leagueId, tableView = "A" }) {
       const msg = `Imported. Upserted: ${res?.upserted ?? 0}, Rejected: ${res?.rejected ?? 0}, Skipped: ${res?.skipped ?? 0}`;
       setOk(msg);
       setToast({ tone: "success", message: "Fields import complete." });
+      trackEvent("ui_fields_import_success", {
+        leagueId,
+        source: "file",
+        upserted: res?.upserted ?? 0,
+        rejected: res?.rejected ?? 0,
+        skipped: res?.skipped ?? 0,
+      });
 
       if (Array.isArray(res?.errors) && res.errors.length) {
         setRowErrors(res.errors);
@@ -141,6 +149,13 @@ export default function FieldsImport({ leagueId, tableView = "A" }) {
       const msg = `Imported. Upserted: ${res?.upserted ?? 0}, Rejected: ${res?.rejected ?? 0}, Skipped: ${res?.skipped ?? 0}`;
       setOk(msg);
       setToast({ tone: "success", message: "Fields import complete." });
+      trackEvent("ui_fields_import_success", {
+        leagueId,
+        source: "text",
+        upserted: res?.upserted ?? 0,
+        rejected: res?.rejected ?? 0,
+        skipped: res?.skipped ?? 0,
+      });
 
       if (Array.isArray(res?.errors) && res.errors.length) {
         setRowErrors(res.errors);

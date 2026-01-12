@@ -5,6 +5,7 @@ import Toast from "../components/Toast";
 import { PromptDialog } from "../components/Dialogs";
 import { usePromptDialog } from "../lib/useDialogs";
 import { LEAGUE_HEADER_NAME } from "../lib/constants";
+import { trackEvent } from "../lib/telemetry";
 
 const ROLE_OPTIONS = [
   "LeagueAdmin",
@@ -288,6 +289,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
         }),
       });
       setToast({ tone: "success", message: `Saved user ${userId}.` });
+      trackEvent("ui_admin_user_save", { userId });
       setUserDraft({ userId: "", email: "", homeLeagueId: "", role: "" });
       await loadUsers();
     } catch (e) {
@@ -330,6 +332,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
       });
       setGlobalOk(`Created league ${leagueId}.`);
       setToast({ tone: "success", message: `Created league ${leagueId}.` });
+      trackEvent("ui_admin_create_league", { leagueId });
       setNewLeague({ leagueId: "", name: "" });
       await loadGlobalLeagues();
     } catch (e) {
@@ -351,6 +354,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
       await apiFetch(`/api/global/leagues/${encodeURIComponent(id)}`, { method: "DELETE" });
       setGlobalOk(`Deleted league ${id}.`);
       setToast({ tone: "success", message: `Deleted league ${id}.` });
+      trackEvent("ui_admin_delete_league", { leagueId: id });
       if (seasonLeagueId === id) setSeasonLeagueId("");
       await loadGlobalLeagues();
     } catch (e) {
@@ -410,6 +414,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
       });
       setGlobalOk(`Updated season settings for ${seasonLeagueId}.`);
       setToast({ tone: "success", message: `Updated season settings for ${seasonLeagueId}.` });
+      trackEvent("ui_admin_season_save", { leagueId: seasonLeagueId });
       await loadGlobalLeagues();
     } catch (e) {
       setGlobalErr(e?.message || "Update season settings failed");
@@ -434,6 +439,11 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
       });
       await load();
       setToast({ tone: "success", message: "Access request approved." });
+      trackEvent("ui_admin_access_request_approve", {
+        leagueId: targetLeagueId,
+        userId,
+        role,
+      });
     } catch (e) {
       setToast({ tone: "error", message: e?.message || "Approve failed" });
     }
@@ -461,6 +471,10 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
       });
       await load();
       setToast({ tone: "success", message: "Access request denied." });
+      trackEvent("ui_admin_access_request_deny", {
+        leagueId: targetLeagueId,
+        userId,
+      });
     } catch (e) {
       setToast({ tone: "error", message: e?.message || "Deny failed" });
     }
@@ -524,6 +538,12 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
       });
       await loadMembershipsAndTeams();
       setToast({ tone: "success", message: "Coach assignment updated." });
+      trackEvent("ui_admin_membership_assign", {
+        leagueId,
+        userId,
+        division,
+        teamId,
+      });
     } catch (e) {
       setToast({ tone: "error", message: e?.message || "Failed to update coach assignment" });
     }
@@ -549,6 +569,12 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
       setSlotsOk(`Imported. Upserted: ${res?.upserted ?? 0}, Rejected: ${res?.rejected ?? 0}, Skipped: ${res?.skipped ?? 0}`);
       if (Array.isArray(res?.errors) && res.errors.length) setSlotsErrors(res.errors);
       if (Array.isArray(res?.warnings) && res.warnings.length) setSlotsWarnings(res.warnings);
+      trackEvent("ui_admin_import_slots_success", {
+        leagueId,
+        upserted: res?.upserted ?? 0,
+        rejected: res?.rejected ?? 0,
+        skipped: res?.skipped ?? 0,
+      });
     } catch (e) {
       setSlotsErr(e?.message || "Import failed");
     } finally {
@@ -570,6 +596,12 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
       setTeamsOk(`Imported. Upserted: ${res?.upserted ?? 0}, Rejected: ${res?.rejected ?? 0}, Skipped: ${res?.skipped ?? 0}`);
       if (Array.isArray(res?.errors) && res.errors.length) setTeamsErrors(res.errors);
       await loadMembershipsAndTeams();
+      trackEvent("ui_admin_import_teams_success", {
+        leagueId,
+        upserted: res?.upserted ?? 0,
+        rejected: res?.rejected ?? 0,
+        skipped: res?.skipped ?? 0,
+      });
     } catch (e) {
       setTeamsErr(e?.message || "Import failed");
     } finally {
@@ -581,6 +613,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
     const csv = buildTeamsTemplateCsv(divisions);
     const safeLeague = (leagueId || "league").replace(/[^a-z0-9_-]+/gi, "_");
     downloadCsv(csv, `teams_template_${safeLeague}.csv`);
+    trackEvent("ui_admin_teams_template_download", { leagueId });
   }
 
   return (

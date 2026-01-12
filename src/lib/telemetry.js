@@ -24,3 +24,9 @@ export function trackPageView(name, uri) {
   if (!ai) return;
   ai.trackPageView({ name, uri });
 }
+
+export function trackEvent(name, properties = {}, measurements = undefined) {
+  const ai = initTelemetry();
+  if (!ai || !name) return;
+  ai.trackEvent({ name }, properties, measurements);
+}

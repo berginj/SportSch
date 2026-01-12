@@ -7,6 +7,7 @@ import StatusCard from "../components/StatusCard";
 import Toast from "../components/Toast";
 import { ConfirmDialog, PromptDialog } from "../components/Dialogs";
 import { useConfirmDialog, usePromptDialog } from "../lib/useDialogs";
+import { trackEvent } from "../lib/telemetry";
 
 function toDateInputValue(d) {
   const yyyy = d.getFullYear();
@@ -373,6 +374,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
       setNewLocation("");
       setNewNotes("");
       await loadData();
+      trackEvent("ui_calendar_event_create", { leagueId, division: newDivision.trim() });
     } catch (e) {
       setErr(e?.message || String(e));
     }
@@ -391,6 +393,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
       await apiFetch(`/api/events/${encodeURIComponent(eventId)}`, { method: "DELETE" });
       await loadData();
       setToast({ tone: "success", message: "Event deleted." });
+      trackEvent("ui_calendar_event_delete", { leagueId, eventId });
     } catch (e) {
       setErr(e?.message || String(e));
     }
@@ -418,6 +421,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
       });
       await loadData();
       setToast({ tone: "success", message: "Accepted. The game is now scheduled on the calendar." });
+      trackEvent("ui_calendar_slot_accept", { leagueId, division: slot.division, slotId: slot.slotId });
     } catch (e) {
       setErr(e?.message || String(e));
     }
@@ -438,6 +442,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
       });
       await loadData();
       setToast({ tone: "success", message: "Slot cancelled." });
+      trackEvent("ui_calendar_slot_cancel", { leagueId, division: slot.division, slotId: slot.slotId });
     } catch (e) {
       setErr(e?.message || String(e));
     }

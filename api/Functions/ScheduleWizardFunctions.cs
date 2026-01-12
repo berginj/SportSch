@@ -7,6 +7,7 @@ using GameSwap.Functions.Storage;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
+using GameSwap.Functions.Telemetry;
 
 namespace GameSwap.Functions.Functions;
 
@@ -232,6 +233,14 @@ public class ScheduleWizardFunctions
                 await ApplyAssignmentsAsync(leagueId, division, runId, assignments);
                 await SaveWizardRunAsync(leagueId, division, runId, me.Email ?? me.UserId, summary, body);
             }
+
+            UsageTelemetry.Track(_log, apply ? "api_schedule_wizard_apply" : "api_schedule_wizard_preview", leagueId, me.UserId, new
+            {
+                division,
+                slotsTotal = summary.totalSlots,
+                assignedTotal = summary.totalAssigned,
+                issues = validation.TotalIssues
+            });
 
             return ApiResponses.Ok(req, new WizardPreviewDto(summary, assignments, unassignedSlots, unassignedMatchups, warnings, issues, validation.TotalIssues));
         }

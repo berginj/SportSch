@@ -5,6 +5,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 using GameSwap.Functions.Storage;
+using GameSwap.Functions.Telemetry;
 
 namespace GameSwap.Functions.Functions;
 
@@ -76,6 +77,12 @@ public class CancelSlot
             slot["UpdatedUtc"] = DateTimeOffset.UtcNow;
 
             await table.UpdateEntityAsync(slot, slot.ETag, TableUpdateMode.Replace);
+
+            UsageTelemetry.Track(_log, "api_slot_cancel", leagueId, me.UserId, new
+            {
+                division,
+                slotId
+            });
 
             return ApiResponses.Ok(req, new { ok = true, status = Constants.Status.SlotCancelled });
         }

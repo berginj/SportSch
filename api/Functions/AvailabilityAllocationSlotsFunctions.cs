@@ -6,6 +6,7 @@ using GameSwap.Functions.Storage;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
+using GameSwap.Functions.Telemetry;
 
 namespace GameSwap.Functions.Functions;
 
@@ -159,7 +160,15 @@ public class AvailabilityAllocationSlotsFunctions
             }
 
             if (!apply)
+            {
+                UsageTelemetry.Track(_log, "api_availability_allocations_slots_preview", leagueId, me.UserId, new
+                {
+                    division,
+                    slots = toCreate.Count,
+                    conflicts = conflicts.Count
+                });
                 return ApiResponses.Ok(req, new GenerateSlotsPreview(toCreate, conflicts));
+            }
 
             var slotsTable = await TableClients.GetTableAsync(_svc, Constants.Tables.Slots);
             var created = new List<SlotCandidate>();
@@ -170,6 +179,13 @@ public class AvailabilityAllocationSlotsFunctions
                 await slotsTable.AddEntityAsync(entity);
                 created.Add(slot);
             }
+
+            UsageTelemetry.Track(_log, "api_availability_allocations_slots_apply", leagueId, me.UserId, new
+            {
+                division,
+                created = created.Count,
+                conflicts = conflicts.Count
+            });
 
             return ApiResponses.Ok(req, new { created, conflicts, skipped = conflicts.Count });
         }

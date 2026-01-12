@@ -5,6 +5,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 using GameSwap.Functions.Storage;
+using GameSwap.Functions.Telemetry;
 
 namespace GameSwap.Functions.Functions;
 
@@ -141,6 +142,13 @@ public class ApproveSlotRequest
             slot["UpdatedUtc"] = now;
 
             await slots.UpdateEntityAsync(slot, slot.ETag, TableUpdateMode.Replace);
+
+            UsageTelemetry.Track(_log, "api_slot_request_approve", leagueId, me.UserId, new
+            {
+                division,
+                slotId,
+                requestId
+            });
 
             return ApiResponses.Ok(req, new { ok = true, slotId, division, requestId, status = Constants.Status.SlotConfirmed });
         }

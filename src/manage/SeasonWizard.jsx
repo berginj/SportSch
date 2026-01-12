@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { validateIsoDates } from "../lib/date";
 import { buildAvailabilityInsights } from "../lib/availabilityInsights";
+import { trackEvent } from "../lib/telemetry";
 import Toast from "../components/Toast";
 
 const WEEKDAY_OPTIONS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -165,6 +166,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       });
       setPreview(data || null);
       setStep(3);
+      trackEvent("ui_season_wizard_preview", { leagueId, division });
     } catch (e) {
       setErr(e?.message || "Preview failed.");
       setPreview(null);
@@ -210,6 +212,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         body: JSON.stringify(payload),
       });
       setToast({ tone: "success", message: "Wizard schedule applied." });
+      trackEvent("ui_season_wizard_apply", { leagueId, division });
     } catch (e) {
       setErr(e?.message || "Apply failed.");
     } finally {

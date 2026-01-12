@@ -3,6 +3,7 @@ import { apiFetch } from "../lib/api";
 import { validateIsoDates } from "../lib/date";
 import Toast from "../components/Toast";
 import { getDefaultRangeFallback, getSeasonRange, getSlotsDefaultRange } from "../lib/season";
+import { trackEvent } from "../lib/telemetry";
 
 function csvEscape(value) {
   const raw = String(value ?? "");
@@ -247,6 +248,10 @@ export default function SlotGeneratorManager({ leagueId }) {
         }),
       });
       setSlotGenPreview(data || null);
+      trackEvent("ui_availability_slots_preview", {
+        leagueId,
+        division: slotGenDivision,
+      });
     } catch (e) {
       setErr(e?.message || "Failed to preview slots");
       setSlotGenPreview(null);
@@ -282,6 +287,12 @@ export default function SlotGeneratorManager({ leagueId }) {
       });
       setSlotGenPreview(null);
       setToast({ tone: "success", message: `Generated slots (${data?.created?.length || 0} created).` });
+      trackEvent("ui_availability_slots_generate", {
+        leagueId,
+        division: slotGenDivision,
+        mode,
+        created: data?.created?.length || 0,
+      });
     } catch (e) {
       setErr(e?.message || "Failed to generate slots");
     } finally {
@@ -348,6 +359,12 @@ export default function SlotGeneratorManager({ leagueId }) {
       fd.append("file", availFile);
       const res = await apiFetch("/api/import/availability-slots", { method: "POST", body: fd });
       setAvailOk(`Imported. Upserted: ${res?.upserted ?? 0}, Rejected: ${res?.rejected ?? 0}, Skipped: ${res?.skipped ?? 0}`);
+      trackEvent("ui_availability_slots_import_success", {
+        leagueId,
+        upserted: res?.upserted ?? 0,
+        rejected: res?.rejected ?? 0,
+        skipped: res?.skipped ?? 0,
+      });
       if (Array.isArray(res?.errors) && res.errors.length) setAvailErrors(res.errors);
       if (Array.isArray(res?.warnings) && res.warnings.length) setAvailWarnings(res.warnings);
     } catch (e) {
@@ -385,6 +402,13 @@ export default function SlotGeneratorManager({ leagueId }) {
       fd.append("file", new Blob([csv], { type: "text/csv" }), name);
       const res = await apiFetch("/api/import/availability-slots", { method: "POST", body: fd });
       setAvailOk(`Imported. Upserted: ${res?.upserted ?? 0}, Rejected: ${res?.rejected ?? 0}, Skipped: ${res?.skipped ?? 0}`);
+      trackEvent("ui_availability_slots_import_success", {
+        leagueId,
+        upserted: res?.upserted ?? 0,
+        rejected: res?.rejected ?? 0,
+        skipped: res?.skipped ?? 0,
+        divisionFixes: true,
+      });
       if (Array.isArray(res?.errors) && res.errors.length) setAvailErrors(res.errors);
       if (Array.isArray(res?.warnings) && res.warnings.length) setAvailWarnings(res.warnings);
       setAvailImportUnknowns([]);
@@ -401,6 +425,7 @@ export default function SlotGeneratorManager({ leagueId }) {
     const csv = buildAvailabilityTemplateCsv(divisions, fields);
     const safeLeague = (leagueId || "league").replace(/[^a-z0-9_-]+/gi, "_");
     downloadCsv(csv, `availability_template_${safeLeague}.csv`);
+    trackEvent("ui_availability_slots_template_download", { leagueId });
   }
 
   async function loadAvailabilitySlots() {

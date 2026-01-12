@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { LEAGUE_HEADER_NAME } from "../lib/constants";
+import { trackEvent } from "../lib/telemetry";
 
 const ROLE_OPTIONS = [
   { value: "Coach", label: "Coach" },
@@ -145,10 +146,10 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
     if (!leagueId || leagues.length === 0) return;
     if (mine.length > 0) return;
     autoRequested.current = true;
-    submitRequest(role).catch(() => {});
+    submitRequest(role, "auto").catch(() => {});
   }, [signedIn, mineLoaded, mine, leagueId, leagues.length, role, accessIntent]);
 
-  async function submitRequest(roleOverride) {
+  async function submitRequest(roleOverride, source = "manual") {
     setErr("");
     setOk("");
     if (!signedIn) {
@@ -172,6 +173,11 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
         body: JSON.stringify({ requestedRole, notes }),
       });
       setOk("Request submitted. An admin will review it.");
+      trackEvent("ui_access_request_submit", {
+        leagueId: id,
+        requestedRole,
+        source,
+      });
       setNotes("");
       await refresh();
     } catch (e) {
@@ -188,7 +194,7 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
 
     const requestedRole = accessIntent.requestedRole === "Viewer" ? "Viewer" : "Coach";
     autoSubmitted.current = true;
-    submitRequest(requestedRole).catch(() => {});
+    submitRequest(requestedRole, "auto").catch(() => {});
 
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);

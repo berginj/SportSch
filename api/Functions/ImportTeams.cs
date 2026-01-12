@@ -6,6 +6,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 using GameSwap.Functions.Storage;
+using GameSwap.Functions.Telemetry;
 
 namespace GameSwap.Functions.Functions;
 
@@ -130,6 +131,13 @@ public class ImportTeams
                 var result = await table.SubmitTransactionAsync(actions);
                 upserted += result.Value.Count;
             }
+
+            UsageTelemetry.Track(_log, "api_import_teams", leagueId, me.UserId, new
+            {
+                upserted,
+                rejected,
+                skipped
+            });
 
             return ApiResponses.Ok(req, new { leagueId, upserted, rejected, skipped, errors });
         }

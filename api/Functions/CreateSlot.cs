@@ -5,6 +5,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 using GameSwap.Functions.Storage;
+using GameSwap.Functions.Telemetry;
 
 namespace GameSwap.Functions.Functions;
 
@@ -170,6 +171,17 @@ public class CreateSlot
             };
 
             await slotsTable.AddEntityAsync(entity);
+
+            UsageTelemetry.Track(_log, "api_slot_create", leagueId, me.UserId, new
+            {
+                division,
+                slotId = entity.RowKey,
+                fieldKey = normalizedFieldKey,
+                gameDate,
+                startTime,
+                endTime,
+                gameType
+            });
 
             return ApiResponses.Ok(req, new
             {

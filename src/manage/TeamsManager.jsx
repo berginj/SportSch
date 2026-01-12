@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { ROLE } from "../lib/constants";
+import { trackEvent } from "../lib/telemetry";
 import Toast from "../components/Toast";
 
 function csvEscape(value) {
@@ -276,6 +277,12 @@ export default function TeamsManager({ leagueId, tableView = "A" }) {
       const res = await apiFetch("/api/import/teams", { method: "POST", body: fd });
       setOk(`Imported. Upserted: ${res?.upserted ?? 0}, Rejected: ${res?.rejected ?? 0}, Skipped: ${res?.skipped ?? 0}`);
       setToast({ tone: "success", message: "Teams import complete." });
+      trackEvent("ui_teams_import_success", {
+        leagueId,
+        upserted: res?.upserted ?? 0,
+        rejected: res?.rejected ?? 0,
+        skipped: res?.skipped ?? 0,
+      });
       if (Array.isArray(res?.errors) && res.errors.length) setTeamsErrors(res.errors);
       await load();
     } catch (e) {
@@ -289,6 +296,7 @@ export default function TeamsManager({ leagueId, tableView = "A" }) {
     const csv = buildTeamsTemplateCsv(divisions);
     const safeLeague = (leagueId || "league").replace(/[^a-z0-9_-]+/gi, "_");
     downloadCsv(csv, `teams_template_${safeLeague}.csv`);
+    trackEvent("ui_teams_template_download", { leagueId });
   }
 
   return (

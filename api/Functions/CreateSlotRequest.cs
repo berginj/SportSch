@@ -5,6 +5,7 @@ using GameSwap.Functions.Storage;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
+using GameSwap.Functions.Telemetry;
 
 namespace GameSwap.Functions.Functions;
 
@@ -252,6 +253,13 @@ public class CreateSlotRequest
 
                 try { await requests.UpdateEntityAsync(other, other.ETag, TableUpdateMode.Replace); } catch { }
             }
+
+            UsageTelemetry.Track(_log, "api_slot_request_accept", leagueId, me.UserId, new
+            {
+                division = divisionNorm,
+                slotId = slotIdNorm,
+                requestingTeamId = myTeamId
+            });
 
             return ApiResponses.Ok(req, new
             {

@@ -4,6 +4,7 @@ using GameSwap.Functions.Storage;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
+using GameSwap.Functions.Telemetry;
 
 namespace GameSwap.Functions.Functions;
 
@@ -100,6 +101,13 @@ public class CreateEvent
             };
 
             await table.AddEntityAsync(entity);
+
+            UsageTelemetry.Track(_log, "api_event_create", leagueId, me.UserId, new
+            {
+                eventId,
+                type,
+                division
+            });
 
             return ApiResponses.Ok(req, new
             {

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { validateIsoDates } from "../lib/date";
 import { getDefaultRangeFallback, getSeasonRange } from "../lib/season";
+import { trackEvent } from "../lib/telemetry";
 import Toast from "../components/Toast";
 
 function csvEscape(value) {
@@ -143,6 +144,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
     const csv = buildAllocationTemplateCsv(divisions, fields);
     const safeLeague = (leagueId || "league").replace(/[^a-z0-9_-]+/gi, "_");
     downloadCsv(csv, `availability_allocations_${safeLeague}.csv`);
+    trackEvent("ui_availability_allocations_template_download", { leagueId });
   }
 
   async function importAllocationsCsv() {
@@ -159,6 +161,12 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
       const res = await apiFetch("/api/import/availability-allocations", { method: "POST", body: fd });
       setAllocOk(`Imported. Upserted: ${res?.upserted ?? 0}, Rejected: ${res?.rejected ?? 0}, Skipped: ${res?.skipped ?? 0}`);
       setToast({ tone: "success", message: "Availability allocations imported." });
+      trackEvent("ui_availability_allocations_import_success", {
+        leagueId,
+        upserted: res?.upserted ?? 0,
+        rejected: res?.rejected ?? 0,
+        skipped: res?.skipped ?? 0,
+      });
       if (Array.isArray(res?.errors) && res.errors.length) setAllocErrors(res.errors);
       if (Array.isArray(res?.warnings) && res.warnings.length) setAllocWarnings(res.warnings);
     } catch (e) {
