@@ -65,10 +65,16 @@ Canonical table names (do not introduce new variants):
 - GameSwapFieldAvailabilityRules
 - GameSwapFieldAvailabilityExceptions
 - GameSwapFieldAvailabilityAllocations
+- GameSwapLeagueInvites
+- GameSwapTeamContacts
+- GameSwapSeasons
+- GameSwapSeasonDivisions
+- GameSwapGlobalAdmins
+- GameSwapLeagueBackups
 
 PartitionKey/RowKey conventions (canonical):
 - Memberships: PK = `<userId>`, RK = `<leagueId>`
-- Fields: PK = `FIELD|{leagueId}|{parkCode}`, RK = `<fieldCode>` (display name is `FieldName`)
+- Fields: PK = `FIELD|{leagueId}|{parkCode}`, RK = `<fieldCode>` (display name is `DisplayName`, defaults to `ParkName > FieldName`)
 - Slots: PK = `SLOT|{leagueId}|{division}`, RK = deterministic slot id (SafeKey of offeringTeamId + date + start + end + fieldKey)
 - Slot Requests: PK = `SLOTREQ|{leagueId}|{division}|{slotId}`, RK = `<requestId GUID>`
 - Access Requests: PK = `ACCESSREQ|{leagueId}`, RK = `<userId>`
@@ -76,6 +82,7 @@ PartitionKey/RowKey conventions (canonical):
 - Availability Exceptions: PK = `AVAILRULEEX|{ruleId}`, RK = `<exceptionId>`
 - Availability Allocations: PK = `ALLOC|{leagueId}|{scope}|{fieldKeySafe}`, RK = `<allocationId>` (fieldKeySafe replaces `/` with `|`)
 - Users: PK = `USER`, RK = `<userId>`
+- League Backups: PK = `LEAGUEBACKUP`, RK = `<leagueId>`
 
 Legacy compatibility:
 - Reads may fall back to legacy PKs when needed, but all new writes must use canonical PKs above.
@@ -142,6 +149,9 @@ the notes for required headers or roles.
 | GET | /leagues | `Functions/LeaguesFunctions.cs` | List leagues for current user. |
 | GET | /league | `Functions/LeaguesFunctions.cs` | Get current league details (requires `x-league-id`). |
 | PATCH | /league | `Functions/LeaguesFunctions.cs` | Update current league (requires `x-league-id`, LeagueAdmin). |
+| GET | /league/backup | `Functions/LeagueBackupFunctions.cs` | Get backup summary (requires `x-league-id`, LeagueAdmin). |
+| POST | /league/backup | `Functions/LeagueBackupFunctions.cs` | Save/overwrite league backup (requires `x-league-id`, LeagueAdmin). |
+| POST | /league/backup/restore | `Functions/LeagueBackupFunctions.cs` | Restore fields/divisions/season from backup (requires `x-league-id`, LeagueAdmin). |
 | GET | /admin/leagues | `Functions/LeaguesFunctions.cs` | Global admin list of leagues. |
 | POST | /admin/leagues | `Functions/LeaguesFunctions.cs` | Global admin create league. |
 | GET | /global/leagues | `Functions/LeaguesFunctions.cs` | Global admin list of leagues (alt route). |
@@ -178,6 +188,8 @@ the notes for required headers or roles.
 | GET | /divisions | `Functions/DivisionsFunctions.cs` | List divisions (requires `x-league-id`). |
 | POST | /divisions | `Functions/DivisionsFunctions.cs` | Create division (requires `x-league-id`, LeagueAdmin). |
 | PATCH | /divisions/{code} | `Functions/DivisionsFunctions.cs` | Update division (requires `x-league-id`, LeagueAdmin). |
+| GET | /divisions/{code}/season | `Functions/DivisionsFunctions.cs` | Get division season overrides (requires `x-league-id`, LeagueAdmin). |
+| PATCH | /divisions/{code}/season | `Functions/DivisionsFunctions.cs` | Update division season overrides (requires `x-league-id`, LeagueAdmin). |
 | GET | /divisions/templates | `Functions/DivisionsFunctions.cs` | List division templates (requires `x-league-id`). |
 | PATCH | /divisions/templates | `Functions/DivisionsFunctions.cs` | Update division templates (requires `x-league-id`, LeagueAdmin). |
 | GET | /teams | `Functions/TeamsFunctions.cs` | List teams (requires `x-league-id`). |
@@ -185,7 +197,9 @@ the notes for required headers or roles.
 | PATCH | /teams/{division}/{teamId} | `Functions/TeamsFunctions.cs` | Update team (requires `x-league-id`, LeagueAdmin). |
 | DELETE | /teams/{division}/{teamId} | `Functions/TeamsFunctions.cs` | Delete team (requires `x-league-id`, LeagueAdmin). |
 | GET | /fields | `Functions/FieldsFunctions.cs` | List fields (requires `x-league-id`). |
+| POST | /fields | `Functions/FieldsFunctions.cs` | Create field (requires `x-league-id`, LeagueAdmin). |
 | PATCH | /fields/{parkCode}/{fieldCode} | `Functions/FieldsFunctions.cs` | Update field address details (requires `x-league-id`, LeagueAdmin). |
+| DELETE | /fields/{parkCode}/{fieldCode} | `Functions/FieldsFunctions.cs` | Delete field (requires `x-league-id`, LeagueAdmin). |
 | POST | /import/fields | `Functions/ImportFields.cs` | CSV field import (requires `x-league-id`, LeagueAdmin). |
 | POST | /import/teams | `Functions/ImportTeams.cs` | CSV teams import (requires `x-league-id`, LeagueAdmin). |
 | POST | /import/slots | `Functions/ImportSlots.cs` | CSV slot import (requires `x-league-id`, LeagueAdmin). |
@@ -274,6 +288,52 @@ Response
 ```json
 { "data": { "leagueId": "ARL", "name": "Arlington", "timezone": "America/New_York", "status": "Active", "contact": { "name": "...", "email": "...", "phone": "..." } } }
 ```
+
+### League backup (league-scoped)
+Backups capture fields, divisions, and league season settings for restore.
+
+### GET /league/backup
+Requires: LeagueAdmin or global admin.
+
+Query (optional):
+- `includeSnapshot` = `1` or `true` to include the full snapshot JSON.
+
+Response
+```json
+{
+  "data": {
+    "exists": true,
+    "backup": {
+      "leagueId": "ARL",
+      "savedUtc": "2026-02-01T12:00:00.0000000Z",
+      "savedBy": "admin@example.com",
+      "fieldsCount": 12,
+      "divisionsCount": 6,
+      "season": {
+        "springStart": "2026-03-01",
+        "springEnd": "2026-06-30",
+        "fallStart": "2026-08-15",
+        "fallEnd": "2026-11-01",
+        "gameLengthMinutes": 120,
+        "blackouts": []
+      }
+    }
+  }
+}
+```
+
+### POST /league/backup
+Requires: LeagueAdmin or global admin.
+
+Notes
+- Overwrites the previous backup for the league (one backup per league).
+
+### POST /league/backup/restore
+Requires: LeagueAdmin or global admin.
+
+Notes
+- Overwrites fields, divisions, and league season settings with the saved snapshot.
+- Does not modify slots, events, teams, or access requests.
 
 ### Admin: GET /admin/leagues
 Requires: global admin.
@@ -567,6 +627,42 @@ Requires: LeagueAdmin or global admin.
 ### PATCH /divisions/{code} (league-scoped)
 Requires: LeagueAdmin or global admin.
 
+### GET /divisions/{code}/season (league-scoped)
+Requires: LeagueAdmin or global admin.
+
+Response
+```json
+{
+  "data": {
+    "season": {
+      "springStart": "2026-03-01",
+      "springEnd": "2026-06-30",
+      "fallStart": "2026-08-15",
+      "fallEnd": "2026-11-01",
+      "gameLengthMinutes": 120,
+      "blackouts": []
+    }
+  }
+}
+```
+
+### PATCH /divisions/{code}/season (league-scoped)
+Requires: LeagueAdmin or global admin.
+
+Body
+```json
+{
+  "season": {
+    "springStart": "2026-03-01",
+    "springEnd": "2026-06-30",
+    "fallStart": "2026-08-15",
+    "fallEnd": "2026-11-01",
+    "gameLengthMinutes": 120,
+    "blackouts": []
+  }
+}
+```
+
 ### GET /divisions/templates (league-scoped)
 Returns the division template catalog for this league.
 
@@ -608,6 +704,33 @@ Response
   ]
 }
 ```
+
+Notes
+- `displayName` defaults to `"{ParkName} > {FieldName}"` when not supplied.
+
+### POST /fields (league-scoped)
+Requires: LeagueAdmin or global admin.
+
+Body
+```json
+{
+  "fieldKey": "gunston/turf",
+  "parkName": "Gunston Park",
+  "fieldName": "Turf",
+  "displayName": "Gunston Park > Turf",
+  "address": "",
+  "city": "",
+  "state": "",
+  "notes": "",
+  "status": "Active"
+}
+```
+
+### PATCH /fields/{parkCode}/{fieldCode} (league-scoped)
+Requires: LeagueAdmin or global admin.
+
+### DELETE /fields/{parkCode}/{fieldCode} (league-scoped)
+Requires: LeagueAdmin or global admin.
 
 ### POST /import/fields (league-scoped)
 Requires: LeagueAdmin or global admin.
@@ -1447,6 +1570,7 @@ Legend: R = read, W = write/modify, A = approve/deny/admin action.
 | Memberships list/update | - | - | W | W |
 | Divisions | R | R | W | W |
 | Fields | R | R | W | W |
+| League backups | - | - | W | W |
 | Availability rules/exceptions | - | - | W | W |
 | Slots list | R | R | R | R |
 | Create slots | - | W | W | W |
