@@ -260,6 +260,15 @@ export default function SchedulerManager({ leagueId }) {
   }, [seasonRange, dateFrom, dateTo]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const urlFrom = (params.get("dateFrom") || "").trim();
+    const urlTo = (params.get("dateTo") || "").trim();
+    if (!dateFrom && urlFrom) setDateFrom(urlFrom);
+    if (!dateTo && urlTo) setDateTo(urlTo);
+  }, [dateFrom, dateTo]);
+
+  useEffect(() => {
     if (overlayWeekStart) return;
     const base = parseIsoDate(dateFrom || seasonRange.from);
     if (base) {
@@ -423,10 +432,14 @@ export default function SchedulerManager({ leagueId }) {
     return map;
   }, [divisions]);
 
+  const knownDivisions = useMemo(() => {
+    return new Set((divisions || []).map((d) => d.code || d.division).filter(Boolean));
+  }, [divisions]);
+
   const overlayItems = useMemo(() => {
     const allowed = new Set(overlayDivisions);
     const slotItems = (overlaySlots || [])
-      .filter((s) => !allowed.size || !s.division || allowed.has(s.division))
+      .filter((s) => !allowed.size || !s.division || allowed.has(s.division) || !knownDivisions.has(s.division))
       .map((s) => ({
         kind: s.isAvailability ? "availability" : "slot",
         date: s.gameDate,
@@ -441,7 +454,7 @@ export default function SchedulerManager({ leagueId }) {
       }));
 
     const eventItems = (overlayEvents || [])
-      .filter((e) => !allowed.size || !e.division || allowed.has(e.division))
+      .filter((e) => !allowed.size || !e.division || allowed.has(e.division) || !knownDivisions.has(e.division))
       .map((e) => ({
         kind: "event",
         date: e.eventDate,
@@ -456,7 +469,7 @@ export default function SchedulerManager({ leagueId }) {
     return [...slotItems, ...eventItems]
       .filter((i) => i.date)
       .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
-  }, [overlaySlots, overlayEvents, overlayDivisions]);
+  }, [overlaySlots, overlayEvents, overlayDivisions, knownDivisions]);
 
   const overlayByDate = useMemo(() => {
     const map = new Map();
