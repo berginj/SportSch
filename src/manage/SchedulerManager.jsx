@@ -182,9 +182,10 @@ export default function SchedulerManager({ leagueId }) {
   const [overlayEvents, setOverlayEvents] = useState([]);
   const [overlayDivisions, setOverlayDivisions] = useState([]);
   const [overlayLoading, setOverlayLoading] = useState(false);
-  const [overlayView, setOverlayView] = useState("list");
+  const [overlayView, setOverlayView] = useState("grid");
   const [overlayWeekStart, setOverlayWeekStart] = useState("");
   const [overlayMonthStart, setOverlayMonthStart] = useState("");
+  const [overlayAutoKey, setOverlayAutoKey] = useState("");
   const [validation, setValidation] = useState(null);
   const [validationLoading, setValidationLoading] = useState(false);
 
@@ -277,6 +278,15 @@ export default function SchedulerManager({ leagueId }) {
       setOverlayMonthStart(toIsoDate(startOfMonth(weekStart)));
     }
   }, [dateFrom, overlayWeekStart, seasonRange]);
+
+  useEffect(() => {
+    if (!leagueId || !dateFrom || !dateTo) return;
+    const key = `${leagueId}|${dateFrom}|${dateTo}`;
+    if (overlayAutoKey === key) return;
+    setOverlayAutoKey(key);
+    loadOverlay();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leagueId, dateFrom, dateTo, overlayAutoKey]);
 
   useEffect(() => {
     if (!overlayDivisions.length && divisions.length) {
