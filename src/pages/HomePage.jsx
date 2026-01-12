@@ -223,6 +223,24 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
     });
   }
 
+  function goToCalendarWithStatus(status) {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (division) params.set("division", division);
+    else params.delete("division");
+    if (dateFrom) params.set("dateFrom", dateFrom);
+    else params.delete("dateFrom");
+    if (dateTo) params.set("dateTo", dateTo);
+    else params.delete("dateTo");
+    params.set("showSlots", "1");
+    if (showEvents) params.set("showEvents", "1");
+    else params.delete("showEvents");
+    params.set("status", status);
+    const next = `${window.location.pathname}?${params.toString()}#calendar`;
+    window.history.replaceState({}, "", next);
+    setTab("calendar");
+  }
+
   function openAccessRequests() {
     setTab("admin");
     if (typeof window !== "undefined") {
@@ -374,11 +392,11 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
           <div className="layoutPanel">
             <div className="layoutPanel__title">Today</div>
             <div className="layoutStatRow">
-              <button className="layoutStat layoutStat--link" type="button" onClick={() => activateSlotFilter(SLOT_STATUS.OPEN)}>
+              <button className="layoutStat layoutStat--link" type="button" onClick={() => goToCalendarWithStatus(SLOT_STATUS.OPEN)}>
                 <div className="layoutStat__value">{openSlots.length}</div>
                 <div className="layoutStat__label">Open offers</div>
               </button>
-              <button className="layoutStat layoutStat--link" type="button" onClick={() => activateSlotFilter(SLOT_STATUS.CONFIRMED)}>
+              <button className="layoutStat layoutStat--link" type="button" onClick={() => goToCalendarWithStatus(SLOT_STATUS.CONFIRMED)}>
                 <div className="layoutStat__value">{confirmedSlots.length}</div>
                 <div className="layoutStat__label">Confirmed</div>
               </button>
@@ -417,8 +435,8 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
               {divisions.slice(0, 4).map((d) => (
                 <div key={d.code} className="layoutPill">{d.code}</div>
               ))}
-              <button className="layoutPill layoutPill--link" type="button" onClick={() => activateSlotFilter(SLOT_STATUS.OPEN)}>Open</button>
-              <button className="layoutPill layoutPill--link" type="button" onClick={() => activateSlotFilter(SLOT_STATUS.CONFIRMED)}>Confirmed</button>
+              <button className="layoutPill layoutPill--link" type="button" onClick={() => goToCalendarWithStatus(SLOT_STATUS.OPEN)}>Open</button>
+              <button className="layoutPill layoutPill--link" type="button" onClick={() => goToCalendarWithStatus(SLOT_STATUS.CONFIRMED)}>Confirmed</button>
             </div>
           </div>
           <div className="layoutPanel">
