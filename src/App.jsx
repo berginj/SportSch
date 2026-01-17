@@ -12,8 +12,10 @@ import DebugPage from "./pages/DebugPage";
 import PracticePortalPage from "./pages/PracticePortalPage";
 import TopNav from "./components/TopNav";
 import StatusCard from "./components/StatusCard";
+import KeyboardShortcutsModal from "./components/KeyboardShortcutsModal";
 import { useSession } from "./lib/useSession";
 import { trackPageView } from "./lib/telemetry";
+import { useKeyboardShortcuts, COMMON_SHORTCUTS } from "./lib/hooks/useKeyboardShortcuts";
 
 const VALID_TABS = new Set(["home", "calendar", "schedule", "offers", "manage", "admin", "debug", "help", "practice"]);
 
@@ -36,11 +38,22 @@ export default function App() {
   const { me, memberships, activeLeagueId, setActiveLeagueId, refreshMe } = useSession();
   const [tab, setTab] = useState(() => readTabFromHash());
   const [invite, setInvite] = useState(() => readInviteFromUrl());
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const tableView = "A";
 
   const isSignedIn = !!me && me.userId && me.userId !== "UNKNOWN";
   const isGlobalAdmin = !!me?.isGlobalAdmin;
   const hasMemberships = (memberships?.length || 0) > 0;
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts({
+    [COMMON_SHORTCUTS.GO_HOME]: () => setTab('home'),
+    [COMMON_SHORTCUTS.GO_CALENDAR]: () => setTab('calendar'),
+    [COMMON_SHORTCUTS.GO_MANAGE]: () => setTab('manage'),
+    [COMMON_SHORTCUTS.GO_ADMIN]: () => isGlobalAdmin && setTab('admin'),
+    [COMMON_SHORTCUTS.HELP]: () => setShowShortcuts(true),
+    [COMMON_SHORTCUTS.ESCAPE]: () => setShowShortcuts(false),
+  }, isSignedIn && hasMemberships);
 
   // When global admins have no memberships, default them into the admin view.
   const effectiveTab = useMemo(() => {
@@ -199,6 +212,11 @@ export default function App() {
           <PracticePortalPage me={me} leagueId={activeLeagueId} />
         )}
       </main>
+
+      <KeyboardShortcutsModal
+        isOpen={showShortcuts}
+        onClose={() => setShowShortcuts(false)}
+      />
     </div>
   );
 }
