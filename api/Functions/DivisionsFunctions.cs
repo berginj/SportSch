@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json;
 using Azure;
 using Azure.Data.Tables;
+using GameSwap.Functions.Repositories;
 using GameSwap.Functions.Storage;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
@@ -11,12 +12,17 @@ namespace GameSwap.Functions.Functions;
 
 public class DivisionsFunctions
 {
-    private readonly TableServiceClient _svc;
+    private readonly IDivisionRepository _divisionRepo;
+    private readonly IMembershipRepository _membershipRepo;
     private readonly ILogger _log;
 
-    public DivisionsFunctions(ILoggerFactory lf, TableServiceClient svc)
+    public DivisionsFunctions(
+        IDivisionRepository divisionRepo,
+        IMembershipRepository membershipRepo,
+        ILoggerFactory lf)
     {
-        _svc = svc;
+        _divisionRepo = divisionRepo;
+        _membershipRepo = membershipRepo;
         _log = lf.CreateLogger<DivisionsFunctions>();
     }
 
@@ -55,11 +61,18 @@ public class DivisionsFunctions
         {
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
-            await ApiGuards.RequireMemberOrGlobalAdminAsync(_svc, me, leagueId);
 
-            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Divisions);
+            // Authorization - must be member or global admin
+            if (!await _membershipRepo.IsMemberAsync(me.UserId, leagueId) &&
+                !await _membershipRepo.IsGlobalAdminAsync(me.UserId))
+            {
+                return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                    "Only league members can view divisions");
+            }
+
+            var entities = await _divisionRepo.QueryDivisionsAsync(leagueId);
             var list = new List<DivisionDto>();
-            await foreach (var e in table.QueryAsync<TableEntity>(x => x.PartitionKey == DivPk(leagueId)))
+            foreach (var e in entities)
             {
                 list.Add(new DivisionDto(
                     code: e.RowKey,
@@ -86,7 +99,19 @@ public class DivisionsFunctions
         {
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
-            await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+
+            // Authorization - league admin only
+            if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
+            {
+                var membership = await _membershipRepo.GetMembershipAsync(me.UserId, leagueId);
+                var role = (membership?.GetString("Role") ?? Constants.Roles.Viewer).Trim();
+                if (!string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                        "Only league admins can create divisions");
+                }
+            }
+
             var body = await HttpUtil.ReadJsonAsync<CreateReq>(req);
             if (body is null)
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Invalid JSON body");
@@ -101,7 +126,6 @@ public class DivisionsFunctions
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "name is required");
             ApiGuards.EnsureValidTableKeyPart("code", code);
 
-            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Divisions);
             var e = new TableEntity(DivPk(leagueId), code)
             {
                 ["LeagueId"] = leagueId,
@@ -113,7 +137,7 @@ public class DivisionsFunctions
 
             try
             {
-                await table.AddEntityAsync(e);
+                await _divisionRepo.CreateDivisionAsync(e);
             }
             catch (RequestFailedException ex) when (ex.Status == 409)
             {
@@ -150,19 +174,26 @@ public class DivisionsFunctions
         {
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
-            await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+
+            // Authorization - league admin only
+            if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
+            {
+                var membership = await _membershipRepo.GetMembershipAsync(me.UserId, leagueId);
+                var role = (membership?.GetString("Role") ?? Constants.Roles.Viewer).Trim();
+                if (!string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                        "Only league admins can update divisions");
+                }
+            }
+
             var body = await HttpUtil.ReadJsonAsync<UpdateReq>(req);
             if (body is null)
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Invalid JSON body");
             ApiGuards.EnsureValidTableKeyPart("code", code);
 
-            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Divisions);
-            TableEntity e;
-            try
-            {
-                e = (await table.GetEntityAsync<TableEntity>(DivPk(leagueId), code)).Value;
-            }
-            catch (RequestFailedException ex) when (ex.Status == 404)
+            var e = await _divisionRepo.GetDivisionAsync(leagueId, code);
+            if (e is null)
             {
                 return ApiResponses.Error(req, HttpStatusCode.NotFound, "NOT_FOUND", "division not found");
             }
@@ -171,7 +202,7 @@ public class DivisionsFunctions
             if (body.isActive.HasValue) e["IsActive"] = body.isActive.Value;
             e["UpdatedUtc"] = DateTimeOffset.UtcNow;
 
-            await table.UpdateEntityAsync(e, e.ETag, TableUpdateMode.Replace);
+            await _divisionRepo.UpdateDivisionAsync(e);
 
             return ApiResponses.Ok(req, new DivisionDto(code, (e.GetString("Name") ?? "").Trim(), e.GetBoolean("IsActive") ?? true));
         }
@@ -203,19 +234,28 @@ public class DivisionsFunctions
         {
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
-            await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+
+            // Authorization - league admin only
+            if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
+            {
+                var membership = await _membershipRepo.GetMembershipAsync(me.UserId, leagueId);
+                var role = (membership?.GetString("Role") ?? Constants.Roles.Viewer).Trim();
+                if (!string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                        "Only league admins can view season config");
+                }
+            }
+
             ApiGuards.EnsureValidTableKeyPart("code", code);
 
-            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Divisions);
-            try
-            {
-                var e = (await table.GetEntityAsync<TableEntity>(DivPk(leagueId), code)).Value;
-                return ApiResponses.Ok(req, new { season = ReadSeasonConfig(e) });
-            }
-            catch (RequestFailedException ex) when (ex.Status == 404)
+            var e = await _divisionRepo.GetDivisionAsync(leagueId, code);
+            if (e is null)
             {
                 return ApiResponses.Error(req, HttpStatusCode.NotFound, "NOT_FOUND", "division not found");
             }
+
+            return ApiResponses.Ok(req, new { season = ReadSeasonConfig(e) });
         }
         catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
         catch (Exception ex)
@@ -234,7 +274,19 @@ public class DivisionsFunctions
         {
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
-            await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+
+            // Authorization - league admin only
+            if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
+            {
+                var membership = await _membershipRepo.GetMembershipAsync(me.UserId, leagueId);
+                var role = (membership?.GetString("Role") ?? Constants.Roles.Viewer).Trim();
+                if (!string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                        "Only league admins can update season config");
+                }
+            }
+
             ApiGuards.EnsureValidTableKeyPart("code", code);
 
             var body = await HttpUtil.ReadJsonAsync<PatchSeasonReq>(req);
@@ -253,13 +305,8 @@ public class DivisionsFunctions
                 ValidateSeasonDates(b.startDate, b.endDate, "blackout");
             }
 
-            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Divisions);
-            TableEntity e;
-            try
-            {
-                e = (await table.GetEntityAsync<TableEntity>(DivPk(leagueId), code)).Value;
-            }
-            catch (RequestFailedException ex) when (ex.Status == 404)
+            var e = await _divisionRepo.GetDivisionAsync(leagueId, code);
+            if (e is null)
             {
                 return ApiResponses.Error(req, HttpStatusCode.NotFound, "NOT_FOUND", "division not found");
             }
@@ -272,7 +319,7 @@ public class DivisionsFunctions
             e[SeasonBlackouts] = JsonSerializer.Serialize(blackouts, new JsonSerializerOptions(JsonSerializerDefaults.Web));
             e["UpdatedUtc"] = DateTimeOffset.UtcNow;
 
-            await table.UpdateEntityAsync(e, e.ETag, TableUpdateMode.Replace);
+            await _divisionRepo.UpdateDivisionAsync(e);
 
             return ApiResponses.Ok(req, new { season = ReadSeasonConfig(e) });
         }
@@ -292,20 +339,24 @@ public class DivisionsFunctions
         {
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
-            await ApiGuards.RequireMemberOrGlobalAdminAsync(_svc, me, leagueId);
 
-            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Divisions);
-            try
+            // Authorization - must be member or global admin
+            if (!await _membershipRepo.IsMemberAsync(me.UserId, leagueId) &&
+                !await _membershipRepo.IsGlobalAdminAsync(me.UserId))
             {
-                var e = (await table.GetEntityAsync<TableEntity>(TemplatesPk(leagueId), TemplatesRk)).Value;
-                var json = (e.GetString("TemplatesJson") ?? "[]").Trim();
-                var templates = JsonSerializer.Deserialize<List<DivisionTemplateItem>>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? new();
-                return ApiResponses.Ok(req, templates);
+                return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                    "Only league members can view division templates");
             }
-            catch (RequestFailedException ex) when (ex.Status == 404)
+
+            var e = await _divisionRepo.GetTemplatesAsync(leagueId);
+            if (e is null)
             {
                 return ApiResponses.Ok(req, new List<DivisionTemplateItem>());
             }
+
+            var json = (e.GetString("TemplatesJson") ?? "[]").Trim();
+            var templates = JsonSerializer.Deserialize<List<DivisionTemplateItem>>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? new();
+            return ApiResponses.Ok(req, templates);
         }
         catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
         catch (Exception ex)
@@ -323,7 +374,19 @@ public class DivisionsFunctions
         {
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
-            await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+
+            // Authorization - league admin only
+            if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
+            {
+                var membership = await _membershipRepo.GetMembershipAsync(me.UserId, leagueId);
+                var role = (membership?.GetString("Role") ?? Constants.Roles.Viewer).Trim();
+                if (!string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                        "Only league admins can update division templates");
+                }
+            }
+
             var body = await HttpUtil.ReadJsonAsync<PatchTemplatesReq>(req);
             if (body is null)
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Invalid JSON body");
@@ -338,7 +401,6 @@ public class DivisionsFunctions
                 ApiGuards.EnsureValidTableKeyPart("template code", t.code);
             }
 
-            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Divisions);
             var json = JsonSerializer.Serialize(templates, new JsonSerializerOptions(JsonSerializerDefaults.Web));
             var e = new TableEntity(TemplatesPk(leagueId), TemplatesRk)
             {
@@ -347,7 +409,7 @@ public class DivisionsFunctions
                 ["UpdatedUtc"] = DateTimeOffset.UtcNow
             };
 
-            await table.UpsertEntityAsync(e, TableUpdateMode.Replace);
+            await _divisionRepo.UpsertTemplatesAsync(e);
             return ApiResponses.Ok(req, templates);
         }
         catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
