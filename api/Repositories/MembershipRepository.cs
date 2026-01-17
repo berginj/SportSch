@@ -152,4 +152,22 @@ public class MembershipRepository : IMembershipRepository
 
         return result;
     }
+
+    public async Task<List<TableEntity>> GetLeagueMembershipsAsync(string leagueId)
+    {
+        var table = await TableClients.GetTableAsync(_tableService, TableName);
+
+        // Query using the partition key pattern
+        var pkPrefix = $"MEMBERSHIP|{leagueId}|";
+        var filter = ODataFilterBuilder.PartitionKeyPrefix(pkPrefix);
+
+        var result = new List<TableEntity>();
+        await foreach (var entity in table.QueryAsync<TableEntity>(filter: filter))
+        {
+            result.Add(entity);
+        }
+
+        _logger.LogDebug("Retrieved {Count} memberships for league {LeagueId}", result.Count, leagueId);
+        return result;
+    }
 }

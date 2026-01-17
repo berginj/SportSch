@@ -57,4 +57,9 @@ public interface IMembershipRepository
     /// Gets all memberships across all leagues (for global admin).
     /// </summary>
     Task<List<TableEntity>> QueryAllMembershipsAsync(string? leagueFilter = null);
+
+    /// <summary>
+    /// Gets all memberships in a league (fetches all pages, for internal use).
+    /// </summary>
+    Task<List<TableEntity>> GetLeagueMembershipsAsync(string leagueId);
 }

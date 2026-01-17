@@ -14,6 +14,9 @@ public class SlotService : ISlotService
     private readonly IFieldRepository _fieldRepo;
     private readonly IAuthorizationService _authService;
     private readonly INotificationService _notificationService;
+    private readonly IMembershipRepository _membershipRepo;
+    private readonly INotificationPreferencesService _preferencesService;
+    private readonly IEmailService _emailService;
     private readonly ILogger<SlotService> _logger;
 
     public SlotService(
@@ -21,12 +24,18 @@ public class SlotService : ISlotService
         IFieldRepository fieldRepo,
         IAuthorizationService authService,
         INotificationService notificationService,
+        IMembershipRepository membershipRepo,
+        INotificationPreferencesService preferencesService,
+        IEmailService emailService,
         ILogger<SlotService> logger)
     {
         _slotRepo = slotRepo;
         _fieldRepo = fieldRepo;
         _authService = authService;
         _notificationService = notificationService;
+        _membershipRepo = membershipRepo;
+        _preferencesService = preferencesService;
+        _emailService = emailService;
         _logger = logger;
     }
 
@@ -136,26 +145,58 @@ public class SlotService : ISlotService
 
         _logger.LogInformation("Slot created successfully: {SlotId}", slotId);
 
-        // Send notification (fire and forget - don't block response)
+        // Send batch notifications to all coaches in division (fire and forget - don't block response)
         _ = Task.Run(async () =>
         {
             try
             {
-                // TODO: Get other coaches in division and notify them
-                // For now, create a notification for the offering coach
-                var message = $"Your game slot for {request.GameDate} at {request.StartTime} has been posted.";
-                await _notificationService.CreateNotificationAsync(
-                    context.UserId,
-                    context.LeagueId,
-                    "SlotCreated",
-                    message,
-                    "#offers",
-                    slotId,
-                    "Slot");
+                // Get all coaches in this division
+                var allCoaches = await GetCoachesInDivisionAsync(context.LeagueId, request.Division);
+
+                var notificationTasks = new List<Task>();
+
+                foreach (var coach in allCoaches)
+                {
+                    var coachUserId = coach.userId;
+                    var coachEmail = coach.email;
+
+                    // Skip the offering coach (they know they created it)
+                    if (coachUserId == context.UserId)
+                        continue;
+
+                    // Create in-app notification
+                    var message = $"New game slot available: {request.GameDate} at {request.StartTime} at {displayName}";
+                    notificationTasks.Add(_notificationService.CreateNotificationAsync(
+                        coachUserId,
+                        context.LeagueId,
+                        "SlotCreated",
+                        message,
+                        "#calendar",
+                        slotId,
+                        "Slot"));
+
+                    // Send email if enabled
+                    if (!string.IsNullOrWhiteSpace(coachEmail) &&
+                        await _preferencesService.ShouldSendEmailAsync(coachUserId, context.LeagueId, "SlotCreated"))
+                    {
+                        notificationTasks.Add(_emailService.SendSlotCreatedEmailAsync(
+                            coachEmail,
+                            context.LeagueId,
+                            request.Division,
+                            request.GameDate,
+                            request.StartTime,
+                            displayName));
+                    }
+                }
+
+                // Wait for all notifications to be sent
+                await Task.WhenAll(notificationTasks);
+
+                _logger.LogInformation("Sent {Count} notifications for slot creation: {SlotId}", allCoaches.Count - 1, slotId);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to create notification for slot creation: {SlotId}", slotId);
+                _logger.LogWarning(ex, "Failed to send batch notifications for slot creation: {SlotId}", slotId);
             }
         });
 
@@ -298,5 +339,36 @@ public class SlotService : ISlotService
                 _logger.LogWarning(ex, "Failed to create notification for slot cancellation: {SlotId}", slotId);
             }
         });
+    }
+
+    private async Task<List<(string userId, string email)>> GetCoachesInDivisionAsync(string leagueId, string division)
+    {
+        try
+        {
+            // Query all memberships for this league
+            var allMemberships = await _membershipRepo.GetLeagueMembershipsAsync(leagueId);
+
+            var coaches = allMemberships
+                .Where(m =>
+                {
+                    var role = (m.GetString("Role") ?? "").Trim();
+                    var coachDivision = (m.GetString("CoachDivision") ?? "").Trim();
+
+                    return string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase) &&
+                           string.Equals(coachDivision, division, StringComparison.OrdinalIgnoreCase);
+                })
+                .Select(m => (
+                    userId: m.RowKey,
+                    email: m.GetString("Email") ?? ""
+                ))
+                .ToList();
+
+            return coaches;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to get coaches for division {Division} in league {LeagueId}", division, leagueId);
+            return new List<(string, string)>();
+        }
     }
 }
