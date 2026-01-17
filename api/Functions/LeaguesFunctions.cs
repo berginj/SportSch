@@ -1,6 +1,7 @@
 using System.Net;
 using Azure;
 using Azure.Data.Tables;
+using GameSwap.Functions.Repositories;
 using GameSwap.Functions.Storage;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
@@ -10,12 +11,20 @@ namespace GameSwap.Functions.Functions;
 
 public class LeaguesFunctions
 {
-    private readonly TableServiceClient _svc;
+    private readonly ILeagueRepository _leagueRepo;
+    private readonly IMembershipRepository _membershipRepo;
+    private readonly TableServiceClient _tableService; // Still needed for cascade delete and apply season to divisions
     private readonly ILogger _log;
 
-    public LeaguesFunctions(ILoggerFactory lf, TableServiceClient svc)
+    public LeaguesFunctions(
+        ILeagueRepository leagueRepo,
+        IMembershipRepository membershipRepo,
+        TableServiceClient tableService,
+        ILoggerFactory lf)
     {
-        _svc = svc;
+        _leagueRepo = leagueRepo;
+        _membershipRepo = membershipRepo;
+        _tableService = tableService;
         _log = lf.CreateLogger<LeaguesFunctions>();
     }
 
@@ -85,17 +94,10 @@ public class LeaguesFunctions
     {
         try
         {
-            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Leagues);
+            var entities = await _leagueRepo.QueryLeaguesAsync(includeAll: false);
             var list = new List<LeagueDto>();
-            await foreach (var e in table.QueryAsync<TableEntity>(x => x.PartitionKey == Constants.Pk.Leagues))
-            {
-                var status = (e.GetString("Status") ?? "Active").Trim();
-                if (string.Equals(status, "Disabled", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(status, "Deleted", StringComparison.OrdinalIgnoreCase))
-                    continue;
-
+            foreach (var e in entities)
                 list.Add(ToDto(e));
-            }
 
             return ApiResponses.Ok(req, list.OrderBy(x => x.name).ThenBy(x => x.leagueId));
         }
@@ -114,18 +116,22 @@ public class LeaguesFunctions
         {
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
-            await ApiGuards.RequireMemberAsync(_svc, me.UserId, leagueId);
 
-            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Leagues);
-            try
+            // Authorization - must be member
+            if (!await _membershipRepo.IsMemberAsync(me.UserId, leagueId) &&
+                !await _membershipRepo.IsGlobalAdminAsync(me.UserId))
             {
-                var e = (await table.GetEntityAsync<TableEntity>(Constants.Pk.Leagues, leagueId)).Value;
-                return ApiResponses.Ok(req, ToDto(e));
+                return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                    "Only league members can view league details");
             }
-            catch (RequestFailedException ex) when (ex.Status == 404)
+
+            var e = await _leagueRepo.GetLeagueAsync(leagueId);
+            if (e is null)
             {
                 return ApiResponses.Error(req, HttpStatusCode.NotFound, "NOT_FOUND", $"league not found: {leagueId}");
             }
+
+            return ApiResponses.Ok(req, ToDto(e));
         }
         catch (ApiGuards.HttpError ex)
         {
@@ -146,19 +152,25 @@ public class LeaguesFunctions
         {
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
-            await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+
+            // Authorization - league admin required
+            if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
+            {
+                var membership = await _membershipRepo.GetMembershipAsync(me.UserId, leagueId);
+                var role = (membership?.GetString("Role") ?? Constants.Roles.Viewer).Trim();
+                if (!string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                        "Only league admins can update league");
+                }
+            }
 
             var body = await HttpUtil.ReadJsonAsync<PatchLeagueReq>(req);
             if (body is null)
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Invalid JSON body");
 
-            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Leagues);
-            TableEntity e;
-            try
-            {
-                e = (await table.GetEntityAsync<TableEntity>(Constants.Pk.Leagues, leagueId)).Value;
-            }
-            catch (RequestFailedException ex) when (ex.Status == 404)
+            var e = await _leagueRepo.GetLeagueAsync(leagueId);
+            if (e is null)
             {
                 return ApiResponses.Error(req, HttpStatusCode.NotFound, "NOT_FOUND", $"league not found: {leagueId}");
             }
@@ -175,7 +187,7 @@ public class LeaguesFunctions
             }
 
             e["UpdatedUtc"] = DateTimeOffset.UtcNow;
-            await table.UpdateEntityAsync(e, e.ETag, TableUpdateMode.Replace);
+            await _leagueRepo.UpdateLeagueAsync(e);
 
             return ApiResponses.Ok(req, ToDto(e));
         }
@@ -197,11 +209,17 @@ public class LeaguesFunctions
         try
         {
             var me = IdentityUtil.GetMe(req);
-            await ApiGuards.RequireGlobalAdminAsync(_svc, me.UserId);
 
-            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Leagues);
+            // Authorization - global admin only
+            if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
+            {
+                return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                    "Only global admins can list all leagues");
+            }
+
+            var entities = await _leagueRepo.QueryLeaguesAsync(includeAll: true);
             var list = new List<LeagueDto>();
-            await foreach (var e in table.QueryAsync<TableEntity>(x => x.PartitionKey == Constants.Pk.Leagues))
+            foreach (var e in entities)
                 list.Add(ToDto(e));
 
             return ApiResponses.Ok(req, list.OrderBy(x => x.leagueId));
@@ -224,11 +242,17 @@ public class LeaguesFunctions
         try
         {
             var me = IdentityUtil.GetMe(req);
-            await ApiGuards.RequireGlobalAdminAsync(_svc, me.UserId);
 
-            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Leagues);
+            // Authorization - global admin only
+            if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
+            {
+                return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                    "Only global admins can list all leagues");
+            }
+
+            var entities = await _leagueRepo.QueryLeaguesAsync(includeAll: true);
             var list = new List<LeagueDto>();
-            await foreach (var e in table.QueryAsync<TableEntity>(x => x.PartitionKey == Constants.Pk.Leagues))
+            foreach (var e in entities)
                 list.Add(ToDto(e));
 
             return ApiResponses.Ok(req, list.OrderBy(x => x.leagueId));
@@ -251,73 +275,13 @@ public class LeaguesFunctions
         try
         {
             var me = IdentityUtil.GetMe(req);
-            await ApiGuards.RequireGlobalAdminAsync(_svc, me.UserId);
 
-            var body = await HttpUtil.ReadJsonAsync<CreateLeagueReq>(req);
-            if (body is null)
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Invalid JSON body");
-
-            var leagueId = (body.leagueId ?? "").Trim();
-            var name = (body.name ?? "").Trim();
-            var timezone = string.IsNullOrWhiteSpace(body.timezone) ? "America/New_York" : body.timezone!.Trim();
-
-            if (string.IsNullOrWhiteSpace(leagueId))
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "leagueId is required");
-            if (string.IsNullOrWhiteSpace(name))
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "name is required");
-            ApiGuards.EnsureValidTableKeyPart("leagueId", leagueId);
-
-            var now = DateTimeOffset.UtcNow;
-        var e = new TableEntity(Constants.Pk.Leagues, leagueId)
-        {
-            ["LeagueId"] = leagueId,
-            ["Name"] = name,
-            ["Timezone"] = timezone,
-            ["Status"] = "Active",
-            ["ContactName"] = "",
-            ["ContactEmail"] = "",
-            ["ContactPhone"] = "",
-            ["SpringStart"] = "",
-            ["SpringEnd"] = "",
-            ["FallStart"] = "",
-            ["FallEnd"] = "",
-            ["GameLengthMinutes"] = 0,
-            ["Blackouts"] = "[]",
-            ["CreatedUtc"] = now,
-            ["UpdatedUtc"] = now
-        };
-
-            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Leagues);
-            try
+            // Authorization - global admin only
+            if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
             {
-                await table.AddEntityAsync(e);
+                return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                    "Only global admins can create leagues");
             }
-            catch (RequestFailedException ex) when (ex.Status == 409)
-            {
-                return ApiResponses.Error(req, HttpStatusCode.Conflict, "CONFLICT", $"league already exists: {leagueId}");
-            }
-
-            return ApiResponses.Ok(req, ToDto(e), HttpStatusCode.Created);
-        }
-        catch (ApiGuards.HttpError ex)
-        {
-            return ApiResponses.FromHttpError(req, ex);
-        }
-        catch (Exception ex)
-        {
-            _log.LogError(ex, "CreateLeague_Admin failed");
-            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
-        }
-    }
-
-    [Function("CreateLeague_Global")]
-    public async Task<HttpResponseData> CreateGlobal(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "global/leagues")] HttpRequestData req)
-    {
-        try
-        {
-            var me = IdentityUtil.GetMe(req);
-            await ApiGuards.RequireGlobalAdminAsync(_svc, me.UserId);
 
             var body = await HttpUtil.ReadJsonAsync<CreateLeagueReq>(req);
             if (body is null)
@@ -353,10 +317,80 @@ public class LeaguesFunctions
                 ["UpdatedUtc"] = now
             };
 
-            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Leagues);
             try
             {
-                await table.AddEntityAsync(e);
+                await _leagueRepo.CreateLeagueAsync(e);
+            }
+            catch (RequestFailedException ex) when (ex.Status == 409)
+            {
+                return ApiResponses.Error(req, HttpStatusCode.Conflict, "CONFLICT", $"league already exists: {leagueId}");
+            }
+
+            return ApiResponses.Ok(req, ToDto(e), HttpStatusCode.Created);
+        }
+        catch (ApiGuards.HttpError ex)
+        {
+            return ApiResponses.FromHttpError(req, ex);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "CreateLeague_Admin failed");
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
+        }
+    }
+
+    [Function("CreateLeague_Global")]
+    public async Task<HttpResponseData> CreateGlobal(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "global/leagues")] HttpRequestData req)
+    {
+        try
+        {
+            var me = IdentityUtil.GetMe(req);
+
+            // Authorization - global admin only
+            if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
+            {
+                return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                    "Only global admins can create leagues");
+            }
+
+            var body = await HttpUtil.ReadJsonAsync<CreateLeagueReq>(req);
+            if (body is null)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Invalid JSON body");
+
+            var leagueId = (body.leagueId ?? "").Trim();
+            var name = (body.name ?? "").Trim();
+            var timezone = string.IsNullOrWhiteSpace(body.timezone) ? "America/New_York" : body.timezone!.Trim();
+
+            if (string.IsNullOrWhiteSpace(leagueId))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "leagueId is required");
+            if (string.IsNullOrWhiteSpace(name))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "name is required");
+            ApiGuards.EnsureValidTableKeyPart("leagueId", leagueId);
+
+            var now = DateTimeOffset.UtcNow;
+            var e = new TableEntity(Constants.Pk.Leagues, leagueId)
+            {
+                ["LeagueId"] = leagueId,
+                ["Name"] = name,
+                ["Timezone"] = timezone,
+                ["Status"] = "Active",
+                ["ContactName"] = "",
+                ["ContactEmail"] = "",
+                ["ContactPhone"] = "",
+                ["SpringStart"] = "",
+                ["SpringEnd"] = "",
+                ["FallStart"] = "",
+                ["FallEnd"] = "",
+                ["GameLengthMinutes"] = 0,
+                ["Blackouts"] = "[]",
+                ["CreatedUtc"] = now,
+                ["UpdatedUtc"] = now
+            };
+
+            try
+            {
+                await _leagueRepo.CreateLeagueAsync(e);
             }
             catch (RequestFailedException ex) when (ex.Status == 409)
             {
@@ -408,7 +442,13 @@ public class LeaguesFunctions
         try
         {
             var me = IdentityUtil.GetMe(req);
-            await ApiGuards.RequireGlobalAdminAsync(_svc, me.UserId);
+
+            // Authorization - global admin only
+            if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
+            {
+                return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                    "Only global admins can delete leagues");
+            }
 
             leagueId = (leagueId ?? "").Trim();
             if (string.IsNullOrWhiteSpace(leagueId))
@@ -417,10 +457,9 @@ public class LeaguesFunctions
 
             await DeleteLeagueDataAsync(leagueId);
 
-            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Leagues);
             try
             {
-                await table.DeleteEntityAsync(Constants.Pk.Leagues, leagueId);
+                await _leagueRepo.DeleteLeagueAsync(leagueId);
             }
             catch (RequestFailedException ex) when (ex.Status == 404)
             {
@@ -448,10 +487,30 @@ public class LeaguesFunctions
             ApiGuards.EnsureValidTableKeyPart("leagueId", leagueId);
 
             var me = IdentityUtil.GetMe(req);
+
             if (requireGlobal)
-                await ApiGuards.RequireGlobalAdminAsync(_svc, me.UserId);
+            {
+                // Authorization - global admin only
+                if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                        "Only global admins can update league season");
+                }
+            }
             else
-                await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+            {
+                // Authorization - league admin required
+                if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
+                {
+                    var membership = await _membershipRepo.GetMembershipAsync(me.UserId, leagueId);
+                    var role = (membership?.GetString("Role") ?? Constants.Roles.Viewer).Trim();
+                    if (!string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                            "Only league admins can update league season");
+                    }
+                }
+            }
 
             var body = await HttpUtil.ReadJsonAsync<PatchSeasonReq>(req);
             if (body?.season is null)
@@ -469,13 +528,8 @@ public class LeaguesFunctions
                 ValidateSeasonDates(b.startDate, b.endDate, "blackout");
             }
 
-            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Leagues);
-            TableEntity e;
-            try
-            {
-                e = (await table.GetEntityAsync<TableEntity>(Constants.Pk.Leagues, leagueId)).Value;
-            }
-            catch (RequestFailedException ex) when (ex.Status == 404)
+            var e = await _leagueRepo.GetLeagueAsync(leagueId);
+            if (e is null)
             {
                 return ApiResponses.Error(req, HttpStatusCode.NotFound, "NOT_FOUND", $"league not found: {leagueId}");
             }
@@ -487,7 +541,7 @@ public class LeaguesFunctions
             e["GameLengthMinutes"] = season.gameLengthMinutes;
             e["Blackouts"] = System.Text.Json.JsonSerializer.Serialize(blackouts);
             e["UpdatedUtc"] = DateTimeOffset.UtcNow;
-            await table.UpdateEntityAsync(e, e.ETag, TableUpdateMode.Replace);
+            await _leagueRepo.UpdateLeagueAsync(e);
 
             await ApplySeasonToDivisionsAsync(leagueId, season, blackouts);
 
@@ -519,7 +573,7 @@ public class LeaguesFunctions
 
     private async Task ApplySeasonToDivisionsAsync(string leagueId, SeasonConfig season, List<BlackoutRange> blackouts)
     {
-        var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Divisions);
+        var table = await TableClients.GetTableAsync(_tableService, Constants.Tables.Divisions);
         var pk = Constants.Pk.Divisions(leagueId);
         var filter = $"PartitionKey eq '{ApiGuards.EscapeOData(pk)}'";
 
@@ -540,7 +594,7 @@ public class LeaguesFunctions
     private async Task DeleteLeagueDataAsync(string leagueId)
     {
         var ruleIds = new List<string>();
-        var rulesTable = await TableClients.GetTableAsync(_svc, Constants.Tables.FieldAvailabilityRules);
+        var rulesTable = await TableClients.GetTableAsync(_tableService, Constants.Tables.FieldAvailabilityRules);
         var rulesFilter = PrefixFilter($"AVAILRULE|{leagueId}|");
         await foreach (var rule in rulesTable.QueryAsync<TableEntity>(filter: rulesFilter))
         {
@@ -550,7 +604,7 @@ public class LeaguesFunctions
 
         if (ruleIds.Count > 0)
         {
-            var exceptionsTable = await TableClients.GetTableAsync(_svc, Constants.Tables.FieldAvailabilityExceptions);
+            var exceptionsTable = await TableClients.GetTableAsync(_tableService, Constants.Tables.FieldAvailabilityExceptions);
             foreach (var ruleId in ruleIds)
             {
                 var exceptionFilter = $"PartitionKey eq '{ApiGuards.EscapeOData(Constants.Pk.FieldAvailabilityRuleExceptions(ruleId))}'";
@@ -581,7 +635,7 @@ public class LeaguesFunctions
 
     private async Task<int> DeleteByFilterAsync(string tableName, string filter)
     {
-        var table = await TableClients.GetTableAsync(_svc, tableName);
+        var table = await TableClients.GetTableAsync(_tableService, tableName);
         var deleted = 0;
 
         await foreach (var e in table.QueryAsync<TableEntity>(filter: filter))

@@ -23,6 +23,7 @@ var host = new HostBuilder()
         services.AddScoped<IDivisionRepository, DivisionRepository>();
         services.AddScoped<ITeamRepository, TeamRepository>();
         services.AddScoped<IAccessRequestRepository, AccessRequestRepository>();
+        services.AddScoped<ILeagueRepository, LeagueRepository>();
 
         // Register Services (scoped for per-request lifetime)
         services.AddScoped<ISlotService, SlotService>();
