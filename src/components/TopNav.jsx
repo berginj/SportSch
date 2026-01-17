@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
+import NotificationBell from "./NotificationBell";
 
 export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
   const memberships = Array.isArray(me?.memberships) ? me.memberships : [];
@@ -172,6 +173,7 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
             <div className="whoami" title={email}>
               {email || "Signed in"}
             </div>
+            <NotificationBell leagueId={leagueId} />
             <div className="control control--league">
               <label>League</label>
               <select
