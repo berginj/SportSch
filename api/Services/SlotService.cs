@@ -147,11 +147,14 @@ public class SlotService : ISlotService
 
     public async Task<object> QuerySlotsAsync(SlotQueryRequest request, CorrelationContext context)
     {
+        // Parse multiple status values if provided
+        var statusList = ParseStatusList(request.Status);
+
         var filter = new SlotQueryFilter
         {
             LeagueId = request.LeagueId,
             Division = request.Division,
-            Status = request.Status,
+            Status = statusList.Count == 1 ? statusList[0] : null, // Single status can use OData filter
             FromDate = request.FromDate,
             ToDate = request.ToDate,
             FieldKey = request.FieldKey,
@@ -160,19 +163,76 @@ public class SlotService : ISlotService
 
         var result = await _slotRepo.QuerySlotsAsync(filter, request.ContinuationToken);
 
+        // Apply multi-status filtering and default behavior in memory
+        var filteredItems = result.Items.Where(e =>
+        {
+            var status = (e.GetString("Status") ?? Constants.Status.SlotOpen).Trim();
+
+            if (statusList.Count > 1)
+            {
+                // Multiple statuses provided - must match one of them
+                return statusList.Contains(status, StringComparer.OrdinalIgnoreCase);
+            }
+            else if (statusList.Count == 0 && string.IsNullOrEmpty(request.Status))
+            {
+                // No status filter - default behavior excludes Cancelled
+                return !string.Equals(status, Constants.Status.SlotCancelled, StringComparison.OrdinalIgnoreCase);
+            }
+
+            // Single status already filtered by OData, or include all
+            return true;
+        }).ToList();
+
+        // Sort by date, time, then field
+        var sortedItems = filteredItems
+            .OrderBy(e => e.GetString("GameDate") ?? "")
+            .ThenBy(e => e.GetString("StartTime") ?? "")
+            .ThenBy(e => e.GetString("DisplayName") ?? "")
+            .ToList();
+
         return new
         {
-            items = result.Items.Select(EntityMappers.MapSlot).ToList(),
+            items = sortedItems.Select(EntityMappers.MapSlot).ToList(),
             continuationToken = result.ContinuationToken,
             pageSize = result.PageSize,
             hasMore = result.HasMore
         };
     }
 
+    private static List<string> ParseStatusList(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return new List<string>();
+        return raw
+            .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     public async Task CancelSlotAsync(string leagueId, string division, string slotId, string userId)
     {
-        // Authorization check
-        if (!await _authService.CanCancelSlotAsync(userId, leagueId, division, slotId))
+        // Get the slot first to check team ownership
+        var slot = await _slotRepo.GetSlotAsync(leagueId, division, slotId);
+        if (slot == null)
+        {
+            throw new ApiGuards.HttpError(404, ErrorCodes.SLOT_NOT_FOUND,
+                "Slot not found");
+        }
+
+        // Check if already cancelled
+        var status = (slot.GetString("Status") ?? Constants.Status.SlotOpen).Trim();
+        if (string.Equals(status, Constants.Status.SlotCancelled, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogInformation("Slot already cancelled: {LeagueId}/{Division}/{SlotId}", leagueId, division, slotId);
+            return; // Already cancelled, return success
+        }
+
+        // Extract team IDs for authorization
+        var offeringTeamId = (slot.GetString("OfferingTeamId") ?? "").Trim();
+        var confirmedTeamId = (slot.GetString("ConfirmedTeamId") ?? "").Trim();
+
+        // Authorization check with team ownership
+        if (!await _authService.CanCancelSlotAsync(userId, leagueId, offeringTeamId, confirmedTeamId))
         {
             throw new ApiGuards.HttpError(403, ErrorCodes.UNAUTHORIZED,
                 "Not authorized to cancel this slot");

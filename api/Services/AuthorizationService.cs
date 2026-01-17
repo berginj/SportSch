@@ -77,11 +77,40 @@ public class AuthorizationService : IAuthorizationService
         return !string.Equals(role, Constants.Roles.Viewer, StringComparison.OrdinalIgnoreCase);
     }
 
-    public async Task<bool> CanCancelSlotAsync(string userId, string leagueId, string division, string slotId)
+    public async Task<bool> CanCancelSlotAsync(string userId, string leagueId, string offeringTeamId, string? confirmedTeamId)
     {
-        // Similar logic - slot owner or admin can cancel
-        var role = await GetUserRoleAsync(userId, leagueId);
-        return !string.Equals(role, Constants.Roles.Viewer, StringComparison.OrdinalIgnoreCase);
+        // Global admins can cancel any slot
+        if (await _membershipRepo.IsGlobalAdminAsync(userId))
+            return true;
+
+        // Get user's membership
+        var membership = await _membershipRepo.GetMembershipAsync(userId, leagueId);
+        if (membership == null)
+            return false;
+
+        var role = (membership.GetString("Role") ?? Constants.Roles.Viewer).Trim();
+
+        // League admins can cancel any slot
+        if (string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // Coaches can cancel slots for their team (either offering or confirmed)
+        if (string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase))
+        {
+            var myTeamId = (membership.GetString("CoachTeamId") ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(myTeamId))
+                return false;
+
+            // Can cancel if coach's team is either offering or confirmed
+            if (string.Equals(myTeamId, offeringTeamId, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            if (!string.IsNullOrWhiteSpace(confirmedTeamId) &&
+                string.Equals(myTeamId, confirmedTeamId, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
     }
 
     public async Task<string> GetUserRoleAsync(string userId, string leagueId)

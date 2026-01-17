@@ -56,11 +56,12 @@ public class SlotRepository : ISlotRepository
             filters.Add(ODataFilterBuilder.PartitionKeyPrefix(pkPrefix));
         }
 
-        // Status filter
+        // Status filter - single status via OData filter
         if (!string.IsNullOrEmpty(filter.Status))
         {
             filters.Add(ODataFilterBuilder.StatusEquals(filter.Status));
         }
+        // Note: Multi-status filtering is handled in-memory after query
 
         // Date range filters
         if (!string.IsNullOrEmpty(filter.FromDate))

@@ -1,47 +1,29 @@
 using System.Net;
-using System.Linq;
-using Azure.Data.Tables;
-using GameSwap.Functions.Storage;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
+using GameSwap.Functions.Storage;
+using GameSwap.Functions.Services;
+using GameSwap.Functions.Repositories;
 
 namespace GameSwap.Functions.Functions;
 
+/// <summary>
+/// Azure Function for querying slots with filtering.
+/// Refactored to use service layer for business logic.
+/// </summary>
 public class GetSlots
 {
+    private readonly ISlotService _slotService;
+    private readonly IMembershipRepository _membershipRepo;
     private readonly ILogger _log;
-    private readonly TableServiceClient _svc;
 
-    private const string SlotsTableName = Constants.Tables.Slots;
-
-    public GetSlots(ILoggerFactory lf, TableServiceClient tableServiceClient)
+    public GetSlots(ISlotService slotService, IMembershipRepository membershipRepo, ILoggerFactory lf)
     {
+        _slotService = slotService;
+        _membershipRepo = membershipRepo;
         _log = lf.CreateLogger<GetSlots>();
-        _svc = tableServiceClient;
     }
-
-    public record SlotDto(
-        string slotId,
-        string leagueId,
-        string division,
-        string offeringTeamId,
-        string confirmedTeamId,
-        string homeTeamId,
-        string awayTeamId,
-        bool isExternalOffer,
-        bool isAvailability,
-        string gameDate,
-        string startTime,
-        string endTime,
-        string parkName,
-        string fieldName,
-        string displayName,
-        string fieldKey,
-        string gameType,
-        string status,
-        string notes
-    );
 
     [Function("GetSlots")]
     public async Task<HttpResponseData> Run(
@@ -49,105 +31,45 @@ public class GetSlots
     {
         try
         {
-            // League scoping is header-only
+            // Extract context
             var leagueId = ApiGuards.RequireLeagueId(req);
-
             var me = IdentityUtil.GetMe(req);
-            await ApiGuards.RequireMemberAsync(_svc, me.UserId, leagueId);
 
+            // Authorization - must be a member
+            if (!await _membershipRepo.IsMemberAsync(me.UserId, leagueId) &&
+                !await _membershipRepo.IsGlobalAdminAsync(me.UserId))
+            {
+                return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                    "Access denied: no membership for this league");
+            }
+
+            // Extract query parameters
             var division = (ApiGuards.GetQueryParam(req, "division") ?? "").Trim();
-            var statusFilterRaw = (ApiGuards.GetQueryParam(req, "status") ?? "").Trim();
+            var status = (ApiGuards.GetQueryParam(req, "status") ?? "").Trim();
             var dateFrom = (ApiGuards.GetQueryParam(req, "dateFrom") ?? "").Trim();
             var dateTo = (ApiGuards.GetQueryParam(req, "dateTo") ?? "").Trim();
-            var statusFilter = ParseStatusList(statusFilterRaw);
+            var continuationToken = ApiGuards.GetQueryParam(req, "continuationToken");
+            var pageSizeStr = ApiGuards.GetQueryParam(req, "pageSize");
+            var pageSize = int.TryParse(pageSizeStr, out var ps) ? ps : 50;
 
-            var table = await TableClients.GetTableAsync(_svc, SlotsTableName);
-            // Partitioning is SLOT|{leagueId}|{division}
-            // If division is omitted, query all slot partitions for this league by prefix range.
-            var filter = "";
-            if (!string.IsNullOrWhiteSpace(division))
+            // Build service request
+            var serviceRequest = new SlotQueryRequest
             {
-                ApiGuards.EnsureValidTableKeyPart("division", division);
-                var pk = $"SLOT|{leagueId}|{division}";
-                filter = $"PartitionKey eq '{ApiGuards.EscapeOData(pk)}'";
-            }
-            else
-            {
-                var prefix = $"SLOT|{leagueId}|";
-                // lexicographic prefix range: [prefix, prefix + '~')
-                filter = $"PartitionKey ge '{ApiGuards.EscapeOData(prefix)}' and PartitionKey lt '{ApiGuards.EscapeOData(prefix + "~")}'";
-            }
+                LeagueId = leagueId,
+                Division = division,
+                Status = status,
+                FromDate = dateFrom,
+                ToDate = dateTo,
+                ContinuationToken = continuationToken,
+                PageSize = pageSize
+            };
 
-            if (statusFilter.Count == 1)
-                filter += $" and Status eq '{ApiGuards.EscapeOData(statusFilter.First())}'";
+            var context = CorrelationContext.FromRequest(req, leagueId);
 
-            if (!string.IsNullOrWhiteSpace(dateFrom))
-                filter += $" and GameDate ge '{ApiGuards.EscapeOData(dateFrom)}'";
-            if (!string.IsNullOrWhiteSpace(dateTo))
-                filter += $" and GameDate le '{ApiGuards.EscapeOData(dateTo)}'";
+            // Delegate to service
+            var result = await _slotService.QuerySlotsAsync(serviceRequest, context);
 
-            var list = new List<SlotDto>();
-
-            await foreach (var e in table.QueryAsync<TableEntity>(filter: filter))
-            {
-                var slotId = e.RowKey;
-
-                var offeringTeamId = e.GetString("OfferingTeamId") ?? "";
-                var homeTeamId = (e.GetString("HomeTeamId") ?? offeringTeamId).Trim();
-                var awayTeamId = (e.GetString("AwayTeamId") ?? "").Trim();
-                var isExternalOffer = e.GetBoolean("IsExternalOffer") ?? false;
-                var isAvailability = e.GetBoolean("IsAvailability") ?? false;
-                var gameDate = e.GetString("GameDate") ?? "";
-                var startTime = e.GetString("StartTime") ?? "";
-                var endTime = e.GetString("EndTime") ?? "";
-
-                var parkName = e.GetString("ParkName") ?? "";
-                var fieldName = e.GetString("FieldName") ?? "";
-                var displayName = e.GetString("DisplayName") ?? (string.IsNullOrWhiteSpace(parkName) || string.IsNullOrWhiteSpace(fieldName) ? "" : $"{parkName} > {fieldName}");
-                var fieldKey = e.GetString("FieldKey") ?? "";
-
-                var gameType = e.GetString("GameType") ?? "Swap";
-                var status = e.GetString("Status") ?? Constants.Status.SlotOpen;
-
-                if (statusFilter.Count > 1)
-                {
-                    if (!statusFilter.Contains(status, StringComparer.OrdinalIgnoreCase))
-                        continue;
-                }
-                else if (statusFilter.Count == 0)
-                {
-                    // Default behavior (when no explicit status filter is provided):
-                    // return Open + Confirmed only. Cancelled is only returned when explicitly requested.
-                    if (status == Constants.Status.SlotCancelled)
-                        continue;
-                }
-                var notes = e.GetString("Notes") ?? "";
-                var confirmedTeamId = e.GetString("ConfirmedTeamId") ?? "";
-
-                list.Add(new SlotDto(
-                    slotId: slotId,
-                    leagueId: leagueId,
-                    division: e.GetString("Division") ?? division,
-                    offeringTeamId: offeringTeamId,
-                    confirmedTeamId: confirmedTeamId,
-                    homeTeamId: homeTeamId,
-                    awayTeamId: awayTeamId,
-                    isExternalOffer: isExternalOffer,
-                    isAvailability: isAvailability,
-                    gameDate: gameDate,
-                    startTime: startTime,
-                    endTime: endTime,
-                    parkName: parkName,
-                    fieldName: fieldName,
-                    displayName: displayName,
-                    fieldKey: fieldKey,
-                    gameType: gameType,
-                    status: status,
-                    notes: notes
-                ));
-            }
-
-            return ApiResponses.Ok(req, list.OrderBy(x => x.gameDate).ThenBy(x => x.startTime).ThenBy(x => x.displayName));
+            return ApiResponses.Ok(req, result);
         }
         catch (ApiGuards.HttpError ex)
         {
@@ -156,17 +78,7 @@ public class GetSlots
         catch (Exception ex)
         {
             _log.LogError(ex, "GetSlots failed");
-            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, ErrorCodes.INTERNAL_ERROR, "An unexpected error occurred");
         }
-    }
-
-    private static List<string> ParseStatusList(string raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw)) return new List<string>();
-        return raw
-            .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
     }
 }
