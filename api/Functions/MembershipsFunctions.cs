@@ -1,6 +1,7 @@
 using System.Net;
 using Azure;
 using Azure.Data.Tables;
+using GameSwap.Functions.Repositories;
 using GameSwap.Functions.Storage;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
@@ -14,12 +15,17 @@ namespace GameSwap.Functions.Functions;
 /// </summary>
 public class MembershipsFunctions
 {
-    private readonly TableServiceClient _svc;
+    private readonly IMembershipRepository _membershipRepo;
+    private readonly TableServiceClient _tableService; // Still needed for league existence check
     private readonly ILogger _log;
 
-    public MembershipsFunctions(ILoggerFactory lf, TableServiceClient svc)
+    public MembershipsFunctions(
+        IMembershipRepository membershipRepo,
+        TableServiceClient tableService,
+        ILoggerFactory lf)
     {
-        _svc = svc;
+        _membershipRepo = membershipRepo;
+        _tableService = tableService;
         _log = lf.CreateLogger<MembershipsFunctions>();
     }
 
@@ -40,22 +46,38 @@ public class MembershipsFunctions
             var isAll = all is not null && new[] { "1", "true", "yes" }.Contains(all.Trim().ToLowerInvariant());
 
             if (isAll)
-                await ApiGuards.RequireGlobalAdminAsync(_svc, me.UserId);
+            {
+                // Authorization - global admin only for all=true
+                if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                        "Only global admins can list all memberships");
+                }
+            }
             else
             {
+                // Authorization - league admin required
                 var leagueId = ApiGuards.RequireLeagueId(req);
-                await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+                if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
+                {
+                    var membership = await _membershipRepo.GetMembershipAsync(me.UserId, leagueId);
+                    var role = (membership?.GetString("Role") ?? Constants.Roles.Viewer).Trim();
+                    if (!string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                            "Only league admins can list memberships");
+                    }
+                }
             }
 
-            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Memberships);
             if (!isAll)
             {
+                // List memberships for specific league
                 var leagueId = ApiGuards.RequireLeagueId(req);
-                // Memberships table uses PK=userId, RK=leagueId. Query by RowKey (leagueId) across partitions.
-                var filter = $"RowKey eq '{ApiGuards.EscapeOData(leagueId)}'";
+                var entities = await _membershipRepo.QueryAllMembershipsAsync(leagueId);
                 var list = new List<MembershipDto>();
 
-                await foreach (var e in table.QueryAsync<TableEntity>(filter: filter))
+                foreach (var e in entities)
                 {
                     var role = (e.GetString("Role") ?? "").Trim();
                     var email = (e.GetString("Email") ?? "").Trim();
@@ -83,16 +105,17 @@ public class MembershipsFunctions
                 return ApiResponses.Ok(req, ordered.ToList());
             }
 
+            // List all memberships (global admin)
             var leagueFilter = (ApiGuards.GetQueryParam(req, "leagueId") ?? "").Trim();
             var roleFilter = (ApiGuards.GetQueryParam(req, "role") ?? "").Trim();
             var search = (ApiGuards.GetQueryParam(req, "search") ?? "").Trim();
-            var filterAll = string.IsNullOrWhiteSpace(leagueFilter)
-                ? null
-                : $"RowKey eq '{ApiGuards.EscapeOData(leagueFilter)}'";
+
+            var entities2 = await _membershipRepo.QueryAllMembershipsAsync(
+                string.IsNullOrWhiteSpace(leagueFilter) ? null : leagueFilter);
 
             var listAll = new List<MembershipAdminDto>();
 
-            await foreach (var e in table.QueryAsync<TableEntity>(filter: filterAll))
+            foreach (var e in entities2)
             {
                 var role = (e.GetString("Role") ?? "").Trim();
                 var email = (e.GetString("Email") ?? "").Trim();
@@ -153,7 +176,13 @@ public class MembershipsFunctions
         try
         {
             var me = IdentityUtil.GetMe(req);
-            await ApiGuards.RequireGlobalAdminAsync(_svc, me.UserId);
+
+            // Authorization - global admin only
+            if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
+            {
+                return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                    "Only global admins can create memberships");
+            }
 
             var body = await HttpUtil.ReadJsonAsync<CreateMembershipReq>(req);
             if (body is null)
@@ -185,7 +214,8 @@ public class MembershipsFunctions
             if (string.IsNullOrWhiteSpace(normalizedRole))
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "role must be Coach, Viewer, or LeagueAdmin");
 
-            var leagues = await TableClients.GetTableAsync(_svc, Constants.Tables.Leagues);
+            // Verify league exists
+            var leagues = await TableClients.GetTableAsync(_tableService, Constants.Tables.Leagues);
             try
             {
                 _ = (await leagues.GetEntityAsync<TableEntity>(Constants.Pk.Leagues, leagueId)).Value;
@@ -207,7 +237,6 @@ public class MembershipsFunctions
                     ApiGuards.EnsureValidTableKeyPart("teamId", teamId);
             }
 
-            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Memberships);
             var entity = new TableEntity(userId, leagueId)
             {
                 ["Role"] = normalizedRole,
@@ -217,7 +246,7 @@ public class MembershipsFunctions
                 ["UpdatedUtc"] = DateTimeOffset.UtcNow
             };
 
-            await table.UpsertEntityAsync(entity, TableUpdateMode.Merge);
+            await _membershipRepo.UpsertMembershipAsync(entity);
             return ApiResponses.Ok(req, new MembershipDto(userId, email, normalizedRole,
                 string.IsNullOrWhiteSpace(division) || string.IsNullOrWhiteSpace(teamId)
                     ? null
@@ -240,18 +269,24 @@ public class MembershipsFunctions
         {
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
-            await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+
+            // Authorization - league admin required
+            if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
+            {
+                var membership = await _membershipRepo.GetMembershipAsync(me.UserId, leagueId);
+                var myRole = (membership?.GetString("Role") ?? Constants.Roles.Viewer).Trim();
+                if (!string.Equals(myRole, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                        "Only league admins can patch memberships");
+                }
+            }
 
             userId = (userId ?? "").Trim();
             ApiGuards.EnsureValidTableKeyPart("userId", userId);
 
-            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Memberships);
-            TableEntity mem;
-            try
-            {
-                mem = (await table.GetEntityAsync<TableEntity>(userId, leagueId)).Value;
-            }
-            catch (RequestFailedException ex) when (ex.Status == 404)
+            var mem = await _membershipRepo.GetMembershipAsync(userId, leagueId);
+            if (mem is null)
             {
                 return ApiResponses.Error(req, HttpStatusCode.NotFound, "NOT_FOUND", "membership not found");
             }
@@ -283,7 +318,7 @@ public class MembershipsFunctions
             }
 
             mem["UpdatedUtc"] = DateTimeOffset.UtcNow;
-            await table.UpdateEntityAsync(mem, mem.ETag, TableUpdateMode.Replace);
+            await _membershipRepo.UpdateMembershipAsync(mem);
 
             // Return normalized dto
             var outDivision = (mem.GetString("Division") ?? "").Trim();

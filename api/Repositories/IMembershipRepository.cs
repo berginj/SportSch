@@ -47,4 +47,14 @@ public interface IMembershipRepository
     /// Deletes a membership.
     /// </summary>
     Task DeleteMembershipAsync(string userId, string leagueId);
+
+    /// <summary>
+    /// Upserts a membership (creates or updates).
+    /// </summary>
+    Task UpsertMembershipAsync(TableEntity membership);
+
+    /// <summary>
+    /// Gets all memberships across all leagues (for global admin).
+    /// </summary>
+    Task<List<TableEntity>> QueryAllMembershipsAsync(string? leagueFilter = null);
 }

@@ -125,4 +125,31 @@ public class MembershipRepository : IMembershipRepository
 
         _logger.LogInformation("Deleted membership: {UserId}/{LeagueId}", userId, leagueId);
     }
+
+    public async Task UpsertMembershipAsync(TableEntity membership)
+    {
+        var table = await TableClients.GetTableAsync(_tableService, MembershipsTable);
+        await table.UpsertEntityAsync(membership, TableUpdateMode.Merge);
+
+        _logger.LogInformation("Upserted membership: {UserId}/{LeagueId}", membership.PartitionKey, membership.RowKey);
+    }
+
+    public async Task<List<TableEntity>> QueryAllMembershipsAsync(string? leagueFilter = null)
+    {
+        var table = await TableClients.GetTableAsync(_tableService, MembershipsTable);
+        string? filter = null;
+
+        if (!string.IsNullOrWhiteSpace(leagueFilter))
+        {
+            filter = $"RowKey eq '{ApiGuards.EscapeOData(leagueFilter)}'";
+        }
+
+        var result = new List<TableEntity>();
+        await foreach (var entity in table.QueryAsync<TableEntity>(filter: filter))
+        {
+            result.Add(entity);
+        }
+
+        return result;
+    }
 }
