@@ -13,17 +13,20 @@ public class SlotService : ISlotService
     private readonly ISlotRepository _slotRepo;
     private readonly IFieldRepository _fieldRepo;
     private readonly IAuthorizationService _authService;
+    private readonly INotificationService _notificationService;
     private readonly ILogger<SlotService> _logger;
 
     public SlotService(
         ISlotRepository slotRepo,
         IFieldRepository fieldRepo,
         IAuthorizationService authService,
+        INotificationService notificationService,
         ILogger<SlotService> logger)
     {
         _slotRepo = slotRepo;
         _fieldRepo = fieldRepo;
         _authService = authService;
+        _notificationService = notificationService;
         _logger = logger;
     }
 
@@ -132,6 +135,29 @@ public class SlotService : ISlotService
         await _slotRepo.CreateSlotAsync(entity);
 
         _logger.LogInformation("Slot created successfully: {SlotId}", slotId);
+
+        // Send notification (fire and forget - don't block response)
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                // TODO: Get other coaches in division and notify them
+                // For now, create a notification for the offering coach
+                var message = $"Your game slot for {request.GameDate} at {request.StartTime} has been posted.";
+                await _notificationService.CreateNotificationAsync(
+                    context.UserId,
+                    context.LeagueId,
+                    "SlotCreated",
+                    message,
+                    "#offers",
+                    slotId,
+                    "Slot");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to create notification for slot creation: {SlotId}", slotId);
+            }
+        });
 
         // Return mapped response
         return EntityMappers.MapSlot(entity);
@@ -242,5 +268,35 @@ public class SlotService : ISlotService
 
         _logger.LogInformation("Slot cancelled: {LeagueId}/{Division}/{SlotId} by user {UserId}",
             leagueId, division, slotId, userId);
+
+        // Send notification (fire and forget - don't block response)
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var gameDate = slot.GetString("GameDate") ?? "";
+                var startTime = slot.GetString("StartTime") ?? "";
+                var message = $"Game slot for {gameDate} at {startTime} has been cancelled.";
+
+                await _notificationService.CreateNotificationAsync(
+                    userId,
+                    leagueId,
+                    "SlotCancelled",
+                    message,
+                    "#calendar",
+                    slotId,
+                    "Slot");
+
+                // Also notify confirmed team if one exists
+                if (!string.IsNullOrWhiteSpace(confirmedTeamId))
+                {
+                    // TODO: Get userId for confirmed team coach and notify them
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to create notification for slot cancellation: {SlotId}", slotId);
+            }
+        });
     }
 }

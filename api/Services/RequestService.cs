@@ -15,6 +15,7 @@ public class RequestService : IRequestService
     private readonly ISlotRepository _slotRepo;
     private readonly IMembershipRepository _membershipRepo;
     private readonly IAuthorizationService _authService;
+    private readonly INotificationService _notificationService;
     private readonly ILogger<RequestService> _logger;
 
     public RequestService(
@@ -22,12 +23,14 @@ public class RequestService : IRequestService
         ISlotRepository slotRepo,
         IMembershipRepository membershipRepo,
         IAuthorizationService authService,
+        INotificationService notificationService,
         ILogger<RequestService> logger)
     {
         _requestRepo = requestRepo;
         _slotRepo = slotRepo;
         _membershipRepo = membershipRepo;
         _authService = authService;
+        _notificationService = notificationService;
         _logger = logger;
     }
 
@@ -218,6 +221,34 @@ public class RequestService : IRequestService
         }
 
         _logger.LogInformation("Request created and slot confirmed: {RequestId}, slot {SlotId}", requestId, request.SlotId);
+
+        // Send notification (fire and forget - don't block response)
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var gameDate = (slot.GetString("GameDate") ?? "").Trim();
+                var startTime = (slot.GetString("StartTime") ?? "").Trim();
+                var fieldName = (slot.GetString("DisplayName") ?? "").Trim();
+
+                // Notify the requesting coach
+                var message = $"Your request for {gameDate} at {startTime} has been approved!";
+                await _notificationService.CreateNotificationAsync(
+                    context.UserId,
+                    request.LeagueId,
+                    "RequestApproved",
+                    message,
+                    "#calendar",
+                    request.SlotId,
+                    "Slot");
+
+                // TODO: Notify the offering coach that their slot was accepted
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to create notification for request approval: {RequestId}", requestId);
+            }
+        });
 
         return new
         {
