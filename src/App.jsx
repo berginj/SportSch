@@ -10,6 +10,7 @@ import InviteAcceptPage from "./pages/InviteAcceptPage";
 import HomePage from "./pages/HomePage";
 import DebugPage from "./pages/DebugPage";
 import PracticePortalPage from "./pages/PracticePortalPage";
+import NotificationSettingsPage from "./pages/NotificationSettingsPage";
 import TopNav from "./components/TopNav";
 import StatusCard from "./components/StatusCard";
 import KeyboardShortcutsModal from "./components/KeyboardShortcutsModal";
@@ -17,7 +18,7 @@ import { useSession } from "./lib/useSession";
 import { trackPageView } from "./lib/telemetry";
 import { useKeyboardShortcuts, COMMON_SHORTCUTS } from "./lib/hooks/useKeyboardShortcuts";
 
-const VALID_TABS = new Set(["home", "calendar", "schedule", "offers", "manage", "admin", "debug", "help", "practice"]);
+const VALID_TABS = new Set(["home", "calendar", "schedule", "offers", "manage", "admin", "debug", "help", "practice", "settings"]);
 
 function readInviteFromUrl() {
   if (typeof window === "undefined") return null;
@@ -210,6 +211,9 @@ export default function App() {
         )}
         {effectiveTab === "practice" && (
           <PracticePortalPage me={me} leagueId={activeLeagueId} />
+        )}
+        {effectiveTab === "settings" && (
+          <NotificationSettingsPage leagueId={activeLeagueId} />
         )}
       </main>
 

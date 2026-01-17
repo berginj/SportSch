@@ -202,6 +202,28 @@ export default function NotificationDropdown({
           </ul>
         )}
       </div>
+
+      {/* Footer with Settings Link */}
+      <div
+        style={{
+          padding: '12px 16px',
+          borderTop: '1px solid #e5e7eb',
+          textAlign: 'center',
+        }}
+      >
+        <a
+          href="#settings"
+          style={{
+            color: '#3b82f6',
+            textDecoration: 'none',
+            fontSize: '14px',
+            fontWeight: '500',
+          }}
+          onClick={onClose}
+        >
+          ⚙️ Notification Settings
+        </a>
+      </div>
     </div>
   );
 }
