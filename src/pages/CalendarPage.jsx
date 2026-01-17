@@ -122,6 +122,8 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
   const [toast, setToast] = useState(null);
   const { confirmState, requestConfirm, handleConfirm: confirmYes, handleCancel: confirmNo } = useConfirmDialog();
   const { promptState, promptValue, setPromptValue, requestPrompt, handleConfirm, handleCancel } = usePromptDialog();
+  const [exportFormat, setExportFormat] = useState("internal");
+  const [exporting, setExporting] = useState(false);
 
   const canPickTeam = isGlobalAdmin || role === "LeagueAdmin";
 
@@ -519,6 +521,60 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     }
   }
 
+  async function exportSchedule() {
+    if (!division) {
+      setToast({ tone: "error", message: "Please select a division to export." });
+      return;
+    }
+
+    if (role !== "LeagueAdmin" && !isGlobalAdmin) {
+      setToast({ tone: "error", message: "Only league admins can export schedules." });
+      return;
+    }
+
+    setExporting(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("division", division);
+      params.set("format", exportFormat);
+      if (dateFrom) params.set("dateFrom", dateFrom);
+      if (dateTo) params.set("dateTo", dateTo);
+
+      const activeStatuses = Object.entries(slotStatusFilter)
+        .filter(([_, enabled]) => enabled)
+        .map(([status]) => status);
+      if (activeStatuses.length > 0 && activeStatuses.length < 3) {
+        params.set("status", activeStatuses.join(","));
+      }
+
+      const url = `/api/schedule/export?${params.toString()}`;
+      const headers = { "x-league-id": leagueId };
+
+      const resp = await fetch(url, { headers });
+      if (!resp.ok) {
+        const error = await resp.json().catch(() => ({ error: { message: "Export failed" } }));
+        throw new Error(error?.error?.message || "Export failed");
+      }
+
+      const blob = await resp.blob();
+      const downloadUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.download = `schedule-${division}-${exportFormat}-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(downloadUrl);
+
+      setToast({ tone: "success", message: `Schedule exported as ${exportFormat}.` });
+      trackEvent("ui_calendar_export", { leagueId, division, format: exportFormat });
+    } catch (e) {
+      setToast({ tone: "error", message: e.message || "Failed to export schedule." });
+    } finally {
+      setExporting(false);
+    }
+  }
+
   function statusClassForItem(item) {
     const raw = (item?.raw?.status || "").toLowerCase();
     if (item.kind === "event") return "timelineItem timelineItem--event";
@@ -615,6 +671,26 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
           <button className="btn" onClick={loadData} title="Refresh the calendar list with the current filters.">
             Refresh
           </button>
+          {(role === "LeagueAdmin" || isGlobalAdmin) && (
+            <>
+              <label title="Choose export format for schedule CSV.">
+                Export format
+                <select value={exportFormat} onChange={(e) => setExportFormat(e.target.value)} disabled={!division}>
+                  <option value="internal">Internal</option>
+                  <option value="sportsengine">SportsEngine</option>
+                  <option value="gamechanger">GameChanger</option>
+                </select>
+              </label>
+              <button
+                className="btn btn--primary"
+                onClick={exportSchedule}
+                disabled={!division || exporting}
+                title="Export confirmed games for the selected division as CSV."
+              >
+                {exporting ? "Exporting..." : "Export Schedule"}
+              </button>
+            </>
+          )}
         </div>
         <div className="row mt-3">
           <div className="pill">Slot status</div>

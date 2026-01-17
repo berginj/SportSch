@@ -29,6 +29,7 @@ export default function ConstraintsForm({
   runValidation,
   exportCsv,
   exportSportsEngineCsv,
+  exportGameChangerCsv,
 }) {
   return (
     <div className="card">
@@ -129,6 +130,9 @@ export default function ConstraintsForm({
         </button>
         <button className="btn" onClick={exportSportsEngineCsv} disabled={!preview?.assignments?.length}>
           Export SportsEngine CSV
+        </button>
+        <button className="btn" onClick={exportGameChangerCsv} disabled={!preview?.assignments?.length}>
+          Export GameChanger CSV
         </button>
       </div>
     </div>

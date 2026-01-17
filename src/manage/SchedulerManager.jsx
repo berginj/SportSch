@@ -66,6 +66,79 @@ function buildSportsEngineCsv(assignments, fieldsByKey) {
     .join("\n");
 }
 
+function buildGameChangerCsv(assignments, fieldsByKey) {
+  const header = ["Date", "Time", "Home Team", "Away Team", "Location", "Field", "Game Type", "Game Number"];
+
+  const rows = (assignments || []).map((a, idx) => {
+    const date = formatDateForGameChanger(a.gameDate);
+    const time = formatTimeForGameChanger(a.startTime);
+    const venue = fieldsByKey.get(a.fieldKey || "") || a.fieldKey || "";
+    const { location, field } = parseVenueForGameChanger(venue);
+
+    return [
+      date,
+      time,
+      a.homeTeamId || "",
+      a.awayTeamId || "",
+      location,
+      field,
+      "Regular Season",
+      String(idx + 1),
+    ];
+  });
+
+  return [header, ...rows]
+    .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+}
+
+function formatDateForGameChanger(isoDate) {
+  // Convert "2026-04-06" to "04/06/2026"
+  if (!isoDate) return "";
+  const parts = isoDate.split("-");
+  if (parts.length !== 3) return isoDate;
+  const [year, month, day] = parts;
+  return `${month}/${day}/${year}`;
+}
+
+function formatTimeForGameChanger(time24) {
+  // Convert "18:00" to "6:00 PM"
+  if (!time24) return "";
+  const parts = time24.split(":");
+  if (parts.length < 2) return time24;
+  const hour = parseInt(parts[0], 10);
+  const minute = parts[1];
+  if (isNaN(hour)) return time24;
+  const period = hour >= 12 ? "PM" : "AM";
+  const hour12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+  return `${hour12}:${minute} ${period}`;
+}
+
+function parseVenueForGameChanger(venue) {
+  if (!venue) return { location: "", field: "" };
+
+  // Try splitting on " > "
+  if (venue.includes(" > ")) {
+    const parts = venue.split(" > ");
+    return { location: parts[0].trim(), field: parts.length > 1 ? parts[1].trim() : "" };
+  }
+
+  // Try splitting on "/"
+  if (venue.includes("/")) {
+    const parts = venue.split("/");
+    return { location: parts[0].trim(), field: parts.length > 1 ? parts[1].trim() : "" };
+  }
+
+  // Try to extract field number from end (e.g., "Oak Park Field 1")
+  const match = venue.match(/^(.+?)\s+(Field\s*\d+|Diamond\s*\d+|\d+)$/i);
+  if (match) {
+    return { location: match[1].trim(), field: match[2].trim() };
+  }
+
+  // Fallback: use entire venue as location
+  return { location: venue, field: "" };
+}
+
 function calcDurationMinutes(start, end) {
   const s = parseTimeMinutes(start);
   const e = parseTimeMinutes(end);
@@ -398,6 +471,13 @@ export default function SchedulerManager({ leagueId }) {
     downloadCsv(csv, `sportsengine_${safeDivision}.csv`);
   }
 
+  function exportGameChangerCsv() {
+    if (!preview?.assignments?.length) return;
+    const csv = buildGameChangerCsv(preview.assignments, fieldsByKey);
+    const safeDivision = (division || "division").replace(/[^a-z0-9_-]+/gi, "_");
+    downloadCsv(csv, `gamechanger_${safeDivision}.csv`);
+  }
+
   async function loadOverlay() {
     setErr("");
     const dateError = validateIsoDates([
@@ -544,6 +624,7 @@ export default function SchedulerManager({ leagueId }) {
         runValidation={runValidation}
         exportCsv={exportCsv}
         exportSportsEngineCsv={exportSportsEngineCsv}
+        exportGameChangerCsv={exportGameChangerCsv}
       />
 
       <SchedulePreview preview={preview} />
