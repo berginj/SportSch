@@ -222,11 +222,32 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
   const [repeatCustomEvery, setRepeatCustomEvery] = useState(10);
   const [repeatCustomUnit, setRepeatCustomUnit] = useState("days");
   const [repeatCount, setRepeatCount] = useState(1);
-  const [offeringTeamId, setOfferingTeamId] = useState("");
-  const [gameDate, setGameDate] = useState("");
-  const [startTime, setStartTime] = useState("");
-  const [endTime, setEndTime] = useState("");
-  const [fieldKey, setFieldKey] = useState("");
+  // Smart defaults: Load from localStorage
+  const loadSmartDefaults = useCallback(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      const saved = localStorage.getItem(`slot_defaults_${leagueId}`);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  }, [leagueId]);
+
+  const saveSmartDefaults = useCallback((values) => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(`slot_defaults_${leagueId}`, JSON.stringify(values));
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [leagueId]);
+
+  const defaults = loadSmartDefaults();
+  const [offeringTeamId, setOfferingTeamId] = useState(defaults.offeringTeamId || "");
+  const [gameDate, setGameDate] = useState(defaults.gameDate || "");
+  const [startTime, setStartTime] = useState(defaults.startTime || "");
+  const [endTime, setEndTime] = useState(defaults.endTime || "");
+  const [fieldKey, setFieldKey] = useState(defaults.fieldKey || "");
   const [notes, setNotes] = useState("");
 
   async function createSlot() {
@@ -281,6 +302,15 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
           body: JSON.stringify({ ...body, gameDate: date }),
         });
       }
+
+      // Save smart defaults for next time
+      saveSmartDefaults({
+        offeringTeamId: offeringTeamId.trim(),
+        startTime: startTime.trim(),
+        endTime: endTime.trim(),
+        fieldKey: fieldKey,
+      });
+
       setOfferingTeamId("");
       setGameDate("");
       setStartTime("");
@@ -405,6 +435,11 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
 
       <div className="card">
         <div className="cardTitle">Offer/request details</div>
+        {(defaults.fieldKey || defaults.startTime) && (
+          <div className="callout callout--info mb-3">
+            <strong>Smart Defaults Active:</strong> Form pre-filled with your last-used values (team, field, time). Change them as needed.
+          </div>
+        )}
         <div className="grid2">
           <label title="Offer or request." className="min-w-[160px]">
             Type
