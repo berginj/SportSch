@@ -53,9 +53,14 @@ export default function InviteAcceptPage({ invite, me, refreshMe, setLeagueId, o
         {!signedIn ? (
           <div className="stack">
             <div className="subtle">Sign in to accept your invite.</div>
-            <a className="btn" href={loginUrl()}>
-              Sign in with Microsoft
-            </a>
+            <div className="stack gap-2">
+              <a className="btn" href={loginUrl()}>
+                Sign in with Microsoft
+              </a>
+              <a className="btn" href={loginUrl().replace('/aad', '/google')}>
+                Sign in with Google
+              </a>
+            </div>
           </div>
         ) : null}
 

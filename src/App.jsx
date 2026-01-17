@@ -125,9 +125,14 @@ export default function App() {
         <div className="card">
           <h1>Sports Scheduler</h1>
           <p>You're not signed in yet.</p>
-          <a className="btn" href="/.auth/login/aad">
-            Sign in with Microsoft
-          </a>
+          <div className="stack gap-2">
+            <a className="btn" href="/.auth/login/aad">
+              Sign in with Microsoft
+            </a>
+            <a className="btn" href="/.auth/login/google">
+              Sign in with Google
+            </a>
+          </div>
           <div className="muted mt-3">
             After signing in, come right back here.
           </div>

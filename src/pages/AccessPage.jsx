@@ -212,11 +212,16 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
         <div className="card">
           <h2>Sign in</h2>
           <p>
-            You&apos;re not signed in. Use Azure AD login, then return here.
+            You&apos;re not signed in. Choose a sign-in method below.
           </p>
-          <a className="btn" href="/.auth/login/aad">
-            Sign in with Microsoft
-          </a>
+          <div className="stack gap-2">
+            <a className="btn" href="/.auth/login/aad">
+              Sign in with Microsoft
+            </a>
+            <a className="btn" href="/.auth/login/google">
+              Sign in with Google
+            </a>
+          </div>
           <p className="muted">
             If you signed in already and still see this, refresh the page.
           </p>
