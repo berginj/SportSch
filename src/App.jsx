@@ -144,6 +144,9 @@ export default function App() {
 
   return (
     <div className="app">
+      <a href="#main-content" className="skip-link">
+        Skip to main content
+      </a>
       <TopNav
         tab={effectiveTab}
         setTab={setTab}
@@ -152,7 +155,7 @@ export default function App() {
         setLeagueId={setActiveLeagueId}
       />
 
-      <main className="main">
+      <main id="main-content" className="main">
         {effectiveTab === "home" && (
           <HomePage
             me={me}

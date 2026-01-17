@@ -256,11 +256,16 @@
   .modal__actions { @apply mt-4 flex items-center justify-end gap-2; }
 
   .toast {
-    @apply fixed bottom-4 right-4 z-50 rounded-xl border border-border bg-[#111a2d] px-4 py-2 text-sm shadow-card;
+    @apply fixed bottom-4 right-4 z-50 rounded-xl border border-border bg-[#111a2d] px-4 py-3 text-sm shadow-card;
+    @apply flex items-center gap-3;
+    animation: slideIn 0.3s ease-out;
   }
   .toast--info { @apply text-text; }
   .toast--success { @apply border-emerald-400/40 text-emerald-200; }
   .toast--error { @apply border-red-400/40 text-red-200; }
+  .toast--warning { @apply border-amber-400/40 text-amber-200; }
+  .toast__icon { @apply text-lg; }
+  .toast__message { @apply flex-1; }
   .toast__close {
     @apply ml-3 text-xs text-muted hover:text-text;
   }
@@ -275,4 +280,116 @@
   .layoutPhone__nav { @apply mt-3 grid gap-1.5 grid-cols-4; }
 
   .calendarSplit { @apply grid gap-3 min-[980px]:grid-cols-[320px_1fr] items-start; }
+
+  /* Skeleton loaders */
+  .skeleton {
+    @apply bg-white/5 rounded animate-pulse;
+  }
+  .skeleton--text { @apply h-4 w-full; }
+  .skeleton--title { @apply h-6 w-3/4; }
+  .skeleton--circle { @apply w-12 h-12 rounded-full; }
+  .skeleton-card { @apply rounded-2xl border border-border bg-black/20 p-3.5; }
+  .skeleton-table { @apply rounded-2xl border border-border bg-black/20 p-3.5; }
+
+  /* Empty states */
+  .empty-state {
+    @apply flex flex-col items-center justify-center py-12 px-4 text-center;
+  }
+  .empty-state__icon { @apply text-5xl mb-4 opacity-40; }
+  .empty-state__title { @apply text-lg font-semibold mb-2; }
+  .empty-state__message { @apply text-muted max-w-md; }
+
+  /* Error cards */
+  .error-card {
+    @apply rounded-2xl border border-red-400/40 bg-red-500/5 p-4;
+  }
+  .error-card__header {
+    @apply flex items-center gap-3 mb-3;
+  }
+  .error-card__icon {
+    @apply text-2xl;
+  }
+  .error-card__title {
+    @apply text-base font-semibold text-red-200;
+  }
+  .error-card__message {
+    @apply text-sm text-red-200/90 mb-2;
+  }
+  .error-card__code {
+    @apply text-xs text-red-300/70;
+  }
+  .error-card__details {
+    @apply mt-3;
+  }
+
+  /* Button loading state */
+  .btn--loading {
+    @apply relative;
+  }
+  .btn__spinner {
+    @apply inline-flex items-center justify-center mr-2;
+  }
+  .btn__spinner-icon {
+    @apply w-4 h-4 animate-spin;
+  }
+
+  /* Improved focus styles for accessibility */
+  .btn:focus-visible,
+  .tab:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    @apply outline-none ring-2 ring-orange-300/60 ring-offset-2 ring-offset-[#0b1020];
+  }
+
+  /* Skip to main content link for accessibility */
+  .skip-link {
+    @apply absolute left-0 top-0 bg-accent text-white px-4 py-2 rounded-br-xl z-[100];
+    transform: translateY(-100%);
+  }
+  .skip-link:focus {
+    transform: translateY(0%);
+  }
+
+  /* Tooltip */
+  .tooltip-wrapper {
+    @apply relative inline-block;
+  }
+  .tooltip-trigger {
+    @apply cursor-help;
+  }
+  .tooltip {
+    @apply absolute z-50 px-3 py-2 text-xs text-text bg-[#111a2d] border border-border rounded-lg shadow-lg;
+    @apply whitespace-nowrap pointer-events-none;
+    animation: fadeIn 0.2s ease-out;
+  }
+  .tooltip--top {
+    @apply bottom-full left-1/2 -translate-x-1/2 mb-2;
+  }
+  .tooltip--bottom {
+    @apply top-full left-1/2 -translate-x-1/2 mt-2;
+  }
+  .tooltip--left {
+    @apply right-full top-1/2 -translate-y-1/2 mr-2;
+  }
+  .tooltip--right {
+    @apply left-full top-1/2 -translate-y-1/2 ml-2;
+  }
+
+  /* Animations */
+  @keyframes slideIn {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
 }
