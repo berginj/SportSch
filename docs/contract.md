@@ -29,7 +29,10 @@ Global admin:
 ### Standard response envelope (non-negotiable)
 All endpoints return JSON with one of:
 - Success: { "data": ... }
+- Success with pagination: { "data": { "items": [...], "continuationToken": string, "pageSize": number } }
 - Failure: { "error": { "code": string, "message": string, "details"?: any } }
+
+Note: Paginated responses use Azure Table Storage continuation tokens. Include the continuationToken in the next request to fetch the next page.
 
 ### Error codes (recommended)
 - BAD_REQUEST (400)
@@ -45,6 +48,324 @@ All schedule times are interpreted as **US/Eastern (America/New_York)**. The API
 - `gameDate` / `eventDate` as `YYYY-MM-DD`
 - `startTime` / `endTime` as `HH:MM` (24-hour)
 The API does **not** convert between time zones.
+
+---
+
+## Backend Architecture (authoritative)
+
+### Three-layer architecture
+The backend follows a strict three-layer architecture pattern:
+
+**Layer 1: Azure Functions (HTTP endpoints)**
+- Handle HTTP requests and responses
+- Extract headers, query parameters, and request bodies
+- Perform basic request validation (ApiGuards)
+- Delegate all business logic to services
+- Return standardized responses (ApiResponses)
+
+**Layer 2: Services (business logic)**
+- Contain all business logic and authorization rules
+- Coordinate between multiple repositories
+- Enforce domain constraints and validations
+- Return domain objects or DTOs
+- Examples: ISlotService, IAvailabilityService, IAuthorizationService
+
+**Layer 3: Repositories (data access)**
+- Abstract all Azure Table Storage operations
+- Execute queries with filters and pagination
+- Map TableEntity to/from domain objects
+- Handle storage-specific concerns (OData filters, continuation tokens)
+- Examples: ISlotRepository, IFieldRepository, IMembershipRepository
+
+### Dependency injection
+All services and repositories are registered in `api/Program.cs` with scoped lifetime:
+
+```csharp
+// Register repositories
+services.AddScoped<ISlotRepository, SlotRepository>();
+services.AddScoped<IFieldRepository, FieldRepository>();
+services.AddScoped<IMembershipRepository, MembershipRepository>();
+
+// Register services
+services.AddScoped<ISlotService, SlotService>();
+services.AddScoped<IAvailabilityService, AvailabilityService>();
+services.AddScoped<IAuthorizationService, AuthorizationService>();
+```
+
+Functions receive services via constructor injection:
+
+```csharp
+public class GetSlots
+{
+    private readonly ISlotService _slotService;
+    private readonly ILogger _log;
+
+    public GetSlots(ISlotService slotService, ILoggerFactory loggerFactory)
+    {
+        _slotService = slotService;
+        _log = loggerFactory.CreateLogger<GetSlots>();
+    }
+
+    [Function("GetSlots")]
+    public async Task<HttpResponseData> Run([HttpTrigger(...)] HttpRequestData req)
+    {
+        // Extract context, validate, delegate to service
+        var result = await _slotService.QuerySlotsAsync(request, context);
+        return ApiResponses.Ok(req, result);
+    }
+}
+```
+
+### Pagination pattern
+Repositories use Azure Table Storage continuation tokens for efficient pagination:
+
+```csharp
+public interface ISlotRepository
+{
+    Task<PaginationResult<TableEntity>> QuerySlotsAsync(
+        SlotQueryFilter filter,
+        string? continuationToken = null);
+}
+
+public class PaginationResult<T>
+{
+    public List<T> Items { get; set; }
+    public string? ContinuationToken { get; set; }
+    public int PageSize { get; set; }
+}
+```
+
+### Error handling
+Services throw `ApiGuards.HttpError` with structured error codes:
+
+```csharp
+if (!await _fieldRepo.FieldExistsAsync(leagueId, parkCode, fieldCode))
+    throw new ApiGuards.HttpError(404, ErrorCodes.FIELD_NOT_FOUND,
+        $"Field not found: {parkCode}/{fieldCode}");
+```
+
+Functions catch and convert to standard error responses:
+
+```csharp
+catch (ApiGuards.HttpError ex)
+{
+    return ApiResponses.FromHttpError(req, ex);
+}
+```
+
+### Utility classes
+**Storage/EntityMappers.cs**: Maps TableEntity to/from domain objects
+**Storage/ODataFilterBuilder.cs**: Builds OData filter strings for queries
+**Storage/FieldKeyUtil.cs**: Parses and validates field keys
+**Storage/PaginationUtil.cs**: Helper for paginated queries
+**Storage/ErrorCodes.cs**: Centralized error code constants
+
+---
+
+## Frontend Architecture (authoritative)
+
+### Component composition pattern
+Large page components are split into focused sub-components:
+
+**Example: AdminPage.jsx**
+- Main component manages state and data fetching (736 lines, reduced from 1,355)
+- Sub-components handle UI rendering:
+  - AccessRequestsSection.jsx (155 lines)
+  - CoachAssignmentsSection.jsx (112 lines)
+  - CsvImportSection.jsx (175 lines)
+  - GlobalAdminSection.jsx (420 lines with 4 subsections)
+
+**Benefits:**
+- Improved readability and maintainability
+- Easier testing of individual sections
+- Better code organization
+- Parallel development of features
+
+### Custom hooks pattern
+Extract reusable stateful logic into custom hooks:
+
+**usePagination** - Handles paginated API responses with load-more pattern:
+```javascript
+export function usePagination(fetchFunction, initialPageSize = 50) {
+  const [items, setItems] = useState([]);
+  const [continuationToken, setContinuationToken] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [error, setError] = useState(null);
+
+  const loadPage = useCallback(async (token = null, append = false) => {
+    setLoading(true);
+    try {
+      const result = await fetchFunction(token, initialPageSize);
+      const data = result?.data || result;
+      const newItems = data?.items || data || [];
+      const nextToken = data?.continuationToken || null;
+
+      setItems(prev => append ? [...prev, ...newItems] : newItems);
+      setContinuationToken(nextToken);
+      setHasMore(!!nextToken);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchFunction, initialPageSize]);
+
+  const loadMore = useCallback(() => {
+    if (continuationToken && !loading) loadPage(continuationToken, true);
+  }, [continuationToken, loading, loadPage]);
+
+  return { items, loading, error, hasMore, loadMore, reset, initialLoad };
+}
+```
+
+**useKeyboardShortcuts** - Application-wide keyboard shortcuts:
+```javascript
+export function useKeyboardShortcuts(shortcuts) {
+  useEffect(() => {
+    function handleKeyDown(e) {
+      // Skip if user is typing in an input field (unless Ctrl is pressed)
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) && !e.ctrlKey) {
+        return;
+      }
+
+      // Handle single keys, combinations (Ctrl+K), and sequences (g h)
+      for (const [key, handler] of Object.entries(shortcuts)) {
+        if (matchesShortcut(e, key)) {
+          e.preventDefault();
+          handler();
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [shortcuts]);
+}
+```
+
+**useAccessRequests, useCoachAssignments, useCsvImport** - Domain-specific hooks that encapsulate business logic and state for admin sections.
+
+### Form validation pattern
+Use the validation library (`lib/validation.js`) for all form inputs:
+
+```javascript
+import { validateField, validateForm, schemas } from '../lib/validation';
+
+// Validate single field
+const error = validateField('email', 'invalid-email', schemas.email);
+if (error) {
+  setEmailError(error);
+}
+
+// Validate entire form
+const errors = validateForm(formData, schemas.league);
+if (Object.keys(errors).length > 0) {
+  setFormErrors(errors);
+  return;
+}
+```
+
+**Available validators:**
+- required, email, minLength, maxLength
+- pattern, number, min, max
+- date, time, custom
+
+**Predefined schemas:** league, team, field, slot, user, division, event
+
+### Keyboard shortcuts
+Application-wide shortcuts for common navigation:
+
+| Shortcut | Action |
+|----------|--------|
+| g h | Go to home |
+| g c | Go to calendar |
+| g m | Go to manager |
+| g a | Go to admin |
+| ? | Show shortcuts modal |
+
+Implementation: Include KeyboardShortcutsModal in your layout and register shortcuts with useKeyboardShortcuts.
+
+### Mobile-first design principles
+**Touch targets:** All interactive elements must be at least 44px (2.75rem) in height for comfortable touch interaction.
+
+**Responsive breakpoints:**
+- Mobile: < 640px
+- Tablet: 640px - 1024px
+- Desktop: > 1024px
+
+**Accessibility requirements:**
+- ARIA labels on all interactive elements
+- Skip links for keyboard navigation
+- Focus indicators (2px blue ring with 2px offset)
+- Sufficient color contrast (WCAG AA minimum)
+
+**Loading states:** Use SkeletonLoader component for content placeholders
+**Empty states:** Use EmptyState component with contextual messages
+**Error states:** Use ErrorCard component with actionable error messages
+
+### State management
+**Local state:** Use useState for component-specific state
+**Shared state:** Pass via props or use custom hooks
+**Server state:** Use custom hooks (usePagination, useAccessRequests, etc.) that encapsulate fetch logic
+
+**Avoid:**
+- Global state libraries (Redux, Zustand) unless absolutely necessary
+- Prop drilling more than 2 levels deep (extract to custom hook instead)
+
+---
+
+## Testing Guidelines
+
+### Frontend tests (Vitest)
+All new components and utilities must include test coverage.
+
+**Test infrastructure:**
+- Framework: Vitest with jsdom environment
+- Component testing: @testing-library/react
+- Assertions: @testing-library/jest-dom
+- Setup: src/__tests__/setup.js (mocks fetch, localStorage, window)
+
+**Running tests:**
+```bash
+npm test              # Watch mode
+npm run test:coverage # Coverage report
+npm run test:ci       # CI mode (no watch)
+```
+
+**Test organization:**
+- Component tests: `src/__tests__/components/<ComponentName>.test.jsx`
+- Hook tests: `src/__tests__/hooks/<hookName>.test.js`
+- Utility tests: `src/__tests__/lib/<utilName>.test.js`
+
+**Example component test:**
+```javascript
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import LeaguePicker from '../../components/LeaguePicker';
+
+describe('LeaguePicker', () => {
+  it('calls onChange when selection changes', () => {
+    const onChange = vi.fn();
+    const leagues = [{ leagueId: 'ARL', leagueName: 'Arlington' }];
+
+    render(<LeaguePicker memberships={leagues} value="" onChange={onChange} />);
+
+    const select = screen.getByRole('combobox');
+    fireEvent.change(select, { target: { value: 'ARL' } });
+
+    expect(onChange).toHaveBeenCalledWith('ARL');
+  });
+});
+```
+
+**Coverage target:** 70%+ for new/refactored code
+
+### Backend tests
+Integration tests validate end-to-end workflows:
+- Use in-memory Azure Storage Emulator (Azurite)
+- Test complete workflows (create slot → create request → approve)
+- Verify authorization rules and error handling
 
 ---
 
@@ -492,10 +813,15 @@ Response
 ### Admin: GET /accessrequests (league-scoped)
 Header: x-league-id
 Requires: LeagueAdmin or global admin.
-Query: status (default Pending)
+Query (optional):
+- `status` - Filter by status (default: Pending)
+- `continuationToken` - Pagination token from previous response
+- `pageSize` - Number of items per page (default: 50)
 
 Global admin: list across all leagues
 Query: `all=true` (requires global admin; ignores league header scope)
+
+Response supports pagination for large result sets. See standard pagination format in "Standard response envelope" section.
 
 ### Admin: PATCH /accessrequests/{userId}/approve (league-scoped)
 Header: x-league-id
@@ -590,18 +916,29 @@ Response
 ```
 
 ### Admin: GET /memberships?all=true
-Requires: global admin.  
-Query (optional): `search`, `leagueId`, `role`
+Requires: global admin.
+Query (optional):
+- `search` - Filter by userId, email, or leagueId
+- `leagueId` - Filter by specific league
+- `role` - Filter by role (LeagueAdmin, Coach, Viewer)
+- `continuationToken` - Pagination token from previous response
+- `pageSize` - Number of items per page (default: 50)
 
-Response
+Response (paginated when large result sets)
 ```json
 {
-  "data": [
-    { "userId": "...", "email": "...", "leagueId": "ARL", "role": "LeagueAdmin" },
-    { "userId": "...", "email": "...", "leagueId": "ARL", "role": "Coach", "team": { "division": "10U", "teamId": "TIGERS" } }
-  ]
+  "data": {
+    "items": [
+      { "userId": "...", "email": "...", "leagueId": "ARL", "role": "LeagueAdmin" },
+      { "userId": "...", "email": "...", "leagueId": "ARL", "role": "Coach", "team": { "division": "10U", "teamId": "TIGERS" } }
+    ],
+    "continuationToken": "xyz789...",
+    "pageSize": 50
+  }
 }
 ```
+
+Note: For small result sets (< pageSize), response may return simple array format for backward compatibility.
 
 ### Admin: PATCH /memberships/{userId} (league-scoped)
 Header: x-league-id
@@ -898,7 +1235,14 @@ Notes
 - Only availability slots with Status=Open are deleted.
 
 ### GET /slots (league-scoped)
-Query (all optional): division, status (comma-separated), dateFrom (YYYY-MM-DD), dateTo (YYYY-MM-DD)  
+Query (all optional):
+- `division` - Filter by division code
+- `status` - Comma-separated list (e.g., "Open,Confirmed")
+- `dateFrom` - Start date filter (YYYY-MM-DD)
+- `dateTo` - End date filter (YYYY-MM-DD)
+- `continuationToken` - Pagination token from previous response
+- `pageSize` - Number of items per page (default: 50, max: 100)
+
 Requires: member (Viewer allowed).
 
 Visibility:
@@ -908,7 +1252,7 @@ Default behavior:
 - If `status` is omitted, the API returns **Open + Confirmed** slots.
 - To see cancelled slots, pass `status=Cancelled`.
 
-Response
+Response (non-paginated, for backward compatibility when pageSize not specified)
 ```json
 {
   "data": [
@@ -935,6 +1279,44 @@ Response
     }
   ]
 }
+```
+
+Response (paginated, when pageSize is specified)
+```json
+{
+  "data": {
+    "items": [
+      {
+        "slotId": "slot_123",
+        "leagueId": "ARL",
+        "division": "10U",
+        "offeringTeamId": "TIGERS",
+        "confirmedTeamId": "",
+        "homeTeamId": "TIGERS",
+        "awayTeamId": "",
+        "isExternalOffer": false,
+        "isAvailability": false,
+        "gameDate": "2026-04-10",
+        "startTime": "18:00",
+        "endTime": "20:00",
+        "parkName": "Gunston",
+        "fieldName": "Turf",
+        "displayName": "Gunston > Turf",
+        "fieldKey": "gunston/turf",
+        "gameType": "Swap",
+        "status": "Open",
+        "notes": "Open game offer"
+      }
+    ],
+    "continuationToken": "abc123...",
+    "pageSize": 50
+  }
+}
+```
+
+To fetch the next page, include the continuationToken in the next request:
+```
+GET /slots?division=10U&continuationToken=abc123...&pageSize=50
 ```
 
 ### POST /slots (league-scoped)
@@ -1567,6 +1949,105 @@ Requires: LeagueAdmin or global admin.
 
 ### DELETE /events/{eventId} (league-scoped)
 Requires: LeagueAdmin or global admin.
+
+---
+
+---
+
+## Development Best Practices
+
+### Backend development guidelines
+
+**When creating new endpoints:**
+1. Create service interface in `api/Services/I<ServiceName>.cs`
+2. Implement service in `api/Services/<ServiceName>.cs`
+3. Create repository interface in `api/Repositories/I<RepositoryName>.cs` (if needed)
+4. Implement repository in `api/Repositories/<RepositoryName>.cs` (if needed)
+5. Register services in `api/Program.cs`
+6. Create Azure Function that delegates to service
+7. Add endpoint to contract.md endpoint index
+
+**Authorization checks:**
+- Use `IAuthorizationService` for all permission checks
+- Never inline authorization logic in functions
+- Common patterns: `RequireNotViewerAsync()`, `CanCreateSlotAsync()`, `CanApproveRequestAsync()`
+
+**Error handling:**
+- Throw `ApiGuards.HttpError` with error codes from `ErrorCodes.cs`
+- Never return generic "Internal error" messages without logging details
+- Use structured logging with correlation IDs
+
+**Testing:**
+- Write integration tests for complex workflows
+- Test authorization rules thoroughly
+- Verify error responses include proper error codes
+
+### Frontend development guidelines
+
+**When creating new pages:**
+1. Start with a single page component (don't prematurely split)
+2. If the component exceeds ~300 lines, extract sub-components
+3. Extract stateful logic into custom hooks when reused 2+ times
+4. Use predefined validation schemas from `lib/validation.js`
+5. Add keyboard shortcuts for common actions
+6. Include loading, empty, and error states
+
+**Component structure:**
+```jsx
+// Page component (state management)
+export default function MyPage() {
+  const [data, setData] = useState([]);
+  const { items, loading, hasMore, loadMore } = usePagination(fetchData);
+
+  return (
+    <div>
+      <MySubSection data={data} onUpdate={handleUpdate} />
+      <Pagination hasMore={hasMore} loading={loading} onLoadMore={loadMore} />
+    </div>
+  );
+}
+
+// Sub-component (presentation only)
+function MySubSection({ data, onUpdate }) {
+  return <div>...</div>;
+}
+```
+
+**API integration:**
+- Use `apiFetch()` from `lib/api.js` for all API calls
+- Let `apiFetch` handle league-id header injection
+- Handle errors with user-friendly messages (not raw API errors)
+- Use `usePagination` hook for paginated endpoints
+
+**Styling:**
+- Use Tailwind utility classes
+- Follow mobile-first approach (design for mobile, enhance for desktop)
+- Maintain 44px minimum touch target size
+- Use semantic color classes (`text-error`, `bg-success`, etc.)
+
+**Accessibility:**
+- Include ARIA labels on all interactive elements
+- Test keyboard navigation (Tab, Enter, Space, Escape)
+- Ensure sufficient color contrast
+- Provide skip links for main content
+
+### Quality assurance checklist
+
+Before submitting code for review:
+- [ ] Backend: All endpoints registered in contract.md
+- [ ] Backend: Services and repositories use interfaces
+- [ ] Backend: Authorization checks use IAuthorizationService
+- [ ] Backend: Error codes used from ErrorCodes.cs
+- [ ] Frontend: Component split if >300 lines
+- [ ] Frontend: Form validation uses validation library
+- [ ] Frontend: Paginated lists use usePagination hook
+- [ ] Frontend: Mobile responsive (test at 375px width)
+- [ ] Frontend: Keyboard navigation works
+- [ ] Tests: New code has 70%+ coverage
+- [ ] Tests: Authorization rules tested
+- [ ] UI: Loading/empty/error states included
+- [ ] UI: User-friendly error messages
+- [ ] Docs: contract.md updated if API changed
 
 ---
 
