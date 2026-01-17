@@ -1,6 +1,10 @@
 using System.Net;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
+using Microsoft.Azure.Functions.Worker.Extensions.OpenApi.Extensions;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Enums;
+using Microsoft.OpenApi.Models;
 using Microsoft.Extensions.Logging;
 using GameSwap.Functions.Storage;
 using GameSwap.Functions.Services;
@@ -26,6 +30,13 @@ public class GetSlotRequests
     }
 
     [Function("GetSlotRequests")]
+    [OpenApiOperation(operationId: "GetSlotRequests", tags: new[] { "Slot Requests" }, Summary = "Get requests for a slot", Description = "Retrieves all requests for a specific slot. Returns pending, approved, and denied requests.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiParameter(name: "division", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Division code (e.g., '10U', '12U')")]
+    [OpenApiParameter(name: "slotId", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Unique slot identifier")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(object), Description = "Requests retrieved successfully")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Unauthorized (not a member of this league)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.NotFound, contentType: "application/json", bodyType: typeof(object), Description = "Slot not found")]
     public async Task<HttpResponseData> Run(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "slots/{division}/{slotId}/requests")] HttpRequestData req,
         string division,

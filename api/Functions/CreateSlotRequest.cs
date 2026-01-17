@@ -1,6 +1,10 @@
 using System.Net;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
+using Microsoft.Azure.Functions.Worker.Extensions.OpenApi.Extensions;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Enums;
+using Microsoft.OpenApi.Models;
 using Microsoft.Extensions.Logging;
 using GameSwap.Functions.Storage;
 using GameSwap.Functions.Services;
@@ -28,6 +32,16 @@ public class CreateSlotRequest
     // POST /slots/{division}/{slotId}/requests
     // Accepting a slot immediately confirms it (no approval step).
     [Function("CreateSlotRequest")]
+    [OpenApiOperation(operationId: "CreateSlotRequest", tags: new[] { "Slot Requests" }, Summary = "Create a slot request", Description = "Creates a request to accept/swap a slot. The requesting team takes over the slot, and the original team receives the requesting team's slot.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiParameter(name: "division", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Division code (e.g., '10U', '12U')")]
+    [OpenApiParameter(name: "slotId", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Unique slot identifier")]
+    [OpenApiRequestBody(contentType: "application/json", bodyType: typeof(CreateReq), Required = false, Description = "Optional request details (notes, requestingTeamId, requestingDivision)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Created, contentType: "application/json", bodyType: typeof(object), Description = "Request created successfully")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(object), Description = "Invalid request (missing required fields)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Unauthorized (not a member or coach without team)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.NotFound, contentType: "application/json", bodyType: typeof(object), Description = "Slot not found")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Conflict, contentType: "application/json", bodyType: typeof(object), Description = "Request already exists or slot is not available")]
     public async Task<HttpResponseData> Run(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "slots/{division}/{slotId}/requests")] HttpRequestData req,
         string division,

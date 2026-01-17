@@ -3,6 +3,10 @@ using GameSwap.Functions.Storage;
 using GameSwap.Functions.Repositories;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
+using Microsoft.Azure.Functions.Worker.Extensions.OpenApi.Extensions;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Enums;
+using Microsoft.OpenApi.Models;
 using Microsoft.Extensions.Logging;
 
 namespace GameSwap.Functions.Functions;
@@ -64,6 +68,11 @@ public class FieldsFunctions
     );
 
     [Function("ListFields")]
+    [OpenApiOperation(operationId: "ListFields", tags: new[] { "Fields" }, Summary = "List fields", Description = "Retrieves all fields for a league with optional park code filter. Returns field details including blackout dates.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiParameter(name: "parkCode", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Optional park code to filter fields")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(object), Description = "Fields retrieved successfully")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Unauthorized (not a member of this league)")]
     public async Task<HttpResponseData> List(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "fields")] HttpRequestData req)
     {
@@ -127,6 +136,13 @@ public class FieldsFunctions
     }
 
     [Function("CreateField")]
+    [OpenApiOperation(operationId: "CreateField", tags: new[] { "Fields" }, Summary = "Create field", Description = "Creates a new field for a league. Only league admins can create fields.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiRequestBody(contentType: "application/json", bodyType: typeof(CreateFieldRequest), Required = true, Description = "Field details (fieldKey, parkName, fieldName, address, etc.)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Created, contentType: "application/json", bodyType: typeof(object), Description = "Field created successfully")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(object), Description = "Invalid request (missing required fields or invalid fieldKey format)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Unauthorized (not a league admin)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Conflict, contentType: "application/json", bodyType: typeof(object), Description = "Field already exists")]
     public async Task<HttpResponseData> CreateField(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "fields")] HttpRequestData req)
     {
@@ -266,6 +282,15 @@ public class FieldsFunctions
     }
 
     [Function("UpdateField")]
+    [OpenApiOperation(operationId: "UpdateField", tags: new[] { "Fields" }, Summary = "Update field", Description = "Updates an existing field's details. Only league admins can update fields.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiParameter(name: "parkCode", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Park code")]
+    [OpenApiParameter(name: "fieldCode", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Field code")]
+    [OpenApiRequestBody(contentType: "application/json", bodyType: typeof(UpdateFieldRequest), Required = true, Description = "Updated field details")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(object), Description = "Field updated successfully")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(object), Description = "Invalid request")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Unauthorized (not a league admin)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.NotFound, contentType: "application/json", bodyType: typeof(object), Description = "Field not found")]
     public async Task<HttpResponseData> UpdateField(
         [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "fields/{parkCode}/{fieldCode}")]
         HttpRequestData req,
@@ -365,6 +390,14 @@ public class FieldsFunctions
     }
 
     [Function("DeleteField")]
+    [OpenApiOperation(operationId: "DeleteField", tags: new[] { "Fields" }, Summary = "Delete field", Description = "Soft deletes a field by deactivating it. Only league admins can delete fields.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiParameter(name: "parkCode", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Park code")]
+    [OpenApiParameter(name: "fieldCode", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Field code")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(object), Description = "Field deleted successfully")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(object), Description = "Invalid request")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Unauthorized (not a league admin)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.NotFound, contentType: "application/json", bodyType: typeof(object), Description = "Field not found")]
     public async Task<HttpResponseData> DeleteField(
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "fields/{parkCode}/{fieldCode}")]
         HttpRequestData req,

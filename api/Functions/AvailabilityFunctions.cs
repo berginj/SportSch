@@ -4,6 +4,10 @@ using GameSwap.Functions.Services;
 using GameSwap.Functions.Repositories;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
+using Microsoft.Azure.Functions.Worker.Extensions.OpenApi.Extensions;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Enums;
+using Microsoft.OpenApi.Models;
 using Microsoft.Extensions.Logging;
 
 namespace GameSwap.Functions.Functions;
@@ -50,6 +54,12 @@ public class AvailabilityFunctions
     );
 
     [Function("CreateAvailabilityRule")]
+    [OpenApiOperation(operationId: "CreateAvailabilityRule", tags: new[] { "Availability Rules" }, Summary = "Create availability rule", Description = "Creates a new field availability rule that defines when a field is available for a division. Only league admins can create rules.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiRequestBody(contentType: "application/json", bodyType: typeof(AvailabilityRuleRequest), Required = true, Description = "Availability rule details (fieldKey, division, schedule, timezone)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Created, contentType: "application/json", bodyType: typeof(object), Description = "Rule created successfully")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(object), Description = "Invalid request (missing required fields or invalid dates/times)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Unauthorized (not a league admin)")]
     public async Task<HttpResponseData> CreateRule(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "availability/rules")] HttpRequestData req)
     {
@@ -125,6 +135,12 @@ public class AvailabilityFunctions
     }
 
     [Function("GetAvailabilityRules")]
+    [OpenApiOperation(operationId: "GetAvailabilityRules", tags: new[] { "Availability Rules" }, Summary = "Get availability rules", Description = "Retrieves all availability rules for a field. Only league admins can view rules.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiParameter(name: "fieldKey", In = ParameterLocation.Query, Required = true, Type = typeof(string), Description = "Field key in format 'ParkCode/FieldCode'")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(object), Description = "Rules retrieved successfully")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(object), Description = "Invalid request (missing fieldKey)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Unauthorized (not a league admin)")]
     public async Task<HttpResponseData> GetRules(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "availability/rules")] HttpRequestData req)
     {
@@ -169,6 +185,14 @@ public class AvailabilityFunctions
     }
 
     [Function("UpdateAvailabilityRule")]
+    [OpenApiOperation(operationId: "UpdateAvailabilityRule", tags: new[] { "Availability Rules" }, Summary = "Update availability rule", Description = "Updates an existing field availability rule. Only league admins can update rules.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiParameter(name: "ruleId", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Unique rule identifier")]
+    [OpenApiRequestBody(contentType: "application/json", bodyType: typeof(AvailabilityRuleRequest), Required = true, Description = "Updated rule details")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(object), Description = "Rule updated successfully")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(object), Description = "Invalid request (missing required fields)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Unauthorized (not a league admin)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.NotFound, contentType: "application/json", bodyType: typeof(object), Description = "Rule not found")]
     public async Task<HttpResponseData> UpdateRule(
         [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "availability/rules/{ruleId}")] HttpRequestData req,
         string ruleId)
@@ -245,6 +269,12 @@ public class AvailabilityFunctions
     }
 
     [Function("DeactivateAvailabilityRule")]
+    [OpenApiOperation(operationId: "DeactivateAvailabilityRule", tags: new[] { "Availability Rules" }, Summary = "Deactivate availability rule", Description = "Deactivates a field availability rule without deleting it. Only league admins can deactivate rules.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiParameter(name: "ruleId", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Unique rule identifier")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(object), Description = "Rule deactivated successfully")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Unauthorized (not a league admin)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.NotFound, contentType: "application/json", bodyType: typeof(object), Description = "Rule not found")]
     public async Task<HttpResponseData> DeactivateRule(
         [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "availability/rules/{ruleId}/deactivate")] HttpRequestData req,
         string ruleId)
@@ -284,6 +314,14 @@ public class AvailabilityFunctions
     }
 
     [Function("CreateAvailabilityException")]
+    [OpenApiOperation(operationId: "CreateAvailabilityException", tags: new[] { "Availability Exceptions" }, Summary = "Create availability exception", Description = "Creates an exception to an availability rule (e.g., field closure, special hours). Only league admins can create exceptions.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiParameter(name: "ruleId", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Rule identifier to add exception to")]
+    [OpenApiRequestBody(contentType: "application/json", bodyType: typeof(AvailabilityRuleExceptionRequest), Required = true, Description = "Exception details (dateFrom, dateTo, times, reason)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Created, contentType: "application/json", bodyType: typeof(object), Description = "Exception created successfully")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(object), Description = "Invalid request (missing required fields)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Unauthorized (not a league admin)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.NotFound, contentType: "application/json", bodyType: typeof(object), Description = "Rule not found")]
     public async Task<HttpResponseData> CreateException(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "availability/rules/{ruleId}/exceptions")] HttpRequestData req,
         string ruleId)
@@ -345,6 +383,15 @@ public class AvailabilityFunctions
     }
 
     [Function("UpdateAvailabilityException")]
+    [OpenApiOperation(operationId: "UpdateAvailabilityException", tags: new[] { "Availability Exceptions" }, Summary = "Update availability exception", Description = "Updates an existing availability exception. Only league admins can update exceptions.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiParameter(name: "ruleId", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Rule identifier")]
+    [OpenApiParameter(name: "exceptionId", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Exception identifier")]
+    [OpenApiRequestBody(contentType: "application/json", bodyType: typeof(AvailabilityRuleExceptionRequest), Required = true, Description = "Updated exception details")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(object), Description = "Exception updated successfully")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(object), Description = "Invalid request")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Unauthorized (not a league admin)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.NotFound, contentType: "application/json", bodyType: typeof(object), Description = "Exception not found")]
     public async Task<HttpResponseData> UpdateException(
         [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "availability/rules/{ruleId}/exceptions/{exceptionId}")] HttpRequestData req,
         string ruleId,
@@ -407,6 +454,13 @@ public class AvailabilityFunctions
     }
 
     [Function("DeleteAvailabilityException")]
+    [OpenApiOperation(operationId: "DeleteAvailabilityException", tags: new[] { "Availability Exceptions" }, Summary = "Delete availability exception", Description = "Deletes an availability exception. Only league admins can delete exceptions.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiParameter(name: "ruleId", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Rule identifier")]
+    [OpenApiParameter(name: "exceptionId", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Exception identifier")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(object), Description = "Exception deleted successfully")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Unauthorized (not a league admin)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.NotFound, contentType: "application/json", bodyType: typeof(object), Description = "Exception not found")]
     public async Task<HttpResponseData> DeleteException(
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "availability/rules/{ruleId}/exceptions/{exceptionId}")] HttpRequestData req,
         string ruleId,
@@ -447,6 +501,12 @@ public class AvailabilityFunctions
     }
 
     [Function("ListAvailabilityExceptions")]
+    [OpenApiOperation(operationId: "ListAvailabilityExceptions", tags: new[] { "Availability Exceptions" }, Summary = "List availability exceptions", Description = "Retrieves all exceptions for a specific availability rule. Only league admins can list exceptions.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiParameter(name: "ruleId", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Rule identifier")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(object), Description = "Exceptions retrieved successfully")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Unauthorized (not a league admin)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.NotFound, contentType: "application/json", bodyType: typeof(object), Description = "Rule not found")]
     public async Task<HttpResponseData> ListExceptions(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "availability/rules/{ruleId}/exceptions")] HttpRequestData req,
         string ruleId)
@@ -486,6 +546,13 @@ public class AvailabilityFunctions
     }
 
     [Function("PreviewAvailabilitySlots")]
+    [OpenApiOperation(operationId: "PreviewAvailabilitySlots", tags: new[] { "Availability Rules" }, Summary = "Preview availability slots", Description = "Generates a preview of all available field slots for a date range based on availability rules and exceptions. Only league admins can preview slots.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiParameter(name: "dateFrom", In = ParameterLocation.Query, Required = true, Type = typeof(string), Description = "Start date for preview (YYYY-MM-DD)")]
+    [OpenApiParameter(name: "dateTo", In = ParameterLocation.Query, Required = true, Type = typeof(string), Description = "End date for preview (YYYY-MM-DD)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(object), Description = "Preview generated successfully")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(object), Description = "Invalid date range")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Unauthorized (not a league admin)")]
     public async Task<HttpResponseData> PreviewAvailabilitySlots(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "availability/preview")] HttpRequestData req)
     {
