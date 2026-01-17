@@ -36,6 +36,7 @@ var host = new HostBuilder()
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<INotificationPreferencesService, NotificationPreferencesService>();
         services.AddScoped<IEmailService, EmailService>();
+        services.AddScoped<IAuditLogger, AuditLogger>();
 
         // Table creation on startup (if configured)
         if (context.Configuration.GetValue<bool>("GAMESWAP_CREATE_TABLES"))
