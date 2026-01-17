@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 namespace GameSwap.Functions.Repositories;
 
 /// <summary>
-/// Implementation of ISlotRepository for accessing slot data in Table Storage.
+/// Implementation of ISlotRepository for accessing slot data in Azure Table Storage.
 /// </summary>
 public class SlotRepository : ISlotRepository
 {
@@ -40,11 +40,9 @@ public class SlotRepository : ISlotRepository
     public async Task<PaginationResult<TableEntity>> QuerySlotsAsync(SlotQueryFilter filter, string? continuationToken = null)
     {
         var table = await TableClients.GetTableAsync(_tableService, TableName);
-
-        // Build filter conditions
         var filters = new List<string>();
 
-        // Partition key filter (division-specific or league-wide)
+        // Partition key filter (league + division)
         if (!string.IsNullOrEmpty(filter.Division))
         {
             var pk = Constants.Pk.Slots(filter.LeagueId, filter.Division);
@@ -52,72 +50,67 @@ public class SlotRepository : ISlotRepository
         }
         else
         {
+            // Query all divisions in league
             var pkPrefix = Constants.Pk.Slots(filter.LeagueId, "");
             filters.Add(ODataFilterBuilder.PartitionKeyPrefix(pkPrefix));
         }
 
-        // Status filter - single status via OData filter
+        // Status filter
         if (!string.IsNullOrEmpty(filter.Status))
         {
             filters.Add(ODataFilterBuilder.StatusEquals(filter.Status));
         }
-        // Note: Multi-status filtering is handled in-memory after query
 
-        // Date range filters
-        if (!string.IsNullOrEmpty(filter.FromDate))
+        // Date range filter
+        if (!string.IsNullOrEmpty(filter.FromDate) || !string.IsNullOrEmpty(filter.ToDate))
         {
-            filters.Add($"GameDate ge '{ApiGuards.EscapeOData(filter.FromDate)}'");
+            filters.Add(ODataFilterBuilder.DateRange("GameDate", filter.FromDate, filter.ToDate));
         }
 
-        if (!string.IsNullOrEmpty(filter.ToDate))
-        {
-            filters.Add($"GameDate le '{ApiGuards.EscapeOData(filter.ToDate)}'");
-        }
-
-        // Field filter
+        // Field key filter
         if (!string.IsNullOrEmpty(filter.FieldKey))
         {
-            filters.Add($"FieldKey eq '{ApiGuards.EscapeOData(filter.FieldKey)}'");
+            filters.Add(ODataFilterBuilder.PropertyEquals("FieldKey", filter.FieldKey));
+        }
+
+        // External offer filter
+        if (filter.IsExternalOffer.HasValue)
+        {
+            filters.Add($"IsExternalOffer eq {filter.IsExternalOffer.Value.ToString().ToLower()}");
         }
 
         var filterString = ODataFilterBuilder.And(filters.ToArray());
 
-        // Execute query with pagination
+        _logger.LogDebug("Querying slots with filter: {Filter}", filterString);
+
         return await PaginationUtil.QueryWithPaginationAsync(table, filterString, continuationToken, filter.PageSize);
     }
 
-    public async Task<bool> HasConflictAsync(string leagueId, string fieldKey, string gameDate, int startMin, int endMin)
+    public async Task<bool> HasConflictAsync(string leagueId, string fieldKey, string gameDate, int startMin, int endMin, string? excludeSlotId = null)
     {
-        var table = await TableClients.GetTableAsync(_tableService, TableName);
+        var slots = await GetSlotsByFieldAndDateAsync(leagueId, fieldKey, gameDate);
 
-        // Query all slots for this league on the same date and field
-        var prefix = $"SLOT|{leagueId}|";
-        var next = prefix + "\uffff";
-        var filter = $"PartitionKey ge '{ApiGuards.EscapeOData(prefix)}' and PartitionKey lt '{ApiGuards.EscapeOData(next)}' " +
-                     $"and GameDate eq '{ApiGuards.EscapeOData(gameDate)}' " +
-                     $"and FieldKey eq '{ApiGuards.EscapeOData(fieldKey)}'";
-
-        await foreach (var e in table.QueryAsync<TableEntity>(filter: filter))
+        foreach (var slot in slots)
         {
+            // Skip the slot we're updating (if provided)
+            if (!string.IsNullOrEmpty(excludeSlotId) && slot.RowKey == excludeSlotId)
+                continue;
+
             // Skip cancelled slots
-            var status = (e.GetString("Status") ?? Constants.Status.SlotOpen).Trim();
-            if (string.Equals(status, Constants.Status.SlotCancelled, StringComparison.OrdinalIgnoreCase))
+            var status = slot.GetString("Status") ?? "";
+            if (status == Constants.Status.SlotCancelled)
                 continue;
 
-            // Check for time overlap
-            if (!TimeUtil.TryParseMinutes(e.GetString("StartTime"), out var existingStart))
-                continue;
+            // Check time overlap
+            var slotStartMin = slot.GetInt32("StartMin") ?? 0;
+            var slotEndMin = slot.GetInt32("EndMin") ?? 0;
 
-            if (!TimeUtil.TryParseMinutes(e.GetString("EndTime"), out var existingEnd))
-                continue;
-
-            if (existingStart >= existingEnd) continue; // Invalid time range
-
-            // Check if times overlap
-            if (TimeUtil.Overlaps(startMin, endMin, existingStart, existingEnd))
+            // Times conflict if they overlap
+            var hasOverlap = startMin < slotEndMin && endMin > slotStartMin;
+            if (hasOverlap)
             {
-                _logger.LogWarning("Slot conflict detected: {FieldKey} on {GameDate} {StartMin}-{EndMin} overlaps with existing slot",
-                    fieldKey, gameDate, startMin, endMin);
+                _logger.LogWarning("Slot conflict detected: {FieldKey} on {GameDate} at {StartMin}-{EndMin} conflicts with {SlotId}",
+                    fieldKey, gameDate, startMin, endMin, slot.RowKey);
                 return true;
             }
         }
@@ -125,23 +118,28 @@ public class SlotRepository : ISlotRepository
         return false;
     }
 
-    public async Task<List<TableEntity>> GetSlotsForFieldAndDateAsync(string leagueId, string fieldKey, string gameDate)
+    public async Task<List<TableEntity>> GetSlotsByFieldAndDateAsync(string leagueId, string fieldKey, string gameDate)
     {
         var table = await TableClients.GetTableAsync(_tableService, TableName);
 
-        var prefix = $"SLOT|{leagueId}|";
-        var next = prefix + "\uffff";
-        var filter = $"PartitionKey ge '{ApiGuards.EscapeOData(prefix)}' and PartitionKey lt '{ApiGuards.EscapeOData(next)}' " +
-                     $"and GameDate eq '{ApiGuards.EscapeOData(gameDate)}' " +
-                     $"and FieldKey eq '{ApiGuards.EscapeOData(fieldKey)}'";
-
-        var result = new List<TableEntity>();
-        await foreach (var entity in table.QueryAsync<TableEntity>(filter: filter))
+        // Query across all divisions in the league
+        var pkPrefix = Constants.Pk.Slots(leagueId, "");
+        var filters = new[]
         {
-            result.Add(entity);
+            ODataFilterBuilder.PartitionKeyPrefix(pkPrefix),
+            ODataFilterBuilder.PropertyEquals("FieldKey", fieldKey),
+            ODataFilterBuilder.PropertyEquals("GameDate", gameDate)
+        };
+
+        var filterString = ODataFilterBuilder.And(filters);
+
+        var results = new List<TableEntity>();
+        await foreach (var entity in table.QueryAsync<TableEntity>(filter: filterString))
+        {
+            results.Add(entity);
         }
 
-        return result;
+        return results;
     }
 
     public async Task CreateSlotAsync(TableEntity slot)
@@ -161,6 +159,15 @@ public class SlotRepository : ISlotRepository
         _logger.LogInformation("Updated slot: {PartitionKey}/{RowKey}", slot.PartitionKey, slot.RowKey);
     }
 
+    public async Task DeleteSlotAsync(string leagueId, string division, string slotId)
+    {
+        var table = await TableClients.GetTableAsync(_tableService, TableName);
+        var pk = Constants.Pk.Slots(leagueId, division);
+        await table.DeleteEntityAsync(pk, slotId);
+
+        _logger.LogInformation("Deleted slot: {LeagueId}/{Division}/{SlotId}", leagueId, division, slotId);
+    }
+
     public async Task CancelSlotAsync(string leagueId, string division, string slotId)
     {
         var slot = await GetSlotAsync(leagueId, division, slotId);
@@ -170,10 +177,9 @@ public class SlotRepository : ISlotRepository
         }
 
         slot["Status"] = Constants.Status.SlotCancelled;
-        slot["UpdatedUtc"] = DateTimeOffset.UtcNow;
+        slot["UpdatedUtc"] = DateTime.UtcNow;
 
-        var table = await TableClients.GetTableAsync(_tableService, TableName);
-        await table.UpdateEntityAsync(slot, slot.ETag, TableUpdateMode.Replace);
+        await UpdateSlotAsync(slot, slot.ETag);
 
         _logger.LogInformation("Cancelled slot: {LeagueId}/{Division}/{SlotId}", leagueId, division, slotId);
     }

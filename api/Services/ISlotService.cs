@@ -1,9 +1,10 @@
+using GameSwap.Functions.Repositories;
 using GameSwap.Functions.Storage;
 
 namespace GameSwap.Functions.Services;
 
 /// <summary>
-/// Service for slot business logic operations.
+/// Service for slot business logic and orchestration.
 /// </summary>
 public interface ISlotService
 {
@@ -23,13 +24,13 @@ public interface ISlotService
     Task<object> QuerySlotsAsync(SlotQueryRequest request, CorrelationContext context);
 
     /// <summary>
-    /// Cancels a slot.
+    /// Cancels a slot (marks as cancelled, notifies requesters).
     /// </summary>
     Task CancelSlotAsync(string leagueId, string division, string slotId, string userId);
 }
 
 /// <summary>
-/// Request to create a slot.
+/// Request model for creating a slot.
 /// </summary>
 public class CreateSlotRequest
 {
@@ -39,15 +40,19 @@ public class CreateSlotRequest
     public string GameDate { get; set; } = "";
     public string StartTime { get; set; } = "";
     public string EndTime { get; set; } = "";
-    public string FieldKey { get; set; } = "";
+    public string? FieldKey { get; set; }
+    public string? ParkCode { get; set; }
+    public string? FieldCode { get; set; }
     public string? ParkName { get; set; }
     public string? FieldName { get; set; }
-    public string GameType { get; set; } = "Swap";
+    public string? GameType { get; set; }
     public string? Notes { get; set; }
+    public bool IsExternalOffer { get; set; }
+    public bool IsAvailability { get; set; }
 }
 
 /// <summary>
-/// Request to query slots.
+/// Request model for querying slots with filters.
 /// </summary>
 public class SlotQueryRequest
 {

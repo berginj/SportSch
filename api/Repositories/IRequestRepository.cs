@@ -10,12 +10,12 @@ namespace GameSwap.Functions.Repositories;
 public interface IRequestRepository
 {
     /// <summary>
-    /// Gets a single slot request by ID.
+    /// Gets a single request by ID.
     /// </summary>
     Task<TableEntity?> GetRequestAsync(string leagueId, string division, string slotId, string requestId);
 
     /// <summary>
-    /// Queries requests with optional filtering and pagination.
+    /// Queries requests with filtering and pagination.
     /// </summary>
     Task<PaginationResult<TableEntity>> QueryRequestsAsync(RequestQueryFilter filter, string? continuationToken = null);
 
@@ -25,12 +25,17 @@ public interface IRequestRepository
     Task<List<TableEntity>> GetPendingRequestsForSlotAsync(string leagueId, string division, string slotId);
 
     /// <summary>
-    /// Creates a new slot request.
+    /// Gets all requests for a specific slot (any status).
+    /// </summary>
+    Task<List<TableEntity>> GetRequestsForSlotAsync(string leagueId, string division, string slotId);
+
+    /// <summary>
+    /// Creates a new request.
     /// </summary>
     Task CreateRequestAsync(TableEntity request);
 
     /// <summary>
-    /// Updates an existing request (e.g., approval/rejection) with optimistic concurrency.
+    /// Updates an existing request with ETag concurrency check.
     /// </summary>
     Task UpdateRequestAsync(TableEntity request, ETag etag);
 
@@ -38,10 +43,15 @@ public interface IRequestRepository
     /// Deletes a request.
     /// </summary>
     Task DeleteRequestAsync(string leagueId, string division, string slotId, string requestId);
+
+    /// <summary>
+    /// Checks if a team already has a pending request for a slot.
+    /// </summary>
+    Task<bool> HasPendingRequestAsync(string leagueId, string division, string slotId, string requestingTeamId);
 }
 
 /// <summary>
-/// Filter parameters for querying slot requests.
+/// Filter criteria for querying slot requests.
 /// </summary>
 public class RequestQueryFilter
 {
@@ -49,5 +59,7 @@ public class RequestQueryFilter
     public string? Division { get; set; }
     public string? SlotId { get; set; }
     public string? Status { get; set; }
+    public string? RequestingTeamId { get; set; }
+    public string? RequestingUserId { get; set; }
     public int PageSize { get; set; } = 50;
 }

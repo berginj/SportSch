@@ -1,3 +1,4 @@
+using Azure.Data.Tables;
 using GameSwap.Functions.Repositories;
 using GameSwap.Functions.Storage;
 using Microsoft.Extensions.Logging;
@@ -5,178 +6,246 @@ using Microsoft.Extensions.Logging;
 namespace GameSwap.Functions.Services;
 
 /// <summary>
-/// Implementation of IAuthorizationService for centralized authorization logic.
+/// Implementation of IAuthorizationService for role-based access control.
 /// </summary>
 public class AuthorizationService : IAuthorizationService
 {
     private readonly IMembershipRepository _membershipRepo;
+    private readonly ISlotRepository _slotRepo;
     private readonly ILogger<AuthorizationService> _logger;
 
-    public AuthorizationService(IMembershipRepository membershipRepo, ILogger<AuthorizationService> logger)
+    public AuthorizationService(
+        IMembershipRepository membershipRepo,
+        ISlotRepository slotRepo,
+        ILogger<AuthorizationService> logger)
     {
         _membershipRepo = membershipRepo;
+        _slotRepo = slotRepo;
         _logger = logger;
-    }
-
-    public async Task<bool> CanCreateSlotAsync(string userId, string leagueId, string division, string? teamId)
-    {
-        // Global admins can create any slot
-        if (await _membershipRepo.IsGlobalAdminAsync(userId))
-            return true;
-
-        // Get user's membership
-        var membership = await _membershipRepo.GetMembershipAsync(userId, leagueId);
-        if (membership == null)
-        {
-            _logger.LogWarning("User {UserId} attempted to create slot without membership in league {LeagueId}", userId, leagueId);
-            return false;
-        }
-
-        var role = (membership.GetString("Role") ?? Constants.Roles.Viewer).Trim();
-
-        // League admins can create any slot
-        if (string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        // Coaches can only create slots for their assigned team/division
-        if (string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase))
-        {
-            var coachDivision = (membership.GetString("CoachDivision") ?? "").Trim();
-            var coachTeamId = (membership.GetString("CoachTeamId") ?? "").Trim();
-
-            if (string.IsNullOrWhiteSpace(coachTeamId))
-            {
-                _logger.LogWarning("Coach {UserId} has no assigned team", userId);
-                return false;
-            }
-
-            if (!string.Equals(coachDivision, division, StringComparison.OrdinalIgnoreCase))
-            {
-                _logger.LogWarning("Coach {UserId} attempted to create slot in different division", userId);
-                return false;
-            }
-
-            if (!string.Equals(coachTeamId, teamId, StringComparison.OrdinalIgnoreCase))
-            {
-                _logger.LogWarning("Coach {UserId} attempted to create slot for different team", userId);
-                return false;
-            }
-
-            return true;
-        }
-
-        // Viewers cannot create slots
-        return false;
-    }
-
-    public async Task<bool> CanApproveRequestAsync(string userId, string leagueId, string division, string offeringTeamId)
-    {
-        // Global admins can approve any request
-        if (await _membershipRepo.IsGlobalAdminAsync(userId))
-            return true;
-
-        // Get user's membership
-        var membership = await _membershipRepo.GetMembershipAsync(userId, leagueId);
-        if (membership == null)
-            return false;
-
-        var role = (membership.GetString("Role") ?? Constants.Roles.Viewer).Trim();
-
-        // League admins can approve any request
-        if (string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        // Coaches can only approve requests for their own offered slots
-        if (string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase))
-        {
-            var coachDivision = (membership.GetString("CoachDivision") ?? "").Trim();
-            var coachTeamId = (membership.GetString("CoachTeamId") ?? "").Trim();
-
-            if (string.IsNullOrWhiteSpace(coachTeamId))
-            {
-                _logger.LogWarning("Coach {UserId} has no assigned team", userId);
-                return false;
-            }
-
-            // Check division match
-            if (!string.IsNullOrWhiteSpace(coachDivision) &&
-                !string.Equals(coachDivision, division, StringComparison.OrdinalIgnoreCase))
-            {
-                _logger.LogWarning("Coach {UserId} attempted to approve request in different division", userId);
-                return false;
-            }
-
-            // Check team match (must be offering coach)
-            if (!string.Equals(coachTeamId, offeringTeamId, StringComparison.OrdinalIgnoreCase))
-            {
-                _logger.LogWarning("Coach {UserId} attempted to approve request for different team's slot", userId);
-                return false;
-            }
-
-            return true;
-        }
-
-        // Viewers cannot approve requests
-        return false;
-    }
-
-    public async Task<bool> CanCancelSlotAsync(string userId, string leagueId, string offeringTeamId, string? confirmedTeamId)
-    {
-        // Global admins can cancel any slot
-        if (await _membershipRepo.IsGlobalAdminAsync(userId))
-            return true;
-
-        // Get user's membership
-        var membership = await _membershipRepo.GetMembershipAsync(userId, leagueId);
-        if (membership == null)
-            return false;
-
-        var role = (membership.GetString("Role") ?? Constants.Roles.Viewer).Trim();
-
-        // League admins can cancel any slot
-        if (string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        // Coaches can cancel slots for their team (either offering or confirmed)
-        if (string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase))
-        {
-            var myTeamId = (membership.GetString("CoachTeamId") ?? "").Trim();
-            if (string.IsNullOrWhiteSpace(myTeamId))
-                return false;
-
-            // Can cancel if coach's team is either offering or confirmed
-            if (string.Equals(myTeamId, offeringTeamId, StringComparison.OrdinalIgnoreCase))
-                return true;
-
-            if (!string.IsNullOrWhiteSpace(confirmedTeamId) &&
-                string.Equals(myTeamId, confirmedTeamId, StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-
-        return false;
     }
 
     public async Task<string> GetUserRoleAsync(string userId, string leagueId)
     {
+        // Check if global admin first
         if (await _membershipRepo.IsGlobalAdminAsync(userId))
-            return Constants.Roles.LeagueAdmin; // Treat global admin as league admin
+        {
+            return Constants.Roles.LeagueAdmin;
+        }
 
+        // Get membership
         var membership = await _membershipRepo.GetMembershipAsync(userId, leagueId);
         if (membership == null)
-            return Constants.Roles.Viewer;
+        {
+            return Constants.Roles.Viewer; // No membership = viewer
+        }
 
-        return (membership.GetString("Role") ?? Constants.Roles.Viewer).Trim();
+        return membership.GetString("Role") ?? Constants.Roles.Viewer;
     }
 
-    public async Task<(string division, string teamId)> GetCoachAssignmentAsync(string userId, string leagueId)
+    public async Task ValidateNotViewerAsync(string userId, string leagueId)
     {
-        var membership = await _membershipRepo.GetMembershipAsync(userId, leagueId);
-        if (membership == null)
-            return ("", "");
+        var role = await GetUserRoleAsync(userId, leagueId);
 
-        var division = (membership.GetString("CoachDivision") ?? "").Trim();
-        var teamId = (membership.GetString("CoachTeamId") ?? "").Trim();
+        if (role == Constants.Roles.Viewer)
+        {
+            throw new ApiGuards.HttpError(403, ErrorCodes.FORBIDDEN, 
+                "Viewers cannot modify content. Contact an admin for access.");
+        }
+    }
 
-        return (division, teamId);
+    public async Task ValidateCoachAccessAsync(string userId, string leagueId, string division, string? teamId)
+    {
+        var role = await GetUserRoleAsync(userId, leagueId);
+
+        // Admins can do anything
+        if (role == Constants.Roles.LeagueAdmin)
+        {
+            return;
+        }
+
+        // Viewers cannot modify
+        if (role == Constants.Roles.Viewer)
+        {
+            throw new ApiGuards.HttpError(403, ErrorCodes.FORBIDDEN,
+                "Viewers cannot modify content. Contact an admin for access.");
+        }
+
+        // Coaches must provide a team
+        if (role == Constants.Roles.Coach)
+        {
+            if (string.IsNullOrWhiteSpace(teamId))
+            {
+                throw new ApiGuards.HttpError(400, ErrorCodes.COACH_TEAM_REQUIRED,
+                    "Coaches must specify a team ID");
+            }
+
+            // Validate coach is assigned to this division and team
+            var membership = await _membershipRepo.GetMembershipAsync(userId, leagueId);
+            if (membership == null)
+            {
+                throw new ApiGuards.HttpError(403, ErrorCodes.UNAUTHORIZED,
+                    "No membership found");
+            }
+
+            var coachDivision = membership.GetString("CoachDivision") ?? "";
+            var coachTeamId = membership.GetString("CoachTeamId") ?? "";
+
+            if (coachDivision != division)
+            {
+                throw new ApiGuards.HttpError(403, ErrorCodes.COACH_DIVISION_MISMATCH,
+                    $"Coach is assigned to division '{coachDivision}', not '{division}'");
+            }
+
+            if (coachTeamId != teamId)
+            {
+                throw new ApiGuards.HttpError(403, ErrorCodes.UNAUTHORIZED,
+                    $"Coach is assigned to team '{coachTeamId}', not '{teamId}'");
+            }
+        }
+    }
+
+    public async Task<bool> CanCreateSlotAsync(string userId, string leagueId, string division, string? teamId)
+    {
+        try
+        {
+            await ValidateNotViewerAsync(userId, leagueId);
+
+            var role = await GetUserRoleAsync(userId, leagueId);
+            if (role == Constants.Roles.Coach)
+            {
+                await ValidateCoachAccessAsync(userId, leagueId, division, teamId);
+            }
+
+            return true;
+        }
+        catch (ApiGuards.HttpError)
+        {
+            return false;
+        }
+    }
+
+    public async Task<bool> CanApproveRequestAsync(string userId, string leagueId, string division, string slotId)
+    {
+        try
+        {
+            await ValidateNotViewerAsync(userId, leagueId);
+
+            var role = await GetUserRoleAsync(userId, leagueId);
+
+            // Admins can approve any request
+            if (role == Constants.Roles.LeagueAdmin)
+            {
+                return true;
+            }
+
+            // Coaches can only approve requests for their own slots
+            if (role == Constants.Roles.Coach)
+            {
+                var slot = await _slotRepo.GetSlotAsync(leagueId, division, slotId);
+                if (slot == null)
+                {
+                    return false;
+                }
+
+                var membership = await _membershipRepo.GetMembershipAsync(userId, leagueId);
+                if (membership == null)
+                {
+                    return false;
+                }
+
+                var coachTeamId = membership.GetString("CoachTeamId") ?? "";
+                var offeringTeamId = slot.GetString("OfferingTeamId") ?? "";
+
+                // Coach must own the slot being requested
+                return coachTeamId == offeringTeamId;
+            }
+
+            return false;
+        }
+        catch (ApiGuards.HttpError)
+        {
+            return false;
+        }
+    }
+
+    public async Task<bool> CanCancelSlotAsync(string userId, string leagueId, string offeringTeamId, string? confirmedTeamId)
+    {
+        try
+        {
+            await ValidateNotViewerAsync(userId, leagueId);
+
+            var role = await GetUserRoleAsync(userId, leagueId);
+
+            // Admins can cancel any slot
+            if (role == Constants.Roles.LeagueAdmin)
+            {
+                return true;
+            }
+
+            // Coaches can cancel their own slots
+            if (role == Constants.Roles.Coach)
+            {
+                var membership = await _membershipRepo.GetMembershipAsync(userId, leagueId);
+                if (membership == null)
+                {
+                    return false;
+                }
+
+                var coachTeamId = membership.GetString("CoachTeamId") ?? "";
+
+                // Coach must own the slot (either offering or confirmed team)
+                return coachTeamId == offeringTeamId || coachTeamId == confirmedTeamId;
+            }
+
+            return false;
+        }
+        catch (ApiGuards.HttpError)
+        {
+            return false;
+        }
+    }
+
+    public async Task<bool> CanUpdateSlotAsync(string userId, string leagueId, string division, string slotId)
+    {
+        try
+        {
+            await ValidateNotViewerAsync(userId, leagueId);
+
+            var role = await GetUserRoleAsync(userId, leagueId);
+
+            // Admins can update any slot
+            if (role == Constants.Roles.LeagueAdmin)
+            {
+                return true;
+            }
+
+            // Coaches can only update their own slots
+            if (role == Constants.Roles.Coach)
+            {
+                var slot = await _slotRepo.GetSlotAsync(leagueId, division, slotId);
+                if (slot == null)
+                {
+                    return false;
+                }
+
+                var membership = await _membershipRepo.GetMembershipAsync(userId, leagueId);
+                if (membership == null)
+                {
+                    return false;
+                }
+
+                var coachTeamId = membership.GetString("CoachTeamId") ?? "";
+                var offeringTeamId = slot.GetString("OfferingTeamId") ?? "";
+
+                // Coach must own the slot
+                return coachTeamId == offeringTeamId;
+            }
+
+            return false;
+        }
+        catch (ApiGuards.HttpError)
+        {
+            return false;
+        }
     }
 }

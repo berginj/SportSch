@@ -155,7 +155,7 @@ public class MembershipRepository : IMembershipRepository
 
     public async Task<List<TableEntity>> GetLeagueMembershipsAsync(string leagueId)
     {
-        var table = await TableClients.GetTableAsync(_tableService, TableName);
+        var table = await TableClients.GetTableAsync(_tableService, MembershipsTable);
 
         // Query using the partition key pattern
         var pkPrefix = $"MEMBERSHIP|{leagueId}|";

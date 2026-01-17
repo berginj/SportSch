@@ -13,7 +13,12 @@ public interface IFieldRepository
     Task<TableEntity?> GetFieldAsync(string leagueId, string parkCode, string fieldCode);
 
     /// <summary>
-    /// Queries all fields for a league, optionally filtered by park.
+    /// Gets a field by its composite field key (parkCode/fieldCode).
+    /// </summary>
+    Task<TableEntity?> GetFieldByKeyAsync(string leagueId, string fieldKey);
+
+    /// <summary>
+    /// Queries all fields in a league, optionally filtered by park.
     /// </summary>
     Task<List<TableEntity>> QueryFieldsAsync(string leagueId, string? parkCode = null);
 
@@ -33,7 +38,12 @@ public interface IFieldRepository
     Task UpdateFieldAsync(TableEntity field);
 
     /// <summary>
-    /// Soft deletes a field by setting IsActive to false.
+    /// Deletes a field.
+    /// </summary>
+    Task DeleteFieldAsync(string leagueId, string parkCode, string fieldCode);
+
+    /// <summary>
+    /// Deactivates a field (sets IsActive to false).
     /// </summary>
     Task DeactivateFieldAsync(string leagueId, string parkCode, string fieldCode);
 }

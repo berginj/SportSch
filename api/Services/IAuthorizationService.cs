@@ -1,24 +1,29 @@
 namespace GameSwap.Functions.Services;
 
 /// <summary>
-/// Service for centralized authorization logic.
+/// Service for authorization checks and role-based access control.
 /// </summary>
 public interface IAuthorizationService
 {
     /// <summary>
-    /// Checks if a user can create a slot in a specific division/team.
+    /// Checks if a user can create a slot in a given division.
     /// </summary>
     Task<bool> CanCreateSlotAsync(string userId, string leagueId, string division, string? teamId);
 
     /// <summary>
-    /// Checks if a user can approve a slot request (must be offering coach, league admin, or global admin).
+    /// Checks if a user can approve a request for a slot.
     /// </summary>
-    Task<bool> CanApproveRequestAsync(string userId, string leagueId, string division, string offeringTeamId);
+    Task<bool> CanApproveRequestAsync(string userId, string leagueId, string division, string slotId);
 
     /// <summary>
-    /// Checks if a user can cancel a slot (checks team ownership).
+    /// Checks if a user can cancel a slot.
     /// </summary>
     Task<bool> CanCancelSlotAsync(string userId, string leagueId, string offeringTeamId, string? confirmedTeamId);
+
+    /// <summary>
+    /// Checks if a user can update a slot.
+    /// </summary>
+    Task<bool> CanUpdateSlotAsync(string userId, string leagueId, string division, string slotId);
 
     /// <summary>
     /// Gets the user's role in a league.
@@ -26,7 +31,12 @@ public interface IAuthorizationService
     Task<string> GetUserRoleAsync(string userId, string leagueId);
 
     /// <summary>
-    /// Gets the user's coach assignment (division and team).
+    /// Validates that a user is not a viewer (viewers are read-only).
     /// </summary>
-    Task<(string division, string teamId)> GetCoachAssignmentAsync(string userId, string leagueId);
+    Task ValidateNotViewerAsync(string userId, string leagueId);
+
+    /// <summary>
+    /// Validates that a coach has access to create/modify content for a specific team and division.
+    /// </summary>
+    Task ValidateCoachAccessAsync(string userId, string leagueId, string division, string? teamId);
 }
