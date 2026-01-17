@@ -3,6 +3,9 @@ import { apiFetch } from "../lib/api";
 import { validateIsoDates } from "../lib/date";
 import Toast from "../components/Toast";
 import { getDefaultRangeFallback, getSeasonRange } from "../lib/season";
+import ConstraintsForm from "./scheduler/ConstraintsForm";
+import SchedulePreview from "./scheduler/SchedulePreview";
+import ValidationResults from "./scheduler/ValidationResults";
 
 function buildCsv(assignments, division) {
   const header = ["division", "gameDate", "startTime", "endTime", "fieldKey", "homeTeamId", "awayTeamId", "isExternalOffer"];
@@ -514,262 +517,38 @@ export default function SchedulerManager({ leagueId }) {
       />
       {err ? <div className="callout callout--error">{err}</div> : null}
 
-      <div className="card">
-        <div className="card__header">
-          <div className="h2">Division scheduler</div>
-          <div className="subtle">Build a balanced schedule from your open slots.</div>
-        </div>
-        {effectiveSeason ? (
-          <div className="card__body">
-            <div className="subtle">
-              Season defaults: Spring {effectiveSeason.springStart || "?"} - {effectiveSeason.springEnd || "?"}, Fall {effectiveSeason.fallStart || "?"} - {effectiveSeason.fallEnd || "?"}. Game length: {effectiveSeason.gameLengthMinutes || "?"} min.
-            </div>
-          </div>
-        ) : null}
-        <div className="card__body grid2">
-          <label>
-            Division
-            <select value={division} onChange={(e) => setDivision(e.target.value)}>
-              {divisions.map((d) => (
-                <option key={d.code || d.division} value={d.code || d.division}>
-                  {d.name ? `${d.name} (${d.code || d.division})` : d.code || d.division}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Date from (optional)
-            <input value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} placeholder="YYYY-MM-DD" />
-          </label>
-          <label>
-            Date to (optional)
-            <input value={dateTo} onChange={(e) => setDateTo(e.target.value)} placeholder="YYYY-MM-DD" />
-          </label>
-          <label>
-            Max games/week
-            <input
-              type="number"
-              min="0"
-              value={maxGamesPerWeek}
-              onChange={(e) => setMaxGamesPerWeek(e.target.value)}
-            />
-          </label>
-          <label className="inlineCheck">
-            <input type="checkbox" checked={noDoubleHeaders} onChange={(e) => setNoDoubleHeaders(e.target.checked)} />
-            No doubleheaders
-          </label>
-          <label className="inlineCheck">
-            <input type="checkbox" checked={balanceHomeAway} onChange={(e) => setBalanceHomeAway(e.target.checked)} />
-            Balance home/away
-          </label>
-          <label>
-            External offers per week
-            <input
-              type="number"
-              min="0"
-              value={externalOfferPerWeek}
-              onChange={(e) => setExternalOfferPerWeek(e.target.value)}
-            />
-          </label>
-          <div className="stack gap-1">
-            <span className="muted">Preferred game days (optional)</span>
-            <div className="row row--wrap gap-2">
-              {Object.keys(preferredDays).map((day) => (
-                <label key={day} className="inlineCheck">
-                  <input
-                    type="checkbox"
-                    checked={preferredDays[day]}
-                    onChange={(e) => setPreferredDays((prev) => ({ ...prev, [day]: e.target.checked }))}
-                  />
-                  {day}
-                </label>
-              ))}
-            </div>
-          </div>
-        </div>
-        <div className="card__body row gap-2">
-          <button className="btn" onClick={runPreview} disabled={loading || !division}>
-            {loading ? "Working..." : "Preview schedule"}
-          </button>
-          <button className="btn btn--primary" onClick={applySchedule} disabled={loading || !division}>
-            Apply schedule
-          </button>
-          <button className="btn" onClick={runValidation} disabled={validationLoading || !division}>
-            {validationLoading ? "Validating..." : "Run validations"}
-          </button>
-          <button className="btn" onClick={exportCsv} disabled={!preview?.assignments?.length}>
-            Export CSV
-          </button>
-          <button className="btn" onClick={exportSportsEngineCsv} disabled={!preview?.assignments?.length}>
-            Export SportsEngine CSV
-          </button>
-        </div>
-      </div>
+      <ConstraintsForm
+        divisions={divisions}
+        division={division}
+        setDivision={setDivision}
+        dateFrom={dateFrom}
+        setDateFrom={setDateFrom}
+        dateTo={dateTo}
+        setDateTo={setDateTo}
+        maxGamesPerWeek={maxGamesPerWeek}
+        setMaxGamesPerWeek={setMaxGamesPerWeek}
+        noDoubleHeaders={noDoubleHeaders}
+        setNoDoubleHeaders={setNoDoubleHeaders}
+        balanceHomeAway={balanceHomeAway}
+        setBalanceHomeAway={setBalanceHomeAway}
+        externalOfferPerWeek={externalOfferPerWeek}
+        setExternalOfferPerWeek={setExternalOfferPerWeek}
+        preferredDays={preferredDays}
+        setPreferredDays={setPreferredDays}
+        effectiveSeason={effectiveSeason}
+        loading={loading}
+        validationLoading={validationLoading}
+        preview={preview}
+        runPreview={runPreview}
+        applySchedule={applySchedule}
+        runValidation={runValidation}
+        exportCsv={exportCsv}
+        exportSportsEngineCsv={exportSportsEngineCsv}
+      />
 
-      {preview ? (
-        <div className="card">
-          <div className="card__header">
-            <div className="h2">Preview</div>
-            <div className="subtle">Assignments for open slots.</div>
-          </div>
-          <div className="card__body">
-            <div className="row row--wrap gap-4">
-              {Object.entries(preview.summary || {}).map(([k, v]) => (
-                <div key={k} className="layoutStat">
-                  <div className="layoutStat__value">{v}</div>
-                  <div className="layoutStat__label">{k}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="card__body">
-            {!preview.assignments?.length ? (
-              <div className="muted">No assignments yet.</div>
-            ) : (
-              <div className="tableWrap">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Date</th>
-                      <th>Time</th>
-                      <th>Field</th>
-                      <th>Home</th>
-                      <th>Away</th>
-                      <th>External</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {preview.assignments.map((a) => (
-                      <tr key={a.slotId}>
-                        <td>{a.gameDate}</td>
-                        <td>{a.startTime}-{a.endTime}</td>
-                        <td>{a.fieldKey}</td>
-                        <td>{a.homeTeamId || "-"}</td>
-                        <td>{a.awayTeamId || "TBD"}</td>
-                        <td>{a.isExternalOffer ? "Yes" : "No"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-          {preview.unassignedMatchups?.length ? (
-            <div className="card__body">
-              <div className="h2">Unassigned matchups</div>
-              <div className="tableWrap">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Home</th>
-                      <th>Away</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {preview.unassignedMatchups.map((m, idx) => (
-                      <tr key={`${m.homeTeamId}-${m.awayTeamId}-${idx}`}>
-                        <td>{m.homeTeamId}</td>
-                        <td>{m.awayTeamId}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : null}
-          {preview.unassignedSlots?.length ? (
-            <div className="card__body">
-              <div className="h2">Unused slots</div>
-              <div className="tableWrap">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Date</th>
-                      <th>Time</th>
-                      <th>Field</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {preview.unassignedSlots.map((s) => (
-                      <tr key={s.slotId}>
-                        <td>{s.gameDate}</td>
-                        <td>{s.startTime}-{s.endTime}</td>
-                        <td>{s.fieldKey}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : null}
-          {preview.failures?.length ? (
-            <div className="card__body">
-              <div className="h2">Validation issues</div>
-              <div className="tableWrap">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Rule</th>
-                      <th>Severity</th>
-                      <th>Message</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {preview.failures.map((f, idx) => (
-                      <tr key={`${f.ruleId || "issue"}-${idx}`}>
-                        <td>{f.ruleId || ""}</td>
-                        <td>{f.severity || ""}</td>
-                        <td>{f.message || ""}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
+      <SchedulePreview preview={preview} />
 
-      {validation ? (
-        <div className="card">
-          <div className="card__header">
-            <div className="h2">Validation results</div>
-            <div className="subtle">Checks against scheduled games in the selected range.</div>
-          </div>
-          <div className="card__body">
-            <div className="row row--wrap gap-4">
-              <div className="layoutStat">
-                <div className="layoutStat__value">{validation.totalIssues ?? 0}</div>
-                <div className="layoutStat__label">Total issues</div>
-              </div>
-            </div>
-          </div>
-          {validation.issues?.length ? (
-            <div className="card__body tableWrap">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Rule</th>
-                    <th>Severity</th>
-                    <th>Message</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {validation.issues.map((f, idx) => (
-                    <tr key={`${f.ruleId || "issue"}-${idx}`}>
-                      <td>{f.ruleId || ""}</td>
-                      <td>{f.severity || ""}</td>
-                      <td>{f.message || ""}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="card__body muted">No validation issues found.</div>
-          )}
-        </div>
-      ) : null}
+      <ValidationResults validation={validation} />
 
       <div className="card">
         <div className="card__header">
