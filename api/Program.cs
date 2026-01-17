@@ -21,6 +21,7 @@ var host = new HostBuilder()
         services.AddScoped<IMembershipRepository, MembershipRepository>();
         services.AddScoped<IRequestRepository, RequestRepository>();
         services.AddScoped<IDivisionRepository, DivisionRepository>();
+        services.AddScoped<ITeamRepository, TeamRepository>();
 
         // Register Services (scoped for per-request lifetime)
         services.AddScoped<ISlotService, SlotService>();

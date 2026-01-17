@@ -1,6 +1,7 @@
 using System.Net;
 using Azure;
 using Azure.Data.Tables;
+using GameSwap.Functions.Repositories;
 using GameSwap.Functions.Storage;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
@@ -10,12 +11,17 @@ namespace GameSwap.Functions.Functions;
 
 public class TeamsFunctions
 {
-    private readonly TableServiceClient _svc;
+    private readonly ITeamRepository _teamRepo;
+    private readonly IMembershipRepository _membershipRepo;
     private readonly ILogger _log;
 
-    public TeamsFunctions(ILoggerFactory lf, TableServiceClient svc)
+    public TeamsFunctions(
+        ITeamRepository teamRepo,
+        IMembershipRepository membershipRepo,
+        ILoggerFactory lf)
     {
-        _svc = svc;
+        _teamRepo = teamRepo;
+        _membershipRepo = membershipRepo;
         _log = lf.CreateLogger<TeamsFunctions>();
     }
 
@@ -47,25 +53,30 @@ public class TeamsFunctions
         {
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
-            await ApiGuards.RequireMemberOrGlobalAdminAsync(_svc, me, leagueId);
+
+            // Authorization - must be member or global admin
+            if (!await _membershipRepo.IsMemberAsync(me.UserId, leagueId) &&
+                !await _membershipRepo.IsGlobalAdminAsync(me.UserId))
+            {
+                return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                    "Only league members can view teams");
+            }
 
             var division = (ApiGuards.GetQueryParam(req, "division") ?? "").Trim();
 
-            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Teams);
             var list = new List<TeamDto>();
 
             if (!string.IsNullOrWhiteSpace(division))
             {
                 ApiGuards.EnsureValidTableKeyPart("division", division);
-                await foreach (var e in table.QueryAsync<TableEntity>(x => x.PartitionKey == TeamPk(leagueId, division)))
+                var entities = await _teamRepo.QueryTeamsByDivisionAsync(leagueId, division);
+                foreach (var e in entities)
                     list.Add(ToDto(e));
             }
             else
             {
-                var prefix = $"TEAM|{leagueId}|";
-                var next = prefix + "~";
-                var filter = $"PartitionKey ge '{ApiGuards.EscapeOData(prefix)}' and PartitionKey lt '{ApiGuards.EscapeOData(next)}'";
-                await foreach (var e in table.QueryAsync<TableEntity>(filter: filter))
+                var entities = await _teamRepo.QueryAllTeamsAsync(leagueId);
+                foreach (var e in entities)
                     list.Add(ToDto(e));
             }
 
@@ -87,7 +98,18 @@ public class TeamsFunctions
         {
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
-            await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+
+            // Authorization - league admin only
+            if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
+            {
+                var membership = await _membershipRepo.GetMembershipAsync(me.UserId, leagueId);
+                var role = (membership?.GetString("Role") ?? Constants.Roles.Viewer).Trim();
+                if (!string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                        "Only league admins can create teams");
+                }
+            }
 
             var body = await HttpUtil.ReadJsonAsync<UpsertTeamReq>(req);
             if (body is null)
@@ -102,7 +124,6 @@ public class TeamsFunctions
             ApiGuards.EnsureValidTableKeyPart("division", division);
             ApiGuards.EnsureValidTableKeyPart("teamId", teamId);
 
-            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Teams);
             var e = new TableEntity(TeamPk(leagueId, division), teamId)
             {
                 ["LeagueId"] = leagueId,
@@ -117,7 +138,7 @@ public class TeamsFunctions
 
             try
             {
-                await table.AddEntityAsync(e);
+                await _teamRepo.CreateTeamAsync(e);
             }
             catch (RequestFailedException ex) when (ex.Status == 409)
             {
@@ -144,7 +165,18 @@ public class TeamsFunctions
         {
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
-            await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+
+            // Authorization - league admin only
+            if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
+            {
+                var membership = await _membershipRepo.GetMembershipAsync(me.UserId, leagueId);
+                var role = (membership?.GetString("Role") ?? Constants.Roles.Viewer).Trim();
+                if (!string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                        "Only league admins can update teams");
+                }
+            }
 
             var body = await HttpUtil.ReadJsonAsync<UpsertTeamReq>(req);
             if (body is null)
@@ -152,13 +184,8 @@ public class TeamsFunctions
             ApiGuards.EnsureValidTableKeyPart("division", division);
             ApiGuards.EnsureValidTableKeyPart("teamId", teamId);
 
-            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Teams);
-            TableEntity e;
-            try
-            {
-                e = (await table.GetEntityAsync<TableEntity>(TeamPk(leagueId, division), teamId)).Value;
-            }
-            catch (RequestFailedException ex) when (ex.Status == 404)
+            var e = await _teamRepo.GetTeamAsync(leagueId, division, teamId);
+            if (e is null)
             {
                 return ApiResponses.Error(req, HttpStatusCode.NotFound, "NOT_FOUND", "team not found");
             }
@@ -173,7 +200,7 @@ public class TeamsFunctions
             }
 
             e["UpdatedUtc"] = DateTimeOffset.UtcNow;
-            await table.UpdateEntityAsync(e, e.ETag, TableUpdateMode.Replace);
+            await _teamRepo.UpdateTeamAsync(e);
 
             return ApiResponses.Ok(req, ToDto(e));
         }
@@ -195,12 +222,23 @@ public class TeamsFunctions
         {
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
-            await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+
+            // Authorization - league admin only
+            if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
+            {
+                var membership = await _membershipRepo.GetMembershipAsync(me.UserId, leagueId);
+                var role = (membership?.GetString("Role") ?? Constants.Roles.Viewer).Trim();
+                if (!string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                        "Only league admins can delete teams");
+                }
+            }
 
             ApiGuards.EnsureValidTableKeyPart("division", division);
             ApiGuards.EnsureValidTableKeyPart("teamId", teamId);
-            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Teams);
-            await table.DeleteEntityAsync(TeamPk(leagueId, division), teamId, ETag.All);
+
+            await _teamRepo.DeleteTeamAsync(leagueId, division, teamId);
             return ApiResponses.Ok(req, new { ok = true });
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
