@@ -225,12 +225,16 @@
     @apply inline-flex items-center rounded-full border-2 border-border bg-white px-2.5 py-1.5 text-xs text-text whitespace-nowrap shadow-sm;
     transition: all 0.2s ease;
   }
-  .tabBtn:hover, .tab:hover {
+  .tabBtn:hover:not(:disabled):not(.active), .tab:hover:not(:disabled):not(.tab--active) {
     @apply bg-gray-50 border-gray-300;
   }
   .tabBtn.active, .tab--active {
     @apply border-accent bg-accent text-gray-900 font-semibold;
     animation: scaleIn 0.2s ease-out;
+    box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.2);
+  }
+  .tab:disabled {
+    @apply opacity-50 cursor-not-allowed bg-gray-100;
   }
   .navTabs, .tabs { @apply flex flex-wrap gap-1.5; }
 
