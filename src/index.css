@@ -116,9 +116,9 @@
   .card:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(251, 191, 36, 0.12), 0 2px 6px rgba(0, 0, 0, 0.06);
-    @apply border-accent/30;
+    border-color: rgba(251, 191, 36, 0.3);
   }
-  .card.error { @apply border-red-300/60 bg-red-50/50; }
+  .card.error { @apply border-red-300 bg-red-50; }
   .cardHeader {
     @apply flex flex-wrap items-center justify-between gap-3 mb-2.5;
   }
@@ -202,14 +202,14 @@
   .layoutPill--link:focus-visible,
   .layoutStat--link:focus-visible,
   .layoutItem--link:focus-visible {
-    @apply outline-none ring-2 ring-accent/60 ring-offset-2 ring-offset-white;
+    @apply outline-none ring-2 ring-amber-400 ring-offset-2 ring-offset-white;
     animation: focusPulse 1s ease-in-out infinite;
   }
   .btn.btn--primary {
     @apply border-accent bg-accent text-gray-900 font-semibold;
   }
   .btn.btn--primary:hover:not(:disabled) {
-    @apply bg-accent-strong border-accent-strong;
+    @apply bg-amber-600 border-amber-600;
     box-shadow: 0 4px 12px rgba(251, 191, 36, 0.3);
   }
   .btn.btn--danger, .btn.danger {
@@ -219,7 +219,7 @@
     @apply bg-red-100 border-red-500;
   }
   .btn.btn--ghost { @apply bg-transparent border-gray-200; }
-  .btn.is-active { @apply border-accent bg-accent-soft text-gray-900 font-semibold; }
+  .btn.is-active { @apply border-accent bg-amber-50 text-gray-900 font-semibold; }
 
   .tabBtn, .tab {
     @apply inline-flex items-center rounded-full border-2 border-border bg-white px-2.5 py-1.5 text-xs text-text whitespace-nowrap shadow-sm;
@@ -281,7 +281,7 @@
     transition: all 0.2s ease;
   }
   .dataCard:hover {
-    @apply border-accent/40;
+    border-color: rgba(251, 191, 36, 0.4);
     box-shadow: 0 4px 12px rgba(251, 191, 36, 0.15);
     transform: translateY(-1px);
   }
@@ -296,7 +296,7 @@
     transition: all 0.2s ease;
   }
   .slotCard:hover {
-    @apply border-accent/40;
+    border-color: rgba(251, 191, 36, 0.4);
     box-shadow: 0 4px 12px rgba(251, 191, 36, 0.15);
     transform: translateY(-1px);
   }
@@ -317,7 +317,7 @@
   .timelineItem--slot.status-cancelled { @apply border-l-red-500; }
 
   .statusBadge { @apply inline-flex items-center rounded-full border-2 border-border bg-gray-50 px-2 py-1 text-xs text-gray-700 capitalize font-medium; }
-  .statusBadge--link { @apply transition hover:border-accent hover:bg-accent-soft hover:text-gray-900; }
+  .statusBadge--link { @apply transition hover:border-accent hover:bg-amber-50 hover:text-gray-900; }
   .statusBadge.status-open { @apply bg-yellow-50 text-amber-700 border-amber-300; }
   .statusBadge.status-confirmed { @apply bg-green-50 text-green-700 border-green-300; }
   .statusBadge.status-cancelled { @apply bg-red-50 text-red-700 border-red-300; }
@@ -351,7 +351,8 @@
   .leagueSelect { @apply text-xs py-2 px-2.5; }
 
   .whoami {
-    @apply text-[11px] text-text rounded-full border border-border bg-white/10 px-2.5 py-1;
+    @apply text-[11px] text-text rounded-full border border-border px-2.5 py-1;
+    background-color: rgba(255, 255, 255, 0.1);
   }
   .navHint { @apply text-[10px] uppercase tracking-[0.2em] text-muted; }
 
@@ -389,10 +390,10 @@
     @apply rounded-xl border-2 border-border bg-gray-50 p-2.5 text-left;
     transition: all 0.2s ease;
   }
-  .layoutItem--link { @apply transition hover:border-accent hover:bg-accent-soft; }
+  .layoutItem--link { @apply transition hover:border-accent hover:bg-amber-50; }
   .layoutPill { @apply inline-flex items-center rounded-full border-2 border-border bg-gray-50 px-2.5 py-1 text-xs text-muted; }
-  .layoutPill--link { @apply transition hover:border-accent hover:text-accent-strong; }
-  .layoutBadge { @apply inline-flex items-center rounded-full border-2 border-accent bg-accent-soft px-2 py-1 text-xs text-accent-strong font-medium; }
+  .layoutPill--link { @apply transition hover:border-accent hover:text-amber-700; }
+  .layoutBadge { @apply inline-flex items-center rounded-full border-2 border-accent bg-amber-50 px-2 py-1 text-xs text-amber-700 font-medium; }
   .layoutBadge--confirm { @apply border-green-400 bg-green-50 text-green-700; }
   .layoutBadge--event { @apply border-blue-400 bg-blue-50 text-blue-700; }
 
@@ -401,7 +402,7 @@
     @apply rounded-xl border-2 border-border bg-white p-2.5;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
   }
-  .layoutStat--link { @apply text-left transition hover:border-accent hover:bg-accent-soft; }
+  .layoutStat--link { @apply text-left transition hover:border-accent hover:bg-amber-50; }
 
   .inlineCheck { @apply inline-flex items-center gap-2 mt-4; }
   .textareaMono { @apply w-full mt-3 font-mono text-sm; }
@@ -546,7 +547,7 @@
   input:focus-visible,
   select:focus-visible,
   textarea:focus-visible {
-    @apply outline-none ring-2 ring-accent/60 ring-offset-2 ring-offset-white;
+    @apply outline-none ring-2 ring-amber-400 ring-offset-2 ring-offset-white;
   }
 
   /* Skip to main content link for accessibility */
