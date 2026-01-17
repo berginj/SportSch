@@ -5,6 +5,10 @@ using GameSwap.Functions.Repositories;
 using GameSwap.Functions.Storage;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
+using Microsoft.Azure.Functions.Worker.Extensions.OpenApi.Extensions;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Enums;
+using Microsoft.OpenApi.Models;
 using Microsoft.Extensions.Logging;
 
 namespace GameSwap.Functions.Functions;
@@ -89,6 +93,12 @@ public class AccessRequestsFunctions
     }
 
     [Function("CreateAccessRequest")]
+    [OpenApiOperation(operationId: "CreateAccessRequest", tags: new[] { "Access Requests" }, Summary = "Create access request", Description = "Creates a new access request for a league. Users request membership with a specific role (Viewer, Coach, or LeagueAdmin).")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiRequestBody(contentType: "application/json", bodyType: typeof(CreateAccessRequestReq), Required = false, Description = "Access request details (requestedRole, notes)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Created, contentType: "application/json", bodyType: typeof(object), Description = "Access request created successfully")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(object), Description = "Invalid request (invalid role or league not found)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Conflict, contentType: "application/json", bodyType: typeof(object), Description = "Request already exists or user already has membership")]
     public async Task<HttpResponseData> Create(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "accessrequests")] HttpRequestData req)
     {
@@ -174,6 +184,9 @@ public class AccessRequestsFunctions
     }
 
     [Function("ListMyAccessRequests")]
+    [OpenApiOperation(operationId: "ListMyAccessRequests", tags: new[] { "Access Requests" }, Summary = "List my access requests", Description = "Retrieves all access requests for the current user across all leagues.")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(object), Description = "Access requests retrieved successfully")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Unauthorized, contentType: "application/json", bodyType: typeof(object), Description = "User not signed in")]
     public async Task<HttpResponseData> ListMine(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "accessrequests/mine")] HttpRequestData req)
     {
@@ -201,6 +214,13 @@ public class AccessRequestsFunctions
     }
 
     [Function("ListAccessRequests")]
+    [OpenApiOperation(operationId: "ListAccessRequests", tags: new[] { "Access Requests" }, Summary = "List access requests", Description = "Retrieves access requests for a league (league admins) or all leagues (global admins). Filter by status (Pending, Approved, Denied).")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiParameter(name: "status", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Filter by status (Pending, Approved, Denied). Default: Pending")]
+    [OpenApiParameter(name: "all", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Set to 'true' to get requests across all leagues (global admins only)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(object), Description = "Access requests retrieved successfully")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Unauthorized, contentType: "application/json", bodyType: typeof(object), Description = "User not signed in")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Not authorized (not a league admin)")]
     public async Task<HttpResponseData> ListForLeague(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "accessrequests")] HttpRequestData req)
     {
@@ -265,6 +285,15 @@ public class AccessRequestsFunctions
     }
 
     [Function("ApproveAccessRequest")]
+    [OpenApiOperation(operationId: "ApproveAccessRequest", tags: new[] { "Access Requests" }, Summary = "Approve access request", Description = "Approves a pending access request and creates a membership for the user. Only league admins can approve requests.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiParameter(name: "userId", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "User ID of the requester")]
+    [OpenApiRequestBody(contentType: "application/json", bodyType: typeof(ApproveAccessReq), Required = false, Description = "Approval details (role override, team assignment for coaches)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(object), Description = "Access request approved successfully")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(object), Description = "Invalid request (invalid role)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Unauthorized, contentType: "application/json", bodyType: typeof(object), Description = "User not signed in")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Not authorized (not a league admin)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.NotFound, contentType: "application/json", bodyType: typeof(object), Description = "Access request not found")]
     public async Task<HttpResponseData> Approve(
         [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "accessrequests/{userId}/approve")] HttpRequestData req,
         string userId)
@@ -347,6 +376,14 @@ public class AccessRequestsFunctions
     }
 
     [Function("DenyAccessRequest")]
+    [OpenApiOperation(operationId: "DenyAccessRequest", tags: new[] { "Access Requests" }, Summary = "Deny access request", Description = "Denies a pending access request. Only league admins can deny requests.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiParameter(name: "userId", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "User ID of the requester")]
+    [OpenApiRequestBody(contentType: "application/json", bodyType: typeof(DenyAccessReq), Required = false, Description = "Denial details (reason)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(object), Description = "Access request denied successfully")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Unauthorized, contentType: "application/json", bodyType: typeof(object), Description = "User not signed in")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Not authorized (not a league admin)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.NotFound, contentType: "application/json", bodyType: typeof(object), Description = "Access request not found")]
     public async Task<HttpResponseData> Deny(
         [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "accessrequests/{userId}/deny")] HttpRequestData req,
         string userId)
