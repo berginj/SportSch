@@ -662,600 +662,75 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
         deny={deny}
       />
 
-      {isGlobalAdmin ? (
-        <div className="card mt-4">
-          <h3 className="m-0">Global admin: leagues</h3>
-          <p className="muted">
-            Create new leagues and review existing ones. This is global admin only.
-          </p>
-          {globalErr ? <div className="callout callout--error">{globalErr}</div> : null}
-          {globalOk ? <div className="callout callout--ok">{globalOk}</div> : null}
+      {isGlobalAdmin && (
+        <GlobalAdminSection
+          globalErr={globalErr}
+          globalOk={globalOk}
+          newLeague={newLeague}
+          setNewLeague={setNewLeague}
+          createLeague={createLeague}
+          globalLoading={globalLoading}
+          loadGlobalLeagues={loadGlobalLeagues}
+          globalLeagues={globalLeagues}
+          deleteLeague={deleteLeague}
+          seasonLeagueId={seasonLeagueId}
+          setSeasonLeagueId={setSeasonLeagueId}
+          seasonDraft={seasonDraft}
+          setSeasonDraft={setSeasonDraft}
+          blackoutsDraft={blackoutsDraft}
+          setBlackoutsDraft={setBlackoutsDraft}
+          saveSeasonConfig={saveSeasonConfig}
+          applySeasonFromLeague={applySeasonFromLeague}
+          userSearch={userSearch}
+          setUserSearch={setUserSearch}
+          loadUsers={loadUsers}
+          usersLoading={usersLoading}
+          userDraft={userDraft}
+          setUserDraft={setUserDraft}
+          saveUser={saveUser}
+          users={users}
+          memberSearch={memberSearch}
+          setMemberSearch={setMemberSearch}
+          memberLeague={memberLeague}
+          setMemberLeague={setMemberLeague}
+          memberRole={memberRole}
+          setMemberRole={setMemberRole}
+          loadAllMemberships={loadAllMemberships}
+          membersLoadingAll={membersLoadingAll}
+          membersAll={membersAll}
+        />
+      )}
 
-          <div className="row gap-3 row--wrap mb-3">
-            <label className="flex-1 min-w-[160px]">
-              League ID
-              <input
-                value={newLeague.leagueId}
-                onChange={(e) => setNewLeague((p) => ({ ...p, leagueId: e.target.value }))}
-                placeholder="ARL"
-              />
-            </label>
-            <label className="flex-[2] min-w-[220px]">
-              League name
-              <input
-                value={newLeague.name}
-                onChange={(e) => setNewLeague((p) => ({ ...p, name: e.target.value }))}
-                placeholder="Arlington"
-              />
-            </label>
-            <button className="btn btn--primary" onClick={createLeague} disabled={globalLoading}>
-              {globalLoading ? "Saving..." : "Create league"}
-            </button>
-            <button className="btn" onClick={loadGlobalLeagues} disabled={globalLoading}>
-              Refresh leagues
-            </button>
-          </div>
+      <CoachAssignmentsSection
+        memLoading={memLoading}
+        coaches={coaches}
+        divisions={divisions}
+        teamsByDivision={teamsByDivision}
+        coachDraft={coachDraft}
+        setDraftForCoach={setDraftForCoach}
+        saveCoachAssignment={saveCoachAssignment}
+        clearCoachAssignment={clearCoachAssignment}
+      />
 
-          {globalLoading ? (
-            <div className="muted">Loading...</div>
-          ) : globalLeagues.length === 0 ? (
-            <div className="muted">No leagues yet.</div>
-          ) : (
-            <div className="tableWrap">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>League ID</th>
-                    <th>Name</th>
-                    <th>Timezone</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {globalLeagues.map((l) => (
-                    <tr key={l.leagueId}>
-                      <td><code>{l.leagueId}</code></td>
-                      <td>{l.name}</td>
-                      <td>{l.timezone}</td>
-                      <td>{l.status}</td>
-                      <td className="text-right">
-                        <button className="btn btn--ghost" onClick={() => deleteLeague(l)} disabled={globalLoading}>
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          <div className="card mt-4">
-            <h4 className="m-0">Season settings</h4>
-            <p className="muted">Set league season dates, blackout windows, and default game length.</p>
-            <div className="row gap-3 row--wrap mb-3">
-              <label className="min-w-[220px]">
-                League
-                <select value={seasonLeagueId} onChange={(e) => setSeasonLeagueId(e.target.value)}>
-                  {globalLeagues.map((l) => (
-                    <option key={l.leagueId} value={l.leagueId}>
-                      {l.name ? `${l.name} (${l.leagueId})` : l.leagueId}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="min-w-[180px]">
-                Game length (minutes)
-                <input
-                  type="number"
-                  min="1"
-                  value={seasonDraft.gameLengthMinutes}
-                  onChange={(e) => setSeasonDraft((p) => ({ ...p, gameLengthMinutes: e.target.value }))}
-                />
-              </label>
-            </div>
-            <div className="grid2 mb-3">
-              <label>
-                Spring start
-                <input
-                  value={seasonDraft.springStart}
-                  onChange={(e) => setSeasonDraft((p) => ({ ...p, springStart: e.target.value }))}
-                  placeholder="YYYY-MM-DD"
-                />
-              </label>
-              <label>
-                Spring end
-                <input
-                  value={seasonDraft.springEnd}
-                  onChange={(e) => setSeasonDraft((p) => ({ ...p, springEnd: e.target.value }))}
-                  placeholder="YYYY-MM-DD"
-                />
-              </label>
-              <label>
-                Fall start
-                <input
-                  value={seasonDraft.fallStart}
-                  onChange={(e) => setSeasonDraft((p) => ({ ...p, fallStart: e.target.value }))}
-                  placeholder="YYYY-MM-DD"
-                />
-              </label>
-              <label>
-                Fall end
-                <input
-                  value={seasonDraft.fallEnd}
-                  onChange={(e) => setSeasonDraft((p) => ({ ...p, fallEnd: e.target.value }))}
-                  placeholder="YYYY-MM-DD"
-                />
-              </label>
-            </div>
-
-            <div className="mb-3">
-              <div className="font-bold mb-2">Blackout windows</div>
-              {blackoutsDraft.length === 0 ? <div className="muted">No blackouts yet.</div> : null}
-              {blackoutsDraft.map((b, idx) => (
-                <div key={`${b.startDate}-${b.endDate}-${idx}`} className="row gap-2 row--wrap mb-2">
-                  <input
-                    className="min-w-[160px]"
-                    value={b.startDate}
-                    onChange={(e) => {
-                      const next = [...blackoutsDraft];
-                      next[idx] = { ...next[idx], startDate: e.target.value };
-                      setBlackoutsDraft(next);
-                    }}
-                    placeholder="Start (YYYY-MM-DD)"
-                  />
-                  <input
-                    className="min-w-[160px]"
-                    value={b.endDate}
-                    onChange={(e) => {
-                      const next = [...blackoutsDraft];
-                      next[idx] = { ...next[idx], endDate: e.target.value };
-                      setBlackoutsDraft(next);
-                    }}
-                    placeholder="End (YYYY-MM-DD)"
-                  />
-                  <input
-                    className="min-w-[220px]"
-                    value={b.label}
-                    onChange={(e) => {
-                      const next = [...blackoutsDraft];
-                      next[idx] = { ...next[idx], label: e.target.value };
-                      setBlackoutsDraft(next);
-                    }}
-                    placeholder="Label (optional)"
-                  />
-                  <button
-                    className="btn"
-                    type="button"
-                    onClick={() => setBlackoutsDraft((prev) => prev.filter((_, i) => i !== idx))}
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
-              <button
-                className="btn btn--ghost"
-                type="button"
-                onClick={() => setBlackoutsDraft((prev) => [...prev, { startDate: "", endDate: "", label: "" }])}
-              >
-                Add blackout
-              </button>
-            </div>
-
-            <div className="row gap-2">
-              <button className="btn btn--primary" onClick={saveSeasonConfig} disabled={globalLoading}>
-                Save season settings
-              </button>
-              <button
-                className="btn"
-                onClick={() => {
-                  const league = globalLeagues.find((l) => l.leagueId === seasonLeagueId);
-                  if (league) applySeasonFromLeague(league);
-                }}
-                disabled={globalLoading}
-              >
-                Reset
-              </button>
-            </div>
-          </div>
-
-          <div className="card mt-4">
-            <h4 className="m-0">User admin</h4>
-            <p className="muted">Set a user's home league and home-league role.</p>
-            <div className="row gap-3 row--wrap mb-3">
-              <label className="min-w-[220px]">
-                Search
-                <input
-                  value={userSearch}
-                  onChange={(e) => setUserSearch(e.target.value)}
-                  placeholder="userId or email"
-                />
-              </label>
-              <button className="btn" onClick={loadUsers} disabled={usersLoading}>
-                {usersLoading ? "Loading..." : "Refresh"}
-              </button>
-            </div>
-
-            <div className="grid2 mb-3">
-              <label>
-                User ID
-                <input
-                  value={userDraft.userId}
-                  onChange={(e) => setUserDraft((p) => ({ ...p, userId: e.target.value }))}
-                  placeholder="aad|..."
-                />
-              </label>
-              <label>
-                Email
-                <input
-                  value={userDraft.email}
-                  onChange={(e) => setUserDraft((p) => ({ ...p, email: e.target.value }))}
-                  placeholder="name@domain.com"
-                />
-              </label>
-              <label>
-                Home league
-                <select
-                  value={userDraft.homeLeagueId}
-                  onChange={(e) => setUserDraft((p) => ({ ...p, homeLeagueId: e.target.value }))}
-                >
-                  <option value="">(none)</option>
-                  {globalLeagues.map((l) => (
-                    <option key={l.leagueId} value={l.leagueId}>
-                      {l.name ? `${l.name} (${l.leagueId})` : l.leagueId}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Home role
-                <select
-                  value={userDraft.role}
-                  onChange={(e) => setUserDraft((p) => ({ ...p, role: e.target.value }))}
-                >
-                  <option value="">(leave unchanged)</option>
-                  {ROLE_OPTIONS.map((role) => (
-                    <option key={role} value={role}>{role}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <div className="row gap-2">
-              <button className="btn btn--primary" onClick={saveUser}>
-                Save user
-              </button>
-              <button className="btn" onClick={() => setUserDraft({ userId: "", email: "", homeLeagueId: "", role: "" })}>
-                Clear
-              </button>
-            </div>
-
-            {users.length === 0 ? (
-              <div className="muted mt-3">No user profiles yet.</div>
-            ) : (
-              <div className="tableWrap mt-3">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>User</th>
-                      <th>Email</th>
-                      <th>Home league</th>
-                      <th>Home role</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {users.map((u) => (
-                      <tr key={u.userId}>
-                        <td><code>{u.userId}</code></td>
-                        <td>{u.email || ""}</td>
-                        <td>{u.homeLeagueId || ""}</td>
-                        <td>{u.homeLeagueRole || ""}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          <div className="card mt-4">
-            <h4 className="m-0">Memberships (all leagues)</h4>
-            <p className="muted">Review all memberships across leagues. Use filters to narrow results.</p>
-            <div className="row gap-3 row--wrap mb-3">
-              <label className="min-w-[200px]">
-                Search
-                <input
-                  value={memberSearch}
-                  onChange={(e) => setMemberSearch(e.target.value)}
-                  placeholder="userId or email"
-                />
-              </label>
-              <label className="min-w-[180px]">
-                League
-                <select value={memberLeague} onChange={(e) => setMemberLeague(e.target.value)}>
-                  <option value="">All leagues</option>
-                  {globalLeagues.map((l) => (
-                    <option key={l.leagueId} value={l.leagueId}>
-                      {l.name ? `${l.name} (${l.leagueId})` : l.leagueId}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="min-w-[160px]">
-                Role
-                <select value={memberRole} onChange={(e) => setMemberRole(e.target.value)}>
-                  <option value="">All roles</option>
-                  {ROLE_OPTIONS.map((role) => (
-                    <option key={role} value={role}>{role}</option>
-                  ))}
-                </select>
-              </label>
-              <button className="btn" onClick={loadAllMemberships} disabled={membersLoadingAll}>
-                {membersLoadingAll ? "Loading..." : "Refresh"}
-              </button>
-            </div>
-
-            {membersAll.length === 0 ? (
-              <div className="muted">No memberships found.</div>
-            ) : (
-              <div className="tableWrap">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>User</th>
-                      <th>Email</th>
-                      <th>League</th>
-                      <th>Role</th>
-                      <th>Division</th>
-                      <th>Team</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {membersAll.map((m) => (
-                      <tr key={`${m.userId}-${m.leagueId}-${m.role}`}>
-                        <td><code>{m.userId}</code></td>
-                        <td>{m.email || ""}</td>
-                        <td>{m.leagueId || ""}</td>
-                        <td>{m.role || ""}</td>
-                        <td>{m.team?.division || ""}</td>
-                        <td>{m.team?.teamId || ""}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
-      ) : null}
-
-      <div className="card mt-4">
-        <h3 className="m-0">Coach assignments</h3>
-        <p className="muted">
-          Coaches can be approved without a team. Assign teams here when you're ready.
-        </p>
-
-        {memLoading ? (
-          <div className="muted">Loading memberships...</div>
-        ) : coaches.length === 0 ? (
-          <div className="muted">No coaches in this league yet.</div>
-        ) : (
-          <div className="tableWrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Coach</th>
-                  <th>Division</th>
-                  <th>Team</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {coaches.map((c) => {
-                  const draft = coachDraft[c.userId] || { division: c.team?.division || "", teamId: c.team?.teamId || "" };
-                  const currentDiv = draft.division || "";
-                  const currentTeam = draft.teamId || "";
-                  const divOptions = (divisions || [])
-                    .map((d) => (typeof d === "string" ? d : d.code || d.division || ""))
-                    .filter(Boolean);
-                  const teamsForDiv = currentDiv ? (teamsByDivision.get(currentDiv) || []) : [];
-
-                  return (
-                    <tr key={c.userId}>
-                      <td>
-                        <div className="font-semibold">{c.email || c.userId}</div>
-                        <div className="muted text-xs">{c.userId}</div>
-                      </td>
-                      <td>
-                        <select
-                          value={currentDiv}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            setDraftForCoach(c.userId, { division: v, teamId: "" });
-                          }}
-                          title="Set division (clears team until you select one)"
-                        >
-                          <option value="">(unassigned)</option>
-                          {divOptions.map((d) => (
-                            <option key={d} value={d}>{d}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td>
-                        <select
-                          value={currentTeam}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            setDraftForCoach(c.userId, { division: currentDiv, teamId: v });
-                          }}
-                          disabled={!currentDiv}
-                          title={!currentDiv ? "Pick a division first" : "Pick a team"}
-                        >
-                          <option value="">(unassigned)</option>
-                          {teamsForDiv.map((t) => (
-                            <option key={t.teamId} value={t.teamId}>
-                              {t.name || t.teamId}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td>
-                        <div className="row gap-2 row--wrap">
-                          <button className="btn btn--primary" onClick={() => saveCoachAssignment(c.userId)}>
-                            Save
-                          </button>
-                          <button
-                            className="btn"
-                            onClick={() => clearCoachAssignment(c.userId)}
-                          >
-                            Clear
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      <div className="card mt-4">
-        <h3 className="m-0">League admin uploads</h3>
-        <p className="muted">
-          Upload CSVs for schedules (slots) and teams. Team imports can prefill coach contact info.
-        </p>
-
-        <div className="card mt-3">
-          <div className="font-bold mb-2">Schedule (slots) CSV upload</div>
-          <div className="subtle mb-2">
-            Required columns: <code>division</code>, <code>offeringTeamId</code>, <code>gameDate</code>,{" "}
-            <code>startTime</code>, <code>endTime</code>, <code>fieldKey</code>. Optional:{" "}
-            <code>offeringEmail</code>, <code>gameType</code>, <code>notes</code>, <code>status</code>.
-          </div>
-          {slotsErr ? <div className="callout callout--error">{slotsErr}</div> : null}
-          {slotsOk ? <div className="callout callout--ok">{slotsOk}</div> : null}
-          <div className="row items-end gap-3">
-            <label className="flex-1">
-              CSV file
-              <input
-                type="file"
-                accept=".csv,text/csv"
-                onChange={(e) => setSlotsFile(e.target.files?.[0] || null)}
-                disabled={slotsBusy}
-              />
-            </label>
-            <button className="btn" onClick={importSlotsCsv} disabled={slotsBusy || !slotsFile}>
-              {slotsBusy ? "Importing..." : "Upload & Import"}
-            </button>
-          </div>
-          {slotsErrors.length ? (
-            <div className="mt-3">
-              <div className="font-bold mb-2">Rejected rows ({slotsErrors.length})</div>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Row</th>
-                    <th>Error</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {slotsErrors.slice(0, 50).map((x, idx) => (
-                    <tr key={idx}>
-                      <td>{x.row}</td>
-                      <td>{x.error}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {slotsErrors.length > 50 ? <div className="subtle">Showing first 50.</div> : null}
-            </div>
-          ) : null}
-          {slotsWarnings.length ? (
-            <div className="mt-3">
-              <div className="font-bold mb-2">Warnings ({slotsWarnings.length})</div>
-              <div className="subtle mb-2">
-                These rows were skipped because they overlapped existing slots or duplicates in the CSV.
-              </div>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Row</th>
-                    <th>Warning</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {slotsWarnings.slice(0, 50).map((x, idx) => (
-                    <tr key={idx}>
-                      <td>{x.row}</td>
-                      <td>{x.warning}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {slotsWarnings.length > 50 ? <div className="subtle">Showing first 50.</div> : null}
-            </div>
-          ) : null}
-        </div>
-
-        <div className="card mt-3">
-          <div className="font-bold mb-2">Teams CSV upload</div>
-          <div className="subtle mb-2">
-            Required columns: <code>division</code>, <code>teamId</code>, <code>name</code>. Optional:{" "}
-            <code>coachName</code>, <code>coachEmail</code>, <code>coachPhone</code>.
-          </div>
-          <div className="subtle mb-2">
-            Need a starting point? Download a template prefilled with this league's division codes.
-          </div>
-          {teamsErr ? <div className="callout callout--error">{teamsErr}</div> : null}
-          {teamsOk ? <div className="callout callout--ok">{teamsOk}</div> : null}
-          <div className="row items-end gap-3">
-            <label className="flex-1">
-              CSV file
-              <input
-                type="file"
-                accept=".csv,text/csv"
-                onChange={(e) => setTeamsFile(e.target.files?.[0] || null)}
-                disabled={teamsBusy}
-              />
-            </label>
-            <button className="btn" onClick={importTeamsCsv} disabled={teamsBusy || !teamsFile}>
-              {teamsBusy ? "Importing..." : "Upload & Import"}
-            </button>
-            <button
-              className="btn btn--ghost"
-              onClick={downloadTeamsTemplate}
-              disabled={!leagueId}
-              title="Download a CSV template with division codes."
-            >
-              Download CSV template
-            </button>
-          </div>
-          {teamsErrors.length ? (
-            <div className="mt-3">
-              <div className="font-bold mb-2">Rejected rows ({teamsErrors.length})</div>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Row</th>
-                    <th>Error</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {teamsErrors.slice(0, 50).map((x, idx) => (
-                    <tr key={idx}>
-                      <td>{x.row}</td>
-                      <td>{x.error}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {teamsErrors.length > 50 ? <div className="subtle">Showing first 50.</div> : null}
-            </div>
-          ) : null}
-        </div>
-      </div>
+      <CsvImportSection
+        leagueId={leagueId}
+        slotsFile={slotsFile}
+        setSlotsFile={setSlotsFile}
+        slotsBusy={slotsBusy}
+        slotsErr={slotsErr}
+        slotsOk={slotsOk}
+        slotsErrors={slotsErrors}
+        slotsWarnings={slotsWarnings}
+        importSlotsCsv={importSlotsCsv}
+        teamsFile={teamsFile}
+        setTeamsFile={setTeamsFile}
+        teamsBusy={teamsBusy}
+        teamsErr={teamsErr}
+        teamsOk={teamsOk}
+        teamsErrors={teamsErrors}
+        importTeamsCsv={importTeamsCsv}
+        downloadTeamsTemplate={downloadTeamsTemplate}
+      />
     </div>
   );
 }
