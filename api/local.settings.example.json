@@ -1,0 +1,12 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    "GAMESWAP_CREATE_TABLES": "true",
+
+    "SENDGRID_API_KEY": "your-sendgrid-api-key-here",
+    "EMAIL_FROM_ADDRESS": "noreply@gameswap.app",
+    "EMAIL_FROM_NAME": "GameSwap"
+  }
+}

@@ -26,6 +26,7 @@ var host = new HostBuilder()
         services.AddScoped<ILeagueRepository, LeagueRepository>();
         services.AddScoped<IScheduleRunRepository, ScheduleRunRepository>();
         services.AddScoped<INotificationRepository, NotificationRepository>();
+        services.AddScoped<INotificationPreferencesRepository, NotificationPreferencesRepository>();
 
         // Register Services (scoped for per-request lifetime)
         services.AddScoped<ISlotService, SlotService>();
@@ -33,6 +34,7 @@ var host = new HostBuilder()
         services.AddScoped<IAvailabilityService, AvailabilityService>();
         services.AddScoped<IAuthorizationService, AuthorizationService>();
         services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<INotificationPreferencesService, NotificationPreferencesService>();
         services.AddScoped<IEmailService, EmailService>();
 
         // Table creation on startup (if configured)
