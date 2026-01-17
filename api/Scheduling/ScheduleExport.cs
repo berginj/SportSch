@@ -1,5 +1,7 @@
 namespace GameSwap.Functions.Scheduling;
 
+public record FieldDetails(string ParkName, string FieldName);
+
 public static class ScheduleExport
 {
     private static readonly string[] InternalHeader =
@@ -29,6 +31,18 @@ public static class ScheduleExport
         "Teams (Events Only)",
         "Venue",
         "Status"
+    ];
+
+    private static readonly string[] GameChangerHeader =
+    [
+        "Date",
+        "Time",
+        "Home Team",
+        "Away Team",
+        "Location",
+        "Field",
+        "Game Type",
+        "Game Number"
     ];
 
     public static string BuildInternalCsv(IEnumerable<ScheduleAssignment> assignments, string division)
@@ -75,6 +89,82 @@ public static class ScheduleExport
         }
 
         return BuildCsv(rows);
+    }
+
+    public static string BuildGameChangerCsv(IEnumerable<ScheduleAssignment> assignments, IReadOnlyDictionary<string, FieldDetails> fieldDetailsByKey)
+    {
+        var rows = new List<string[]> { GameChangerHeader };
+        var gameNumber = 1;
+
+        foreach (var a in assignments)
+        {
+            var date = FormatDateForGameChanger(a.GameDate);
+            var time = FormatTimeForGameChanger(a.StartTime);
+
+            // Try to get field details, fallback to parsing field key
+            var location = "";
+            var field = "";
+            if (fieldDetailsByKey.TryGetValue(a.FieldKey ?? "", out var details))
+            {
+                location = details.ParkName ?? "";
+                field = details.FieldName ?? "";
+            }
+            else
+            {
+                // Fallback: parse field key (format: "parkCode/fieldCode")
+                var parts = (a.FieldKey ?? "").Split('/');
+                location = parts.Length > 0 ? parts[0] : "";
+                field = parts.Length > 1 ? parts[1] : "";
+            }
+
+            rows.Add(new[]
+            {
+                date,
+                time,
+                a.HomeTeamId ?? "",
+                a.AwayTeamId ?? "",
+                location,
+                field,
+                "Regular Season",
+                gameNumber.ToString()
+            });
+
+            gameNumber++;
+        }
+
+        return BuildCsv(rows);
+    }
+
+    private static string FormatDateForGameChanger(string? isoDate)
+    {
+        // Convert "2026-04-06" to "04/06/2026"
+        if (string.IsNullOrWhiteSpace(isoDate)) return "";
+
+        var parts = isoDate.Split('-');
+        if (parts.Length != 3) return isoDate;
+
+        if (!int.TryParse(parts[0], out var year)) return isoDate;
+        if (!int.TryParse(parts[1], out var month)) return isoDate;
+        if (!int.TryParse(parts[2], out var day)) return isoDate;
+
+        return $"{month:D2}/{day:D2}/{year:D4}";
+    }
+
+    private static string FormatTimeForGameChanger(string? time24)
+    {
+        // Convert "18:00" to "6:00 PM"
+        if (string.IsNullOrWhiteSpace(time24)) return "";
+
+        var parts = time24.Split(':');
+        if (parts.Length < 2) return time24;
+
+        if (!int.TryParse(parts[0], out var hour)) return time24;
+        if (!int.TryParse(parts[1], out var minute)) return time24;
+
+        var period = hour >= 12 ? "PM" : "AM";
+        var hour12 = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+
+        return $"{hour12}:{minute:D2} {period}";
     }
 
     private static int? CalcDurationMinutes(string? start, string? end)

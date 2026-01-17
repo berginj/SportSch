@@ -34,6 +34,12 @@ public class ScheduleExportFunctions
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "division is required");
             ApiGuards.EnsureValidTableKeyPart("division", division);
 
+            var format = (ApiGuards.GetQueryParam(req, "format") ?? "internal").Trim().ToLower();
+            var validFormats = new[] { "internal", "sportsengine", "gamechanger" };
+            if (!validFormats.Contains(format))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "INVALID_FORMAT",
+                    $"Format must be one of: {string.Join(", ", validFormats)}");
+
             var dateFrom = (ApiGuards.GetQueryParam(req, "dateFrom") ?? "").Trim();
             var dateTo = (ApiGuards.GetQueryParam(req, "dateTo") ?? "").Trim();
             if (!string.IsNullOrWhiteSpace(dateFrom) && !DateOnly.TryParseExact(dateFrom, "yyyy-MM-dd", out _))
@@ -49,9 +55,17 @@ public class ScheduleExportFunctions
             var fieldNames = await LoadFieldDisplayNamesAsync(leagueId);
             var rows = await LoadExportRowsAsync(leagueId, division, statusFilter, dateFrom, dateTo, fieldNames);
 
-            var csv = ScheduleExportCsv.Build(rows);
+            var csv = format switch
+            {
+                "sportsengine" => ScheduleExportCsv.BuildSportsEngine(rows),
+                "gamechanger" => ScheduleExportCsv.BuildGameChanger(rows),
+                _ => ScheduleExportCsv.Build(rows) // internal format
+            };
+
             var resp = req.CreateResponse(HttpStatusCode.OK);
             resp.Headers.Add("Content-Type", "text/csv; charset=utf-8");
+            var filename = $"schedule-{division}-{format}-{DateTime.UtcNow:yyyyMMdd}.csv";
+            resp.Headers.Add("Content-Disposition", $"attachment; filename=\"{filename}\"");
             resp.WriteString(csv);
             return resp;
         }
