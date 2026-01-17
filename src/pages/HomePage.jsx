@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
 import LeaguePicker from "../components/LeaguePicker";
 import StatusCard from "../components/StatusCard";
+import CoachDashboard from "./CoachDashboard";
 import { SLOT_STATUS } from "../lib/constants";
 import { getDefaultRangeFallback, getSeasonRange } from "../lib/season";
 
@@ -542,6 +543,11 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
 
   if (err) {
     return <StatusCard tone="error" title="Unable to load dashboard" message={err} />;
+  }
+
+  // Show new CoachDashboard for coaches (desktop only, mobile keeps existing layout)
+  if (role === "Coach" && !isMobile) {
+    return <CoachDashboard me={me} leagueId={leagueId} setTab={setTab} />;
   }
 
   if (layoutKey === "mobile") return renderMobile();

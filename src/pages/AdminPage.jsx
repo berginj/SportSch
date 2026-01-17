@@ -5,6 +5,7 @@ import { PromptDialog } from "../components/Dialogs";
 import { usePromptDialog } from "../lib/useDialogs";
 import { LEAGUE_HEADER_NAME } from "../lib/constants";
 import { trackEvent } from "../lib/telemetry";
+import AdminDashboard from "./AdminDashboard";
 import AccessRequestsSection from "./admin/AccessRequestsSection";
 import CoachAssignmentsSection from "./admin/CoachAssignmentsSection";
 import CsvImportSection from "./admin/CsvImportSection";
@@ -50,6 +51,9 @@ function downloadCsv(csv, filename) {
 }
 
 export default function AdminPage({ me, leagueId, setLeagueId }) {
+  // Internal tab navigation
+  const [activeSection, setActiveSection] = useState('dashboard');
+
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [items, setItems] = useState([]);
@@ -640,7 +644,72 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
         onCancel={handleCancel}
       />
 
-      <AccessRequestsSection
+      {/* Internal Tab Navigation */}
+      <div className="card mb-6">
+        <div className="flex items-center gap-2 border-b border-gray-200 overflow-x-auto">
+          <button
+            className={`px-4 py-2 font-semibold border-b-2 transition-colors ${
+              activeSection === 'dashboard'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+            onClick={() => setActiveSection('dashboard')}
+          >
+            Dashboard
+          </button>
+          <button
+            className={`px-4 py-2 font-semibold border-b-2 transition-colors ${
+              activeSection === 'access-requests'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+            onClick={() => setActiveSection('access-requests')}
+          >
+            Access Requests
+          </button>
+          <button
+            className={`px-4 py-2 font-semibold border-b-2 transition-colors ${
+              activeSection === 'coaches'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+            onClick={() => setActiveSection('coaches')}
+          >
+            Coach Assignments
+          </button>
+          <button
+            className={`px-4 py-2 font-semibold border-b-2 transition-colors ${
+              activeSection === 'import'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+            onClick={() => setActiveSection('import')}
+          >
+            CSV Import
+          </button>
+          {isGlobalAdmin && (
+            <button
+              className={`px-4 py-2 font-semibold border-b-2 transition-colors ${
+                activeSection === 'global'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-600 hover:text-gray-900'
+              }`}
+              onClick={() => setActiveSection('global')}
+            >
+              Global Admin
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Dashboard Section */}
+      {activeSection === 'dashboard' && (
+        <AdminDashboard leagueId={leagueId} onNavigate={setActiveSection} />
+      )}
+
+      {/* Access Requests Section */}
+      {activeSection === 'access-requests' && (
+        <AccessRequestsSection
         leagueId={leagueId}
         setLeagueId={setLeagueId}
         me={me}
@@ -661,8 +730,47 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
         approve={approve}
         deny={deny}
       />
+      )}
 
-      {isGlobalAdmin && (
+      {/* Coach Assignments Section */}
+      {activeSection === 'coaches' && (
+        <CoachAssignmentsSection
+          memLoading={memLoading}
+          coaches={coaches}
+          divisions={divisions}
+          teamsByDivision={teamsByDivision}
+          coachDraft={coachDraft}
+          setDraftForCoach={setDraftForCoach}
+          saveCoachAssignment={saveCoachAssignment}
+          clearCoachAssignment={clearCoachAssignment}
+        />
+      )}
+
+      {/* CSV Import Section */}
+      {activeSection === 'import' && (
+        <CsvImportSection
+          leagueId={leagueId}
+          slotsFile={slotsFile}
+          setSlotsFile={setSlotsFile}
+          slotsBusy={slotsBusy}
+          slotsErr={slotsErr}
+          slotsOk={slotsOk}
+          slotsErrors={slotsErrors}
+          slotsWarnings={slotsWarnings}
+          importSlotsCsv={importSlotsCsv}
+          teamsFile={teamsFile}
+          setTeamsFile={setTeamsFile}
+          teamsBusy={teamsBusy}
+          teamsErr={teamsErr}
+          teamsOk={teamsOk}
+          teamsErrors={teamsErrors}
+          importTeamsCsv={importTeamsCsv}
+          downloadTeamsTemplate={downloadTeamsTemplate}
+        />
+      )}
+
+      {/* Global Admin Section */}
+      {activeSection === 'global' && isGlobalAdmin && (
         <GlobalAdminSection
           globalErr={globalErr}
           globalOk={globalOk}
@@ -700,37 +808,6 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
           membersAll={membersAll}
         />
       )}
-
-      <CoachAssignmentsSection
-        memLoading={memLoading}
-        coaches={coaches}
-        divisions={divisions}
-        teamsByDivision={teamsByDivision}
-        coachDraft={coachDraft}
-        setDraftForCoach={setDraftForCoach}
-        saveCoachAssignment={saveCoachAssignment}
-        clearCoachAssignment={clearCoachAssignment}
-      />
-
-      <CsvImportSection
-        leagueId={leagueId}
-        slotsFile={slotsFile}
-        setSlotsFile={setSlotsFile}
-        slotsBusy={slotsBusy}
-        slotsErr={slotsErr}
-        slotsOk={slotsOk}
-        slotsErrors={slotsErrors}
-        slotsWarnings={slotsWarnings}
-        importSlotsCsv={importSlotsCsv}
-        teamsFile={teamsFile}
-        setTeamsFile={setTeamsFile}
-        teamsBusy={teamsBusy}
-        teamsErr={teamsErr}
-        teamsOk={teamsOk}
-        teamsErrors={teamsErrors}
-        importTeamsCsv={importTeamsCsv}
-        downloadTeamsTemplate={downloadTeamsTemplate}
-      />
     </div>
   );
 }
