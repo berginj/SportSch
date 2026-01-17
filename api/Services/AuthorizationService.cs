@@ -69,12 +69,55 @@ public class AuthorizationService : IAuthorizationService
         return false;
     }
 
-    public async Task<bool> CanApproveRequestAsync(string userId, string leagueId, string division, string slotId)
+    public async Task<bool> CanApproveRequestAsync(string userId, string leagueId, string division, string offeringTeamId)
     {
-        // Similar logic to CanCreateSlotAsync - user must be the slot owner or admin
-        // For simplicity, checking role here
-        var role = await GetUserRoleAsync(userId, leagueId);
-        return !string.Equals(role, Constants.Roles.Viewer, StringComparison.OrdinalIgnoreCase);
+        // Global admins can approve any request
+        if (await _membershipRepo.IsGlobalAdminAsync(userId))
+            return true;
+
+        // Get user's membership
+        var membership = await _membershipRepo.GetMembershipAsync(userId, leagueId);
+        if (membership == null)
+            return false;
+
+        var role = (membership.GetString("Role") ?? Constants.Roles.Viewer).Trim();
+
+        // League admins can approve any request
+        if (string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // Coaches can only approve requests for their own offered slots
+        if (string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase))
+        {
+            var coachDivision = (membership.GetString("CoachDivision") ?? "").Trim();
+            var coachTeamId = (membership.GetString("CoachTeamId") ?? "").Trim();
+
+            if (string.IsNullOrWhiteSpace(coachTeamId))
+            {
+                _logger.LogWarning("Coach {UserId} has no assigned team", userId);
+                return false;
+            }
+
+            // Check division match
+            if (!string.IsNullOrWhiteSpace(coachDivision) &&
+                !string.Equals(coachDivision, division, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning("Coach {UserId} attempted to approve request in different division", userId);
+                return false;
+            }
+
+            // Check team match (must be offering coach)
+            if (!string.Equals(coachTeamId, offeringTeamId, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning("Coach {UserId} attempted to approve request for different team's slot", userId);
+                return false;
+            }
+
+            return true;
+        }
+
+        // Viewers cannot approve requests
+        return false;
     }
 
     public async Task<bool> CanCancelSlotAsync(string userId, string leagueId, string offeringTeamId, string? confirmedTeamId)

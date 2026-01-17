@@ -30,17 +30,25 @@ public static class ErrorCodes
     public const string INVALID_FIELD_KEY = "INVALID_FIELD_KEY";
     public const string INVALID_TABLE_KEY = "INVALID_TABLE_KEY";
     public const string MISSING_REQUIRED_FIELD = "MISSING_REQUIRED_FIELD";
+    public const string INVALID_INPUT = "INVALID_INPUT";
+    public const string DIVISION_MISMATCH = "DIVISION_MISMATCH";
 
     // Business Logic Errors
     public const string SLOT_CONFLICT = "SLOT_CONFLICT";
+    public const string SLOT_NOT_OPEN = "SLOT_NOT_OPEN";
+    public const string SLOT_UNASSIGNED = "SLOT_UNASSIGNED";
+    public const string SLOT_ASSIGNED = "SLOT_ASSIGNED";
+    public const string SLOT_CANCELLED = "SLOT_CANCELLED";
+    public const string SLOT_NOT_AVAILABLE = "SLOT_NOT_AVAILABLE";
+    public const string DOUBLE_BOOKING = "DOUBLE_BOOKING";
     public const string FIELD_IN_USE = "FIELD_IN_USE";
     public const string COACH_TEAM_REQUIRED = "COACH_TEAM_REQUIRED";
     public const string COACH_DIVISION_MISMATCH = "COACH_DIVISION_MISMATCH";
     public const string ALREADY_EXISTS = "ALREADY_EXISTS";
     public const string INVALID_STATUS_TRANSITION = "INVALID_STATUS_TRANSITION";
     public const string REQUEST_ALREADY_APPROVED = "REQUEST_ALREADY_APPROVED";
+    public const string REQUEST_NOT_PENDING = "REQUEST_NOT_PENDING";
     public const string CANNOT_APPROVE_OWN_REQUEST = "CANNOT_APPROVE_OWN_REQUEST";
-    public const string SLOT_NOT_AVAILABLE = "SLOT_NOT_AVAILABLE";
 
     // Conflicts
     public const string CONFLICT = "CONFLICT";

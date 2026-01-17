@@ -23,6 +23,7 @@ var host = new HostBuilder()
 
         // Register Services (scoped for per-request lifetime)
         services.AddScoped<ISlotService, SlotService>();
+        services.AddScoped<IRequestService, RequestService>();
         services.AddScoped<IAuthorizationService, AuthorizationService>();
 
         // Table creation on startup (if configured)
