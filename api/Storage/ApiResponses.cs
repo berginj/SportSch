@@ -19,15 +19,17 @@ public static class ApiResponses
     public static HttpResponseData FromHttpError(HttpRequestData req, ApiGuards.HttpError ex)
     {
         var status = (HttpStatusCode)ex.Status;
-        var code = status switch
+
+        // Use the explicit error code if provided, otherwise fall back to generic codes
+        var code = ex.Code ?? (status switch
         {
-            HttpStatusCode.BadRequest => "BAD_REQUEST",
-            HttpStatusCode.Unauthorized => "UNAUTHENTICATED",
-            HttpStatusCode.Forbidden => "FORBIDDEN",
-            HttpStatusCode.NotFound => "NOT_FOUND",
-            HttpStatusCode.Conflict => "CONFLICT",
-            _ => "INTERNAL"
-        };
+            HttpStatusCode.BadRequest => ErrorCodes.BAD_REQUEST,
+            HttpStatusCode.Unauthorized => ErrorCodes.UNAUTHENTICATED,
+            HttpStatusCode.Forbidden => ErrorCodes.FORBIDDEN,
+            HttpStatusCode.NotFound => ErrorCodes.NOT_FOUND,
+            HttpStatusCode.Conflict => ErrorCodes.CONFLICT,
+            _ => ErrorCodes.INTERNAL_ERROR
+        });
 
         return Error(req, status, code, ex.Message);
     }

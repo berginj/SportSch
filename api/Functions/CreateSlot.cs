@@ -1,26 +1,26 @@
 using System.Net;
-using Azure;
-using Azure.Data.Tables;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 using GameSwap.Functions.Storage;
+using GameSwap.Functions.Services;
 using GameSwap.Functions.Telemetry;
 
 namespace GameSwap.Functions.Functions;
 
+/// <summary>
+/// Azure Function for creating slots.
+/// Refactored to use service layer for business logic.
+/// </summary>
 public class CreateSlot
 {
+    private readonly ISlotService _slotService;
     private readonly ILogger _log;
-    private readonly TableServiceClient _svc;
 
-    private const string SlotsTableName = Constants.Tables.Slots;
-    private const string FieldsTableName = Constants.Tables.Fields;
-
-    public CreateSlot(ILoggerFactory lf, TableServiceClient tableServiceClient)
+    public CreateSlot(ISlotService slotService, ILoggerFactory lf)
     {
+        _slotService = slotService;
         _log = lf.CreateLogger<CreateSlot>();
-        _svc = tableServiceClient;
     }
 
     public record CreateSlotReq(
@@ -43,210 +43,57 @@ public class CreateSlot
     {
         try
         {
+            // Extract request context
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
-            await ApiGuards.RequireNotViewerAsync(_svc, me.UserId, leagueId);
+            // Note: Authorization is now handled by the service layer
 
             var body = await HttpUtil.ReadJsonAsync<CreateSlotReq>(req);
-            if (body is null) return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Invalid JSON body");
-
-            var division = (body.division ?? "").Trim();
-            var offeringTeamId = (body.offeringTeamId ?? "").Trim();
-            var offeringEmail = (body.offeringEmail ?? me.Email ?? "").Trim();
-
-            var gameDate = (body.gameDate ?? "").Trim();
-            var startTime = (body.startTime ?? "").Trim();
-            var endTime = (body.endTime ?? "").Trim();
-
-            var fieldKey = (body.fieldKey ?? "").Trim();
-            var parkName = (body.parkName ?? "").Trim();   // optional (back-compat)
-            var fieldName = (body.fieldName ?? "").Trim(); // optional (back-compat)
-
-            var gameType = string.IsNullOrWhiteSpace(body.gameType) ? "Swap" : body.gameType!.Trim();
-            var notes = (body.notes ?? "").Trim();
-
-            if (string.IsNullOrWhiteSpace(division) ||
-                string.IsNullOrWhiteSpace(offeringTeamId) ||
-                string.IsNullOrWhiteSpace(gameDate) ||
-                string.IsNullOrWhiteSpace(startTime) ||
-                string.IsNullOrWhiteSpace(endTime) ||
-                string.IsNullOrWhiteSpace(fieldKey))
+            if (body is null)
             {
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST",
-                    "division, offeringTeamId, gameDate, startTime, endTime, fieldKey are required");
-            }
-            ApiGuards.EnsureValidTableKeyPart("division", division);
-
-            // Validate date/time formats (times are interpreted as US/Eastern per contract; stored as strings)
-            if (!DateOnly.TryParseExact(gameDate, "yyyy-MM-dd", out _))
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "gameDate must be YYYY-MM-DD.");
-
-            if (!TimeUtil.IsValidRange(startTime, endTime, out var startMin, out var endMin, out var timeErr))
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", timeErr);
-
-            // Enforce Coach restrictions: coach can only create slots for their assigned team/division.
-            var isGlobalAdmin = await ApiGuards.IsGlobalAdminAsync(_svc, me.UserId);
-            if (!isGlobalAdmin)
-            {
-                var mem = await ApiGuards.GetMembershipAsync(_svc, me.UserId, leagueId);
-                var role = ApiGuards.GetRole(mem);
-
-                if (string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase))
-                {
-                    var (myDivision, myTeamId) = ApiGuards.GetCoachTeam(mem);
-                    if (string.IsNullOrWhiteSpace(myTeamId))
-                        return ApiResponses.Error(req, HttpStatusCode.BadRequest, "COACH_TEAM_REQUIRED", "Coach role requires an assigned team to offer a slot.");
-
-                    if (!string.Equals(myDivision, division, StringComparison.OrdinalIgnoreCase))
-                        return ApiResponses.Error(req, HttpStatusCode.Conflict, "DIVISION_MISMATCH", "You can only offer slots within your assigned division (exact match).");
-
-                    if (!string.Equals(myTeamId, offeringTeamId, StringComparison.OrdinalIgnoreCase))
-                        return ApiResponses.Error(req, HttpStatusCode.Forbidden, "FORBIDDEN", "You can only offer slots for your assigned team.");
-                }
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST, "Invalid JSON body");
             }
 
-            // Validate field exists + active.
-            var fieldsTable = await TableClients.GetTableAsync(_svc, FieldsTableName);
-            if (!TryParseFieldKey(fieldKey, out var parkCode, out var fieldCode))
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "fieldKey must be parkCode/fieldCode.");
+            // Build correlation context for distributed tracing
+            var context = CorrelationContext.FromRequest(req, leagueId);
 
-            var fieldPk = Constants.Pk.Fields(leagueId, parkCode);
-            var fieldRk = fieldCode;
-
-            TableEntity field;
-            try { field = (await fieldsTable.GetEntityAsync<TableEntity>(fieldPk, fieldRk)).Value; }
-            catch (RequestFailedException ex) when (ex.Status == 404)
+            // Build service request from HTTP request
+            var serviceRequest = new Services.CreateSlotRequest
             {
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Field not found. Import fields first.");
-            }
-
-            var isActive = field.GetBoolean("IsActive") ?? true;
-            if (!isActive)
-                return ApiResponses.Error(req, HttpStatusCode.Conflict, "CONFLICT", "Field exists but is inactive.");
-
-            var normalizedParkName = field.GetString("ParkName") ?? parkName;
-            var normalizedFieldName = field.GetString("FieldName") ?? fieldName;
-            var displayName = field.GetString("DisplayName") ?? $"{normalizedParkName} > {normalizedFieldName}";
-
-            var slotsTable = await TableClients.GetTableAsync(_svc, SlotsTableName);
-            var normalizedFieldKey = $"{parkCode}/{fieldCode}";
-            if (await HasSlotConflictAsync(slotsTable, leagueId, normalizedFieldKey, gameDate, startMin, endMin))
-            {
-                return ApiResponses.Error(req, HttpStatusCode.Conflict, "FIELD_IN_USE",
-                    "Field already has a slot at the requested time.");
-            }
-
-            var slotId = Guid.NewGuid().ToString("N");
-            var pk = Constants.Pk.Slots(leagueId, division);
-            var now = DateTimeOffset.UtcNow;
-
-            var entity = new TableEntity(pk, slotId)
-            {
-                ["LeagueId"] = leagueId,
-                ["SlotId"] = slotId,
-                ["Division"] = division,
-
-                ["OfferingTeamId"] = offeringTeamId,
-                ["HomeTeamId"] = offeringTeamId,
-                ["AwayTeamId"] = "",
-                ["IsExternalOffer"] = false,
-                ["IsAvailability"] = false,
-                ["OfferingEmail"] = offeringEmail,
-
-                ["GameDate"] = gameDate,
-                ["StartTime"] = startTime,
-                ["EndTime"] = endTime,
-
-                ["ParkName"] = normalizedParkName,
-                ["FieldName"] = normalizedFieldName,
-                ["DisplayName"] = displayName,
-                ["FieldKey"] = normalizedFieldKey,
-
-                ["GameType"] = gameType,
-                ["Status"] = Constants.Status.SlotOpen,
-                ["Notes"] = notes,
-
-                ["CreatedUtc"] = now,
-                ["UpdatedUtc"] = now
+                Division = (body.division ?? "").Trim(),
+                OfferingTeamId = (body.offeringTeamId ?? "").Trim(),
+                OfferingEmail = body.offeringEmail ?? me.Email,
+                GameDate = (body.gameDate ?? "").Trim(),
+                StartTime = (body.startTime ?? "").Trim(),
+                EndTime = (body.endTime ?? "").Trim(),
+                FieldKey = (body.fieldKey ?? "").Trim(),
+                ParkName = body.parkName,
+                FieldName = body.fieldName,
+                GameType = string.IsNullOrWhiteSpace(body.gameType) ? "Swap" : body.gameType!.Trim(),
+                Notes = body.notes
             };
 
-            await slotsTable.AddEntityAsync(entity);
+            // Delegate to service layer (all business logic is in the service)
+            var result = await _slotService.CreateSlotAsync(serviceRequest, context);
 
+            // Track telemetry
             UsageTelemetry.Track(_log, "api_slot_create", leagueId, me.UserId, new
             {
-                division,
-                slotId = entity.RowKey,
-                fieldKey = normalizedFieldKey,
-                gameDate,
-                startTime,
-                endTime,
-                gameType
+                division = serviceRequest.Division,
+                fieldKey = serviceRequest.FieldKey,
+                gameDate = serviceRequest.GameDate
             });
 
-            return ApiResponses.Ok(req, new
-            {
-                division,
-                slotId = entity.RowKey,
-                offeringTeamId,
-                gameDate,
-                startTime,
-                endTime,
-                parkName = entity.GetString("ParkName") ?? "",
-                fieldName = entity.GetString("FieldName") ?? "",
-                displayName = entity.GetString("DisplayName") ?? "",
-                fieldKey = entity.GetString("FieldKey") ?? "",
-                gameType,
-                status = (entity.GetString("Status") ?? Constants.Status.SlotOpen).Trim(),
-                notes
-            }, HttpStatusCode.Created);
+            return ApiResponses.Ok(req, result, HttpStatusCode.Created);
         }
-        catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
+        catch (ApiGuards.HttpError ex)
+        {
+            return ApiResponses.FromHttpError(req, ex);
+        }
         catch (Exception ex)
         {
             _log.LogError(ex, "CreateSlot failed");
-            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, ErrorCodes.INTERNAL_ERROR, "An unexpected error occurred");
         }
-    }
-
-    private static bool TryParseFieldKey(string raw, out string parkCode, out string fieldCode)
-    {
-        parkCode = "";
-        fieldCode = "";
-        var v = (raw ?? "").Trim().Trim('/');
-        var parts = v.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (parts.Length != 2) return false;
-
-        parkCode = Slug.Make(parts[0]);
-        fieldCode = Slug.Make(parts[1]);
-        return !string.IsNullOrWhiteSpace(parkCode) && !string.IsNullOrWhiteSpace(fieldCode);
-    }
-
-    private static async Task<bool> HasSlotConflictAsync(
-        TableClient slotsTable,
-        string leagueId,
-        string fieldKey,
-        string gameDate,
-        int startMin,
-        int endMin)
-    {
-        var prefix = $"SLOT|{leagueId}|";
-        var next = prefix + "\uffff";
-        var filter = $"PartitionKey ge '{ApiGuards.EscapeOData(prefix)}' and PartitionKey lt '{ApiGuards.EscapeOData(next)}' " +
-                     $"and GameDate eq '{ApiGuards.EscapeOData(gameDate)}' " +
-                     $"and FieldKey eq '{ApiGuards.EscapeOData(fieldKey)}'";
-
-        await foreach (var e in slotsTable.QueryAsync<TableEntity>(filter: filter))
-        {
-            var status = (e.GetString("Status") ?? Constants.Status.SlotOpen).Trim();
-            if (string.Equals(status, Constants.Status.SlotCancelled, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            var existingStart = SlotOverlap.ParseMinutes(e.GetString("StartTime") ?? "");
-            var existingEnd = SlotOverlap.ParseMinutes(e.GetString("EndTime") ?? "");
-            if (existingStart < 0 || existingEnd <= existingStart) continue;
-            if (existingStart < endMin && startMin < existingEnd) return true;
-        }
-
-        return false;
     }
 }

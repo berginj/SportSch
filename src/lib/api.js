@@ -1,5 +1,5 @@
 // src/lib/api.js
-import { LEAGUE_HEADER_NAME, LEAGUE_STORAGE_KEY } from "./constants";
+import { LEAGUE_HEADER_NAME, LEAGUE_STORAGE_KEY, ErrorCodes, ERROR_MESSAGES } from "./constants";
 
 export function apiBase() {
   if (import.meta.env.DEV) {
@@ -53,11 +53,25 @@ export async function apiFetch(path, options = {}) {
 
   if (!res.ok) {
     const err = data?.error;
-    const msg =
-      (typeof err === "string" ? err : err?.message) ||
+
+    // Extract error code and message
+    const errorCode = typeof err === "object" && err?.code ? err.code : null;
+    const errorMessage = (typeof err === "string" ? err : err?.message) ||
       (typeof data === "string" ? data : "Request failed");
-    const code = typeof err === "object" && err?.code ? `${err.code}: ` : "";
-    throw new Error(`${res.status} ${code}${msg}`);
+
+    // Use user-friendly message if available for this error code
+    const friendlyMessage = errorCode && ERROR_MESSAGES[errorCode]
+      ? ERROR_MESSAGES[errorCode]
+      : errorMessage;
+
+    // Create error object with structured information
+    const error = new Error(friendlyMessage);
+    error.status = res.status;
+    error.code = errorCode;
+    error.originalMessage = errorMessage;
+    error.details = err?.details;
+
+    throw error;
   }
 
   if (data && typeof data === "object" && "data" in data) return data.data;

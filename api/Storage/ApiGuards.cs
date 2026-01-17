@@ -16,10 +16,18 @@ public static class ApiGuards
     public sealed class HttpError : Exception
     {
         public int Status { get; }
+        public string? Code { get; }
 
         public HttpError(int status, string message) : base(message)
         {
             Status = status;
+            Code = null;
+        }
+
+        public HttpError(int status, string code, string message) : base(message)
+        {
+            Status = status;
+            Code = code;
         }
     }
 
