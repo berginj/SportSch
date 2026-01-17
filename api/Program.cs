@@ -25,12 +25,15 @@ var host = new HostBuilder()
         services.AddScoped<IAccessRequestRepository, AccessRequestRepository>();
         services.AddScoped<ILeagueRepository, LeagueRepository>();
         services.AddScoped<IScheduleRunRepository, ScheduleRunRepository>();
+        services.AddScoped<INotificationRepository, NotificationRepository>();
 
         // Register Services (scoped for per-request lifetime)
         services.AddScoped<ISlotService, SlotService>();
         services.AddScoped<IRequestService, RequestService>();
         services.AddScoped<IAvailabilityService, AvailabilityService>();
         services.AddScoped<IAuthorizationService, AuthorizationService>();
+        services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<IEmailService, EmailService>();
 
         // Table creation on startup (if configured)
         if (context.Configuration.GetValue<bool>("GAMESWAP_CREATE_TABLES"))

@@ -40,6 +40,11 @@ public static class Constants
         public const string SeasonDivisions = "GameSwapSeasonDivisions";
         public const string LeagueInvites = "GameSwapLeagueInvites";
         public const string LeagueBackups = "GameSwapLeagueBackups";
+
+        // Notifications
+        public const string Notifications = "GameSwapNotifications";
+        public const string NotificationPreferences = "GameSwapNotificationPreferences";
+        public const string EmailQueue = "GameSwapEmailQueue";
     }
 
     public static class Pk
@@ -77,6 +82,15 @@ public static class Constants
 
         private static string NormalizeAllocFieldKey(string fieldKey)
             => (fieldKey ?? "").Trim().Replace("/", "|");
+
+        // Notifications: PK = userId, RK = notificationId
+        public static string Notifications(string userId) => userId;
+
+        // Notification preferences: PK = userId, RK = leagueId (or "global")
+        public static string NotificationPreferences(string userId) => userId;
+
+        // Email queue: PK = status (Pending, Sent, Failed), RK = emailId
+        public static string EmailQueue(string status) => $"EMAIL|{status}";
     }
 
     public static class FieldAvailabilityColumns
