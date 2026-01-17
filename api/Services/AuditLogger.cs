@@ -92,4 +92,18 @@ public class AuditLogger : IAuditLogger
             "AUDIT: Configuration change. User={UserId}, League={LeagueId}, Setting={SettingName}, OldValue={OldValue}, NewValue={NewValue}, Correlation={CorrelationId}",
             userId, leagueId, settingName, oldValue, newValue, correlationId);
     }
+
+    public void LogApiKeyAccess(string userId, string operation)
+    {
+        _logger.LogWarning(
+            "AUDIT: API key access. User={UserId}, Operation={Operation}",
+            userId, operation);
+    }
+
+    public void LogApiKeyRotation(string userId, string operationType, DateTimeOffset primaryKeyCreated, DateTimeOffset secondaryKeyCreated)
+    {
+        _logger.LogWarning(
+            "AUDIT: API key rotation. User={UserId}, Operation={OperationType}, PrimaryKeyCreated={PrimaryKeyCreated}, SecondaryKeyCreated={SecondaryKeyCreated}",
+            userId, operationType, primaryKeyCreated, secondaryKeyCreated);
+    }
 }

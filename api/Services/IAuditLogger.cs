@@ -62,4 +62,14 @@ public interface IAuditLogger
     /// Logs a configuration change event.
     /// </summary>
     void LogConfigurationChange(string userId, string leagueId, string settingName, string oldValue, string newValue, string correlationId);
+
+    /// <summary>
+    /// Logs an API key access event.
+    /// </summary>
+    void LogApiKeyAccess(string userId, string operation);
+
+    /// <summary>
+    /// Logs an API key rotation event.
+    /// </summary>
+    void LogApiKeyRotation(string userId, string operationType, DateTimeOffset primaryKeyCreated, DateTimeOffset secondaryKeyCreated);
 }

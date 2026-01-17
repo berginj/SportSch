@@ -16,7 +16,12 @@
     "test:watch": "vitest --watch",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
-    "test:ci": "vitest --coverage --run"
+    "test:ci": "vitest --coverage --run",
+    "generate:api": "node scripts/generate-api-client.js",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug",
+    "test:e2e:report": "playwright show-report"
   },
   "dependencies": {
     "@microsoft/applicationinsights-web": "^3.1.2",
@@ -25,6 +30,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@playwright/test": "^1.57.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.1",
     "@testing-library/user-event": "^14.6.1",
@@ -38,6 +44,7 @@
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
     "jsdom": "^27.4.0",
+    "openapi-typescript-codegen": "^0.30.0",
     "postcss": "^8.4.35",
     "tailwindcss": "^3.4.17",
     "vite": "npm:rolldown-vite@7.2.5",

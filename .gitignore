@@ -275,6 +275,9 @@ dist
 dist-ssr
 *.local
 
+# Generated API client (regenerate with npm run generate:api)
+src/generated-api/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
