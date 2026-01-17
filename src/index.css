@@ -550,6 +550,14 @@
     @apply min-w-[2rem] text-center;
   }
 
+  /* Pagination */
+  .pagination {
+    @apply flex items-center justify-between gap-3 mt-4 p-3 rounded-xl border border-border bg-black/10;
+  }
+  .pagination__info {
+    @apply text-sm text-muted;
+  }
+
   /* Animations */
   @keyframes slideIn {
     from {
