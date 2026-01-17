@@ -321,12 +321,22 @@ public class RequestService : IRequestService
 
         var now = DateTimeOffset.UtcNow;
 
-        // Approve this request
-        requestEntity["Status"] = Constants.Status.SlotRequestApproved;
-        requestEntity["ApprovedBy"] = string.IsNullOrWhiteSpace(request.ApprovedByEmail) ? context.UserEmail : request.ApprovedByEmail;
-        requestEntity["ApprovedUtc"] = now;
-        requestEntity["UpdatedUtc"] = now;
-        await _requestRepo.UpdateRequestAsync(requestEntity, requestEntity.ETag);
+        // Approve this request (with retry for concurrent updates)
+        await RetryUtil.WithEtagRetryAsync(async () =>
+        {
+            // Reload to get fresh ETag
+            var freshRequest = await _requestRepo.GetRequestAsync(request.LeagueId, request.Division, request.SlotId, request.RequestId);
+            if (freshRequest == null)
+            {
+                throw new ApiGuards.HttpError(404, ErrorCodes.REQUEST_NOT_FOUND, "Request not found");
+            }
+
+            freshRequest["Status"] = Constants.Status.SlotRequestApproved;
+            freshRequest["ApprovedBy"] = string.IsNullOrWhiteSpace(request.ApprovedByEmail) ? context.UserEmail : request.ApprovedByEmail;
+            freshRequest["ApprovedUtc"] = now;
+            freshRequest["UpdatedUtc"] = now;
+            await _requestRepo.UpdateRequestAsync(freshRequest, freshRequest.ETag);
+        });
 
         // Reject all other pending requests for the slot
         var pendingRequests = await _requestRepo.GetPendingRequestsForSlotAsync(request.LeagueId, request.Division, request.SlotId);
@@ -345,15 +355,26 @@ public class RequestService : IRequestService
             }
         }
 
-        // Confirm slot
-        slot["Status"] = Constants.Status.SlotConfirmed;
-        slot["ConfirmedTeamId"] = requestEntity.GetString("RequestingTeamId") ?? "";
-        slot["ConfirmedRequestId"] = request.RequestId;
-        slot["ConfirmedBy"] = string.IsNullOrWhiteSpace(request.ApprovedByEmail) ? context.UserEmail : request.ApprovedByEmail;
-        slot["ConfirmedUtc"] = now;
-        slot["UpdatedUtc"] = now;
+        // Confirm slot (with retry for concurrent updates)
+        var requestingTeamId = requestEntity.GetString("RequestingTeamId") ?? "";
+        await RetryUtil.WithEtagRetryAsync(async () =>
+        {
+            // Reload to get fresh ETag
+            var freshSlot = await _slotRepo.GetSlotAsync(request.LeagueId, request.Division, request.SlotId);
+            if (freshSlot == null)
+            {
+                throw new ApiGuards.HttpError(404, ErrorCodes.SLOT_NOT_FOUND, "Slot not found");
+            }
 
-        await _slotRepo.UpdateSlotAsync(slot, slot.ETag);
+            freshSlot["Status"] = Constants.Status.SlotConfirmed;
+            freshSlot["ConfirmedTeamId"] = requestingTeamId;
+            freshSlot["ConfirmedRequestId"] = request.RequestId;
+            freshSlot["ConfirmedBy"] = string.IsNullOrWhiteSpace(request.ApprovedByEmail) ? context.UserEmail : request.ApprovedByEmail;
+            freshSlot["ConfirmedUtc"] = now;
+            freshSlot["UpdatedUtc"] = now;
+
+            await _slotRepo.UpdateSlotAsync(freshSlot, freshSlot.ETag);
+        });
 
         _logger.LogInformation("Request approved and slot confirmed: {RequestId}, slot {SlotId}", request.RequestId, request.SlotId);
 

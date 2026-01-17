@@ -170,16 +170,20 @@ public class SlotRepository : ISlotRepository
 
     public async Task CancelSlotAsync(string leagueId, string division, string slotId)
     {
-        var slot = await GetSlotAsync(leagueId, division, slotId);
-        if (slot == null)
+        // Use retry logic for concurrent cancellation operations
+        await RetryUtil.WithEtagRetryAsync(async () =>
         {
-            throw new InvalidOperationException($"Slot not found: {leagueId}/{division}/{slotId}");
-        }
+            var slot = await GetSlotAsync(leagueId, division, slotId);
+            if (slot == null)
+            {
+                throw new InvalidOperationException($"Slot not found: {leagueId}/{division}/{slotId}");
+            }
 
-        slot["Status"] = Constants.Status.SlotCancelled;
-        slot["UpdatedUtc"] = DateTime.UtcNow;
+            slot["Status"] = Constants.Status.SlotCancelled;
+            slot["UpdatedUtc"] = DateTime.UtcNow;
 
-        await UpdateSlotAsync(slot, slot.ETag);
+            await UpdateSlotAsync(slot, slot.ETag);
+        });
 
         _logger.LogInformation("Cancelled slot: {LeagueId}/{Division}/{SlotId}", leagueId, division, slotId);
     }
