@@ -389,22 +389,30 @@ public async Task CreateSlotAsync_WithValidData_CreatesSlot()
 ## Future Improvements
 
 ### Priority 1: Production Readiness
+- [x] Implement API key rotation (see API_KEY_ROTATION.md)
+- [x] Add CORS configuration
+- [x] Set up monitoring dashboards (Application Insights)
+- [x] Add telemetry tracking (see telemetry.md)
 - [ ] Add rate limiting middleware
-- [ ] Implement API key rotation
-- [ ] Add CORS configuration
-- [ ] Set up monitoring dashboards
 
 ### Priority 2: Enhanced Testing
-- [ ] Add integration tests with real Azure Storage
-- [ ] E2E tests for critical workflows
+- [x] Add integration tests with real Azure Storage (IntegrationTestBase.cs)
+- [x] E2E tests for critical workflows (Playwright tests in e2e/)
 - [ ] Performance/load testing
 - [ ] Penetration testing
 
 ### Priority 3: Documentation
-- [ ] OpenAPI/Swagger documentation
-- [ ] API client SDK generation
-- [ ] Architecture decision records (ADR)
+- [x] OpenAPI/Swagger documentation (see OPENAPI_SWAGGER.md)
+- [x] API client SDK generation (TypeScript SDK - see TYPESCRIPT_SDK.md)
+- [x] Architecture decision records (ADR) (documented in REFACTORING_SUMMARY.md)
 - [ ] Onboarding guide for new developers
+
+### Priority 4: Schedule Export
+- [x] Basic CSV export endpoint (/api/schedule/export)
+- [x] SportsEngine format support (client-side in SchedulerManager.jsx)
+- [ ] **GameChanger format support** (NEW REQUIREMENT)
+- [ ] Backend API endpoints for format selection (format=sportsengine|gamechanger)
+- [ ] UI improvements for export format selection
 
 ## Recommendations
 
@@ -457,6 +465,14 @@ The codebase is now:
 - ✅ Easier to extend
 - ✅ More secure
 - ✅ Better documented
+- ✅ Production-ready with monitoring and E2E tests
+
+### Recent Additions (2026-01-17 PM)
+- ✅ ETag retry logic for concurrent operations (RequestService, SlotRepository)
+- ✅ TopNav visual feedback improvements (active tab glow, disabled state clarity)
+- ✅ SchedulerManager component refactoring (1,048 → 827 lines, 21% reduction)
+- ✅ React.memo optimizations for CalendarPage
+- ✅ Vitest configuration fix (excluded Playwright E2E tests)
 
 ---
 
@@ -491,6 +507,6 @@ The codebase is now:
 - **Net Change:** +2,000 lines (mostly tests & docs)
 
 ---
-**Document Version:** 1.0
-**Last Updated:** 2026-01-17
+**Document Version:** 1.1
+**Last Updated:** 2026-01-17 (Evening)
 **Maintained By:** Development Team
