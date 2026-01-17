@@ -1,6 +1,7 @@
 using System.Net;
 using Azure;
 using Azure.Data.Tables;
+using GameSwap.Functions.Repositories;
 using GameSwap.Functions.Storage;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
@@ -10,12 +11,20 @@ namespace GameSwap.Functions.Functions;
 
 public class AccessRequestsFunctions
 {
-    private readonly TableServiceClient _svc;
+    private readonly IAccessRequestRepository _accessRequestRepo;
+    private readonly IMembershipRepository _membershipRepo;
+    private readonly TableServiceClient _tableService; // Still needed for league existence check
     private readonly ILogger _log;
 
-    public AccessRequestsFunctions(ILoggerFactory lf, TableServiceClient svc)
+    public AccessRequestsFunctions(
+        IAccessRequestRepository accessRequestRepo,
+        IMembershipRepository membershipRepo,
+        TableServiceClient tableService,
+        ILoggerFactory lf)
     {
-        _svc = svc;
+        _accessRequestRepo = accessRequestRepo;
+        _membershipRepo = membershipRepo;
+        _tableService = tableService;
         _log = lf.CreateLogger<AccessRequestsFunctions>();
     }
 
@@ -111,7 +120,7 @@ public class AccessRequestsFunctions
             if (!string.Equals(leagueId, NewLeagueId, StringComparison.OrdinalIgnoreCase))
             {
                 // Ensure league exists
-                var leagues = await TableClients.GetTableAsync(_svc, Constants.Tables.Leagues);
+                var leagues = await TableClients.GetTableAsync(_tableService, Constants.Tables.Leagues);
                 try
                 {
                     _ = (await leagues.GetEntityAsync<TableEntity>(Constants.Pk.Leagues, leagueId)).Value;
@@ -122,25 +131,20 @@ public class AccessRequestsFunctions
                 }
             }
 
-            var requests = await TableClients.GetTableAsync(_svc, Constants.Tables.AccessRequests);
             var pk = ReqPk(leagueId);
             var rk = ReqRk(me.UserId);
             var now = DateTimeOffset.UtcNow;
 
             // Preserve CreatedUtc if existing
             DateTimeOffset createdUtc = now;
-            try
+            var existing = await _accessRequestRepo.GetAccessRequestAsync(leagueId, me.UserId);
+            if (existing is not null)
             {
-                var existing = (await requests.GetEntityAsync<TableEntity>(pk, rk)).Value;
                 createdUtc = existing.GetDateTimeOffset("CreatedUtc") ?? now;
 
                 var existingStatus = (existing.GetString("Status") ?? Constants.Status.AccessRequestPending).Trim();
                 if (string.Equals(existingStatus, Constants.Status.AccessRequestApproved, StringComparison.OrdinalIgnoreCase))
                     return ApiResponses.Error(req, HttpStatusCode.Conflict, "CONFLICT", "Access already approved for this league.");
-            }
-            catch (RequestFailedException ex) when (ex.Status == 404)
-            {
-                // ok
             }
 
             var entity = new TableEntity(pk, rk)
@@ -155,7 +159,7 @@ public class AccessRequestsFunctions
                 ["UpdatedUtc"] = now
             };
 
-            await requests.UpsertEntityAsync(entity, TableUpdateMode.Replace);
+            await _accessRequestRepo.UpsertAccessRequestAsync(entity);
             return ApiResponses.Ok(req, ToDto(entity));
         }
         catch (ApiGuards.HttpError ex)
@@ -181,10 +185,10 @@ public class AccessRequestsFunctions
                 return ApiResponses.Error(req, HttpStatusCode.Unauthorized,
                     "UNAUTHENTICATED", "You must be signed in.");
             }
-            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.AccessRequests);
-            var filter = $"UserId eq '{ApiGuards.EscapeOData(me.UserId)}'";
+
+            var entities = await _accessRequestRepo.QueryAccessRequestsByUserIdAsync(me.UserId);
             var list = new List<AccessRequestDto>();
-            await foreach (var e in table.QueryAsync<TableEntity>(filter: filter))
+            foreach (var e in entities)
                 list.Add(ToDtoWithFallback(e));
 
             return ApiResponses.Ok(req, list.OrderByDescending(x => x.updatedUtc));
@@ -211,24 +215,40 @@ public class AccessRequestsFunctions
             var status = (ApiGuards.GetQueryParam(req, "status") ?? Constants.Status.AccessRequestPending).Trim();
             var all = IsTruthy(ApiGuards.GetQueryParam(req, "all"));
 
-            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.AccessRequests);
             var list = new List<AccessRequestDto>();
 
             if (all)
             {
-                await ApiGuards.RequireGlobalAdminAsync(_svc, me);
-                var filter = $"Status eq '{ApiGuards.EscapeOData(status)}'";
-                await foreach (var e in table.QueryAsync<TableEntity>(filter: filter))
+                // Authorization - global admin only
+                if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                        "Only global admins can list all access requests");
+                }
+
+                var entities = await _accessRequestRepo.QueryAllAccessRequestsAsync(status);
+                foreach (var e in entities)
                     list.Add(ToDtoWithFallback(e));
 
                 return ApiResponses.Ok(req, list.OrderBy(x => x.leagueId).ThenBy(x => x.email));
             }
 
             var leagueId = ApiGuards.RequireLeagueId(req);
-            await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
 
-            var leagueFilter = $"PartitionKey eq '{ApiGuards.EscapeOData(ReqPk(leagueId))}' and Status eq '{ApiGuards.EscapeOData(status)}'";
-            await foreach (var e in table.QueryAsync<TableEntity>(filter: leagueFilter))
+            // Authorization - league admin required
+            if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
+            {
+                var membership = await _membershipRepo.GetMembershipAsync(me.UserId, leagueId);
+                var role = (membership?.GetString("Role") ?? Constants.Roles.Viewer).Trim();
+                if (!string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                        "Only league admins can list access requests");
+                }
+            }
+
+            var entities2 = await _accessRequestRepo.QueryAccessRequestsByLeagueAsync(leagueId, status);
+            foreach (var e in entities2)
                 list.Add(ToDtoWithFallback(e));
 
             return ApiResponses.Ok(req, list.OrderBy(x => x.email));
@@ -258,21 +278,24 @@ public class AccessRequestsFunctions
                 return ApiResponses.Error(req, HttpStatusCode.Unauthorized,
                     "UNAUTHENTICATED", "You must be signed in.");
             }
-            await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+
+            // Authorization - league admin required
+            if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
+            {
+                var membership = await _membershipRepo.GetMembershipAsync(me.UserId, leagueId);
+                var myRole = (membership?.GetString("Role") ?? Constants.Roles.Viewer).Trim();
+                if (!string.Equals(myRole, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                        "Only league admins can approve access requests");
+                }
+            }
 
             userId = (userId ?? "").Trim();
             ApiGuards.EnsureValidTableKeyPart("userId", userId);
 
-            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.AccessRequests);
-            var pk = ReqPk(leagueId);
-            var rk = ReqRk(userId);
-
-            TableEntity ar;
-            try
-            {
-                ar = (await table.GetEntityAsync<TableEntity>(pk, rk)).Value;
-            }
-            catch (RequestFailedException ex) when (ex.Status == 404)
+            var ar = await _accessRequestRepo.GetAccessRequestAsync(leagueId, userId);
+            if (ar is null)
             {
                 return ApiResponses.Error(req, HttpStatusCode.NotFound, "NOT_FOUND", "access request not found");
             }
@@ -294,7 +317,6 @@ public class AccessRequestsFunctions
                 ApiGuards.EnsureValidTableKeyPart("teamId", teamId);
 
             // Upsert membership (PK=userId, RK=leagueId)
-            var memTable = await TableClients.GetTableAsync(_svc, Constants.Tables.Memberships);
             var mem = new TableEntity(userId, leagueId)
             {
                 ["Role"] = role,
@@ -304,12 +326,12 @@ public class AccessRequestsFunctions
                 ["UpdatedUtc"] = DateTimeOffset.UtcNow
             };
 
-            await memTable.UpsertEntityAsync(mem, TableUpdateMode.Merge);
+            await _membershipRepo.UpsertMembershipAsync(mem);
 
             // Mark request approved
             ar["Status"] = Constants.Status.AccessRequestApproved;
             ar["UpdatedUtc"] = DateTimeOffset.UtcNow;
-            await table.UpdateEntityAsync(ar, ar.ETag, TableUpdateMode.Replace);
+            await _accessRequestRepo.UpdateAccessRequestAsync(ar);
 
             return ApiResponses.Ok(req, new { leagueId, userId, status = Constants.Status.AccessRequestApproved });
         }
@@ -338,21 +360,24 @@ public class AccessRequestsFunctions
                 return ApiResponses.Error(req, HttpStatusCode.Unauthorized,
                     "UNAUTHENTICATED", "You must be signed in.");
             }
-            await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+
+            // Authorization - league admin required
+            if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
+            {
+                var membership = await _membershipRepo.GetMembershipAsync(me.UserId, leagueId);
+                var myRole = (membership?.GetString("Role") ?? Constants.Roles.Viewer).Trim();
+                if (!string.Equals(myRole, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                        "Only league admins can deny access requests");
+                }
+            }
 
             userId = (userId ?? "").Trim();
             ApiGuards.EnsureValidTableKeyPart("userId", userId);
 
-            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.AccessRequests);
-            var pk = ReqPk(leagueId);
-            var rk = ReqRk(userId);
-
-            TableEntity ar;
-            try
-            {
-                ar = (await table.GetEntityAsync<TableEntity>(pk, rk)).Value;
-            }
-            catch (RequestFailedException ex) when (ex.Status == 404)
+            var ar = await _accessRequestRepo.GetAccessRequestAsync(leagueId, userId);
+            if (ar is null)
             {
                 return ApiResponses.Error(req, HttpStatusCode.NotFound, "NOT_FOUND", "access request not found");
             }
@@ -363,7 +388,7 @@ public class AccessRequestsFunctions
             ar["Status"] = Constants.Status.AccessRequestDenied;
             ar["DeniedReason"] = reason;
             ar["UpdatedUtc"] = DateTimeOffset.UtcNow;
-            await table.UpdateEntityAsync(ar, ar.ETag, TableUpdateMode.Replace);
+            await _accessRequestRepo.UpdateAccessRequestAsync(ar);
 
             return ApiResponses.Ok(req, new { leagueId, userId, status = Constants.Status.AccessRequestDenied });
         }
