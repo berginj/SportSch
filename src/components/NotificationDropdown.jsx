@@ -73,9 +73,20 @@ export default function NotificationDropdown({
           backgroundColor: '#f9fafb',
         }}
       >
-        <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '600' }}>
+        <a
+          href="#notifications"
+          style={{
+            margin: 0,
+            fontSize: '16px',
+            fontWeight: '600',
+            color: '#1f2937',
+            textDecoration: 'none',
+          }}
+          onClick={onClose}
+          title="View all notifications"
+        >
           Notifications
-        </h3>
+        </a>
         <div style={{ display: 'flex', gap: '8px' }}>
           {unreadCount > 0 && (
             <button
