@@ -6,26 +6,8 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
   const memberships = Array.isArray(me?.memberships) ? me.memberships : [];
   const email = me?.email || "";
   const isGlobalAdmin = !!me?.isGlobalAdmin;
-  const [isCollapsed, setIsCollapsed] = useState(() => {
-    if (typeof window === "undefined") return true;
-    const saved = window.localStorage.getItem("topnavCollapsed");
-    if (saved === "true") return true;
-    if (saved === "false") return false;
-    return true;
-  });
   const [globalLeagues, setGlobalLeagues] = useState([]);
   const [globalErr, setGlobalErr] = useState("");
-  const tabLabels = {
-    home: "Home",
-    calendar: "Calendar",
-    schedule: "Schedule",
-    offers: "Offers",
-    manage: "Manage",
-    admin: "Admin",
-    debug: "Debug",
-    help: "Help"
-  };
-  const currentLabel = tabLabels[tab] || "Home";
 
   function pickLeague(id) {
     setLeagueId(id);
@@ -90,111 +72,91 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
 
   const hasLeagues = leagueOptions.length > 0;
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem("topnavCollapsed", isCollapsed ? "true" : "false");
-  }, [isCollapsed]);
-
   return (
     <header className="topnav">
       <div className="topnav__inner">
-        <div className="topnav__controls">
-          <nav className="tabs" aria-label="Primary">
+        <nav className="topnav__nav" aria-label="Primary navigation">
+          <button
+            className={tab === "home" ? "tab tab--active" : "tab"}
+            onClick={() => setTab("home")}
+            disabled={!hasLeagues}
+            title="Home dashboard"
+            aria-current={tab === "home" ? "page" : undefined}
+          >
+            Home
+          </button>
+          <button
+            className={tab === "calendar" ? "tab tab--active" : "tab"}
+            onClick={() => setTab("calendar")}
+            disabled={!hasLeagues}
+            title="Calendar view"
+            aria-current={tab === "calendar" ? "page" : undefined}
+          >
+            Calendar
+          </button>
+          <button
+            className={tab === "manage" ? "tab tab--active" : "tab"}
+            onClick={goManage}
+            disabled={!hasLeagues}
+            title="League management"
+            aria-current={tab === "manage" ? "page" : undefined}
+          >
+            Manage
+          </button>
+          {isGlobalAdmin && (
             <button
-              className={tab === "home" ? "tab tab--active" : "tab"}
-              onClick={() => setTab("home")}
+              className={tab === "admin" ? "tab tab--active" : "tab"}
+              onClick={() => setTab("admin")}
+              title="Admin panel"
+              aria-current={tab === "admin" ? "page" : undefined}
+            >
+              Admin
+            </button>
+          )}
+          {isGlobalAdmin && (
+            <button
+              className={tab === "debug" ? "tab tab--active" : "tab"}
+              onClick={() => setTab("debug")}
+              title="Debug tools"
+              aria-current={tab === "debug" ? "page" : undefined}
+            >
+              Debug
+            </button>
+          )}
+          <button
+            className={tab === "help" ? "tab tab--active" : "tab"}
+            onClick={() => setTab("help")}
+            title="Help and documentation"
+            aria-current={tab === "help" ? "page" : undefined}
+          >
+            Help
+          </button>
+        </nav>
+
+        <div className="topnav__account">
+          <span className="topnav__user" title={email}>
+            {email || "Signed in"}
+          </span>
+          <NotificationBell leagueId={leagueId} />
+          <div className="topnav__league">
+            <select
+              className="topnav__league-select"
+              value={leagueId || ""}
+              onChange={(e) => pickLeague(e.target.value)}
               disabled={!hasLeagues}
-              title="Role-based landing dashboard."
-              aria-current={tab === "home" ? "page" : undefined}
+              aria-label="Select league"
             >
-              Home
-            </button>
-            {!isCollapsed ? (
-              <>
-                <button
-                  className={tab === "calendar" ? "tab tab--active" : "tab"}
-                  onClick={() => setTab("calendar")}
-                  disabled={!hasLeagues}
-                  title="Browse and accept offers on the calendar."
-                  aria-current={tab === "calendar" ? "page" : undefined}
-                >
-                  Calendar
-                </button>
-                <button
-                  className={tab === "manage" ? "tab tab--active" : "tab"}
-                  onClick={goManage}
-                  disabled={!hasLeagues}
-                  aria-current={tab === "manage" ? "page" : undefined}
-                >
-                  League Management
-                </button>
-                {isGlobalAdmin ? (
-                  <button
-                    className={tab === "admin" ? "tab tab--active" : "tab"}
-                    onClick={() => setTab("admin")}
-                    aria-current={tab === "admin" ? "page" : undefined}
-                  >
-                    Admin
-                  </button>
-                ) : null}
-                {isGlobalAdmin ? (
-                  <button
-                    className={tab === "debug" ? "tab tab--active" : "tab"}
-                    onClick={() => setTab("debug")}
-                    aria-current={tab === "debug" ? "page" : undefined}
-                  >
-                    Debug
-                  </button>
-                ) : null}
-                <button
-                  className={tab === "help" ? "tab tab--active" : "tab"}
-                  onClick={() => setTab("help")}
-                  aria-current={tab === "help" ? "page" : undefined}
-                >
-                  Help
-                </button>
-              </>
-            ) : null}
-            <button
-              className="tab"
-              onClick={() => setIsCollapsed((prev) => !prev)}
-              title={isCollapsed ? "Expand navigation" : "Minimize navigation"}
-              aria-label={isCollapsed ? "Expand navigation" : "Minimize navigation"}
-            >
-              {isCollapsed ? "[+]" : "[-]"}
-            </button>
-          </nav>
-
-          {!hasLeagues ? (
-            <div className="navHint">Select a league to unlock tabs and actions.</div>
-          ) : null}
-
-          <div className="topnav__account">
-            <div className="whoami" title={email}>
-              {email || "Signed in"}
-            </div>
-            <NotificationBell leagueId={leagueId} />
-            <div className="control control--league">
-              <label>League</label>
-              <select
-                className="leagueSelect"
-                value={leagueId || ""}
-                onChange={(e) => pickLeague(e.target.value)}
-                disabled={!hasLeagues}
-                aria-label="Select league"
-              >
-                {!hasLeagues ? (
-                  <option value="">No leagues</option>
-                ) : (
-                  leagueOptions.map((opt) => (
-                    <option key={opt.id} value={opt.id}>
-                      {opt.label}
-                    </option>
-                  ))
-                )}
-              </select>
-              {globalErr ? <div className="muted text-xs">{globalErr}</div> : null}
-            </div>
+              {!hasLeagues ? (
+                <option value="">No leagues</option>
+              ) : (
+                leagueOptions.map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.label}
+                  </option>
+                ))
+              )}
+            </select>
+            {globalErr && <div className="topnav__error">{globalErr}</div>}
           </div>
         </div>
       </div>

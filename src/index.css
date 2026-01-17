@@ -158,19 +158,19 @@
     }
     .topNavInner,
     .topnav__inner {
-      @apply flex-col items-stretch gap-3 py-3;
+      @apply flex-col items-stretch gap-2.5 py-2.5;
     }
-    .rightControls,
-    .topnav__controls {
-      @apply w-full flex-col items-stretch;
+    .topnav__nav {
+      @apply w-full justify-start;
     }
-    .navPresence {
-      @apply min-w-full;
+    .topnav__account {
+      @apply w-full ml-0 justify-between;
     }
-    .control--league,
-    .leaguePicker,
-    .leagueSelect {
-      @apply min-w-full w-full;
+    .topnav__user {
+      @apply inline max-w-none flex-1;
+    }
+    .topnav__league-select {
+      @apply min-w-[140px];
     }
     .table {
       @apply text-xs;
@@ -325,36 +325,39 @@
 
   .topNav, .topnav {
     @apply sticky top-0 z-10 border-b-2 border-border backdrop-blur-md;
-    background: rgba(255, 255, 255, 0.92);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    background: rgba(255, 255, 255, 0.95);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   }
 
   .topNavInner, .topnav__inner {
-    @apply max-w-[1200px] mx-auto px-3 py-1.5 flex flex-wrap items-center justify-between gap-2;
+    @apply max-w-[1200px] mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-3;
   }
 
-  .navPresence {
-    @apply flex flex-col gap-1 min-w-[140px];
-  }
-  .navPresence__title {
-    @apply text-xs font-semibold tracking-[0.18em] uppercase text-muted;
+  .topnav__nav {
+    @apply flex flex-wrap items-center gap-1.5;
   }
 
-  .rightControls, .topnav__controls { @apply flex flex-wrap items-center gap-2; }
-  .topnav__controls .control { @apply flex flex-col gap-1; }
-  .topnav__controls label { @apply text-[9px] uppercase tracking-[0.22em] text-muted; }
-  .topnav__controls select { @apply min-w-[150px] text-sm; }
   .topnav__account {
-    @apply ml-auto flex items-center gap-2;
+    @apply ml-auto flex items-center gap-2.5;
   }
-  .control--league { @apply min-w-[150px]; }
-  .leagueSelect { @apply text-xs py-2 px-2.5; }
 
-  .whoami {
-    @apply text-[11px] text-text rounded-full border border-border px-2.5 py-1;
-    background-color: rgba(255, 255, 255, 0.1);
+  .topnav__user {
+    @apply text-xs font-medium text-muted truncate max-w-[180px] hidden sm:inline;
   }
-  .navHint { @apply text-[10px] uppercase tracking-[0.2em] text-muted; }
+
+  .topnav__league {
+    @apply flex flex-col gap-0.5;
+  }
+
+  .topnav__league-select {
+    @apply text-xs py-2 px-2.5 rounded-lg border-2 border-border bg-white;
+    @apply hover:border-gray-300 focus:border-accent focus:ring-2 focus:ring-amber-400 focus:ring-offset-1;
+    transition: all 0.2s ease;
+  }
+
+  .topnav__error {
+    @apply text-[10px] text-red-600;
+  }
 
   .hint { @apply inline-flex items-center justify-center w-4 h-4 rounded-full border border-border text-[11px] text-muted cursor-help; }
 
