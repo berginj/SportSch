@@ -44,3 +44,46 @@ export function downloadCsv(csv, filename) {
   link.remove();
   URL.revokeObjectURL(url);
 }
+
+/**
+ * Parses CSV text into an array of objects.
+ * Assumes first row is headers.
+ * @param {string} csvText - The CSV content to parse
+ * @returns {Array<Object>} Array of objects with keys from header row
+ */
+export function parseCsv(csvText) {
+  if (!csvText || !csvText.trim()) return [];
+
+  const lines = csvText.trim().split("\n");
+  if (lines.length === 0) return [];
+
+  const headers = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, ""));
+  const rows = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const values = lines[i].split(",").map(v => v.trim().replace(/^"|"$/g, ""));
+    if (values.length !== headers.length) continue; // Skip malformed rows
+
+    const row = {};
+    headers.forEach((header, idx) => {
+      row[header] = values[idx] || "";
+    });
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+/**
+ * Validates a CSV row against required fields.
+ * @param {Object} row - The row object to validate
+ * @param {Array<string>} requiredFields - Array of required field names
+ * @returns {Object} { valid: boolean, missing: Array<string> }
+ */
+export function validateCsvRow(row, requiredFields) {
+  const missing = requiredFields.filter(field => !row[field] || !row[field].trim());
+  return {
+    valid: missing.length === 0,
+    missing
+  };
+}
