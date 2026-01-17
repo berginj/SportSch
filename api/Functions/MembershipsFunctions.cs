@@ -5,6 +5,10 @@ using GameSwap.Functions.Repositories;
 using GameSwap.Functions.Storage;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
+using Microsoft.Azure.Functions.Worker.Extensions.OpenApi.Extensions;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Enums;
+using Microsoft.OpenApi.Models;
 using Microsoft.Extensions.Logging;
 
 namespace GameSwap.Functions.Functions;
@@ -36,6 +40,14 @@ public class MembershipsFunctions
     public record MembershipAdminDto(string userId, string email, string leagueId, string role, CoachTeam? team);
 
     [Function("ListMemberships")]
+    [OpenApiOperation(operationId: "ListMemberships", tags: new[] { "Memberships" }, Summary = "List memberships", Description = "Retrieves memberships for a league (league admin) or all memberships (global admin with all=true). Supports filtering by role, leagueId, and search.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiParameter(name: "all", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Set to 'true' to list all memberships across all leagues (global admin only)")]
+    [OpenApiParameter(name: "leagueId", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Filter by league ID (only with all=true)")]
+    [OpenApiParameter(name: "role", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Filter by role (Coach, Viewer, LeagueAdmin)")]
+    [OpenApiParameter(name: "search", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Search by userId, email, leagueId, or role")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(object), Description = "Memberships retrieved successfully")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Only league admins or global admins can list memberships")]
     public async Task<HttpResponseData> List(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "memberships")] HttpRequestData req)
     {
@@ -170,6 +182,13 @@ public class MembershipsFunctions
     }
 
     [Function("CreateMembership")]
+    [OpenApiOperation(operationId: "CreateMembership", tags: new[] { "Memberships" }, Summary = "Create membership", Description = "Creates a new membership for a user in a league. Only global admins can create memberships. Coaches must have team assignment.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiRequestBody(contentType: "application/json", bodyType: typeof(CreateMembershipReq), Required = true, Description = "Membership creation request with userId, email, leagueId, role, and optional team (for coaches)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(MembershipDto), Description = "Membership created successfully")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(object), Description = "Invalid request body or missing required fields")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Only global admins can create memberships")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.NotFound, contentType: "application/json", bodyType: typeof(object), Description = "League not found")]
     public async Task<HttpResponseData> Create(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/memberships")] HttpRequestData req)
     {
@@ -261,6 +280,14 @@ public class MembershipsFunctions
     }
 
     [Function("PatchMembership")]
+    [OpenApiOperation(operationId: "PatchMembership", tags: new[] { "Memberships" }, Summary = "Update membership", Description = "Updates a coach's team assignment. Only league admins can patch memberships. Only coach memberships can be assigned to teams.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiParameter(name: "userId", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "User ID of the membership to update")]
+    [OpenApiRequestBody(contentType: "application/json", bodyType: typeof(PatchMembershipReq), Required = true, Description = "Team assignment update (set team to null to remove assignment)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(MembershipDto), Description = "Membership updated successfully")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(object), Description = "Invalid request body or membership is not a coach")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Only league admins can patch memberships")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.NotFound, contentType: "application/json", bodyType: typeof(object), Description = "Membership not found")]
     public async Task<HttpResponseData> Patch(
         [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "memberships/{userId}")] HttpRequestData req,
         string userId)

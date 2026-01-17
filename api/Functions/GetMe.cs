@@ -4,6 +4,10 @@ using Azure.Data.Tables;
 using GameSwap.Functions.Storage;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
+using Microsoft.Azure.Functions.Worker.Extensions.OpenApi.Extensions;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Enums;
+using Microsoft.OpenApi.Models;
 using Microsoft.Extensions.Logging;
 
 namespace GameSwap.Functions.Functions;
@@ -20,6 +24,9 @@ public class GetMe
     }
 
     [Function("GetMe")]
+    [OpenApiOperation(operationId: "GetMe", tags: new[] { "Authentication" }, Summary = "Get current user", Description = "Retrieves the authenticated user's profile, including memberships, roles, and home league. Returns 401 if not authenticated.")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(object), Description = "User profile with memberships and roles")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Unauthorized, contentType: "application/json", bodyType: typeof(object), Description = "User not authenticated")]
     public async Task<HttpResponseData> Run(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "me")] HttpRequestData req)
     {

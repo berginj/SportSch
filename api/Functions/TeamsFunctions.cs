@@ -100,6 +100,13 @@ public class TeamsFunctions
     }
 
     [Function("CreateTeam")]
+    [OpenApiOperation(operationId: "CreateTeam", tags: new[] { "Teams" }, Summary = "Create team", Description = "Creates a new team in a division. Only league admins can create teams.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiRequestBody(contentType: "application/json", bodyType: typeof(UpsertTeamReq), Required = true, Description = "Team creation request with division, teamId, name, and primary contact")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Created, contentType: "application/json", bodyType: typeof(TeamDto), Description = "Team created successfully")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(object), Description = "Invalid request body or missing required fields")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Only league admins can create teams")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Conflict, contentType: "application/json", bodyType: typeof(object), Description = "Team already exists")]
     public async Task<HttpResponseData> CreateTeam(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "teams")] HttpRequestData req)
     {
@@ -165,6 +172,15 @@ public class TeamsFunctions
     }
 
     [Function("PatchTeam")]
+    [OpenApiOperation(operationId: "PatchTeam", tags: new[] { "Teams" }, Summary = "Update team", Description = "Updates an existing team's name or primary contact information. Only league admins can update teams.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiParameter(name: "division", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Division code (e.g., '10U', '12U')")]
+    [OpenApiParameter(name: "teamId", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Team identifier")]
+    [OpenApiRequestBody(contentType: "application/json", bodyType: typeof(UpsertTeamReq), Required = true, Description = "Team update request with optional name and primaryContact fields")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(TeamDto), Description = "Team updated successfully")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(object), Description = "Invalid request body")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Only league admins can update teams")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.NotFound, contentType: "application/json", bodyType: typeof(object), Description = "Team not found")]
     public async Task<HttpResponseData> PatchTeam(
         [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "teams/{division}/{teamId}")] HttpRequestData req,
         string division,
@@ -222,6 +238,13 @@ public class TeamsFunctions
     }
 
     [Function("DeleteTeam")]
+    [OpenApiOperation(operationId: "DeleteTeam", tags: new[] { "Teams" }, Summary = "Delete team", Description = "Deletes a team from a division. Only league admins can delete teams.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiParameter(name: "division", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Division code (e.g., '10U', '12U')")]
+    [OpenApiParameter(name: "teamId", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Team identifier")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(object), Description = "Team deleted successfully")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Only league admins can delete teams")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.NotFound, contentType: "application/json", bodyType: typeof(object), Description = "Team not found")]
     public async Task<HttpResponseData> DeleteTeam(
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "teams/{division}/{teamId}")] HttpRequestData req,
         string division,

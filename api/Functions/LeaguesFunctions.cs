@@ -5,6 +5,10 @@ using GameSwap.Functions.Repositories;
 using GameSwap.Functions.Storage;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
+using Microsoft.Azure.Functions.Worker.Extensions.OpenApi.Extensions;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Enums;
+using Microsoft.OpenApi.Models;
 using Microsoft.Extensions.Logging;
 
 namespace GameSwap.Functions.Functions;
@@ -89,6 +93,8 @@ public class LeaguesFunctions
     }
 
     [Function("ListLeagues")]
+    [OpenApiOperation(operationId: "ListLeagues", tags: new[] { "Leagues" }, Summary = "List active leagues", Description = "Retrieves all active leagues (Status='Active'). Public endpoint available to all users.")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(object), Description = "Active leagues retrieved successfully")]
     public async Task<HttpResponseData> List(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "leagues")] HttpRequestData req)
     {
@@ -109,6 +115,11 @@ public class LeaguesFunctions
     }
 
     [Function("GetLeague")]
+    [OpenApiOperation(operationId: "GetLeague", tags: new[] { "Leagues" }, Summary = "Get league details", Description = "Retrieves detailed information about a specific league including season configuration. Only league members can access.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(LeagueDto), Description = "League details retrieved successfully")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Only league members can view league details")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.NotFound, contentType: "application/json", bodyType: typeof(object), Description = "League not found")]
     public async Task<HttpResponseData> GetLeague(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "league")] HttpRequestData req)
     {
@@ -145,6 +156,13 @@ public class LeaguesFunctions
     }
 
     [Function("PatchLeague")]
+    [OpenApiOperation(operationId: "PatchLeague", tags: new[] { "Leagues" }, Summary = "Update league", Description = "Updates league metadata (name, timezone, status, contact). Only league admins can update leagues.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiRequestBody(contentType: "application/json", bodyType: typeof(PatchLeagueReq), Required = true, Description = "League update request with optional name, timezone, status, and contact fields")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(LeagueDto), Description = "League updated successfully")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(object), Description = "Invalid request body")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Only league admins can update league")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.NotFound, contentType: "application/json", bodyType: typeof(object), Description = "League not found")]
     public async Task<HttpResponseData> PatchLeague(
         [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "league")] HttpRequestData req)
     {
@@ -419,6 +437,13 @@ public class LeaguesFunctions
     }
 
     [Function("PatchLeagueSeason")]
+    [OpenApiOperation(operationId: "PatchLeagueSeason", tags: new[] { "Leagues" }, Summary = "Update league season", Description = "Updates league season configuration (spring/fall dates, game length, blackouts). Only league admins can update season settings. Changes are propagated to all divisions.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiRequestBody(contentType: "application/json", bodyType: typeof(PatchSeasonReq), Required = true, Description = "Season configuration with spring/fall dates, gameLengthMinutes, and blackout ranges")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(LeagueDto), Description = "Season updated successfully")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(object), Description = "Invalid season configuration or date format")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Only league admins can update season")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.NotFound, contentType: "application/json", bodyType: typeof(object), Description = "League not found")]
     public async Task<HttpResponseData> PatchSeason(
         [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "league/season")] HttpRequestData req)
     {
