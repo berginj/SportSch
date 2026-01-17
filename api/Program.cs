@@ -4,9 +4,14 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Azure.Functions.Worker.ApplicationInsights;
 using GameSwap.Functions.Repositories;
 using GameSwap.Functions.Services;
+using GameSwap.Functions.Middleware;
 
 var host = new HostBuilder()
-    .ConfigureFunctionsWorkerDefaults()
+    .ConfigureFunctionsWorkerDefaults(builder =>
+    {
+        // Register rate limiting middleware
+        builder.UseMiddleware<RateLimitingMiddleware>();
+    })
     .ConfigureServices((context, services) =>
     {
         services.AddApplicationInsightsTelemetryWorkerService();

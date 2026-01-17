@@ -8,5 +8,40 @@
             },
             "enableLiveMetricsFilters": true
         }
+    },
+    "extensions": {
+        "http": {
+            "routePrefix": "api",
+            "cors": {
+                "allowedOrigins": [
+                    "https://your-production-domain.com",
+                    "https://www-your-production-domain.com",
+                    "http://localhost:5173",
+                    "http://127.0.0.1:5173"
+                ],
+                "allowedMethods": [
+                    "GET",
+                    "POST",
+                    "PUT",
+                    "PATCH",
+                    "DELETE",
+                    "OPTIONS"
+                ],
+                "allowedHeaders": [
+                    "Content-Type",
+                    "Authorization",
+                    "x-league-id",
+                    "x-user-id",
+                    "x-correlation-id"
+                ],
+                "exposedHeaders": [
+                    "X-RateLimit-Limit",
+                    "X-RateLimit-Remaining",
+                    "X-RateLimit-Reset"
+                ],
+                "allowCredentials": true,
+                "maxAge": 3600
+            }
+        }
     }
 }
