@@ -57,9 +57,11 @@ export default function App() {
     [COMMON_SHORTCUTS.ESCAPE]: () => setShowShortcuts(false),
   }, isSignedIn && hasMemberships);
 
-  // When global admins have no memberships, default them into the admin view.
+  // When global admins have no memberships, default them into the admin view,
+  // but allow navigation to non-league-specific pages (help, debug, admin).
   const effectiveTab = useMemo(() => {
-    if (!hasMemberships && isGlobalAdmin) return "admin";
+    const nonLeaguePages = new Set(["help", "debug", "admin", "settings", "notifications"]);
+    if (!hasMemberships && isGlobalAdmin && !nonLeaguePages.has(tab)) return "admin";
     return tab;
   }, [tab, hasMemberships, isGlobalAdmin]);
 
