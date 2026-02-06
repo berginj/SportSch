@@ -46,12 +46,19 @@ export default function App() {
   const isSignedIn = !!me && me.userId && me.userId !== "UNKNOWN";
   const isGlobalAdmin = !!me?.isGlobalAdmin;
   const hasMemberships = (memberships?.length || 0) > 0;
+  const activeMembership = useMemo(() => {
+    const id = (activeLeagueId || "").trim();
+    if (!id) return null;
+    return (memberships || []).find((m) => (m?.leagueId || "").trim() === id) || null;
+  }, [memberships, activeLeagueId]);
+  const activeRole = (activeMembership?.role || "").trim();
+  const canManage = isGlobalAdmin || activeRole === "LeagueAdmin";
 
   // Keyboard shortcuts
   useKeyboardShortcuts({
     [COMMON_SHORTCUTS.GO_HOME]: () => setTab('home'),
     [COMMON_SHORTCUTS.GO_CALENDAR]: () => setTab('calendar'),
-    [COMMON_SHORTCUTS.GO_MANAGE]: () => setTab('manage'),
+    [COMMON_SHORTCUTS.GO_MANAGE]: () => canManage && setTab('manage'),
     [COMMON_SHORTCUTS.GO_ADMIN]: () => isGlobalAdmin && setTab('admin'),
     [COMMON_SHORTCUTS.HELP]: () => setShowShortcuts(true),
     [COMMON_SHORTCUTS.ESCAPE]: () => setShowShortcuts(false),
@@ -61,9 +68,10 @@ export default function App() {
   // but allow navigation to non-league-specific pages (help, debug, admin).
   const effectiveTab = useMemo(() => {
     const nonLeaguePages = new Set(["help", "debug", "admin", "settings", "notifications"]);
+    if (tab === "manage" && !canManage) return "home";
     if (!hasMemberships && isGlobalAdmin && !nonLeaguePages.has(tab)) return "admin";
     return tab;
-  }, [tab, hasMemberships, isGlobalAdmin]);
+  }, [tab, hasMemberships, isGlobalAdmin, canManage]);
 
   useEffect(() => {
     if (!me) return;
