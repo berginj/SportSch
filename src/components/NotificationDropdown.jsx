@@ -115,9 +115,7 @@ export default function NotificationDropdown({
             }}
             title="Refresh"
             aria-label="Refresh notifications"
-          >
-            ↻
-          </button>
+          >Refresh</button>
         </div>
       </div>
 
@@ -231,9 +229,7 @@ export default function NotificationDropdown({
             fontWeight: '500',
           }}
           onClick={onClose}
-        >
-          ⚙️ Notification Settings
-        </a>
+        >Notification Settings</a>
       </div>
     </div>
   );

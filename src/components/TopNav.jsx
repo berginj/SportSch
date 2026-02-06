@@ -8,6 +8,12 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
   const isGlobalAdmin = !!me?.isGlobalAdmin;
   const [globalLeagues, setGlobalLeagues] = useState([]);
   const [globalErr, setGlobalErr] = useState("");
+  const activeMembership = useMemo(() => {
+    if (!leagueId) return null;
+    return memberships.find((m) => (m?.leagueId || "").trim() === leagueId) || null;
+  }, [memberships, leagueId]);
+  const activeRole = (activeMembership?.role || "").trim();
+  const canManage = isGlobalAdmin || activeRole === "LeagueAdmin";
 
   function pickLeague(id) {
     setLeagueId(id);
@@ -59,7 +65,8 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
         const id = (l?.leagueId || "").trim();
         const name = (l?.name || "").trim();
         const role = roleByLeague.get(id) || "";
-        const labelText = name ? `${name} (${id})${role ? ` — ${role}` : ""}` : `${id}${role ? ` — ${role}` : ""}`;
+        const roleLabel = role ? ` - ${role}` : "";
+        const labelText = name ? `${name} (${id})${roleLabel}` : `${id}${roleLabel}`;
         return { id, label: labelText };
       }).filter((x) => x.id);
     }
@@ -95,6 +102,16 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
             Calendar
           </button>
           <button
+            className={tab === "offers" ? "tab tab--active" : "tab"}
+            onClick={() => setTab("offers")}
+            disabled={!hasLeagues}
+            title="Create and accept offers or requests"
+            aria-current={tab === "offers" ? "page" : undefined}
+          >
+            Offers
+          </button>
+          {canManage && (
+          <button
             className={tab === "manage" ? "tab tab--active" : "tab"}
             onClick={goManage}
             disabled={!hasLeagues}
@@ -103,6 +120,7 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
           >
             Manage
           </button>
+          )}
           {isGlobalAdmin && (
             <button
               className={tab === "admin" ? "tab tab--active" : "tab"}

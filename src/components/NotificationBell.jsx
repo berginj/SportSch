@@ -68,9 +68,7 @@ export default function NotificationBell({ leagueId }) {
         }}
       >
         {/* Bell Icon (Unicode bell character) */}
-        <span role="img" aria-hidden="true">
-          🔔
-        </span>
+        <span aria-hidden="true">Bell</span>
 
         {/* Unread Badge */}
         {unreadCount > 0 && (
