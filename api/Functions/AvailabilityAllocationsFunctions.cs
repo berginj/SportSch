@@ -354,8 +354,12 @@ public class AvailabilityAllocationsFunctions
             if (body is null)
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Invalid JSON body");
 
-            var scope = (body.scope ?? ScopeLeague).Trim();
-            if (!string.Equals(scope, ScopeLeague, StringComparison.OrdinalIgnoreCase))
+            var requestedScope = (body.scope ?? "").Trim();
+            var clearAllScopes = string.IsNullOrWhiteSpace(requestedScope);
+            var scope = clearAllScopes
+                ? ""
+                : string.Equals(requestedScope, ScopeLeague, StringComparison.OrdinalIgnoreCase) ? ScopeLeague : requestedScope;
+            if (!clearAllScopes && !string.Equals(scope, ScopeLeague, StringComparison.OrdinalIgnoreCase))
                 ApiGuards.EnsureValidTableKeyPart("division", scope);
 
             var dateFrom = (body.dateFrom ?? "").Trim();
@@ -372,7 +376,9 @@ public class AvailabilityAllocationsFunctions
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "dateTo must be YYYY-MM-DD.");
 
             var table = await TableClients.GetTableAsync(_svc, Constants.Tables.FieldAvailabilityAllocations);
-            var pkPrefix = $"ALLOC|{leagueId}|{scope}|";
+            var pkPrefix = clearAllScopes
+                ? $"ALLOC|{leagueId}|"
+                : $"ALLOC|{leagueId}|{scope}|";
             var next = pkPrefix + "\uffff";
             var filter = $"PartitionKey ge '{ApiGuards.EscapeOData(pkPrefix)}' and PartitionKey lt '{ApiGuards.EscapeOData(next)}'";
             if (!string.IsNullOrWhiteSpace(fieldKey))
@@ -389,7 +395,15 @@ public class AvailabilityAllocationsFunctions
                 deleted++;
             }
 
-            return ApiResponses.Ok(req, new { leagueId, scope, dateFrom, dateTo, fieldKey, deleted });
+            return ApiResponses.Ok(req, new
+            {
+                leagueId,
+                scope = clearAllScopes ? "ALL" : scope,
+                dateFrom,
+                dateTo,
+                fieldKey,
+                deleted
+            });
         }
         catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
         catch (Exception ex)

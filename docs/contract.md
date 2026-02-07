@@ -1448,8 +1448,10 @@ Body
 ```
 
 Notes
-- `scope` should be `LEAGUE` or a division code.
-- `fieldKey` is optional; when omitted, clears allocations for all fields within the scope/date range.
+- `scope` is optional.
+- When `scope` is provided, it should be `LEAGUE` or a division code.
+- When `scope` is omitted/blank, clears allocations across all scopes for the date range.
+- `fieldKey` is optional; when omitted, clears allocations for all fields within the selected scope/date range.
 
 ### POST /availability/allocations/slots/preview (league-scoped)
 Requires: LeagueAdmin or global admin.

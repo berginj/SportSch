@@ -205,14 +205,16 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
   }
 
   async function clearAllocations() {
-    if (!allocScope) return;
     const dateError = validateIsoDates([
       { label: "Date from", value: allocDateFrom, required: true },
       { label: "Date to", value: allocDateTo, required: true },
     ]);
     if (dateError) return setAllocErr(dateError);
+    const targetLabel = allocScope
+      ? (allocScope === "LEAGUE" ? "league-wide allocations" : `${allocScope} allocations`)
+      : "allocations across all scopes";
     const confirmText = window.prompt(
-      "Type DELETE ALLOCATIONS to remove allocations for the selected filter."
+      `Type DELETE ALLOCATIONS to remove ${targetLabel} for the selected date range.`
     );
     if (confirmText !== "DELETE ALLOCATIONS") return;
 
@@ -223,7 +225,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          scope: allocScope,
+          scope: allocScope || undefined,
           dateFrom: allocDateFrom,
           dateTo: allocDateTo,
           fieldKey: allocFieldKey || undefined,
@@ -454,7 +456,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
           <button className="btn" onClick={loadAllocations} disabled={allocListLoading}>
             {allocListLoading ? "Loading..." : "Load allocations"}
           </button>
-          <button className="btn btn--danger" onClick={clearAllocations} disabled={allocListLoading || !allocScope}>
+          <button className="btn btn--danger" onClick={clearAllocations} disabled={allocListLoading}>
             Delete filtered allocations
           </button>
         </div>
