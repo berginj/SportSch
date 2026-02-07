@@ -1432,7 +1432,7 @@ Import behavior:
 
 ### GET /availability/allocations (league-scoped)
 Requires: LeagueAdmin or global admin.
-Query: `division` (scope filter), `fieldKey` (optional)
+Query: `division` (scope filter), `fieldKey` (optional), `dateFrom` (optional), `dateTo` (optional)
 
 ### POST /availability/allocations/clear (league-scoped)
 Requires: LeagueAdmin or global admin.

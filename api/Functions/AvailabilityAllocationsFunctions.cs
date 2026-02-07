@@ -288,6 +288,19 @@ public class AvailabilityAllocationsFunctions
 
             var scope = (ApiGuards.GetQueryParam(req, "division") ?? "").Trim();
             var fieldKey = (ApiGuards.GetQueryParam(req, "fieldKey") ?? "").Trim();
+            var dateFrom = (ApiGuards.GetQueryParam(req, "dateFrom") ?? "").Trim();
+            var dateTo = (ApiGuards.GetQueryParam(req, "dateTo") ?? "").Trim();
+            string dateFromNorm = "";
+            string dateToNorm = "";
+
+            if (!string.IsNullOrWhiteSpace(dateFrom) &&
+                (!TryNormalizeDate(dateFrom, out dateFromNorm) ||
+                 !DateOnly.TryParseExact(dateFromNorm, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _)))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "dateFrom must be YYYY-MM-DD.");
+            if (!string.IsNullOrWhiteSpace(dateTo) &&
+                (!TryNormalizeDate(dateTo, out dateToNorm) ||
+                 !DateOnly.TryParseExact(dateToNorm, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _)))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "dateTo must be YYYY-MM-DD.");
 
             var table = await TableClients.GetTableAsync(_svc, Constants.Tables.FieldAvailabilityAllocations);
             var list = new List<AllocationDto>();
@@ -312,6 +325,11 @@ public class AvailabilityAllocationsFunctions
 
             await foreach (var e in table.QueryAsync<TableEntity>(filter: filter))
             {
+                var startsOn = e.GetString("StartsOn") ?? "";
+                var endsOn = e.GetString("EndsOn") ?? "";
+                if (!string.IsNullOrWhiteSpace(dateFromNorm) && string.CompareOrdinal(endsOn, dateFromNorm) < 0) continue;
+                if (!string.IsNullOrWhiteSpace(dateToNorm) && string.CompareOrdinal(startsOn, dateToNorm) > 0) continue;
+
                 var days = (e.GetString("DaysOfWeek") ?? "")
                     .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                     .ToList();
@@ -365,13 +383,15 @@ public class AvailabilityAllocationsFunctions
             var dateFrom = (body.dateFrom ?? "").Trim();
             var dateTo = (body.dateTo ?? "").Trim();
             var fieldKey = (body.fieldKey ?? "").Trim();
+            string dateFromNorm = "";
+            string dateToNorm = "";
 
             if (!string.IsNullOrWhiteSpace(dateFrom) &&
-                (!TryNormalizeDate(dateFrom, out var dateFromNorm) ||
+                (!TryNormalizeDate(dateFrom, out dateFromNorm) ||
                  !DateOnly.TryParseExact(dateFromNorm, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _)))
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "dateFrom must be YYYY-MM-DD.");
             if (!string.IsNullOrWhiteSpace(dateTo) &&
-                (!TryNormalizeDate(dateTo, out var dateToNorm) ||
+                (!TryNormalizeDate(dateTo, out dateToNorm) ||
                  !DateOnly.TryParseExact(dateToNorm, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _)))
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "dateTo must be YYYY-MM-DD.");
 
@@ -389,8 +409,8 @@ public class AvailabilityAllocationsFunctions
             {
                 var startsOn = e.GetString("StartsOn") ?? "";
                 var endsOn = e.GetString("EndsOn") ?? "";
-                if (!string.IsNullOrWhiteSpace(dateFrom) && string.CompareOrdinal(endsOn, dateFrom) < 0) continue;
-                if (!string.IsNullOrWhiteSpace(dateTo) && string.CompareOrdinal(startsOn, dateTo) > 0) continue;
+                if (!string.IsNullOrWhiteSpace(dateFromNorm) && string.CompareOrdinal(endsOn, dateFromNorm) < 0) continue;
+                if (!string.IsNullOrWhiteSpace(dateToNorm) && string.CompareOrdinal(startsOn, dateToNorm) > 0) continue;
                 await table.DeleteEntityAsync(e.PartitionKey, e.RowKey, e.ETag);
                 deleted++;
             }
@@ -399,8 +419,8 @@ public class AvailabilityAllocationsFunctions
             {
                 leagueId,
                 scope = clearAllScopes ? "ALL" : scope,
-                dateFrom,
-                dateTo,
+                dateFrom = dateFromNorm,
+                dateTo = dateToNorm,
                 fieldKey,
                 deleted
             });

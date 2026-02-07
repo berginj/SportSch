@@ -180,6 +180,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
 
   async function loadAllocations() {
     setAllocErr("");
+    setAllocOk("");
     setAllocListLoading(true);
     const dateError = validateIsoDates([
       { label: "Date from", value: allocDateFrom, required: false },
@@ -193,6 +194,8 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
       const qs = new URLSearchParams();
       if (allocScope) qs.set("division", allocScope);
       if (allocFieldKey) qs.set("fieldKey", allocFieldKey);
+      if (allocDateFrom) qs.set("dateFrom", allocDateFrom);
+      if (allocDateTo) qs.set("dateTo", allocDateTo);
       const data = await apiFetch(`/api/availability/allocations?${qs.toString()}`);
       setAllocations(Array.isArray(data) ? data : []);
       if (!data || data.length === 0) setAllocOk("No allocations found for this filter.");
@@ -210,13 +213,23 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
       { label: "Date to", value: allocDateTo, required: true },
     ]);
     if (dateError) return setAllocErr(dateError);
+    setAllocOk("");
     const targetLabel = allocScope
       ? (allocScope === "LEAGUE" ? "league-wide allocations" : `${allocScope} allocations`)
       : "allocations across all scopes";
+    const expectedText = allocScope ? "DELETE ALLOCATIONS" : "DELETE ALL ALLOCATIONS";
     const confirmText = window.prompt(
-      `Type DELETE ALLOCATIONS to remove ${targetLabel} for the selected date range.`
+      `Type ${expectedText} to remove ${targetLabel} for the selected date range.`
     );
-    if (confirmText !== "DELETE ALLOCATIONS") return;
+    if (confirmText == null) return;
+    const normalized = confirmText.trim().toUpperCase();
+    const accepted = allocScope
+      ? new Set(["DELETE ALLOCATIONS"])
+      : new Set(["DELETE ALL ALLOCATIONS", "DELETE ALLOCATIONS"]);
+    if (!accepted.has(normalized)) {
+      setAllocErr(`Confirmation text mismatch. Type ${expectedText} exactly.`);
+      return;
+    }
 
     setAllocListLoading(true);
     setAllocErr("");
