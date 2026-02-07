@@ -95,7 +95,12 @@ def same_domain(url: str, base_hostname: str) -> bool:
 
 def allowed_image_domain(url: str, allowed_domains: Set[str]) -> bool:
     host = urlparse(url).hostname or ""
-    return host in allowed_domains
+    host = host.lower()
+    for domain in allowed_domains:
+        domain = domain.lower()
+        if host == domain or host.endswith(f".{domain}"):
+            return True
+    return False
 
 
 def parse_srcset(srcset: str, page_url: str) -> List[str]:

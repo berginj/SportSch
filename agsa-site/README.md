@@ -41,6 +41,8 @@ python tools/extract_site_images.py \
   --allow-domains agsafastpitch.com,cdn2.sportngin.com
 ```
 
+`--allow-domains` matches both exact hostnames and subdomains (for example, allowing `agsafastpitch.com` also allows `www.agsafastpitch.com`).
+
 Outputs:
 
 - `public/images/candidates/manifest.json` (all candidate images)
@@ -61,6 +63,13 @@ Legal/ethical guardrails:
 - Script respects `robots.txt`.
 - Do not identify or label minors.
 - Human rights/consent review is required before publishing images.
+
+Anti-reuse controls (best effort on static hosting):
+
+- Candidate image routes set `X-Robots-Tag: noimageindex, noarchive`.
+- Candidate image routes set `Cross-Origin-Resource-Policy: same-origin`.
+- Gallery disables basic drag/right-click actions in browser UI.
+- Important: static sites cannot fully prevent determined scraping or direct-download reuse.
 
 Homepage integration:
 

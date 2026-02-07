@@ -1,35 +1,49 @@
 ---
 interface Props {
-  instagramUrl: string;
+  agsaInstagramUrl: string;
+  sageInstagramUrl: string;
+  agsaInstagramHandle: string;
+  sageInstagramHandle: string;
   facebookUrl: string;
-  instagramHandle: string;
 }
 
-const { instagramUrl, facebookUrl, instagramHandle } = Astro.props as Props;
+const { agsaInstagramUrl, sageInstagramUrl, agsaInstagramHandle, sageInstagramHandle, facebookUrl } = Astro.props as Props;
 ---
 
-<section class="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+<section class="grid gap-6">
   <article class="card p-6">
-    <p class="text-xs font-bold uppercase tracking-wide text-brand-primary">Primary Channel</p>
-    <h2 class="mt-2 font-display text-3xl font-semibold text-brand-secondary">Instagram</h2>
+    <p class="text-xs font-bold uppercase tracking-wide text-brand-primary">Primary Freshness Engine</p>
+    <h2 class="mt-2 font-display text-3xl font-semibold text-brand-secondary">Instagram Feeds: AGSA + SAGE</h2>
     <p class="mt-2 text-sm text-slate-600">
-      Follow <strong>@{instagramHandle}</strong> for game-day updates, weather notices, and season highlights.
+      These feeds are the fastest way to keep the site current with action, announcements, and season momentum.
     </p>
-    <blockquote class="instagram-media mt-4" data-instgrm-permalink={instagramUrl} data-instgrm-version="14">
-      <a href={instagramUrl}>View AGSA on Instagram</a>
-    </blockquote>
-    <div class="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-      If the embed does not load due to privacy settings, use the direct link below.
-    </div>
-    <a class="btn-secondary mt-4" href={instagramUrl} target="_blank" rel="noreferrer">Follow on Instagram</a>
-  </article>
 
-  <article class="card p-6">
-    <h2 class="font-display text-3xl font-semibold text-brand-secondary">More Channels</h2>
-    <p class="mt-2 text-sm text-slate-600">
-      Facebook remains available for families who prefer it, but Instagram is our primary updates channel.
+    <div class="mt-5 grid gap-5 lg:grid-cols-2">
+      <article class="rounded-xl border border-slate-200 p-4">
+        <h3 class="font-display text-2xl text-brand-secondary">@{agsaInstagramHandle}</h3>
+        <blockquote class="instagram-media mt-3" data-instgrm-permalink={agsaInstagramUrl} data-instgrm-version="14">
+          <a href={agsaInstagramUrl}>View AGSA on Instagram</a>
+        </blockquote>
+        <a class="btn-secondary mt-4" href={agsaInstagramUrl} target="_blank" rel="noreferrer">Follow AGSA Instagram</a>
+      </article>
+
+      <article class="rounded-xl border border-slate-200 p-4">
+        <h3 class="font-display text-2xl text-brand-secondary">@{sageInstagramHandle}</h3>
+        <blockquote class="instagram-media mt-3" data-instgrm-permalink={sageInstagramUrl} data-instgrm-version="14">
+          <a href={sageInstagramUrl}>View SAGE on Instagram</a>
+        </blockquote>
+        <a class="btn-secondary mt-4" href={sageInstagramUrl} target="_blank" rel="noreferrer">Follow SAGE Instagram</a>
+      </article>
+    </div>
+
+    <div class="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+      If embeds are blocked by privacy settings, use the direct Instagram links above.
+    </div>
+
+    <p class="mt-4 text-xs text-slate-500">
+      Facebook remains available as a secondary link:
+      <a class="ml-1 underline" href={facebookUrl} target="_blank" rel="noreferrer">AGSA Facebook page</a>
     </p>
-    <a class="btn-secondary mt-4" href={facebookUrl} target="_blank" rel="noreferrer">Visit Facebook Page</a>
   </article>
 
   <script async src="//www.instagram.com/embed.js"></script>

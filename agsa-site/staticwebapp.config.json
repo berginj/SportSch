@@ -1,8 +1,20 @@
 {
+  "globalHeaders": {
+    "X-Robots-Tag": "noimageindex, noarchive",
+    "Referrer-Policy": "strict-origin-when-cross-origin"
+  },
   "routes": [
     {
       "route": "/.auth/functions/*",
       "rewrite": "/api/*"
+    },
+    {
+      "route": "/images/candidates/*",
+      "headers": {
+        "X-Robots-Tag": "noindex, noimageindex, noarchive",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Content-Security-Policy": "frame-ancestors 'self'"
+      }
     }
   ],
   "navigationFallback": {
