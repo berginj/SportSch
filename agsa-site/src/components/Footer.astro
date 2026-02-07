@@ -3,13 +3,15 @@ interface Props {
   siteName: string;
   region: string;
   email: string;
+  phone?: string;
+  sponsorshipEmail?: string;
   instagramUrl: string;
   facebookUrl: string;
   partnerOrgName?: string;
   partnerOrgUrl?: string;
 }
 
-const { siteName, region, email, instagramUrl, facebookUrl, partnerOrgName, partnerOrgUrl } = Astro.props as Props;
+const { siteName, region, email, phone, sponsorshipEmail, instagramUrl, facebookUrl, partnerOrgName, partnerOrgUrl } = Astro.props as Props;
 const year = new Date().getFullYear();
 ---
 
@@ -21,19 +23,35 @@ const year = new Date().getFullYear();
       <p class="mt-2 text-sm">
         <a href={`mailto:${email}`} class="text-slate-100">{email}</a>
       </p>
+      {phone && (
+        <p class="mt-1 text-sm">
+          <a href={`tel:${phone.replace(/[^\d]/g, "")}`} class="text-slate-100">{phone}</a>
+        </p>
+      )}
+      {sponsorshipEmail && (
+        <p class="mt-1 text-sm">
+          Sponsorships:
+          <a href={`mailto:${sponsorshipEmail}`} class="ml-1 text-slate-100">{sponsorshipEmail}</a>
+        </p>
+      )}
     </div>
     <div>
-      <h3 class="text-sm font-bold uppercase tracking-wide text-slate-200">Explore</h3>
+      <h3 class="text-sm font-bold uppercase tracking-wide text-slate-200">Site Links</h3>
       <ul class="mt-3 space-y-2 text-sm">
-        <li><a href="/register">Registration</a></li>
         <li><a href="/schedule">Schedule</a></li>
-        <li><a href="/programs">Programs</a></li>
-        <li><a href="/get-involved">Get Involved</a></li>
-        <li><a href="/sponsors">Sponsors</a></li>
+        <li><a href="/about">About</a></li>
+        <li><a href="/policies">Policies</a></li>
+        <li><a href="/contact">Contact</a></li>
       </ul>
     </div>
     <div>
-      <h3 class="text-sm font-bold uppercase tracking-wide text-slate-200">Follow AGSA</h3>
+      <h3 class="text-sm font-bold uppercase tracking-wide text-slate-200">Support AGSA</h3>
+      <ul class="mt-3 space-y-2 text-sm">
+        <li><a href="/get-involved">Get Involved</a></li>
+        <li><a href="/programs">Programs</a></li>
+        <li><a href="/sponsors">Sponsors</a></li>
+        <li><a href="/sponsor">Sponsor Form</a></li>
+      </ul>
       <div class="mt-3 flex gap-3 text-sm">
         <a class="btn-secondary !border-white/30 !bg-white/10 !text-white" href={instagramUrl} target="_blank" rel="noreferrer">Instagram</a>
       </div>

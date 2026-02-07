@@ -17,15 +17,8 @@ const { title, description = site.description, path } = Astro.props as Props;
 
 const navItems = [
   { label: "Home", href: "/" },
-  { label: "Register", href: "/register" },
-  { label: "Schedule", href: "/schedule" },
   { label: "Programs", href: "/programs" },
   { label: "Get Involved", href: "/get-involved" },
-  { label: "Sponsor Form", href: "/sponsor" },
-  { label: "About", href: "/about" },
-  { label: "Policies", href: "/policies" },
-  { label: "Sponsors", href: "/sponsors" },
-  { label: "Contact", href: "/contact" },
 ];
 
 const canonical = new URL(path, Astro.site).toString();
@@ -84,6 +77,8 @@ const activeAnnouncement = [...announcements]
       siteName={site.name}
       region={site.region}
       email={site.contactEmail}
+      phone={site.phone}
+      sponsorshipEmail={site.contactRouting?.sponsorship}
       instagramUrl={site.socials.instagramUrl}
       facebookUrl={site.socials.facebookUrl}
       partnerOrgName={site.partnerOrg?.name}
