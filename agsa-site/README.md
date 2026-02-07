@@ -1,90 +1,119 @@
-# AGSA Fastpitch Static Website (Astro)
+# AGSA Fastpitch Website (Static Astro)
 
-Modern static website scaffold for AGSA Fastpitch built with Astro + Tailwind.
+Production-ready static website scaffold for Arlington Girls Softball Association.
 
-## Local Development
+## Run locally
 
-1. Install dependencies:
-   ```bash
-   npm install
-   ```
-2. Start dev server:
-   ```bash
-   npm run dev
-   ```
-3. Build production output:
-   ```bash
-   npm run build
-   ```
-4. Preview build:
-   ```bash
-   npm run preview
-   ```
+```bash
+npm install
+npm run dev
+```
 
-## Config-Driven Content
+Build:
 
-All core content is editable without touching components.
+```bash
+npm run build
+```
+
+Preview:
+
+```bash
+npm run preview
+```
+
+## Core config files (admin-editable)
+
+All key links/content should be edited in config/content files, not components.
 
 - `src/config/site.json`
-  - Organization name, contact details, socials, quick actions, announcement banner, get-involved cards.
+  - Brand copy, location, contact routing emails, socials, Instagram handle, partner links, homepage metadata.
 - `src/config/theme.json`
-  - Theme tokens (colors/fonts/logo paths) used across layout and Tailwind config.
+  - Theme tokens and live AGSA logo paths.
 - `src/config/registration-links.json`
-  - Centralized registration CTA links. Replace placeholder URLs with SportsEngine URLs.
+  - Single registration doorway links by season/program (`status`, `priority`, optional highlight dates).
 - `src/config/calendar.json`
-  - Calendar mode and data source settings.
+  - Calendar source mode and settings (`ics` or `gcal_api`).
+- `src/config/announcements.json`
+  - Homepage banner items with `startDate`/`endDate` expiry.
+- `src/config/sponsors.json`
+  - Sponsor tiers and logo references.
 
-Additional content:
+Policy content is Markdown:
 
-- News posts: `src/content/news/*.md`
-- Sponsor tiers and logos: `src/config/sponsors.json` + files in `public/images/sponsors/`
+- `src/content/policies/*.md`
 
-## Registration URL Replacement (SportsEngine)
+News content is Markdown:
 
-Replace all placeholder URLs in:
+- `src/content/news/*.md`
+
+## Registration updates
+
+Use only:
 
 - `src/config/registration-links.json`
 
-Optionally add SportsEngine links for other flows (team pages, standings, rosters) by adding new buttons/entries in config and rendering them in relevant pages.
+The `/register` page is the single registration router page for all programs/seasons.
 
-## Google Calendar Integration
+## Schedule integration
 
-Two supported modes via `src/config/calendar.json`:
+Two modes in `src/config/calendar.json`:
 
-1. `mode: "ics"` (default)
+1. `mode: "ics"` (preferred)
    - Set `icsUrl` to a public ICS feed.
-   - Client fetches + parses ICS and caches in `localStorage` for 20 minutes.
-   - If CORS blocks feed access, switch to `gcal_api` or use a CORS-friendly feed.
-
+   - Client parses ICS and caches data in localStorage.
 2. `mode: "gcal_api"`
-   - Set `calendarId`.
-   - Set `apiKeyEnvVarName` (default: `PUBLIC_GCAL_API_KEY`).
-   - Add key in `.env`:
-     ```env
-     PUBLIC_GCAL_API_KEY=your_public_key
-     ```
-   - Restrict key by HTTP referrer in Google Cloud Console.
+   - Set `calendarId`
+   - Set `apiKeyEnvVarName` (default: `PUBLIC_GCAL_API_KEY`)
+   - Add env var in deployment/local `.env`
 
-## Social Integrations
+Example `.env`:
 
-- Facebook Page Plugin embed via iframe.
-- Instagram embed blockquote + official embed script.
-- Fallback follow links included for script/privacy blockers.
+```env
+PUBLIC_GCAL_API_KEY=your_public_referrer_restricted_key
+```
 
-## Contact Form
+Important:
 
-`/contact` is configured for Formspree:
+- Do not commit private keys.
+- If using Google API client-side, treat key as public and restrict by referrer.
 
-- Update form action in `src/pages/contact.astro`:
-  - `https://formspree.io/f/PLACEHOLDER_FORM_ID`
+## Social integration
 
-Fallback contact links (email/social) are always visible.
+- Instagram is primary:
+  - homepage Instagram embed + fallback follow CTA.
+- Facebook is link-only:
+  - footer/contact links (no Facebook feed embed).
+
+## Forms (static-friendly)
+
+Current pages use Formspree placeholders:
+
+- Contact: `src/pages/contact.astro`
+- Volunteer: `src/pages/get-involved.astro`
+- Sponsor: `src/pages/sponsors.astro`
+
+Replace `PLACEHOLDER_*` form IDs with real Formspree endpoints.
+
+Spam mitigation:
+
+- Honeypot field (`_gotcha`) already included.
+
+## Governance features already implemented
+
+- Announcement expiry using date windows (`announcements.json`).
+- `Last updated` labels on key pages from config/content dates.
+- Policies rendered as HTML from Markdown (not PDF-dependent).
 
 ## Deployment
 
-### Netlify
+### Azure Static Web Apps
 
-Build settings:
+Workflow is configured to deploy this app from:
+
+- `app_location: "agsa-site"`
+- `output_location: "dist"`
+
+### Netlify
 
 - Base directory: `agsa-site`
 - Build command: `npm run build`
@@ -92,32 +121,10 @@ Build settings:
 
 ### Cloudflare Pages
 
-Build settings:
-
 - Root directory: `agsa-site`
 - Build command: `npm run build`
 - Build output directory: `dist`
 
-### GitHub Pages
+## Assets
 
-Use any Astro static deployment workflow. Publish `agsa-site/dist`.
-
-## Accessibility + SEO Notes
-
-- Semantic layout with landmark regions.
-- Skip link and focus-visible states.
-- Color contrast and keyboard-friendly controls.
-- OG/Twitter metadata in shared layout.
-
-## Brand Asset Notes
-
-- Placeholder logo files are in `public/images/`.
-- Replace with final AGSA brand assets when available:
-  - `logo-placeholder-light.svg`
-  - `logo-placeholder-dark.svg`
-  - `logo-placeholder-mark.svg`
-- If a full favicon set is needed, generate from final mark and place in `public/`.
-
-## License / Assets
-
-All bundled visual assets are placeholders created for scaffold purposes.
+- AGSA logos and selected imagery are sourced from official AGSA web/Instagram content and stored in `public/images/agsa/`.
