@@ -1,10 +1,10 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
-import TopNav from "./components/TopNav";
 import StatusCard from "./components/StatusCard";
 import { useSession } from "./lib/useSession";
 import { trackPageView } from "./lib/telemetry";
 import { useKeyboardShortcuts, COMMON_SHORTCUTS } from "./lib/hooks/useKeyboardShortcuts";
 
+const TopNav = lazy(() => import("./components/TopNav"));
 const OffersPage = lazy(() => import("./pages/OffersPage"));
 const CalendarPage = lazy(() => import("./pages/CalendarPage"));
 const SchedulePage = lazy(() => import("./pages/SchedulePage"));
@@ -186,13 +186,15 @@ export default function App() {
       <a href="#main-content" className="skip-link">
         Skip to main content
       </a>
-      <TopNav
-        tab={effectiveTab}
-        setTab={setTab}
-        me={me}
-        leagueId={activeLeagueId}
-        setLeagueId={setActiveLeagueId}
-      />
+      <Suspense fallback={null}>
+        <TopNav
+          tab={effectiveTab}
+          setTab={setTab}
+          me={me}
+          leagueId={activeLeagueId}
+          setLeagueId={setActiveLeagueId}
+        />
+      </Suspense>
 
       <main id="main-content" className="main">
         <Suspense fallback={pageFallback}>
