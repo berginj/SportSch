@@ -34,7 +34,7 @@ function useModalFocus(open, onCancel, initialFocusSelector) {
 
     modal.addEventListener("keydown", onKeyDown);
     return () => modal.removeEventListener("keydown", onKeyDown);
-  }, [open, onCancel]);
+  }, [open, onCancel, initialFocusSelector]);
 
   return modalRef;
 }
@@ -48,8 +48,8 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }) {
-  if (!open) return null;
   const modalRef = useModalFocus(open, onCancel, ".btn--primary");
+  if (!open) return null;
   return (
     <div className="modalOverlay" role="presentation" onClick={onCancel}>
       <div
@@ -88,8 +88,8 @@ export function PromptDialog({
   onConfirm,
   onCancel,
 }) {
-  if (!open) return null;
   const modalRef = useModalFocus(open, onCancel, "textarea");
+  if (!open) return null;
   return (
     <div className="modalOverlay" role="presentation" onClick={onCancel}>
       <div

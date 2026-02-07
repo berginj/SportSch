@@ -464,10 +464,10 @@ export default function HelpPage({ me, leagueId }) {
 
           <Section title="Request a swap">
             <p>
-              When you see an open slot that works for your team, click <b>Accept</b> (Calendar) or <b>Accept</b> (Create Offer/Request). Add notes if helpful.
+              When you see an open slot that works for your team, click <b>Request</b> (Calendar) or <b>Request</b> (Create Offer/Request). Add notes if helpful.
             </p>
             <p className="muted m-0">
-              Acceptance immediately confirms the game and shows it as <b>Confirmed</b> on the calendar.
+              Requests set the slot to <b>Pending</b>. The offering coach or an admin approves the request to move the slot to <b>Confirmed</b>.
             </p>
           </Section>
 

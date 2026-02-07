@@ -14,12 +14,12 @@ public class SchedulingTests
             StartsOn: new DateOnly(2025, 4, 1),
             EndsOn: new DateOnly(2025, 4, 7),
             DaysOfWeek: new[] { DayOfWeek.Tuesday, DayOfWeek.Thursday, DayOfWeek.Monday },
-            StartTime: new TimeOnly(18, 0),
-            EndTime: new TimeOnly(20, 0));
+            StartTimeLocal: "18:00",
+            EndTimeLocal: "20:00");
 
         var exceptions = new List<AvailabilityException>
         {
-            new(new DateOnly(2025, 4, 3), new DateOnly(2025, 4, 3), "Holiday")
+            new(new DateOnly(2025, 4, 3), new DateOnly(2025, 4, 3), "00:00", "23:59")
         };
 
         var slots = AvailabilityRuleEngine.ExpandSlots(rule, exceptions, gameLengthMinutes: 60);
@@ -124,8 +124,8 @@ public class SchedulingTests
             StartsOn: new DateOnly(2025, 4, 1),
             EndsOn: new DateOnly(2025, 4, 7),
             DaysOfWeek: new[] { DayOfWeek.Tuesday, DayOfWeek.Thursday },
-            StartTime: new TimeOnly(18, 0),
-            EndTime: new TimeOnly(20, 0));
+            StartTimeLocal: "18:00",
+            EndTimeLocal: "20:00");
 
         var input = new ScheduleSeedInput(
             Division: "10U",

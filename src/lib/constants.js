@@ -13,6 +13,7 @@ export const ACCESS_REQUEST_STATUS = {
 
 export const SLOT_STATUS = {
   OPEN: "Open",
+  PENDING: "Pending",
   CANCELLED: "Cancelled",
   CONFIRMED: "Confirmed",
 };

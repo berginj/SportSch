@@ -99,9 +99,18 @@ public class RequestService : IRequestService
         }
 
         var slotStatus = (slot.GetString("Status") ?? Constants.Status.SlotOpen).Trim();
-        if (!string.Equals(slotStatus, Constants.Status.SlotOpen, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(slotStatus, Constants.Status.SlotCancelled, StringComparison.OrdinalIgnoreCase))
         {
-            throw new ApiGuards.HttpError(409, ErrorCodes.SLOT_NOT_OPEN, $"Slot is not open (status: {slotStatus}).");
+            throw new ApiGuards.HttpError(409, ErrorCodes.SLOT_CANCELLED, "Slot is cancelled.");
+        }
+        if (string.Equals(slotStatus, Constants.Status.SlotConfirmed, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ApiGuards.HttpError(409, ErrorCodes.SLOT_NOT_AVAILABLE, "Slot is already confirmed.");
+        }
+        if (!string.Equals(slotStatus, Constants.Status.SlotOpen, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(slotStatus, Constants.Status.SlotPending, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ApiGuards.HttpError(409, ErrorCodes.SLOT_NOT_AVAILABLE, $"Slot is not available (status: {slotStatus}).");
         }
 
         var awayTeamId = (slot.GetString("AwayTeamId") ?? "").Trim();
@@ -160,11 +169,18 @@ public class RequestService : IRequestService
                 "This game overlaps an existing confirmed game for one of the teams.");
         }
 
+        // Prevent duplicate pending requests by the same team for the same slot
+        if (await _requestRepo.HasPendingRequestAsync(request.LeagueId, request.Division, request.SlotId, myTeamId))
+        {
+            throw new ApiGuards.HttpError(409, ErrorCodes.ALREADY_EXISTS,
+                "Your team already has a pending request for this slot.");
+        }
+
         var now = DateTimeOffset.UtcNow;
         var requestId = Guid.NewGuid().ToString("N");
         var pk = Constants.Pk.SlotRequests(request.LeagueId, request.Division, request.SlotId);
 
-        // Create request (approved immediately)
+        // Create pending request
         var reqEntity = new TableEntity(pk, requestId)
         {
             ["LeagueId"] = request.LeagueId,
@@ -175,52 +191,32 @@ public class RequestService : IRequestService
             ["RequestingTeamId"] = myTeamId,
             ["RequestingEmail"] = context.UserEmail ?? "",
             ["Notes"] = request.Notes,
-            ["Status"] = Constants.Status.SlotRequestApproved,
-            ["ApprovedBy"] = context.UserEmail ?? "",
-            ["ApprovedUtc"] = now,
+            ["Status"] = Constants.Status.SlotRequestPending,
             ["RequestedUtc"] = now,
             ["UpdatedUtc"] = now
         };
 
         await _requestRepo.CreateRequestAsync(reqEntity);
 
-        // Immediately confirm the slot for the requesting team
-        try
+        // First request transitions slot Open -> Pending.
+        // If slot is already Pending we keep it Pending and continue.
+        if (string.Equals(slotStatus, Constants.Status.SlotOpen, StringComparison.OrdinalIgnoreCase))
         {
-            slot["Status"] = Constants.Status.SlotConfirmed;
-            slot["ConfirmedTeamId"] = myTeamId;
-            slot["ConfirmedRequestId"] = requestId;
-            slot["ConfirmedBy"] = context.UserEmail ?? "";
-            slot["ConfirmedUtc"] = now;
-            slot["UpdatedUtc"] = now;
-
-            await _slotRepo.UpdateSlotAsync(slot, slot.ETag);
-        }
-        catch (RequestFailedException ex) when (ex.Status is 409 or 412)
-        {
-            // Best-effort: mark request denied
-            reqEntity["Status"] = Constants.Status.SlotRequestDenied;
-            reqEntity["RejectedUtc"] = now;
-            reqEntity["UpdatedUtc"] = now;
-            try { await _requestRepo.UpdateRequestAsync(reqEntity, ETag.All); } catch { }
-
-            throw new ApiGuards.HttpError(409, ErrorCodes.CONFLICT, "Slot was confirmed by another team.");
+            try
+            {
+                slot["Status"] = Constants.Status.SlotPending;
+                slot["UpdatedUtc"] = now;
+                await _slotRepo.UpdateSlotAsync(slot, slot.ETag);
+            }
+            catch (RequestFailedException ex) when (ex.Status is 409 or 412)
+            {
+                // Best-effort rollback of the request if slot status update lost race
+                try { await _requestRepo.DeleteRequestAsync(request.LeagueId, request.Division, request.SlotId, requestId); } catch { }
+                throw new ApiGuards.HttpError(409, ErrorCodes.CONFLICT, "Slot was updated by another request. Please retry.");
+            }
         }
 
-        // Best-effort: reject other pending requests for this slot
-        var pendingRequests = await _requestRepo.GetPendingRequestsForSlotAsync(request.LeagueId, request.Division, request.SlotId);
-        foreach (var other in pendingRequests)
-        {
-            if (other.RowKey == requestId) continue;
-
-            other["Status"] = Constants.Status.SlotRequestDenied;
-            other["RejectedUtc"] = now;
-            other["UpdatedUtc"] = now;
-
-            try { await _requestRepo.UpdateRequestAsync(other, other.ETag); } catch { }
-        }
-
-        _logger.LogInformation("Request created and slot confirmed: {RequestId}, slot {SlotId}", requestId, request.SlotId);
+        _logger.LogInformation("Pending request created: {RequestId}, slot {SlotId}", requestId, request.SlotId);
 
         // Send notification (fire and forget - don't block response)
         _ = Task.Run(async () =>
@@ -232,11 +228,11 @@ public class RequestService : IRequestService
                 var fieldName = (slot.GetString("DisplayName") ?? "").Trim();
 
                 // Notify the requesting coach
-                var message = $"Your request for {gameDate} at {startTime} has been approved!";
+                var message = $"Your request for {gameDate} at {startTime} is pending approval.";
                 await _notificationService.CreateNotificationAsync(
                     context.UserId,
                     request.LeagueId,
-                    "RequestApproved",
+                    "RequestSubmitted",
                     message,
                     "#calendar",
                     request.SlotId,
@@ -254,9 +250,8 @@ public class RequestService : IRequestService
         {
             requestId,
             requestingTeamId = myTeamId,
-            status = Constants.Status.SlotRequestApproved,
-            slotStatus = Constants.Status.SlotConfirmed,
-            confirmedTeamId = myTeamId,
+            status = Constants.Status.SlotRequestPending,
+            slotStatus = Constants.Status.SlotPending,
             requestedUtc = now
         };
     }
@@ -273,10 +268,8 @@ public class RequestService : IRequestService
             throw new ApiGuards.HttpError(404, ErrorCodes.SLOT_NOT_FOUND, "Slot not found");
         }
 
-        var offeringTeamId = (slot.GetString("OfferingTeamId") ?? "").Trim();
-
         // Authorization: Must be offering coach, league admin, or global admin
-        if (!await _authService.CanApproveRequestAsync(context.UserId, request.LeagueId, request.Division, offeringTeamId))
+        if (!await _authService.CanApproveRequestAsync(context.UserId, request.LeagueId, request.Division, request.SlotId))
         {
             throw new ApiGuards.HttpError(403, ErrorCodes.UNAUTHORIZED,
                 "Only the offering coach (or LeagueAdmin) can approve this slot request.");
@@ -288,7 +281,7 @@ public class RequestService : IRequestService
             throw new ApiGuards.HttpError(409, ErrorCodes.SLOT_CANCELLED, "Slot is cancelled");
         }
 
-        // With immediate-confirmation semantics, this endpoint is effectively idempotent
+        // Idempotent behavior: approving the already-confirmed request returns success.
         if (string.Equals(status, Constants.Status.SlotConfirmed, StringComparison.OrdinalIgnoreCase))
         {
             var confirmedReqId = (slot.GetString("ConfirmedRequestId") ?? "").Trim();

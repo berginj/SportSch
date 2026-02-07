@@ -59,6 +59,7 @@ public class CalendarFeed
             if (slotStatuses.Count == 0)
             {
                 slotStatuses.Add(Constants.Status.SlotOpen);
+                slotStatuses.Add(Constants.Status.SlotPending);
                 slotStatuses.Add(Constants.Status.SlotConfirmed);
                 if (includeCancelled) slotStatuses.Add(Constants.Status.SlotCancelled);
             }

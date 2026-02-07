@@ -22,7 +22,7 @@ test.describe('Authentication', () => {
     await context.addInitScript(() => {
       localStorage.setItem('userId', 'test-user-123');
       localStorage.setItem('userEmail', 'test@example.com');
-      localStorage.setItem('leagueId', 'test-league');
+      localStorage.setItem('gameswap_leagueId', 'test-league');
     });
 
     await page.goto('/');
@@ -67,7 +67,7 @@ test.describe('Navigation', () => {
     await context.addInitScript(() => {
       localStorage.setItem('userId', 'test-user-123');
       localStorage.setItem('userEmail', 'test@example.com');
-      localStorage.setItem('leagueId', 'test-league');
+      localStorage.setItem('gameswap_leagueId', 'test-league');
     });
 
     await page.goto('/');
@@ -88,7 +88,7 @@ test.describe('Navigation', () => {
     await context.addInitScript(() => {
       localStorage.setItem('userId', 'admin-user');
       localStorage.setItem('userEmail', 'admin@example.com');
-      localStorage.setItem('leagueId', 'test-league');
+      localStorage.setItem('gameswap_leagueId', 'test-league');
       localStorage.setItem('isGlobalAdmin', 'true');
     });
 

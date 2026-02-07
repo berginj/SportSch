@@ -31,6 +31,7 @@ function parseStatusFilter(params) {
   if (!raw) {
     return {
       [SLOT_STATUS.OPEN]: true,
+      [SLOT_STATUS.PENDING]: true,
       [SLOT_STATUS.CONFIRMED]: true,
       [SLOT_STATUS.CANCELLED]: false,
     };
@@ -38,6 +39,7 @@ function parseStatusFilter(params) {
   const set = new Set(raw.split(",").map((s) => s.trim()).filter(Boolean));
   return {
     [SLOT_STATUS.OPEN]: set.has(SLOT_STATUS.OPEN),
+    [SLOT_STATUS.PENDING]: set.has(SLOT_STATUS.PENDING),
     [SLOT_STATUS.CONFIRMED]: set.has(SLOT_STATUS.CONFIRMED),
     [SLOT_STATUS.CANCELLED]: set.has(SLOT_STATUS.CANCELLED),
   };
@@ -61,7 +63,8 @@ function isPracticeSlot(slot) {
 }
 
 function canAcceptSlot(slot) {
-  if (!slot || (slot.status || "") !== "Open") return false;
+  const status = (slot?.status || "").trim();
+  if (!slot || (status !== SLOT_STATUS.OPEN && status !== SLOT_STATUS.PENDING)) return false;
   if (slot.isAvailability) return false;
   if ((slot.awayTeamId || "").trim() && !slot.isExternalOffer) return false;
   return true;
@@ -107,6 +110,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
   const [slotTypeFilter, setSlotTypeFilter] = useState("all");
   const [slotStatusFilter, setSlotStatusFilter] = useState({
     [SLOT_STATUS.OPEN]: true,
+    [SLOT_STATUS.PENDING]: true,
     [SLOT_STATUS.CONFIRMED]: true,
     [SLOT_STATUS.CANCELLED]: false,
   });
@@ -246,6 +250,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
 
     const activeStatuses = [
       SLOT_STATUS.OPEN,
+      SLOT_STATUS.PENDING,
       SLOT_STATUS.CONFIRMED,
       SLOT_STATUS.CANCELLED,
     ].filter((s) => slotStatusFilter[s]);
@@ -407,7 +412,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
       title: "Add a note",
       message: "Optional notes for the offering coach.",
       placeholder: "Type a note (optional)",
-      confirmLabel: "Accept",
+      confirmLabel: "Send request",
     });
     if (notes === null) return;
     setErr("");
@@ -422,7 +427,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
         }),
       });
       await loadData();
-      setToast({ tone: "success", message: "Accepted. The game is now scheduled on the calendar." });
+      setToast({ tone: "success", message: "Request submitted. The slot is pending approval." });
       trackEvent("ui_calendar_slot_accept", { leagueId, division: slot.division, slotId: slot.slotId });
     } catch (e) {
       setErr(e?.message || String(e));
@@ -472,6 +477,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     setShowSlots(true);
     setSlotStatusFilter({
       [SLOT_STATUS.OPEN]: status === SLOT_STATUS.OPEN,
+      [SLOT_STATUS.PENDING]: status === SLOT_STATUS.PENDING,
       [SLOT_STATUS.CONFIRMED]: status === SLOT_STATUS.CONFIRMED,
       [SLOT_STATUS.CANCELLED]: status === SLOT_STATUS.CANCELLED,
     });
@@ -694,7 +700,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
         </div>
         <div className="row mt-3">
           <div className="pill">Slot status</div>
-          {[SLOT_STATUS.OPEN, SLOT_STATUS.CONFIRMED, SLOT_STATUS.CANCELLED].map((status) => (
+          {[SLOT_STATUS.OPEN, SLOT_STATUS.PENDING, SLOT_STATUS.CONFIRMED, SLOT_STATUS.CANCELLED].map((status) => (
             <label key={status} className="pill cursor-pointer" title={`Show ${status.toLowerCase()} offers on the calendar.`}>
               <input
                 type="checkbox"
@@ -789,17 +795,17 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
                               className="btn btn--primary"
                               onClick={() => requestSlot(it.raw, selectedTeamId)}
                               disabled={!selectedTeamId}
-                              title="Accept this offer on behalf of the selected team."
+                              title="Request this slot on behalf of the selected team."
                             >
-                              Accept as
+                              Request as
                             </button>
                           </div>
                         );
                       })()
                     ) : null}
                     {it.kind === "slot" && !canPickTeam && role !== "Viewer" && canAcceptSlot(it.raw) && (it.raw?.offeringTeamId || "") !== myCoachTeamId ? (
-                      <button className="btn btn--primary" onClick={() => requestSlot(it.raw)} title="Accept this open slot and confirm the game.">
-                        Accept
+                      <button className="btn btn--primary" onClick={() => requestSlot(it.raw)} title="Send a request for this slot.">
+                        Request
                       </button>
                     ) : null}
                     {it.kind === "slot" && canCancelSlot(it.raw) && (it.raw?.status || "") !== "Cancelled" ? (

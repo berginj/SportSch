@@ -130,6 +130,7 @@ public static class Constants
 
         // Slots
         public const string SlotOpen = "Open";
+        public const string SlotPending = "Pending";
         public const string SlotCancelled = "Cancelled";
         public const string SlotConfirmed = "Confirmed";
 

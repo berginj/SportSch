@@ -56,6 +56,7 @@ function parseStatusFilter(params) {
   if (!raw) {
     return {
       [SLOT_STATUS.OPEN]: true,
+      [SLOT_STATUS.PENDING]: true,
       [SLOT_STATUS.CONFIRMED]: true,
       [SLOT_STATUS.CANCELLED]: false,
     };
@@ -63,6 +64,7 @@ function parseStatusFilter(params) {
   const set = new Set(raw.split(",").map((s) => s.trim()).filter(Boolean));
   return {
     [SLOT_STATUS.OPEN]: set.has(SLOT_STATUS.OPEN),
+    [SLOT_STATUS.PENDING]: set.has(SLOT_STATUS.PENDING),
     [SLOT_STATUS.CONFIRMED]: set.has(SLOT_STATUS.CONFIRMED),
     [SLOT_STATUS.CANCELLED]: set.has(SLOT_STATUS.CANCELLED),
   };
@@ -89,6 +91,7 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
   const [showEvents, setShowEvents] = useState(true);
   const [slotStatusFilter, setSlotStatusFilter] = useState({
     [SLOT_STATUS.OPEN]: true,
+    [SLOT_STATUS.PENDING]: true,
     [SLOT_STATUS.CONFIRMED]: true,
     [SLOT_STATUS.CANCELLED]: false,
   });
@@ -153,6 +156,7 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
 
     const activeStatuses = [
       SLOT_STATUS.OPEN,
+      SLOT_STATUS.PENDING,
       SLOT_STATUS.CONFIRMED,
       SLOT_STATUS.CANCELLED,
     ].filter((s) => slotStatusFilter[s]);
@@ -214,15 +218,6 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
     () => slots.filter((s) => s.status === SLOT_STATUS.CONFIRMED && !s.isAvailability && isPracticeSlot(s)),
     [slots]
   );
-
-  function activateSlotFilter(status) {
-    setShowSlots(true);
-    setSlotStatusFilter({
-      [SLOT_STATUS.OPEN]: status === SLOT_STATUS.OPEN,
-      [SLOT_STATUS.CONFIRMED]: status === SLOT_STATUS.CONFIRMED,
-      [SLOT_STATUS.CANCELLED]: status === SLOT_STATUS.CANCELLED,
-    });
-  }
 
   function goToCalendarWithStatus(status) {
     if (typeof window === "undefined") return;
@@ -324,7 +319,7 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
           <label>
             Status
             <div className="layoutRow">
-              {[SLOT_STATUS.OPEN, SLOT_STATUS.CONFIRMED, SLOT_STATUS.CANCELLED].map((status) => (
+              {[SLOT_STATUS.OPEN, SLOT_STATUS.PENDING, SLOT_STATUS.CONFIRMED, SLOT_STATUS.CANCELLED].map((status) => (
                 <button
                   key={status}
                   className={`btn btn--ghost ${slotStatusFilter[status] ? "is-active" : ""}`}
@@ -437,6 +432,7 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
                 <div key={d.code} className="layoutPill">{d.code}</div>
               ))}
               <button className="layoutPill layoutPill--link" type="button" onClick={() => goToCalendarWithStatus(SLOT_STATUS.OPEN)}>Open</button>
+              <button className="layoutPill layoutPill--link" type="button" onClick={() => goToCalendarWithStatus(SLOT_STATUS.PENDING)}>Pending</button>
               <button className="layoutPill layoutPill--link" type="button" onClick={() => goToCalendarWithStatus(SLOT_STATUS.CONFIRMED)}>Confirmed</button>
             </div>
           </div>

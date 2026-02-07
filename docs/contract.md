@@ -1158,10 +1158,11 @@ Requires: LeagueAdmin or global admin.
 
 ## 8) Slots
 
-Slots are **open game offers/requests** placed on the calendar by a coach (or LeagueAdmin). Another coach can see an open slot and **accept** it (via `POST /slots/{division}/{slotId}/requests`). Acceptance immediately confirms the slot (scheduled on the calendar).
+Slots are **open game offers/requests** placed on the calendar by a coach (or LeagueAdmin). Another coach can see an open slot and **request** it (via `POST /slots/{division}/{slotId}/requests`). Creating a request moves the slot to **Pending** until approved.
 
 Slot status strings
 - Open
+- Pending (has one or more requests awaiting approval)
 - Confirmed (accepted + scheduled)
 - Cancelled
 
@@ -1381,11 +1382,13 @@ Response
 Requires: member (Viewer allowed).
 
 ### PATCH /slots/{division}/{slotId}/requests/{requestId}/approve (league-scoped)
-Legacy/compatibility endpoint.
+Approval endpoint.
 
-With immediate-confirmation semantics, slot acceptance already confirms the slot. This endpoint is idempotent:
-- If the slot is already confirmed for the given requestId, it returns ok.
-- Otherwise it returns 409 conflict.
+Approval semantics:
+- A request created via `POST /slots/{division}/{slotId}/requests` is `Pending`.
+- Approving sets the slot to `Confirmed`, marks the approved request `Approved`, and rejects other pending requests for that slot.
+- If the slot is already confirmed for the given requestId, this endpoint is idempotent and returns ok.
+- If the slot is confirmed for a different requestId, it returns 409 conflict.
 
 Requires: member role is not Viewer.  
 Rules

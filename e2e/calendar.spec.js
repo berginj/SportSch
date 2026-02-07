@@ -12,7 +12,7 @@ test.describe('Calendar View', () => {
     await context.addInitScript(() => {
       localStorage.setItem('userId', 'test-user-123');
       localStorage.setItem('userEmail', 'coach@example.com');
-      localStorage.setItem('leagueId', 'test-league');
+      localStorage.setItem('gameswap_leagueId', 'test-league');
     });
 
     await page.goto('/');
@@ -60,7 +60,7 @@ test.describe('Calendar View', () => {
     await context.addInitScript(() => {
       localStorage.setItem('userId', 'new-user');
       localStorage.setItem('userEmail', 'new@example.com');
-      localStorage.setItem('leagueId', 'empty-league');
+      localStorage.setItem('gameswap_leagueId', 'empty-league');
     });
 
     await page.goto('/');
@@ -91,7 +91,7 @@ test.describe('API Integration', () => {
     await context.addInitScript(() => {
       localStorage.setItem('userId', 'test-user');
       localStorage.setItem('userEmail', 'test@example.com');
-      localStorage.setItem('leagueId', 'test-league');
+      localStorage.setItem('gameswap_leagueId', 'test-league');
     });
 
     await page.goto('/');
@@ -125,7 +125,7 @@ test.describe('API Integration', () => {
     await context.addInitScript(() => {
       localStorage.setItem('userId', 'test-user');
       localStorage.setItem('userEmail', 'test@example.com');
-      localStorage.setItem('leagueId', 'test-league');
+      localStorage.setItem('gameswap_leagueId', 'test-league');
     });
 
     await page.goto('/');
@@ -143,7 +143,7 @@ test.describe('Responsive Design', () => {
     await context.addInitScript(() => {
       localStorage.setItem('userId', 'mobile-user');
       localStorage.setItem('userEmail', 'mobile@example.com');
-      localStorage.setItem('leagueId', 'test-league');
+      localStorage.setItem('gameswap_leagueId', 'test-league');
     });
 
     await page.goto('/');
@@ -162,7 +162,7 @@ test.describe('Responsive Design', () => {
     await context.addInitScript(() => {
       localStorage.setItem('userId', 'tablet-user');
       localStorage.setItem('userEmail', 'tablet@example.com');
-      localStorage.setItem('leagueId', 'test-league');
+      localStorage.setItem('gameswap_leagueId', 'test-league');
     });
 
     await page.goto('/');

@@ -35,7 +35,11 @@ public class ScheduleExportCsvTests
         };
 
         var csv = ScheduleExportCsv.Build(rows);
-        var fixturePath = Path.Combine(AppContext.BaseDirectory, "schedule_export_fixture.csv");
+        var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "schedule_export_fixture.csv");
+        if (!File.Exists(fixturePath))
+        {
+            fixturePath = Path.Combine(AppContext.BaseDirectory, "schedule_export_fixture.csv");
+        }
         var fixture = File.ReadAllText(fixturePath).TrimEnd('\r', '\n');
 
         Assert.Equal(fixture, csv);

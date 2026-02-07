@@ -9,7 +9,7 @@ namespace GameSwap.Functions.Services;
 public interface IRequestService
 {
     /// <summary>
-    /// Creates a request for a slot (immediately confirms it).
+    /// Creates a pending request for a slot.
     /// </summary>
     Task<object> CreateRequestAsync(CreateRequestRequest request, CorrelationContext context);
 

@@ -45,7 +45,8 @@ function isPracticeSlot(slot) {
 }
 
 function canAcceptSlot(slot) {
-  if (!slot || (slot.status || "") !== "Open") return false;
+  const status = (slot?.status || "").trim();
+  if (!slot || (status !== "Open" && status !== "Pending")) return false;
   if (slot.isAvailability) return false;
   if ((slot.awayTeamId || "").trim() && !slot.isExternalOffer) return false;
   return true;
@@ -364,7 +365,7 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
         }),
       });
       await reloadSlots(division);
-      setToast({ tone: "success", message: "Slot accepted." });
+      setToast({ tone: "success", message: "Request submitted. The slot is pending approval." });
       trackEvent("ui_slot_request_success", {
         leagueId,
         division: div,
@@ -620,16 +621,16 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
                                   className="btn"
                                   onClick={() => requestSlot(s, selectedTeamId)}
                                   disabled={!selectedTeamId}
-                                  title="Accept this slot on behalf of the selected team."
+                                  title="Request this slot on behalf of the selected team."
                                 >
-                                  Accept as
+                                  Request as
                                 </button>
                               </div>
                             );
                           })()
                         ) : (
-                          <button className="btn" onClick={() => requestSlot(s)} title="Accept this slot.">
-                            Accept
+                          <button className="btn" onClick={() => requestSlot(s)} title="Send a request for this slot.">
+                            Request
                           </button>
                         )
                       ) : (

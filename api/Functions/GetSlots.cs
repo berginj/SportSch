@@ -33,7 +33,7 @@ public class GetSlots
     [OpenApiOperation(operationId: "GetSlots", tags: new[] { "Slots" }, Summary = "Query slots with filters", Description = "Retrieves slots with optional filtering by division, status, and date range. Supports pagination.")]
     [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
     [OpenApiParameter(name: "division", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Filter by division (e.g., '10U', '12U')")]
-    [OpenApiParameter(name: "status", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Filter by status ('Open', 'Confirmed', 'Cancelled')")]
+    [OpenApiParameter(name: "status", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Filter by status ('Open', 'Pending', 'Confirmed', 'Cancelled')")]
     [OpenApiParameter(name: "dateFrom", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Filter by start date (YYYY-MM-DD)")]
     [OpenApiParameter(name: "dateTo", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Filter by end date (YYYY-MM-DD)")]
     [OpenApiParameter(name: "continuationToken", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Pagination continuation token")]
