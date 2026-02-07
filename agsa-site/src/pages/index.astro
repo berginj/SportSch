@@ -52,8 +52,25 @@ const topLinks = [...registrationLinks].sort((a, b) => a.priority - b.priority).
         <div class="mt-5 grid gap-4 sm:grid-cols-2">
           {
             topLinks.map((link) => (
-              <a href={link.url} class="rounded-lg border border-slate-200 p-4 no-underline hover:bg-brand-mist" target="_blank" rel="noreferrer">
+              <a
+                href={link.url}
+                class="rounded-lg border border-slate-200 p-4 no-underline hover:bg-brand-mist"
+                target="_blank"
+                rel="noreferrer"
+                data-highlight-until={link.highlightUntil || ""}
+              >
                 <p class="m-0 text-xs font-bold uppercase tracking-wide text-brand-primary">{link.season}</p>
+                {
+                  link.highlightLabel && (
+                    <p
+                      data-highlight-badge
+                      hidden
+                      class="mt-2 inline-flex rounded-full bg-brand-accent px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-brand-secondary"
+                    >
+                      {link.highlightLabel}
+                    </p>
+                  )
+                }
                 <h3 class="mt-2 text-lg font-semibold text-brand-secondary">{link.label}</h3>
                 <p class="mt-1 text-sm text-slate-600">{link.description}</p>
               </a>
@@ -98,4 +115,8 @@ const topLinks = [...registrationLinks].sort((a, b) => a.priority - b.priority).
   <section class="container-shell pb-12">
     <CtaStrip title="Get Involved" items={site.getInvolved} />
   </section>
+
+  <script>
+    import "../scripts/registration-highlight.js";
+  </script>
 </BaseLayout>

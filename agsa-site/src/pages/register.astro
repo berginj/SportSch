@@ -17,8 +17,19 @@ const sorted = [...registrationLinks].sort((a, b) => a.priority - b.priority);
     <div class="grid gap-5 md:grid-cols-2">
       {
         sorted.map((link) => (
-          <article class="card p-6">
+          <article class="card p-6" data-highlight-until={link.highlightUntil || ""}>
             <p class="m-0 text-xs font-bold uppercase tracking-wide text-brand-primary">{link.season}</p>
+            {
+              link.highlightLabel && (
+                <p
+                  data-highlight-badge
+                  hidden
+                  class="mt-2 inline-flex rounded-full bg-brand-accent px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-brand-secondary"
+                >
+                  {link.highlightLabel}
+                </p>
+              )
+            }
             <h2 class="mt-2 text-2xl font-semibold text-brand-secondary">{link.label}</h2>
             <p class="mt-3 text-sm text-slate-600">{link.description}</p>
             <a class="btn-primary mt-5" href={link.url} target="_blank" rel="noreferrer">
@@ -29,4 +40,8 @@ const sorted = [...registrationLinks].sort((a, b) => a.priority - b.priority);
       }
     </div>
   </section>
+
+  <script>
+    import "../scripts/registration-highlight.js";
+  </script>
 </BaseLayout>

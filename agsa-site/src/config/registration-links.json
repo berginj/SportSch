@@ -1,10 +1,12 @@
 [
   {
-    "label": "Spring Rec League Registration",
-    "description": "Primary registration flow for Spring recreational teams.",
-    "url": "https://www.sportsengine.com/placeholder/spring-rec-registration",
+    "label": "Volunteer and House Registration (Spring Priority)",
+    "description": "Primary spring registration link for volunteers and house registration. Highlight through March 15.",
+    "url": "https://agsafastpitch.sportngin.com/register/form/744176376?_gl=1*1dz4fxx*_ga*MjQ1NjgyMDgzLjE3Njg4Mzc0MjU.*_ga_PQ25JN9PJ8*czE3NzA0Mjk1NTEkbzYkZzAkdDE3NzA0Mjk1ODQkajI3JGwwJGgw#_ga=2.242992066.1361366003.1770342598-245682083.1768837425",
     "season": "Spring 2026",
-    "priority": 1
+    "priority": 1,
+    "highlightLabel": "Spring Priority",
+    "highlightUntil": "2026-03-15"
   },
   {
     "label": "Summer Tournament Team Interest",
