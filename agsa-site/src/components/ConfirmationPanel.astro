@@ -1,0 +1,62 @@
+---
+import BenefitsList from "./BenefitsList.astro";
+
+interface Props {
+  title: string;
+  appId: string;
+  tierName: string;
+  benefits: string[];
+  termMonths: number;
+  taxLanguage: string;
+  ein: string;
+  instagramUrl: string;
+  instagramHandle: string;
+  logoUploadCtaHref?: string;
+  note?: string;
+}
+
+const {
+  title,
+  appId,
+  tierName,
+  benefits,
+  termMonths,
+  taxLanguage,
+  ein,
+  instagramUrl,
+  instagramHandle,
+  logoUploadCtaHref,
+  note
+} = Astro.props as Props;
+---
+
+<article class="card p-6">
+  <h1 class="font-display text-5xl text-brand-secondary">{title}</h1>
+  <p class="mt-3 text-sm text-slate-600">Application ID: <strong>{appId}</strong></p>
+  <p class="mt-2 text-sm text-slate-600"><strong>Sponsorship term:</strong> {termMonths} months (1 full year).</p>
+
+  <div class="mt-5 rounded-lg border border-slate-200 p-4">
+    <h2 class="text-lg font-semibold text-brand-secondary">{tierName} deliverables</h2>
+    <div class="mt-2">
+      <BenefitsList benefits={benefits} />
+    </div>
+  </div>
+
+  {note && (
+    <div class="mt-5 rounded-lg border border-brand-primary/20 bg-brand-mist p-4 text-sm text-slate-700">
+      <p class="m-0">{note}</p>
+      {logoUploadCtaHref && <a class="btn-primary mt-3" href={logoUploadCtaHref}>Upload logo (Tier 4 only)</a>}
+    </div>
+  )}
+
+  <div class="mt-5 text-sm text-slate-600">
+    <p class="m-0"><strong>Tax statement:</strong> {taxLanguage}</p>
+    <p class="mt-1"><strong>EIN:</strong> {ein}</p>
+  </div>
+
+  <div class="mt-5 rounded-lg border border-slate-200 p-4">
+    <h2 class="text-lg font-semibold text-brand-secondary">Instagram-first recognition</h2>
+    <p class="mt-1 text-sm text-slate-600">AGSA sponsor highlights are posted to Instagram first.</p>
+    <a class="btn-secondary mt-3" href={instagramUrl} target="_blank" rel="noreferrer">Follow @{instagramHandle}</a>
+  </div>
+</article>

@@ -1,0 +1,11 @@
+---
+interface Props {
+  benefits: string[];
+}
+
+const { benefits } = Astro.props as Props;
+---
+
+<ul class="list-disc space-y-1 pl-5 text-sm text-slate-700">
+  {benefits.map((benefit) => <li>{benefit}</li>)}
+</ul>

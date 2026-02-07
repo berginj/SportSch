@@ -3,169 +3,261 @@ const settings = JSON.parse(document.getElementById("sponsor-settings-data")?.te
 
 const form = document.getElementById("sponsor-form");
 if (!form) {
-  // page safety
+  // Page safety.
 } else {
+  const stepOrder = ["tier", "info", "review", "pay"];
   const stepLabel = form.querySelector("[data-step-label]");
-  const detailsStep = form.querySelector('[data-step="details"]');
-  const reviewStep = form.querySelector('[data-step="review"]');
-  const reviewContent = form.querySelector("[data-review-content]");
   const nextBtn = form.querySelector("[data-next]");
   const backBtn = form.querySelector("[data-back]");
   const payBtn = form.querySelector("[data-pay]");
   const submitCheckBtn = form.querySelector("[data-submit-check]");
   const tierInput = form.querySelector("[data-tier-select-input]");
-  const quantityWrapper = form.querySelector("[data-quantity-wrapper]");
+  const teamCountWrapper = form.querySelector("[data-team-count-wrapper]");
+  const divisionWrapper = form.querySelector("[data-division-wrapper]");
+  const logoWrapper = form.querySelector("[data-logo-wrapper]");
+  const reviewContent = form.querySelector("[data-review-content]");
   const summaryEl = document.querySelector("[data-summary]");
   const mobileSummary = document.querySelector("[data-mobile-summary]");
   const mobileScrollBtn = document.querySelector("[data-mobile-scroll]");
 
-  let currentStep = "details";
+  let currentStep = "tier";
   let applicationId = "";
 
-  function getTierById(id) {
-    return tiers.find((t) => t.id === id) || null;
+  function money(value) {
+    return `$${Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
 
-  function getQuantity(tier) {
-    const raw = Number(form.elements.quantity?.value || 1);
+  function ensureAppId() {
+    if (!applicationId) applicationId = window.crypto?.randomUUID?.() || `app-${Date.now()}`;
+    return applicationId;
+  }
+
+  function getTier() {
+    return tiers.find((tier) => tier.id === form.elements.tierId.value) || null;
+  }
+
+  function getTeamCount(tier) {
     if (!tier?.isTeamQuantityAllowed) return 1;
-    return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 1;
+    const raw = Number(form.elements.teamCount?.value || 1);
+    const value = Number.isFinite(raw) ? Math.max(1, Math.floor(raw)) : 1;
+    if (Array.isArray(tier.allowedQuantities) && tier.allowedQuantities.length > 0) {
+      return tier.allowedQuantities.includes(value) ? value : tier.allowedQuantities[0];
+    }
+    return value;
   }
 
-  function computeFee(subtotal) {
-    if (settings.processingFeeMode === "flat") return Number(settings.flatFeeAmount || 0);
-    if (settings.processingFeeMode === "percent") return Math.round(subtotal * Number(settings.percentFeeRate || 0) * 100) / 100;
-    return 0;
+  function computePrice(tier, teamCount) {
+    if (!tier) return 0;
+    if (tier.pricingMode === "per_team") return Number(tier.basePrice || 0) * teamCount;
+    if (tier.pricingMode === "fixed_by_quantity") {
+      const map = tier.multiTeamPricing || {};
+      return Number(map[String(teamCount)] || 0);
+    }
+    return Number(tier.basePrice || 0);
   }
 
-  function collectData() {
-    const tier = getTierById(form.elements.tierId.value);
-    const quantity = getQuantity(tier);
-    const subtotal = tier ? tier.price * quantity : 0;
-    const processingFee = computeFee(subtotal);
-    const total = subtotal + processingFee;
+  function isTier4(tier) {
+    return tier?.id === "division-logo";
+  }
+
+  function getData() {
+    const tier = getTier();
+    const teamCount = getTeamCount(tier);
+    const total = computePrice(tier, teamCount);
     return {
-      sponsorName: (form.elements.sponsorName.value || "").trim(),
-      contactName: (form.elements.contactName.value || "").trim(),
-      email: (form.elements.email.value || "").trim(),
-      phone: (form.elements.phone.value || "").trim(),
-      address: (form.elements.address.value || "").trim(),
+      applicationId: ensureAppId(),
+      sponsorDisplayName: (form.elements.sponsorDisplayName?.value || "").trim(),
+      contactName: (form.elements.contactName?.value || "").trim(),
+      email: (form.elements.email?.value || "").trim(),
+      phone: (form.elements.phone?.value || "").trim(),
+      address: (form.elements.address?.value || "").trim(),
       tierId: tier?.id || "",
       tierName: tier?.name || "",
-      quantity,
-      teamPreference: (form.elements.teamPreference.value || "").trim(),
-      plaqueRequested: !!form.elements.plaqueRequested.checked,
-      notes: (form.elements.notes.value || "").trim(),
-      subtotal,
-      processingFee,
+      termMonths: Number(settings.sponsorshipTermMonths || 12),
+      teamCount,
+      divisionName: (form.elements.divisionName?.value || "").trim(),
+      teamPreference: (form.elements.teamPreference?.value || "").trim(),
+      plaqueRequested: !!form.elements.plaqueRequested?.checked,
+      notes: (form.elements.notes?.value || "").trim(),
       total,
       benefits: tier?.benefits || [],
-      applicationId,
+      jerseyLogoAllowed: !!tier?.jerseyLogoAllowed,
+      barcroftBannerIncluded: !!tier?.barcroftBannerIncluded
     };
   }
 
-  function updateQuantityVisibility() {
-    const tier = getTierById(form.elements.tierId.value);
-    const show = !!tier?.isTeamQuantityAllowed;
-    quantityWrapper.hidden = !show;
-    if (!show) form.elements.quantity.value = "1";
+  function updateTierSpecificFields() {
+    const tier = getTier();
+    const showTeamCount = !!tier?.isTeamQuantityAllowed;
+    const allowLogo = isTier4(tier);
+
+    teamCountWrapper.hidden = !showTeamCount;
+    divisionWrapper.hidden = !allowLogo;
+    logoWrapper.hidden = !allowLogo;
+
+    if (!showTeamCount) form.elements.teamCount.value = "1";
+    if (!allowLogo) {
+      form.elements.divisionName.value = "";
+      form.elements.logoFile.value = "";
+    }
+
+    const allowed = tier?.allowedQuantities || [];
+    if (showTeamCount && allowed.length > 0) {
+      const current = Number(form.elements.teamCount.value || allowed[0]);
+      if (!allowed.includes(current)) {
+        form.elements.teamCount.value = String(allowed[0]);
+      }
+    }
   }
 
   function renderSummary() {
-    const d = collectData();
-    if (!d.tierId) {
+    const data = getData();
+    if (!data.tierId) {
       summaryEl.innerHTML = "<p>Select a tier to begin.</p>";
       if (mobileSummary) mobileSummary.textContent = "Choose a tier to see total.";
       return;
     }
-    const feeLabel = d.processingFee > 0 ? `<p class="m-0">Processing fee: <strong>$${d.processingFee.toFixed(2)}</strong></p>` : "";
+
+    const teamLine = data.tierId === "community-team" || data.tierId === "multi-team"
+      ? `<p class="m-0">Teams sponsored: <strong>${data.teamCount}</strong></p>`
+      : "";
+    const divisionLine = data.tierId === "division-logo" && data.divisionName
+      ? `<p class="m-0">Division: <strong>${data.divisionName}</strong></p>`
+      : "";
+
     summaryEl.innerHTML = `
-      <p class="m-0 text-xs uppercase tracking-wide text-brand-primary">${d.tierName}</p>
-      <p class="mt-1 text-sm">Quantity: <strong>${d.quantity}</strong></p>
-      <p class="m-0">Subtotal: <strong>$${d.subtotal.toFixed(2)}</strong></p>
-      ${feeLabel}
-      <p class="mt-2 text-base font-bold text-brand-secondary">Total: $${d.total.toFixed(2)}</p>
+      <p class="m-0 text-xs uppercase tracking-wide text-brand-primary">${data.tierName}</p>
+      <p class="mt-1 text-sm">Term: <strong>${data.termMonths} months (1 full year)</strong></p>
+      ${teamLine}
+      ${divisionLine}
+      <p class="mt-2">Barcroft Field 3 banner: <strong>${data.barcroftBannerIncluded ? "Included" : "Not included"}</strong></p>
+      <p class="mt-2">Jersey logo: <strong>${data.jerseyLogoAllowed ? "Allowed (Tier 4 only)" : "Name-only placement"}</strong></p>
+      <p class="mt-3 text-base font-bold text-brand-secondary">Total: ${money(data.total)}</p>
       <ul class="mt-2 list-disc pl-5 text-xs text-slate-600">
-        ${d.benefits.map((b) => `<li>${b}</li>`).join("")}
+        ${data.benefits.slice(0, 4).map((b) => `<li>${b}</li>`).join("")}
       </ul>
     `;
-    if (mobileSummary) mobileSummary.textContent = `${d.tierName}: $${d.total.toFixed(2)}`;
+
+    if (mobileSummary) mobileSummary.textContent = `${data.tierName}: ${money(data.total)}`;
   }
 
-  function validateDetails() {
-    const requiredNames = ["sponsorName", "contactName", "email", "phone", "address", "tierId"];
-    for (const name of requiredNames) {
-      const val = (form.elements[name]?.value || "").toString().trim();
-      if (!val) return false;
+  function isHoneypotTriggered() {
+    return (form.elements._gotcha?.value || "").trim().length > 0;
+  }
+
+  function validateTierStep() {
+    const tier = getTier();
+    if (!tier) return "Choose a sponsorship tier.";
+    const teamCount = getTeamCount(tier);
+    if (tier.id === "multi-team" && ![2, 3, 4].includes(teamCount)) {
+      return "Multi-Team Sponsor requires 2, 3, or 4 teams.";
     }
-    return true;
+    if (tier.id === "division-logo" && !(form.elements.divisionName.value || "").trim()) {
+      return "Division Logo Sponsor requires a division selection.";
+    }
+    return "";
+  }
+
+  function validateInfoStep() {
+    const required = ["sponsorDisplayName", "contactName", "email", "phone", "address"];
+    for (const fieldName of required) {
+      const value = (form.elements[fieldName]?.value || "").toString().trim();
+      if (!value) return "Please complete all required sponsor contact fields.";
+    }
+    if (isHoneypotTriggered()) return "Submission blocked.";
+    return "";
   }
 
   function renderReview() {
-    const d = collectData();
+    const data = getData();
+    const divisionLine = data.divisionName ? `<p><strong>Division:</strong> ${data.divisionName}</p>` : "";
+    const teamLine = data.tierId === "community-team" || data.tierId === "multi-team"
+      ? `<p><strong>Teams sponsored:</strong> ${data.teamCount}</p>`
+      : "";
+    const logoLine = data.jerseyLogoAllowed
+      ? "<p><strong>Jersey logo:</strong> Allowed (Tier 4 exclusive)</p>"
+      : "<p><strong>Jersey logo:</strong> Not included (name-only)</p>";
+
     reviewContent.innerHTML = `
-      <p><strong>Sponsor:</strong> ${d.sponsorName}</p>
-      <p><strong>Contact:</strong> ${d.contactName} (${d.email})</p>
-      <p><strong>Tier:</strong> ${d.tierName}</p>
-      <p><strong>Quantity:</strong> ${d.quantity}</p>
-      <p><strong>Subtotal:</strong> $${d.subtotal.toFixed(2)}</p>
-      <p><strong>Processing fee:</strong> $${d.processingFee.toFixed(2)}</p>
-      <p><strong>Total:</strong> $${d.total.toFixed(2)}</p>
-      <p><strong>Benefits:</strong></p>
-      <ul class="list-disc pl-5">${d.benefits.map((b) => `<li>${b}</li>`).join("")}</ul>
-      <p class="mt-2"><strong>Plaque requested:</strong> ${d.plaqueRequested ? "Yes" : "No"}</p>
-      ${d.teamPreference ? `<p><strong>Team preference:</strong> ${d.teamPreference}</p>` : ""}
-      ${d.notes ? `<p><strong>Notes:</strong> ${d.notes}</p>` : ""}
+      <p><strong>Sponsor display name:</strong> ${data.sponsorDisplayName}</p>
+      <p><strong>Contact:</strong> ${data.contactName} (${data.email})</p>
+      <p><strong>Tier:</strong> ${data.tierName}</p>
+      <p><strong>Term:</strong> ${data.termMonths} months (1 full year)</p>
+      ${teamLine}
+      ${divisionLine}
+      ${logoLine}
+      <p><strong>Total:</strong> ${money(data.total)}</p>
+      <p><strong>Barcroft Field 3 banner:</strong> ${data.barcroftBannerIncluded ? "Included" : "Not included"}</p>
+      <p><strong>Plaque requested:</strong> ${data.plaqueRequested ? "Yes" : "No"}</p>
+      ${data.teamPreference ? `<p><strong>Team preferences:</strong> ${data.teamPreference}</p>` : ""}
+      ${data.notes ? `<p><strong>Notes:</strong> ${data.notes}</p>` : ""}
+      <p class="mt-3"><strong>Benefits:</strong></p>
+      <ul class="list-disc pl-5">${data.benefits.map((b) => `<li>${b}</li>`).join("")}</ul>
     `;
   }
 
   function setStep(step) {
     currentStep = step;
-    const inDetails = step === "details";
-    detailsStep.classList.toggle("hidden", !inDetails);
-    reviewStep.classList.toggle("hidden", inDetails);
-    stepLabel.textContent = inDetails ? "Step 1 of 2" : "Step 2 of 2";
-    backBtn.hidden = inDetails;
-    nextBtn.hidden = !inDetails;
-    payBtn.hidden = inDetails;
-    submitCheckBtn.hidden = inDetails;
+    stepOrder.forEach((stepName) => {
+      const el = form.querySelector(`[data-step="${stepName}"]`);
+      if (el) el.classList.toggle("hidden", stepName !== step);
+    });
+
+    const idx = stepOrder.indexOf(step);
+    stepLabel.textContent = `Step ${idx + 1} of ${stepOrder.length}`;
+    backBtn.hidden = idx === 0;
+    nextBtn.hidden = idx >= stepOrder.length - 1;
+    payBtn.hidden = step !== "pay";
+    submitCheckBtn.hidden = step !== "pay";
+    nextBtn.textContent = step === "review" ? "Continue to payment" : "Continue";
   }
 
-  async function postSubmission(data, paymentMethod) {
-    if (!settings.submissionEndpoint || settings.submissionEndpoint.includes("PLACEHOLDER")) return;
-    await fetch(settings.submissionEndpoint, {
+  async function submitSponsorship(data, paymentMode) {
+    const response = await fetch("/api/submitSponsorship", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...data, paymentMethod }),
+      body: JSON.stringify({ ...data, paymentMode })
     });
+    if (!response.ok) {
+      throw new Error("Unable to submit sponsorship application.");
+    }
+    const payload = await response.json();
+    if (payload?.applicationId) applicationId = payload.applicationId;
+    return payload;
   }
 
   async function startStripeCheckout(data) {
-    const response = await fetch("/.auth/functions/createCheckoutSession", {
+    const response = await fetch("/api/createCheckoutSession", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
+      body: JSON.stringify(data)
     });
     if (!response.ok) {
       const msg = await response.text();
       throw new Error(msg || "Unable to create checkout session.");
     }
-    const json = await response.json();
-    if (!json?.url) throw new Error("Missing checkout URL.");
-    window.location.href = json.url;
+    const payload = await response.json();
+    if (!payload?.url) throw new Error("Missing checkout URL.");
+    window.location.href = payload.url;
   }
 
-  function ensureAppId() {
-    if (!applicationId) {
-      applicationId = (window.crypto?.randomUUID?.() || `app-${Date.now()}`);
-    }
+  function nextStep() {
+    const idx = stepOrder.indexOf(currentStep);
+    if (idx < stepOrder.length - 1) setStep(stepOrder[idx + 1]);
+  }
+
+  function prevStep() {
+    const idx = stepOrder.indexOf(currentStep);
+    if (idx > 0) setStep(stepOrder[idx - 1]);
   }
 
   tierInput.addEventListener("change", () => {
-    updateQuantityVisibility();
+    updateTierSpecificFields();
     renderSummary();
   });
-  form.elements.quantity?.addEventListener("input", renderSummary);
+  form.elements.teamCount?.addEventListener("change", renderSummary);
+  form.elements.divisionName?.addEventListener("change", renderSummary);
+
   form.querySelectorAll("[data-tier-select]").forEach((btn) => {
     btn.addEventListener("click", () => {
       tierInput.value = btn.getAttribute("data-tier-select");
@@ -175,34 +267,42 @@ if (!form) {
   });
 
   nextBtn.addEventListener("click", () => {
-    if (!validateDetails()) {
-      alert("Please complete all required fields before review.");
-      return;
+    if (currentStep === "tier") {
+      const msg = validateTierStep();
+      if (msg) return alert(msg);
+      return nextStep();
     }
-    ensureAppId();
-    renderReview();
-    setStep("review");
+    if (currentStep === "info") {
+      const msg = validateInfoStep();
+      if (msg) return alert(msg);
+      return nextStep();
+    }
+    if (currentStep === "review") {
+      return nextStep();
+    }
   });
 
-  backBtn.addEventListener("click", () => setStep("details"));
+  backBtn.addEventListener("click", () => prevStep());
 
   payBtn.addEventListener("click", async () => {
     try {
       ensureAppId();
-      const data = collectData();
-      await postSubmission(data, "card");
-      await startStripeCheckout(data);
-    } catch (err) {
-      alert(err.message || "Unable to continue to payment.");
+      const data = getData();
+      const saved = await submitSponsorship(data, "stripe_card");
+      await startStripeCheckout({ ...data, applicationId: saved.applicationId || data.applicationId });
+    } catch (error) {
+      alert(error.message || "Unable to continue to payment.");
     }
   });
 
   submitCheckBtn.addEventListener("click", async () => {
     try {
       ensureAppId();
-      const data = collectData();
-      await postSubmission(data, "check");
-      window.location.href = `/sponsor/thanks?appId=${encodeURIComponent(applicationId)}&tierId=${encodeURIComponent(data.tierId)}&offline=1`;
+      const data = getData();
+      const saved = await submitSponsorship(data, "check");
+      const appId = saved.applicationId || data.applicationId;
+      localStorage.setItem(`agsa-sponsor-check-${appId}`, JSON.stringify({ ...data, applicationId: appId }));
+      window.location.href = `/sponsor/check?appId=${encodeURIComponent(appId)}`;
     } catch {
       alert("Unable to submit at this time. Please email sponsors@agsafastpitch.com.");
     }
@@ -212,7 +312,11 @@ if (!form) {
     form.scrollIntoView({ behavior: "smooth", block: "start" });
   });
 
-  updateQuantityVisibility();
+  form.addEventListener("input", () => {
+    if (currentStep === "review") renderReview();
+  });
+
+  setStep("tier");
+  updateTierSpecificFields();
   renderSummary();
-  setStep("details");
 }

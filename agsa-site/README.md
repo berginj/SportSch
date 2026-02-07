@@ -1,6 +1,6 @@
-# AGSA Static Site (Astro + Tailwind)
+# AGSA Static Website (Astro + Tailwind)
 
-Static-first AGSA website with sponsorship funnel, Stripe Checkout integration (via Azure Function), and config-driven content.
+Static-first AGSA site with config-driven sponsorship packaging, Stripe Checkout via Azure Functions, and Instagram-first sponsor communications.
 
 ## Local development
 
@@ -17,59 +17,61 @@ Build:
 npm run build
 ```
 
-## Sponsorship form routes
+## Sponsorship routes
 
-- `/sponsor` - sponsorship landing + tier selector + form + review
-- `/sponsor/thanks` - success state after Stripe
-- `/sponsor/cancel` - canceled payment state
-- `/sponsor/upload-logo` - optional logo upload form
+- `/sponsor` main sponsorship workflow (Choose Tier -> Sponsor Info -> Review -> Pay)
+- `/sponsor/thanks` Stripe success state
+- `/sponsor/cancel` Stripe cancellation state
+- `/sponsor/check` pay-by-check instructions + printable summary
+- `/sponsor/upload-logo` logo upload page (Tier 4 only)
+- `/sponsors` public sponsor listing (featured + team/division groups)
 
-## Config-driven sponsorship data
+## Config files
 
-Edit these files:
+Edit only config/content files; avoid component edits for content updates.
 
-- `src/config/sponsorship-tiers.json`
-  - `id, name, price, description, benefits[], isTeamQuantityAllowed, suggestedFor[], fulfillmentRequirements`
 - `src/config/sponsorship-settings.json`
-  - `processingFeeMode, flatFeeAmount, deadlineDate, mailingAddressForChecks, einTaxLanguage, ein, instagramHandle, instagramUrl, facebookUrl`
+  - Org/tax fields (`orgName`, `ein`, `taxLanguage`)
+  - `sponsorshipTermMonths` (12)
+  - `deadlineDate`
+  - `bannerLocations`
+  - social links (`instagramHandle`, `instagramUrl`, optional `facebookUrl`)
+  - contact emails and payment mode settings
+  - division dropdown options for Tier 4
+- `src/config/sponsorship-tiers.json`
+  - Four enforced tiers and benefits
+  - pricing logic (`pricingMode`, `basePrice`, `multiTeamPricing`)
+  - `jerseyLogoAllowed` and `barcroftBannerIncluded`
+- `src/config/sponsors.json`
+  - Featured tiers at top (Tier 3/4 style)
+  - Team/division sponsor name groupings
+- `src/config/registration-links.json`
+  - Single registration doorway links
+- `src/config/calendar.json`
+  - Schedule source mode (`ics` preferred or `gcal_api`)
 
-Also used:
+## Stripe + submission function setup
 
-- `src/config/site.json` for contact routing and global branding.
+Functions live in `agsa-site/api`.
 
-## Stripe setup (Azure Static Web Apps Function)
+### Required environment variables
 
-Function path:
+- `STRIPE_SECRET_KEY` (required for `/api/createCheckoutSession`)
 
-- `api/createCheckoutSession`
+### Recommended environment variables
 
-Required server env var:
+- `SENDGRID_API_KEY` (for `/api/submitSponsorship` email)
+- `SPONSOR_EMAIL_FROM` (verified sender)
+- `SPONSOR_NOTIFICATION_EMAILS` (comma-separated recipients; defaults to `sponsors@agsafastpitch.com,marketing@agsafastpitch.com`)
 
-- `STRIPE_SECRET_KEY`
+### Function endpoints
 
-Optional if you move to fixed Stripe Prices:
-
-- `STRIPE_PRICE_*` IDs (not required in current default implementation because line items are created with dynamic `price_data` from tier config).
-
-Client calls:
-
-- `POST /.auth/functions/createCheckoutSession`
-
-SWA route rewrite is configured in:
-
-- `staticwebapp.config.json`
-
-## Submission / record keeping
-
-Form payload submission endpoint is configured in:
-
-- `src/config/sponsorship-settings.json` -> `submissionEndpoint`
-
-Default is Formspree placeholder; replace with your live endpoint.
-
-Logo upload endpoint:
-
-- `src/config/sponsorship-settings.json` -> `logoUploadEndpoint`
+- `POST /api/submitSponsorship`
+  - Creates/returns `applicationId`
+  - Sends sponsorship details email when SendGrid vars are configured
+- `POST /api/createCheckoutSession`
+  - Creates Stripe Checkout session from server-side tier pricing
+  - Includes metadata: `applicationId`, sponsor fields, tier, quantity/division
 
 ## Azure Static Web Apps deployment
 
@@ -77,44 +79,34 @@ Workflow:
 
 - `.github/workflows/azure-static-web-apps-jolly-dune-095686e0f.yml`
 
-Configured for:
+Configured:
 
 - `app_location: agsa-site`
 - `api_location: agsa-site/api`
 - `output_location: dist`
 
-## Edit registration links
-
-Single registration doorway data:
-
-- `src/config/registration-links.json`
-
-## Calendar setup
-
-Use:
-
-- `src/config/calendar.json`
-
-Modes:
-
-- `ics` (preferred)
-- `gcal_api` (requires public referrer-restricted API key in env)
-
-## Test end-to-end sponsorship flow
+## End-to-end test checklist
 
 1. Open `/sponsor`.
-2. Select a tier and complete required fields.
-3. Review step should show subtotal + fee + total + benefits.
-4. Click "Pay online with card".
-5. Confirm redirect to Stripe Checkout session URL.
-6. Complete or cancel payment to verify:
-   - `/sponsor/thanks`
-   - `/sponsor/cancel`
-7. Test `/sponsor/upload-logo` with an `appId` query string.
+2. Select each tier and confirm business rules:
+   - Tier 1: team count >= 1
+   - Tier 2: team count only 2/3/4
+   - Tier 4: division selection required, logo field visible
+3. Continue through all 4 steps and verify summary:
+   - 1-year term displayed
+   - Banner inclusion shown for Tier 3/4
+   - Jersey logo shown only for Tier 4
+4. Use card flow:
+   - Submit -> Stripe checkout redirect works
+   - Success -> `/sponsor/thanks` shows term + tax language + next steps
+5. Use check flow:
+   - Submit -> `/sponsor/check?appId=...` shows printable instructions
+6. Verify `/sponsors` lists featured tiers first and team/division names below.
 
-## Accessibility notes
+## Ops notes (internal)
 
-- Semantic form controls + labels.
-- Keyboard reachable tier selection and action buttons.
-- Visible focus states from shared global styles.
-- Mobile sticky summary for sponsor flow.
+- Tier 4 pricing rationale (not public UI):
+  - Imprinting basis: `$5 per jersey x 10 teams x 15 uniforms = $750` (8 teams = $600).
+  - Tier 4 remains mission-positive funding beyond imprinting costs.
+- Keep Instagram as primary sponsor channel in copy and CTAs.
+- Keep Facebook as footer/contact link only.

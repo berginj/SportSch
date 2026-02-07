@@ -121,7 +121,7 @@ const topRegistration = [...registrationLinks]
       </div>
       <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {
-          sponsors.tiers.flatMap((tier) => tier.sponsors).slice(0, 4).map((sponsor) => (
+          sponsors.featuredTiers.flatMap((tier) => tier.sponsors).slice(0, 4).map((sponsor) => (
             <a class="flex min-h-24 items-center justify-center rounded-lg border border-slate-200 bg-white p-3" href={sponsor.website} target="_blank" rel="noreferrer">
               <img src={sponsor.logo} alt={`${sponsor.name} logo`} loading="lazy" class="max-h-12 w-auto" />
             </a>

@@ -1,0 +1,21 @@
+---
+interface Props {
+  settings: {
+    sponsorshipTermMonths: number;
+    processingFeePolicy: string;
+  };
+}
+
+const { settings } = Astro.props as Props;
+---
+
+<aside class="card p-6 lg:sticky lg:top-24">
+  <h2 class="font-display text-3xl text-brand-secondary">Order Summary</h2>
+  <div data-summary class="mt-3 text-sm text-slate-700">
+    <p>Select a tier to begin.</p>
+  </div>
+  <div class="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+    <p class="m-0"><strong>Term:</strong> {settings.sponsorshipTermMonths} months (1 full year)</p>
+    <p class="m-0 mt-1"><strong>Fees:</strong> {settings.processingFeePolicy}</p>
+  </div>
+</aside>

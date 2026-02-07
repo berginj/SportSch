@@ -1,13 +1,31 @@
 {
-  "processingFeeMode": "flat",
-  "flatFeeAmount": 15,
+  "orgName": "Arlington Girls Softball Association",
+  "ein": "01-0759861",
+  "taxLanguage": "AGSA is a 501(c)(3) nonprofit organization. Sponsorships may be tax-deductible to the extent allowed by law.",
+  "sponsorshipTermMonths": 12,
   "deadlineDate": "2026-03-01",
+  "bannerLocations": ["Barcroft Park > Field 3"],
   "mailingAddressForChecks": "AGSA Sponsorships, Arlington, VA (placeholder mailing address)",
-  "einTaxLanguage": "AGSA is a nonprofit youth sports organization. Tax documentation and EIN details are provided with sponsorship receipts.",
-  "ein": "00-0000000",
   "instagramHandle": "agsafastpitch",
   "instagramUrl": "https://www.instagram.com/agsafastpitch/",
   "facebookUrl": "https://www.facebook.com/AGSAFastpitch",
-  "submissionEndpoint": "https://formspree.io/f/PLACEHOLDER_SPONSORSHIP_FORM_ID",
-  "logoUploadEndpoint": "https://formspree.io/f/PLACEHOLDER_LOGO_UPLOAD_FORM_ID"
+  "contactEmails": [
+    "sponsors@agsafastpitch.com",
+    "marketing@agsafastpitch.com"
+  ],
+  "paymentModes": ["stripe_card", "check"],
+  "processingFeePolicy": "AGSA covers card fees",
+  "submissionWebhookUrlEnvVarName": "SPONSOR_SUBMISSION_WEBHOOK_URL",
+  "logoUploadEndpoint": "https://formspree.io/f/PLACEHOLDER_LOGO_UPLOAD_FORM_ID",
+  "fundingUses": [
+    "Player scholarships",
+    "Clinics and coaching development",
+    "Equipment and uniforms",
+    "Umpire support and field operations"
+  ],
+  "divisionOptions": [
+    "10U Division (placeholder)",
+    "12U Division (placeholder)",
+    "14U Division (placeholder)"
+  ]
 }

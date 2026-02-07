@@ -1,0 +1,127 @@
+---
+interface Tier {
+  id: string;
+  name: string;
+  priceLabel: string;
+  basePrice: number;
+  isTeamQuantityAllowed: boolean;
+  allowedQuantities?: number[];
+}
+
+interface Settings {
+  divisionOptions: string[];
+  deadlineDate: string;
+  mailingAddressForChecks: string;
+}
+
+interface Props {
+  tiers: Tier[];
+  settings: Settings;
+}
+
+const { tiers, settings } = Astro.props as Props;
+---
+
+<form id="sponsor-form" class="card p-6" novalidate>
+  <div class="flex items-center justify-between">
+    <h2 class="font-display text-3xl text-brand-secondary">Sponsorship Application</h2>
+    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500" data-step-label>Step 1 of 4</p>
+  </div>
+
+  <div data-step="tier" class="mt-5 grid gap-4">
+    <label class="text-sm font-semibold text-brand-secondary">
+      Select tier
+      <select class="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" name="tierId" data-tier-select-input required>
+        <option value="">Select a tier</option>
+        {tiers.map((tier) => <option value={tier.id}>{tier.name} ({tier.priceLabel})</option>)}
+      </select>
+    </label>
+
+    <label class="text-sm font-semibold text-brand-secondary" data-team-count-wrapper hidden>
+      Number of teams
+      <select class="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" name="teamCount">
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+      </select>
+    </label>
+
+    <label class="text-sm font-semibold text-brand-secondary" data-division-wrapper hidden>
+      Division (Tier 4)
+      <select class="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" name="divisionName">
+        <option value="">Select division</option>
+        {settings.divisionOptions.map((division) => <option value={division}>{division}</option>)}
+      </select>
+      <span class="mt-1 block text-xs text-slate-600">Division scope is typically 8-10 teams.</span>
+    </label>
+
+    <label class="text-sm font-semibold text-brand-secondary">
+      Team preferences (optional)
+      <textarea class="mt-2 min-h-20 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" name="teamPreference"></textarea>
+    </label>
+  </div>
+
+  <div data-step="info" class="mt-5 hidden grid gap-4 md:grid-cols-2">
+    <label class="text-sm font-semibold text-brand-secondary md:col-span-2">
+      Sponsor display name (as it will appear)
+      <input class="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" name="sponsorDisplayName" required />
+    </label>
+    <label class="text-sm font-semibold text-brand-secondary">
+      Contact name
+      <input class="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" name="contactName" required />
+    </label>
+    <label class="text-sm font-semibold text-brand-secondary">
+      Email
+      <input class="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" type="email" name="email" required />
+    </label>
+    <label class="text-sm font-semibold text-brand-secondary">
+      Phone
+      <input class="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" name="phone" required />
+    </label>
+    <label class="text-sm font-semibold text-brand-secondary">
+      Address
+      <input class="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" name="address" required />
+    </label>
+    <label class="flex items-center gap-2 text-sm font-semibold text-brand-secondary md:col-span-2">
+      <input type="checkbox" name="plaqueRequested" class="h-4 w-4" />
+      Sponsor plaque requested
+    </label>
+    <label class="text-sm font-semibold text-brand-secondary md:col-span-2" data-logo-wrapper hidden>
+      Logo upload (Tier 4 only)
+      <input class="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" type="file" name="logoFile" accept=".png,.jpg,.jpeg,.svg,.eps,.pdf" />
+      <span class="mt-1 block text-xs text-slate-600">Only Division Logo Sponsor includes jersey logo fulfillment.</span>
+    </label>
+    <label class="text-sm font-semibold text-brand-secondary md:col-span-2">
+      Notes (optional)
+      <textarea class="mt-2 min-h-24 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" name="notes"></textarea>
+    </label>
+    <input type="text" name="_gotcha" class="hidden" tabindex="-1" autocomplete="off" aria-hidden="true" />
+  </div>
+
+  <div data-step="review" class="mt-5 hidden">
+    <h3 class="text-lg font-semibold text-brand-secondary">Review before payment</h3>
+    <div data-review-content class="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm"></div>
+  </div>
+
+  <div data-step="pay" class="mt-5 hidden rounded-lg border border-brand-primary/20 bg-brand-mist p-4 text-sm text-slate-700">
+    <p class="m-0 font-semibold text-brand-secondary">Choose payment method</p>
+    <p class="m-0 mt-1">Card payments are secure via Stripe Checkout. Check option is available if needed.</p>
+  </div>
+
+  <details class="mt-4 rounded-lg border border-slate-200 p-3">
+    <summary class="cursor-pointer text-sm font-semibold text-brand-secondary">Pay by check (fallback)</summary>
+    <div class="mt-3 text-sm text-slate-600">
+      <p class="m-0">Mail checks to:</p>
+      <p class="mt-1">{settings.mailingAddressForChecks}</p>
+      <p class="mt-2">Include sponsor display name, tier, and application ID in memo. Name/logo deadline: {settings.deadlineDate}.</p>
+    </div>
+  </details>
+
+  <div class="mt-6 flex flex-wrap gap-2">
+    <button type="button" class="btn-secondary" data-back hidden>Back</button>
+    <button type="button" class="btn-primary" data-next>Continue</button>
+    <button type="button" class="btn-primary hidden" data-pay>Pay online with card</button>
+    <button type="button" class="btn-secondary hidden" data-submit-check>Submit and view check instructions</button>
+  </div>
+</form>

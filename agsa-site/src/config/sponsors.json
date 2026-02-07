@@ -1,20 +1,35 @@
 {
-  "tiers": [
+  "featuredTiers": [
     {
-      "name": "Title Sponsors",
-      "description": "League-wide partners with premier visibility.",
+      "name": "Division Logo Sponsor",
+      "description": "Top-tier division sponsor with jersey logo exclusivity and Barcroft Field 3 banner placement.",
       "sponsors": [
-        { "name": "Arlington Sports Medicine", "website": "https://example.com", "logo": "/images/sponsors/sponsor-1.svg" },
-        { "name": "Arlington Community Bank", "website": "https://example.com", "logo": "/images/sponsors/sponsor-2.svg" }
+        { "name": "Arlington Sports Medicine", "website": "https://example.com", "logo": "/images/sponsors/sponsor-1.svg" }
       ]
     },
     {
-      "name": "Community Sponsors",
-      "description": "Local businesses supporting AGSA programs.",
+      "name": "League Partner",
+      "description": "League-wide partner with banner placement and quarterly Instagram sponsor spotlights.",
       "sponsors": [
-        { "name": "Main Street Pizza", "website": "https://example.com", "logo": "/images/sponsors/sponsor-3.svg" },
-        { "name": "Riverside Dental", "website": "https://example.com", "logo": "/images/sponsors/sponsor-4.svg" }
+        { "name": "Arlington Community Bank", "website": "https://example.com", "logo": "/images/sponsors/sponsor-2.svg" }
       ]
+    }
+  ],
+  "teamGroups": [
+    {
+      "name": "10U Team Sponsors",
+      "description": "Community and multi-team sponsors shown on sponsored team webpages.",
+      "sponsors": ["Main Street Pizza", "Riverside Dental", "Arlington Family Law"]
+    },
+    {
+      "name": "12U Team Sponsors",
+      "description": "Name-only jersey sponsors supporting multiple teams.",
+      "sponsors": ["Northside Pediatrics", "Ballston Realty Group"]
+    },
+    {
+      "name": "14U Team Sponsors",
+      "description": "Community supporters helping fund player scholarships and field operations.",
+      "sponsors": ["Rosslyn Orthodontics", "Arlington Auto Care"]
     }
   ]
 }
