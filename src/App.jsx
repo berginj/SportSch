@@ -68,10 +68,11 @@ export default function App() {
   // but allow navigation to non-league-specific pages (help, debug, admin).
   const effectiveTab = useMemo(() => {
     const nonLeaguePages = new Set(["help", "debug", "admin", "settings", "notifications"]);
+    const hasLeagueContext = !!(activeLeagueId || "").trim();
     if (tab === "manage" && !canManage) return "home";
-    if (!hasMemberships && isGlobalAdmin && !nonLeaguePages.has(tab)) return "admin";
+    if (!hasMemberships && isGlobalAdmin && !hasLeagueContext && !nonLeaguePages.has(tab)) return "admin";
     return tab;
-  }, [tab, hasMemberships, isGlobalAdmin, canManage]);
+  }, [tab, hasMemberships, isGlobalAdmin, canManage, activeLeagueId]);
 
   useEffect(() => {
     if (!me) return;
