@@ -23,9 +23,9 @@ if (existsSync(approvedPath)) {
   }
 }
 
-const heroImages = approved.slice(0, 3);
-const gridImages = approved.slice(0, 12);
-const highlightStrip = approved.slice(3, 8);
+const heroImages = approved.slice(0, 2);
+const gridImages = approved.slice(2, 10);
+const highlightStrip = approved.slice(10, 15);
 ---
 
 {
@@ -60,7 +60,7 @@ const highlightStrip = approved.slice(3, 8);
                   <img
                     src={`/images/candidates/${image.filename}`}
                     alt={image.alt || "AGSA action moment"}
-                    class="h-[206px] w-full rounded-lg object-cover"
+                    class="h-[420px] w-full rounded-lg object-cover"
                     loading="lazy"
                     draggable="false"
                     oncontextmenu="return false;"
