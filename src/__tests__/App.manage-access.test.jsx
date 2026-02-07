@@ -80,7 +80,7 @@ describe("App manage access control", () => {
     window.location.hash = "";
   });
 
-  it("redirects non-admin users from #manage to home", () => {
+  it("redirects non-admin users from #manage to home", async () => {
     useSession.mockReturnValue({
       me: {
         userId: "user-1",
@@ -97,11 +97,11 @@ describe("App manage access control", () => {
     window.location.hash = "#manage";
     render(<App />);
 
-    expect(screen.getByText("HOME_PAGE")).toBeInTheDocument();
+    expect(await screen.findByText("HOME_PAGE")).toBeInTheDocument();
     expect(screen.queryByText("MANAGE_PAGE")).not.toBeInTheDocument();
   });
 
-  it("allows LeagueAdmin users to stay on #manage", () => {
+  it("allows LeagueAdmin users to stay on #manage", async () => {
     useSession.mockReturnValue({
       me: {
         userId: "user-2",
@@ -118,7 +118,7 @@ describe("App manage access control", () => {
     window.location.hash = "#manage";
     render(<App />);
 
-    expect(screen.getByText("MANAGE_PAGE")).toBeInTheDocument();
+    expect(await screen.findByText("MANAGE_PAGE")).toBeInTheDocument();
     expect(screen.queryByText("HOME_PAGE")).not.toBeInTheDocument();
   });
 });

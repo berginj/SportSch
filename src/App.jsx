@@ -1,23 +1,24 @@
-import { useEffect, useMemo, useState } from "react";
-import OffersPage from "./pages/OffersPage";
-import CalendarPage from "./pages/CalendarPage";
-import SchedulePage from "./pages/SchedulePage";
-import ManagePage from "./pages/ManagePage";
-import HelpPage from "./pages/HelpPage";
-import AccessPage from "./pages/AccessPage";
-import AdminPage from "./pages/AdminPage";
-import InviteAcceptPage from "./pages/InviteAcceptPage";
-import HomePage from "./pages/HomePage";
-import DebugPage from "./pages/DebugPage";
-import PracticePortalPage from "./pages/PracticePortalPage";
-import NotificationSettingsPage from "./pages/NotificationSettingsPage";
-import NotificationCenterPage from "./pages/NotificationCenterPage";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import TopNav from "./components/TopNav";
 import StatusCard from "./components/StatusCard";
 import KeyboardShortcutsModal from "./components/KeyboardShortcutsModal";
 import { useSession } from "./lib/useSession";
 import { trackPageView } from "./lib/telemetry";
 import { useKeyboardShortcuts, COMMON_SHORTCUTS } from "./lib/hooks/useKeyboardShortcuts";
+
+const OffersPage = lazy(() => import("./pages/OffersPage"));
+const CalendarPage = lazy(() => import("./pages/CalendarPage"));
+const SchedulePage = lazy(() => import("./pages/SchedulePage"));
+const ManagePage = lazy(() => import("./pages/ManagePage"));
+const HelpPage = lazy(() => import("./pages/HelpPage"));
+const AccessPage = lazy(() => import("./pages/AccessPage"));
+const AdminPage = lazy(() => import("./pages/AdminPage"));
+const InviteAcceptPage = lazy(() => import("./pages/InviteAcceptPage"));
+const HomePage = lazy(() => import("./pages/HomePage"));
+const DebugPage = lazy(() => import("./pages/DebugPage"));
+const PracticePortalPage = lazy(() => import("./pages/PracticePortalPage"));
+const NotificationSettingsPage = lazy(() => import("./pages/NotificationSettingsPage"));
+const NotificationCenterPage = lazy(() => import("./pages/NotificationCenterPage"));
 
 const VALID_TABS = new Set(["home", "calendar", "schedule", "offers", "manage", "admin", "debug", "help", "practice", "settings", "notifications"]);
 
@@ -53,6 +54,7 @@ export default function App() {
   }, [memberships, activeLeagueId]);
   const activeRole = (activeMembership?.role || "").trim();
   const canManage = isGlobalAdmin || activeRole === "LeagueAdmin";
+  const pageFallback = <StatusCard title="Loading" message="Loading page..." />;
 
   // Keyboard shortcuts
   useKeyboardShortcuts({
@@ -119,13 +121,15 @@ export default function App() {
     };
 
     return (
-      <InviteAcceptPage
-        invite={invite}
-        me={me}
-        refreshMe={refreshMe}
-        setLeagueId={setActiveLeagueId}
-        onDone={clearInvite}
-      />
+      <Suspense fallback={pageFallback}>
+        <InviteAcceptPage
+          invite={invite}
+          me={me}
+          refreshMe={refreshMe}
+          setLeagueId={setActiveLeagueId}
+          onDone={clearInvite}
+        />
+      </Suspense>
     );
   }
 
@@ -160,14 +164,18 @@ export default function App() {
           <h1>Sports Scheduler</h1>
           <p>You're signed in, but you don't have access to any leagues yet.</p>
         </div>
-        <AccessPage
-          me={me}
-          leagueId={activeLeagueId}
-          setLeagueId={setActiveLeagueId}
-          refreshMe={refreshMe}
-        />
+        <Suspense fallback={pageFallback}>
+          <AccessPage
+            me={me}
+            leagueId={activeLeagueId}
+            setLeagueId={setActiveLeagueId}
+            refreshMe={refreshMe}
+          />
+        </Suspense>
         <div className="card">
-          <HelpPage minimal />
+          <Suspense fallback={pageFallback}>
+            <HelpPage minimal />
+          </Suspense>
         </div>
       </div>
     );
@@ -187,54 +195,56 @@ export default function App() {
       />
 
       <main id="main-content" className="main">
-        {effectiveTab === "home" && (
-          <HomePage
-            me={me}
-            leagueId={activeLeagueId}
-            setLeagueId={setActiveLeagueId}
-            setTab={setTab}
-          />
-        )}
-        {effectiveTab === "offers" && (
-          <OffersPage me={me} leagueId={activeLeagueId} setLeagueId={setActiveLeagueId} />
-        )}
-        {effectiveTab === "calendar" && (
-          <CalendarPage me={me} leagueId={activeLeagueId} setLeagueId={setActiveLeagueId} />
-        )}
-        {effectiveTab === "schedule" && (
-          <SchedulePage me={me} leagueId={activeLeagueId} setLeagueId={setActiveLeagueId} />
-        )}
-        {effectiveTab === "manage" && (
-          <ManagePage
-            me={me}
-            leagueId={activeLeagueId}
-            setLeagueId={setActiveLeagueId}
-            tableView={tableView}
-          />
-        )}
-        {effectiveTab === "help" && <HelpPage />}
-        {effectiveTab === "admin" && (
-          <AdminPage me={me} leagueId={activeLeagueId} setLeagueId={setActiveLeagueId} />
-        )}
-        {effectiveTab === "debug" && (
-          isGlobalAdmin ? (
-            <DebugPage me={me} leagueId={activeLeagueId} />
-          ) : (
-            <div className="card">
-              <h2>Debug</h2>
-              <p className="muted">You do not have access to this page.</p>
-            </div>
-          )
-        )}
-        {effectiveTab === "practice" && (
-          <PracticePortalPage me={me} leagueId={activeLeagueId} />
-        )}
-        {effectiveTab === "settings" && (
-          <NotificationSettingsPage leagueId={activeLeagueId} />
-        )}
-        {effectiveTab === "notifications" && (
-          <NotificationCenterPage leagueId={activeLeagueId} />
-        )}
+        <Suspense fallback={pageFallback}>
+          {effectiveTab === "home" && (
+            <HomePage
+              me={me}
+              leagueId={activeLeagueId}
+              setLeagueId={setActiveLeagueId}
+              setTab={setTab}
+            />
+          )}
+          {effectiveTab === "offers" && (
+            <OffersPage me={me} leagueId={activeLeagueId} setLeagueId={setActiveLeagueId} />
+          )}
+          {effectiveTab === "calendar" && (
+            <CalendarPage me={me} leagueId={activeLeagueId} setLeagueId={setActiveLeagueId} />
+          )}
+          {effectiveTab === "schedule" && (
+            <SchedulePage me={me} leagueId={activeLeagueId} setLeagueId={setActiveLeagueId} />
+          )}
+          {effectiveTab === "manage" && (
+            <ManagePage
+              me={me}
+              leagueId={activeLeagueId}
+              setLeagueId={setActiveLeagueId}
+              tableView={tableView}
+            />
+          )}
+          {effectiveTab === "help" && <HelpPage />}
+          {effectiveTab === "admin" && (
+            <AdminPage me={me} leagueId={activeLeagueId} setLeagueId={setActiveLeagueId} />
+          )}
+          {effectiveTab === "debug" && (
+            isGlobalAdmin ? (
+              <DebugPage me={me} leagueId={activeLeagueId} />
+            ) : (
+              <div className="card">
+                <h2>Debug</h2>
+                <p className="muted">You do not have access to this page.</p>
+              </div>
+            )
+          )}
+          {effectiveTab === "practice" && (
+            <PracticePortalPage me={me} leagueId={activeLeagueId} />
+          )}
+          {effectiveTab === "settings" && (
+            <NotificationSettingsPage leagueId={activeLeagueId} />
+          )}
+          {effectiveTab === "notifications" && (
+            <NotificationCenterPage leagueId={activeLeagueId} />
+          )}
+        </Suspense>
       </main>
 
       <KeyboardShortcutsModal
