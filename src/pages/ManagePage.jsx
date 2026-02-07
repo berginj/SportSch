@@ -1,14 +1,15 @@
-import { useMemo, useState, useEffect } from "react";
-import FieldsImport from "../manage/FieldsImport";
-import InvitesManager from "../manage/InvitesManager";
-import SchedulerManager from "../manage/SchedulerManager";
-import CommissionerHub from "../manage/CommissionerHub";
-import AvailabilityManager from "../manage/AvailabilityManager";
-import SlotGeneratorManager from "../manage/SlotGeneratorManager";
-import LeagueSettings from "../manage/LeagueSettings";
+import { Suspense, lazy, useMemo, useState, useEffect } from "react";
 import LeaguePicker from "../components/LeaguePicker";
-import TeamsManager from "../manage/TeamsManager";
-import DivisionsManager from "../manage/DivisionsManager";
+
+const FieldsImport = lazy(() => import("../manage/FieldsImport"));
+const InvitesManager = lazy(() => import("../manage/InvitesManager"));
+const SchedulerManager = lazy(() => import("../manage/SchedulerManager"));
+const CommissionerHub = lazy(() => import("../manage/CommissionerHub"));
+const AvailabilityManager = lazy(() => import("../manage/AvailabilityManager"));
+const SlotGeneratorManager = lazy(() => import("../manage/SlotGeneratorManager"));
+const LeagueSettings = lazy(() => import("../manage/LeagueSettings"));
+const TeamsManager = lazy(() => import("../manage/TeamsManager"));
+const DivisionsManager = lazy(() => import("../manage/DivisionsManager"));
 
 function Pill({ active, children, onClick }) {
   return (
@@ -56,6 +57,7 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
     return defaultTabId;
   });
   const activeTabId = tabIds.has(active) ? active : defaultTabId;
+  const sectionFallback = <div className="muted">Loading section...</div>;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -106,7 +108,9 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
             <div className="subtle">Start the season setup wizard and build the schedule from availability.</div>
           </div>
           <div className="card__body">
-            <CommissionerHub leagueId={leagueId} tableView={tableView} />
+            <Suspense fallback={sectionFallback}>
+              <CommissionerHub leagueId={leagueId} tableView={tableView} />
+            </Suspense>
           </div>
         </div>
       )}
@@ -127,7 +131,9 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
                 </div>
               </div>
               <div className="mt-3">
-                <FieldsImport leagueId={leagueId} me={me} tableView={tableView} />
+                <Suspense fallback={sectionFallback}>
+                  <FieldsImport leagueId={leagueId} me={me} tableView={tableView} />
+                </Suspense>
               </div>
             </div>
           </div>
@@ -139,7 +145,9 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
                   <div className="subtle">Import allocations, define recurring rules, and review generated availability.</div>
                 </div>
                 <div className="card__body">
-                  <AvailabilityManager leagueId={leagueId} />
+                  <Suspense fallback={sectionFallback}>
+                    <AvailabilityManager leagueId={leagueId} />
+                  </Suspense>
                 </div>
               </div>
               <div className="card">
@@ -148,7 +156,9 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
                   <div className="subtle">Generate and manage slot-level availability for scheduling.</div>
                 </div>
                 <div className="card__body">
-                  <SlotGeneratorManager leagueId={leagueId} />
+                  <Suspense fallback={sectionFallback}>
+                    <SlotGeneratorManager leagueId={leagueId} />
+                  </Suspense>
                 </div>
               </div>
             </>
@@ -164,7 +174,9 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
               <div className="subtle">Backups, season configuration, and shared league configuration.</div>
             </div>
             <div className="card__body">
-              <LeagueSettings leagueId={leagueId} />
+              <Suspense fallback={sectionFallback}>
+                <LeagueSettings leagueId={leagueId} />
+              </Suspense>
             </div>
           </div>
           <div className="card">
@@ -173,7 +185,9 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
               <div className="subtle">Upload teams and manage coach assignments.</div>
             </div>
             <div className="card__body">
-              <TeamsManager leagueId={leagueId} tableView={tableView} />
+              <Suspense fallback={sectionFallback}>
+                <TeamsManager leagueId={leagueId} tableView={tableView} />
+              </Suspense>
             </div>
           </div>
           <div className="card">
@@ -182,7 +196,9 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
               <div className="subtle">Divisions group teams, slots, and requests.</div>
             </div>
             <div className="card__body">
-              <DivisionsManager leagueId={leagueId} />
+              <Suspense fallback={sectionFallback}>
+                <DivisionsManager leagueId={leagueId} />
+              </Suspense>
             </div>
           </div>
         </div>
@@ -195,7 +211,9 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
             <div className="subtle">Send a magic link to grant access without a request.</div>
           </div>
           <div className="card__body">
-            <InvitesManager leagueId={leagueId} me={me} />
+            <Suspense fallback={sectionFallback}>
+              <InvitesManager leagueId={leagueId} me={me} />
+            </Suspense>
           </div>
         </div>
       )}
@@ -208,7 +226,9 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
             <div className="subtle">Auto-assign matchups to open slots for a division.</div>
           </div>
           <div className="card__body">
-            <SchedulerManager leagueId={leagueId} />
+            <Suspense fallback={sectionFallback}>
+              <SchedulerManager leagueId={leagueId} />
+            </Suspense>
           </div>
         </div>
       )}

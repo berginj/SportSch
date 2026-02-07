@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import Toast from "../components/Toast";
 import { PromptDialog } from "../components/Dialogs";
@@ -6,11 +6,11 @@ import { usePromptDialog } from "../lib/useDialogs";
 import { LEAGUE_HEADER_NAME } from "../lib/constants";
 import { trackEvent } from "../lib/telemetry";
 import { buildTeamsTemplateCsv, downloadCsv } from "../lib/csvUtils";
-import AdminDashboard from "./AdminDashboard";
-import AccessRequestsSection from "./admin/AccessRequestsSection";
-import CoachAssignmentsSection from "./admin/CoachAssignmentsSection";
-import CsvImportSection from "./admin/CsvImportSection";
-import GlobalAdminSection from "./admin/GlobalAdminSection";
+const AdminDashboard = lazy(() => import("./AdminDashboard"));
+const AccessRequestsSection = lazy(() => import("./admin/AccessRequestsSection"));
+const CoachAssignmentsSection = lazy(() => import("./admin/CoachAssignmentsSection"));
+const CsvImportSection = lazy(() => import("./admin/CsvImportSection"));
+const GlobalAdminSection = lazy(() => import("./admin/GlobalAdminSection"));
 
 const ROLE_OPTIONS = [
   "LeagueAdmin",
@@ -69,6 +69,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
   const [accessScope, setAccessScope] = useState("league");
   const [accessLeagueFilter, setAccessLeagueFilter] = useState("");
   const { promptState, promptValue, setPromptValue, requestPrompt, handleConfirm, handleCancel } = usePromptDialog();
+  const sectionFallback = <div className="card"><div className="card__body muted">Loading section...</div></div>;
 
   const isGlobalAdmin = !!me?.isGlobalAdmin;
   const hasMemberships = Array.isArray(me?.memberships) && me.memberships.length > 0;
@@ -671,109 +672,119 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
 
       {/* Dashboard Section */}
       {activeSection === 'dashboard' && (
-        <AdminDashboard leagueId={leagueId} onNavigate={setActiveSection} />
+        <Suspense fallback={sectionFallback}>
+          <AdminDashboard leagueId={leagueId} onNavigate={setActiveSection} />
+        </Suspense>
       )}
 
       {/* Access Requests Section */}
       {activeSection === 'access-requests' && (
-        <AccessRequestsSection
-        leagueId={leagueId}
-        setLeagueId={setLeagueId}
-        me={me}
-        isGlobalAdmin={isGlobalAdmin}
-        accessStatus={accessStatus}
-        setAccessStatus={setAccessStatus}
-        accessScope={accessScope}
-        setAccessScope={setAccessScope}
-        accessLeagueFilter={accessLeagueFilter}
-        setAccessLeagueFilter={setAccessLeagueFilter}
-        accessLeagueOptions={accessLeagueOptions}
-        loading={loading}
-        err={err}
-        sorted={sorted}
-        load={load}
-        loadMembershipsAndTeams={loadMembershipsAndTeams}
-        memLoading={memLoading}
-        approve={approve}
-        deny={deny}
-      />
+        <Suspense fallback={sectionFallback}>
+          <AccessRequestsSection
+            leagueId={leagueId}
+            setLeagueId={setLeagueId}
+            me={me}
+            isGlobalAdmin={isGlobalAdmin}
+            accessStatus={accessStatus}
+            setAccessStatus={setAccessStatus}
+            accessScope={accessScope}
+            setAccessScope={setAccessScope}
+            accessLeagueFilter={accessLeagueFilter}
+            setAccessLeagueFilter={setAccessLeagueFilter}
+            accessLeagueOptions={accessLeagueOptions}
+            loading={loading}
+            err={err}
+            sorted={sorted}
+            load={load}
+            loadMembershipsAndTeams={loadMembershipsAndTeams}
+            memLoading={memLoading}
+            approve={approve}
+            deny={deny}
+          />
+        </Suspense>
       )}
 
       {/* Coach Assignments Section */}
       {activeSection === 'coaches' && (
-        <CoachAssignmentsSection
-          memLoading={memLoading}
-          coaches={coaches}
-          divisions={divisions}
-          teamsByDivision={teamsByDivision}
-          coachDraft={coachDraft}
-          setDraftForCoach={setDraftForCoach}
-          saveCoachAssignment={saveCoachAssignment}
-          clearCoachAssignment={clearCoachAssignment}
-        />
+        <Suspense fallback={sectionFallback}>
+          <CoachAssignmentsSection
+            memLoading={memLoading}
+            coaches={coaches}
+            divisions={divisions}
+            teamsByDivision={teamsByDivision}
+            coachDraft={coachDraft}
+            setDraftForCoach={setDraftForCoach}
+            saveCoachAssignment={saveCoachAssignment}
+            clearCoachAssignment={clearCoachAssignment}
+          />
+        </Suspense>
       )}
 
       {/* CSV Import Section */}
       {activeSection === 'import' && (
-        <CsvImportSection
-          leagueId={leagueId}
-          slotsFile={slotsFile}
-          setSlotsFile={setSlotsFile}
-          slotsBusy={slotsBusy}
-          slotsErr={slotsErr}
-          slotsOk={slotsOk}
-          slotsErrors={slotsErrors}
-          slotsWarnings={slotsWarnings}
-          importSlotsCsv={importSlotsCsv}
-          teamsFile={teamsFile}
-          setTeamsFile={setTeamsFile}
-          teamsBusy={teamsBusy}
-          teamsErr={teamsErr}
-          teamsOk={teamsOk}
-          teamsErrors={teamsErrors}
-          importTeamsCsv={importTeamsCsv}
-          downloadTeamsTemplate={downloadTeamsTemplate}
-        />
+        <Suspense fallback={sectionFallback}>
+          <CsvImportSection
+            leagueId={leagueId}
+            slotsFile={slotsFile}
+            setSlotsFile={setSlotsFile}
+            slotsBusy={slotsBusy}
+            slotsErr={slotsErr}
+            slotsOk={slotsOk}
+            slotsErrors={slotsErrors}
+            slotsWarnings={slotsWarnings}
+            importSlotsCsv={importSlotsCsv}
+            teamsFile={teamsFile}
+            setTeamsFile={setTeamsFile}
+            teamsBusy={teamsBusy}
+            teamsErr={teamsErr}
+            teamsOk={teamsOk}
+            teamsErrors={teamsErrors}
+            importTeamsCsv={importTeamsCsv}
+            downloadTeamsTemplate={downloadTeamsTemplate}
+          />
+        </Suspense>
       )}
 
       {/* Global Admin Section */}
       {activeSection === 'global' && isGlobalAdmin && (
-        <GlobalAdminSection
-          globalErr={globalErr}
-          globalOk={globalOk}
-          newLeague={newLeague}
-          setNewLeague={setNewLeague}
-          createLeague={createLeague}
-          globalLoading={globalLoading}
-          loadGlobalLeagues={loadGlobalLeagues}
-          globalLeagues={globalLeagues}
-          deleteLeague={deleteLeague}
-          seasonLeagueId={seasonLeagueId}
-          setSeasonLeagueId={setSeasonLeagueId}
-          seasonDraft={seasonDraft}
-          setSeasonDraft={setSeasonDraft}
-          blackoutsDraft={blackoutsDraft}
-          setBlackoutsDraft={setBlackoutsDraft}
-          saveSeasonConfig={saveSeasonConfig}
-          applySeasonFromLeague={applySeasonFromLeague}
-          userSearch={userSearch}
-          setUserSearch={setUserSearch}
-          loadUsers={loadUsers}
-          usersLoading={usersLoading}
-          userDraft={userDraft}
-          setUserDraft={setUserDraft}
-          saveUser={saveUser}
-          users={users}
-          memberSearch={memberSearch}
-          setMemberSearch={setMemberSearch}
-          memberLeague={memberLeague}
-          setMemberLeague={setMemberLeague}
-          memberRole={memberRole}
-          setMemberRole={setMemberRole}
-          loadAllMemberships={loadAllMemberships}
-          membersLoadingAll={membersLoadingAll}
-          membersAll={membersAll}
-        />
+        <Suspense fallback={sectionFallback}>
+          <GlobalAdminSection
+            globalErr={globalErr}
+            globalOk={globalOk}
+            newLeague={newLeague}
+            setNewLeague={setNewLeague}
+            createLeague={createLeague}
+            globalLoading={globalLoading}
+            loadGlobalLeagues={loadGlobalLeagues}
+            globalLeagues={globalLeagues}
+            deleteLeague={deleteLeague}
+            seasonLeagueId={seasonLeagueId}
+            setSeasonLeagueId={setSeasonLeagueId}
+            seasonDraft={seasonDraft}
+            setSeasonDraft={setSeasonDraft}
+            blackoutsDraft={blackoutsDraft}
+            setBlackoutsDraft={setBlackoutsDraft}
+            saveSeasonConfig={saveSeasonConfig}
+            applySeasonFromLeague={applySeasonFromLeague}
+            userSearch={userSearch}
+            setUserSearch={setUserSearch}
+            loadUsers={loadUsers}
+            usersLoading={usersLoading}
+            userDraft={userDraft}
+            setUserDraft={setUserDraft}
+            saveUser={saveUser}
+            users={users}
+            memberSearch={memberSearch}
+            setMemberSearch={setMemberSearch}
+            memberLeague={memberLeague}
+            setMemberLeague={setMemberLeague}
+            memberRole={memberRole}
+            setMemberRole={setMemberRole}
+            loadAllMemberships={loadAllMemberships}
+            membersLoadingAll={membersLoadingAll}
+            membersAll={membersAll}
+          />
+        </Suspense>
       )}
     </div>
   );
