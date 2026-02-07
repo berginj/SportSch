@@ -1,0 +1,12 @@
+{
+  "routes": [
+    {
+      "route": "/.auth/functions/*",
+      "rewrite": "/api/*"
+    }
+  ],
+  "navigationFallback": {
+    "rewrite": "/index.html",
+    "exclude": ["/api/*", "/images/*", "/*.css", "/*.js", "/*.ico", "/*.png", "/*.jpg", "/*.svg"]
+  }
+}

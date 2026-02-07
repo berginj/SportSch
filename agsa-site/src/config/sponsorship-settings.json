@@ -1,0 +1,13 @@
+{
+  "processingFeeMode": "flat",
+  "flatFeeAmount": 15,
+  "deadlineDate": "2026-03-01",
+  "mailingAddressForChecks": "AGSA Sponsorships, Arlington, VA (placeholder mailing address)",
+  "einTaxLanguage": "AGSA is a nonprofit youth sports organization. Tax documentation and EIN details are provided with sponsorship receipts.",
+  "ein": "00-0000000",
+  "instagramHandle": "agsafastpitch",
+  "instagramUrl": "https://www.instagram.com/agsafastpitch/",
+  "facebookUrl": "https://www.facebook.com/AGSAFastpitch",
+  "submissionEndpoint": "https://formspree.io/f/PLACEHOLDER_SPONSORSHIP_FORM_ID",
+  "logoUploadEndpoint": "https://formspree.io/f/PLACEHOLDER_LOGO_UPLOAD_FORM_ID"
+}

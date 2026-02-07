@@ -1,0 +1,58 @@
+[
+  {
+    "id": "team-450",
+    "name": "Team Sponsorship",
+    "price": 450,
+    "description": "Sponsor one or more AGSA teams for the season.",
+    "benefits": [
+      "Business name listed on team materials",
+      "Social shoutout on AGSA Instagram",
+      "Recognition on sponsor page"
+    ],
+    "isTeamQuantityAllowed": true,
+    "suggestedFor": ["local restaurants", "orthodontists", "community businesses"],
+    "fulfillmentRequirements": "Logo as PNG, SVG, or EPS by March 1, 2026"
+  },
+  {
+    "id": "silver-900",
+    "name": "Silver Partner",
+    "price": 900,
+    "description": "Expanded visibility across AGSA channels and events.",
+    "benefits": [
+      "Everything in Team Sponsorship",
+      "Featured logo placement on AGSA sponsor page",
+      "Two dedicated Instagram sponsor acknowledgements"
+    ],
+    "isTeamQuantityAllowed": false,
+    "suggestedFor": ["medical practices", "home services", "professional firms"],
+    "fulfillmentRequirements": "Logo in vector format preferred by March 1, 2026"
+  },
+  {
+    "id": "gold-1800",
+    "name": "Gold Partner",
+    "price": 1800,
+    "description": "High-impact brand presence for the full season.",
+    "benefits": [
+      "Everything in Silver Partner",
+      "Premier sponsor callout in seasonal communications",
+      "On-site event recognition"
+    ],
+    "isTeamQuantityAllowed": false,
+    "suggestedFor": ["regional brands", "banks", "major local employers"],
+    "fulfillmentRequirements": "High-res logo package and brand guide by March 1, 2026"
+  },
+  {
+    "id": "grand-slam-3000",
+    "name": "Grand Slam Partner",
+    "price": 3000,
+    "description": "Top-tier partnership with maximum AGSA visibility.",
+    "benefits": [
+      "Everything in Gold Partner",
+      "Top placement in AGSA sponsor sections",
+      "Priority mention in major outreach and event materials"
+    ],
+    "isTeamQuantityAllowed": false,
+    "suggestedFor": ["anchor sponsors", "regional healthcare", "community institutions"],
+    "fulfillmentRequirements": "Complete brand assets and approvals by March 1, 2026"
+  }
+]

@@ -1,0 +1,135 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import tiers from "../config/sponsorship-tiers.json";
+import settings from "../config/sponsorship-settings.json";
+import LastUpdated from "../components/LastUpdated.astro";
+import site from "../config/site.json";
+import SponsorTierCard from "../components/SponsorTierCard.astro";
+
+const serializedTiers = JSON.stringify(tiers);
+const serializedSettings = JSON.stringify(settings);
+---
+
+<BaseLayout title="Sponsor AGSA" path="/sponsor">
+  <section class="container-shell py-10">
+    <h1 class="font-display text-5xl text-brand-secondary">Sponsor AGSA</h1>
+    <p class="mt-3 max-w-3xl text-slate-600">
+      Choose a sponsorship tier, review benefits instantly, submit your details, and pay online securely.
+    </p>
+    <div class="mt-3 rounded-lg border border-brand-primary/20 bg-brand-mist p-4 text-sm text-slate-700">
+      <p class="m-0"><strong>Deadline:</strong> {settings.deadlineDate}</p>
+      <p class="m-0 mt-1">{settings.einTaxLanguage}</p>
+    </div>
+    <LastUpdated date={site.lastUpdated} />
+  </section>
+
+  <section class="container-shell pb-12">
+    <h2 class="font-display text-3xl text-brand-secondary">Choose Your Tier</h2>
+    <div class="mt-5 grid gap-4 md:grid-cols-2">
+      {tiers.map((tier) => <SponsorTierCard tier={tier} />)}
+    </div>
+  </section>
+
+  <section class="container-shell pb-24 lg:pb-12">
+    <div class="grid gap-6 lg:grid-cols-[1fr_360px]">
+      <form id="sponsor-form" class="card p-6">
+        <div class="flex items-center justify-between">
+          <h2 class="font-display text-3xl text-brand-secondary">Sponsorship Application</h2>
+          <p class="text-xs font-semibold uppercase tracking-wide text-slate-500" data-step-label>Step 1 of 2</p>
+        </div>
+
+        <div data-step="details" class="mt-5 grid gap-4 md:grid-cols-2">
+          <label class="text-sm font-semibold text-brand-secondary md:col-span-2">
+            Sponsor name (as it appears on uniform)
+            <input class="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" name="sponsorName" required />
+          </label>
+          <label class="text-sm font-semibold text-brand-secondary">
+            Contact name
+            <input class="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" name="contactName" required />
+          </label>
+          <label class="text-sm font-semibold text-brand-secondary">
+            Email
+            <input class="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" type="email" name="email" required />
+          </label>
+          <label class="text-sm font-semibold text-brand-secondary">
+            Phone
+            <input class="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" name="phone" required />
+          </label>
+          <label class="text-sm font-semibold text-brand-secondary">
+            Address
+            <input class="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" name="address" required />
+          </label>
+          <label class="text-sm font-semibold text-brand-secondary">
+            Sponsorship tier
+            <select class="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" name="tierId" data-tier-select-input required>
+              <option value="">Select a tier</option>
+              {tiers.map((tier) => <option value={tier.id}>{tier.name} (${tier.price})</option>)}
+            </select>
+          </label>
+          <label class="text-sm font-semibold text-brand-secondary" data-quantity-wrapper hidden>
+            Quantity (teams)
+            <input class="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" type="number" min="1" value="1" name="quantity" />
+          </label>
+          <label class="text-sm font-semibold text-brand-secondary">
+            Team preference (optional)
+            <input class="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" name="teamPreference" />
+          </label>
+          <label class="text-sm font-semibold text-brand-secondary">
+            Logo upload (optional now)
+            <input class="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" type="file" name="logoFile" accept=".png,.jpg,.jpeg,.svg,.eps,.pdf" />
+          </label>
+          <label class="text-sm font-semibold text-brand-secondary md:col-span-2">
+            Notes (optional)
+            <textarea class="mt-2 min-h-24 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" name="notes"></textarea>
+          </label>
+          <label class="flex items-center gap-2 text-sm font-semibold text-brand-secondary md:col-span-2">
+            <input type="checkbox" name="plaqueRequested" class="h-4 w-4" />
+            Sponsor plaque requested
+          </label>
+          <input type="text" name="_gotcha" class="hidden" tabindex="-1" autocomplete="off" aria-hidden="true" />
+        </div>
+
+        <div data-step="review" class="mt-5 hidden">
+          <h3 class="text-lg font-semibold text-brand-secondary">Review before payment</h3>
+          <div data-review-content class="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm"></div>
+        </div>
+
+        <div class="mt-6 flex flex-wrap gap-2">
+          <button type="button" class="btn-secondary" data-back hidden>Back</button>
+          <button type="button" class="btn-primary" data-next>Review details</button>
+          <button type="button" class="btn-primary hidden" data-pay>Pay online with card</button>
+          <button type="button" class="btn-secondary hidden" data-submit-check>Submit pledge (pay by check)</button>
+        </div>
+      </form>
+
+      <aside class="card p-6 lg:sticky lg:top-24">
+        <h2 class="font-display text-3xl text-brand-secondary">Order Summary</h2>
+        <div data-summary class="mt-3 text-sm text-slate-700">
+          <p>Select a tier to begin.</p>
+        </div>
+
+        <details class="mt-4 rounded-lg border border-slate-200 p-3">
+          <summary class="cursor-pointer text-sm font-semibold text-brand-secondary">Pay by check (fallback)</summary>
+          <div class="mt-3 text-sm text-slate-600">
+            <p class="m-0">Mail checks to:</p>
+            <p class="mt-1">{settings.mailingAddressForChecks}</p>
+            <p class="mt-2">Include sponsor name and selected tier in the memo.</p>
+          </div>
+        </details>
+      </aside>
+    </div>
+  </section>
+
+  <div class="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white p-3 shadow-card lg:hidden">
+    <div class="container-shell flex items-center justify-between gap-2">
+      <div class="text-xs text-slate-600" data-mobile-summary>Choose a tier to see total.</div>
+      <button class="btn-primary text-xs" type="button" data-mobile-scroll>Review</button>
+    </div>
+  </div>
+
+  <script type="application/json" id="sponsor-tiers-data" set:html={serializedTiers}></script>
+  <script type="application/json" id="sponsor-settings-data" set:html={serializedSettings}></script>
+  <script>
+    import "../scripts/sponsor-form.js";
+  </script>
+</BaseLayout>

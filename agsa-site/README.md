@@ -1,8 +1,10 @@
-# AGSA Fastpitch Website (Static Astro)
+# AGSA Static Site (Astro + Tailwind)
 
-Production-ready static website scaffold for Arlington Girls Softball Association.
+Static-first AGSA website with sponsorship funnel, Stripe Checkout integration (via Azure Function), and config-driven content.
 
-## Run locally
+## Local development
+
+From `agsa-site/`:
 
 ```bash
 npm install
@@ -15,116 +17,104 @@ Build:
 npm run build
 ```
 
-Preview:
+## Sponsorship form routes
 
-```bash
-npm run preview
-```
+- `/sponsor` - sponsorship landing + tier selector + form + review
+- `/sponsor/thanks` - success state after Stripe
+- `/sponsor/cancel` - canceled payment state
+- `/sponsor/upload-logo` - optional logo upload form
 
-## Core config files (admin-editable)
+## Config-driven sponsorship data
 
-All key links/content should be edited in config/content files, not components.
+Edit these files:
 
-- `src/config/site.json`
-  - Brand copy, location, contact routing emails, socials, Instagram handle, partner links, homepage metadata.
-- `src/config/theme.json`
-  - Theme tokens and live AGSA logo paths.
+- `src/config/sponsorship-tiers.json`
+  - `id, name, price, description, benefits[], isTeamQuantityAllowed, suggestedFor[], fulfillmentRequirements`
+- `src/config/sponsorship-settings.json`
+  - `processingFeeMode, flatFeeAmount, deadlineDate, mailingAddressForChecks, einTaxLanguage, ein, instagramHandle, instagramUrl, facebookUrl`
+
+Also used:
+
+- `src/config/site.json` for contact routing and global branding.
+
+## Stripe setup (Azure Static Web Apps Function)
+
+Function path:
+
+- `api/createCheckoutSession`
+
+Required server env var:
+
+- `STRIPE_SECRET_KEY`
+
+Optional if you move to fixed Stripe Prices:
+
+- `STRIPE_PRICE_*` IDs (not required in current default implementation because line items are created with dynamic `price_data` from tier config).
+
+Client calls:
+
+- `POST /.auth/functions/createCheckoutSession`
+
+SWA route rewrite is configured in:
+
+- `staticwebapp.config.json`
+
+## Submission / record keeping
+
+Form payload submission endpoint is configured in:
+
+- `src/config/sponsorship-settings.json` -> `submissionEndpoint`
+
+Default is Formspree placeholder; replace with your live endpoint.
+
+Logo upload endpoint:
+
+- `src/config/sponsorship-settings.json` -> `logoUploadEndpoint`
+
+## Azure Static Web Apps deployment
+
+Workflow:
+
+- `.github/workflows/azure-static-web-apps-jolly-dune-095686e0f.yml`
+
+Configured for:
+
+- `app_location: agsa-site`
+- `api_location: agsa-site/api`
+- `output_location: dist`
+
+## Edit registration links
+
+Single registration doorway data:
+
 - `src/config/registration-links.json`
-  - Single registration doorway links by season/program (`status`, `priority`, optional highlight dates).
+
+## Calendar setup
+
+Use:
+
 - `src/config/calendar.json`
-  - Calendar source mode and settings (`ics` or `gcal_api`).
-- `src/config/announcements.json`
-  - Homepage banner items with `startDate`/`endDate` expiry.
-- `src/config/sponsors.json`
-  - Sponsor tiers and logo references.
 
-Policy content is Markdown:
+Modes:
 
-- `src/content/policies/*.md`
+- `ics` (preferred)
+- `gcal_api` (requires public referrer-restricted API key in env)
 
-News content is Markdown:
+## Test end-to-end sponsorship flow
 
-- `src/content/news/*.md`
+1. Open `/sponsor`.
+2. Select a tier and complete required fields.
+3. Review step should show subtotal + fee + total + benefits.
+4. Click "Pay online with card".
+5. Confirm redirect to Stripe Checkout session URL.
+6. Complete or cancel payment to verify:
+   - `/sponsor/thanks`
+   - `/sponsor/cancel`
+7. Test `/sponsor/upload-logo` with an `appId` query string.
 
-## Registration updates
+## Accessibility notes
 
-Use only:
-
-- `src/config/registration-links.json`
-
-The `/register` page is the single registration router page for all programs/seasons.
-
-## Schedule integration
-
-Two modes in `src/config/calendar.json`:
-
-1. `mode: "ics"` (preferred)
-   - Set `icsUrl` to a public ICS feed.
-   - Client parses ICS and caches data in localStorage.
-2. `mode: "gcal_api"`
-   - Set `calendarId`
-   - Set `apiKeyEnvVarName` (default: `PUBLIC_GCAL_API_KEY`)
-   - Add env var in deployment/local `.env`
-
-Example `.env`:
-
-```env
-PUBLIC_GCAL_API_KEY=your_public_referrer_restricted_key
-```
-
-Important:
-
-- Do not commit private keys.
-- If using Google API client-side, treat key as public and restrict by referrer.
-
-## Social integration
-
-- Instagram is primary:
-  - homepage Instagram embed + fallback follow CTA.
-- Facebook is link-only:
-  - footer/contact links (no Facebook feed embed).
-
-## Forms (static-friendly)
-
-Current pages use Formspree placeholders:
-
-- Contact: `src/pages/contact.astro`
-- Volunteer: `src/pages/get-involved.astro`
-- Sponsor: `src/pages/sponsors.astro`
-
-Replace `PLACEHOLDER_*` form IDs with real Formspree endpoints.
-
-Spam mitigation:
-
-- Honeypot field (`_gotcha`) already included.
-
-## Governance features already implemented
-
-- Announcement expiry using date windows (`announcements.json`).
-- `Last updated` labels on key pages from config/content dates.
-- Policies rendered as HTML from Markdown (not PDF-dependent).
-
-## Deployment
-
-### Azure Static Web Apps
-
-Workflow is configured to deploy this app from:
-
-- `app_location: "agsa-site"`
-- `output_location: "dist"`
-
-### Netlify
-
-- Base directory: `agsa-site`
-- Build command: `npm run build`
-- Publish directory: `dist`
-
-### Cloudflare Pages
-
-- Root directory: `agsa-site`
-- Build command: `npm run build`
-- Build output directory: `dist`
-
-## Assets
-
-- AGSA logos and selected imagery are sourced from official AGSA web/Instagram content and stored in `public/images/agsa/`.
+- Semantic form controls + labels.
+- Keyboard reachable tier selection and action buttons.
+- Visible focus states from shared global styles.
+- Mobile sticky summary for sponsor flow.

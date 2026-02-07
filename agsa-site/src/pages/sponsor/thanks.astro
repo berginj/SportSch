@@ -1,0 +1,48 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import settings from "../../config/sponsorship-settings.json";
+import tiers from "../../config/sponsorship-tiers.json";
+
+const appId = Astro.url.searchParams.get("appId") || "pending";
+const tierId = Astro.url.searchParams.get("tierId") || "";
+const selectedTier = tiers.find((t) => t.id === tierId);
+---
+
+<BaseLayout title="Sponsor Thank You" path="/sponsor/thanks">
+  <section class="container-shell py-12">
+    <article class="card p-6">
+      <h1 class="font-display text-5xl text-brand-secondary">Thank you for sponsoring AGSA</h1>
+      <p class="mt-3 text-sm text-slate-600">Application ID: <strong>{appId}</strong></p>
+      <p class="mt-2 text-sm text-slate-600">
+        Your support helps fund uniforms, field maintenance, and player development opportunities in Arlington.
+      </p>
+
+      {selectedTier && (
+        <div class="mt-5 rounded-lg border border-slate-200 p-4">
+          <h2 class="text-lg font-semibold text-brand-secondary">{selectedTier.name} benefits</h2>
+          <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+            {selectedTier.benefits.map((b) => <li>{b}</li>)}
+          </ul>
+        </div>
+      )}
+
+      <div class="mt-5 rounded-lg border border-brand-primary/20 bg-brand-mist p-4 text-sm text-slate-700">
+        <p class="m-0"><strong>Logo fulfillment:</strong> Upload if you did not attach during checkout.</p>
+        <a class="btn-primary mt-3" href={`/sponsor/upload-logo?appId=${encodeURIComponent(appId)}&tierId=${encodeURIComponent(tierId)}`}>
+          Upload logo
+        </a>
+      </div>
+
+      <div class="mt-5 text-sm text-slate-600">
+        <p class="m-0"><strong>Tax statement:</strong> {settings.einTaxLanguage}</p>
+        <p class="mt-1"><strong>EIN:</strong> {settings.ein}</p>
+      </div>
+
+      <div class="mt-5 rounded-lg border border-slate-200 p-4">
+        <h2 class="text-lg font-semibold text-brand-secondary">Stay connected on Instagram</h2>
+        <p class="mt-1 text-sm text-slate-600">Sponsor highlights and league updates are posted on Instagram first.</p>
+        <a class="btn-secondary mt-3" href={settings.instagramUrl} target="_blank" rel="noreferrer">Follow @{settings.instagramHandle}</a>
+      </div>
+    </article>
+  </section>
+</BaseLayout>
