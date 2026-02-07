@@ -1,0 +1,71 @@
+---
+import "../styles/global.css";
+import site from "../config/site.json";
+import theme from "../config/theme.json";
+import AnnouncementBanner from "../components/AnnouncementBanner.astro";
+import Header from "../components/Header.astro";
+import Footer from "../components/Footer.astro";
+
+interface Props {
+  title: string;
+  description?: string;
+  path: string;
+}
+
+const { title, description = site.description, path } = Astro.props as Props;
+
+const navItems = [
+  { label: "Home", href: "/" },
+  { label: "Register", href: "/register" },
+  { label: "Schedule", href: "/schedule" },
+  { label: "Programs", href: "/programs" },
+  { label: "About", href: "/about" },
+  { label: "Policies", href: "/policies" },
+  { label: "Sponsors", href: "/sponsors" },
+  { label: "Contact", href: "/contact" },
+];
+
+const canonical = new URL(path, Astro.site).toString();
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title} | {site.name}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={`${title} | ${site.name}`} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:site_name" content={site.name} />
+    <meta property="og:image" content={new URL(theme.logo.mark, Astro.site).toString()} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={`${title} | ${site.name}`} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={new URL(theme.logo.mark, Astro.site).toString()} />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="icon" type="image/svg+xml" href="/images/logo-placeholder-mark.svg" />
+  </head>
+  <body>
+    <a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-white focus:p-3 focus:text-sm focus:font-semibold">
+      Skip to main content
+    </a>
+    <AnnouncementBanner announcement={site.announcement} />
+    <Header siteName={site.name} logoPath={theme.logo.light} navItems={navItems} currentPath={path} />
+    <main id="main-content">
+      <slot />
+    </main>
+    <Footer
+      siteName={site.name}
+      region={site.region}
+      email={site.contactEmail}
+      instagramUrl={site.socials.instagramUrl}
+      facebookUrl={site.socials.facebookUrl}
+    />
+  </body>
+</html>

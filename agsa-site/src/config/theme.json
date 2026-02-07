@@ -1,0 +1,19 @@
+{
+  "colors": {
+    "primary": "#0B4B8A",
+    "secondary": "#1C2B3D",
+    "accent": "#FFB300",
+    "ink": "#102033",
+    "mist": "#EAF1F9",
+    "paper": "#FFFFFF"
+  },
+  "fonts": {
+    "heading": "Barlow Condensed",
+    "body": "Inter"
+  },
+  "logo": {
+    "light": "/images/logo-placeholder-light.svg",
+    "dark": "/images/logo-placeholder-dark.svg",
+    "mark": "/images/logo-placeholder-mark.svg"
+  }
+}

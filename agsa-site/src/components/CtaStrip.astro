@@ -1,0 +1,31 @@
+---
+interface Item {
+  title: string;
+  description: string;
+  href: string;
+}
+
+interface Props {
+  title: string;
+  items: Item[];
+}
+
+const { title, items } = Astro.props as Props;
+---
+
+<section class="card p-6">
+  <h2 class="font-display text-3xl font-semibold text-brand-secondary">{title}</h2>
+  <div class="mt-5 grid gap-4 md:grid-cols-3">
+    {
+      items.map((item) => (
+        <article class="rounded-lg border border-slate-200 p-4">
+          <h3 class="text-lg font-semibold">{item.title}</h3>
+          <p class="mt-2 text-sm text-slate-600">{item.description}</p>
+          <a class="mt-4 inline-flex text-sm font-semibold text-brand-primary" href={item.href}>
+            Learn more
+          </a>
+        </article>
+      ))
+    }
+  </div>
+</section>

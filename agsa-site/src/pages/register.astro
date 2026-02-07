@@ -1,0 +1,32 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import registrationLinks from "../config/registration-links.json";
+
+const sorted = [...registrationLinks].sort((a, b) => a.priority - b.priority);
+---
+
+<BaseLayout title="Registration" path="/register">
+  <section class="container-shell py-12">
+    <h1 class="font-display text-5xl text-brand-secondary">Registration</h1>
+    <p class="mt-4 max-w-3xl text-slate-600">
+      Select the right registration flow below. These links can point to SportsEngine or any approved external platform and are managed in a single config file.
+    </p>
+  </section>
+
+  <section class="container-shell pb-12">
+    <div class="grid gap-5 md:grid-cols-2">
+      {
+        sorted.map((link) => (
+          <article class="card p-6">
+            <p class="m-0 text-xs font-bold uppercase tracking-wide text-brand-primary">{link.season}</p>
+            <h2 class="mt-2 text-2xl font-semibold text-brand-secondary">{link.label}</h2>
+            <p class="mt-3 text-sm text-slate-600">{link.description}</p>
+            <a class="btn-primary mt-5" href={link.url} target="_blank" rel="noreferrer">
+              Open registration
+            </a>
+          </article>
+        ))
+      }
+    </div>
+  </section>
+</BaseLayout>

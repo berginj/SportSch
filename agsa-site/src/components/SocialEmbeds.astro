@@ -1,0 +1,40 @@
+---
+interface Props {
+  instagramUrl: string;
+  facebookUrl: string;
+}
+
+const { instagramUrl, facebookUrl } = Astro.props as Props;
+const encodedFacebookUrl = encodeURIComponent(facebookUrl);
+---
+
+<section class="grid gap-6 lg:grid-cols-2">
+  <article class="card p-5">
+    <h2 class="font-display text-2xl font-semibold text-brand-secondary">Instagram</h2>
+    <blockquote class="instagram-media mt-4" data-instgrm-permalink={instagramUrl} data-instgrm-version="14">
+      <a href={instagramUrl}>View AGSA on Instagram</a>
+    </blockquote>
+    <div class="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+      If the embed does not load due to privacy settings, use the direct link below.
+    </div>
+    <a class="btn-secondary mt-4" href={instagramUrl} target="_blank" rel="noreferrer">Follow on Instagram</a>
+  </article>
+
+  <article class="card p-5">
+    <h2 class="font-display text-2xl font-semibold text-brand-secondary">Facebook</h2>
+    <div class="mt-4 overflow-hidden rounded-lg border border-slate-200">
+      <iframe
+        title="AGSA Facebook Page"
+        src={`https://www.facebook.com/plugins/page.php?href=${encodedFacebookUrl}&tabs=timeline&width=500&height=520&small_header=false&adapt_container_width=true&hide_cover=false&show_facepile=true&appId`}
+        width="500"
+        height="520"
+        style="border:none;overflow:hidden;max-width:100%;display:block;"
+        loading="lazy"
+        allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+      ></iframe>
+    </div>
+    <a class="btn-secondary mt-4" href={facebookUrl} target="_blank" rel="noreferrer">Follow on Facebook</a>
+  </article>
+
+  <script async src="//www.instagram.com/embed.js"></script>
+</section>

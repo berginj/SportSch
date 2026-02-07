@@ -1,0 +1,23 @@
+[
+  {
+    "label": "Spring Rec League Registration",
+    "description": "Primary registration flow for Spring recreational teams.",
+    "url": "https://www.sportsengine.com/placeholder/spring-rec-registration",
+    "season": "Spring 2026",
+    "priority": 1
+  },
+  {
+    "label": "Summer Tournament Team Interest",
+    "description": "Interest form for players seeking summer tournament opportunities.",
+    "url": "https://www.sportsengine.com/placeholder/summer-tournament-interest",
+    "season": "Summer 2026",
+    "priority": 2
+  },
+  {
+    "label": "Fall Ball Registration",
+    "description": "Fall development program registration.",
+    "url": "https://www.sportsengine.com/placeholder/fall-ball-registration",
+    "season": "Fall 2026",
+    "priority": 3
+  }
+]

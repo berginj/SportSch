@@ -1,0 +1,43 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import sponsors from "../config/sponsors.json";
+---
+
+<BaseLayout title="Sponsors" path="/sponsors">
+  <section class="container-shell py-12">
+    <h1 class="font-display text-5xl text-brand-secondary">Sponsors</h1>
+    <p class="mt-4 max-w-3xl text-slate-600">
+      Our sponsors directly support uniforms, field improvements, and player development opportunities.
+    </p>
+  </section>
+
+  <section class="container-shell space-y-8 pb-12">
+    {
+      sponsors.tiers.map((tier) => (
+        <article class="card p-6">
+          <h2 class="font-display text-3xl text-brand-secondary">{tier.name}</h2>
+          <p class="mt-2 text-sm text-slate-600">{tier.description}</p>
+          <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {
+              tier.sponsors.map((sponsor) => (
+                <a href={sponsor.website} target="_blank" rel="noreferrer" class="flex min-h-24 items-center justify-center rounded-lg border border-slate-200 p-3">
+                  <img src={sponsor.logo} alt={`${sponsor.name} logo`} class="max-h-14 w-auto" loading="lazy" />
+                </a>
+              ))
+            }
+          </div>
+        </article>
+      ))
+    }
+  </section>
+
+  <section class="container-shell pb-12">
+    <article class="card p-6">
+      <h2 class="font-display text-3xl text-brand-secondary">Become a Sponsor</h2>
+      <p class="mt-3 text-sm text-slate-600">
+        Partner with AGSA to support youth sports in our community. We offer seasonal and annual sponsorship packages.
+      </p>
+      <a href="/contact" class="btn-primary mt-5">Request Sponsorship Info</a>
+    </article>
+  </section>
+</BaseLayout>

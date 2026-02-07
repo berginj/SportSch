@@ -1,0 +1,42 @@
+{
+  "name": "AGSA Fastpitch",
+  "tagline": "Competitive and recreational girls fastpitch softball in Avenel, New Jersey.",
+  "description": "AGSA Fastpitch provides a positive, high-quality softball program focused on development, teamwork, and sportsmanship.",
+  "contactEmail": "info@agsafastpitch.com",
+  "phone": "(908) 279-0303",
+  "region": "Avenel, NJ",
+  "address": "Avenel, New Jersey",
+  "socials": {
+    "instagramUrl": "https://www.instagram.com/agsafastpitch/",
+    "facebookUrl": "https://www.facebook.com/agsafastpitch/"
+  },
+  "announcement": {
+    "enabled": true,
+    "label": "Registration Open",
+    "message": "Spring/Summer registration is now open for all divisions.",
+    "ctaLabel": "Register Today",
+    "ctaUrl": "/register"
+  },
+  "quickActions": [
+    { "label": "Register", "href": "/register" },
+    { "label": "Schedule", "href": "/schedule" },
+    { "label": "Contact", "href": "/contact" }
+  ],
+  "getInvolved": [
+    {
+      "title": "Coach With AGSA",
+      "description": "Lead a team and help players grow on and off the field.",
+      "url": "https://example.com/coach-interest-form"
+    },
+    {
+      "title": "Volunteer",
+      "description": "Support events, field prep, and game-day logistics.",
+      "url": "https://example.com/volunteer"
+    },
+    {
+      "title": "Become an Umpire",
+      "description": "Join our officiating crew for rec and tournament play.",
+      "url": "https://example.com/umpire-interest"
+    }
+  ]
+}

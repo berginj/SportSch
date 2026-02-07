@@ -1,0 +1,49 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import calendarConfig from "../config/calendar.json";
+---
+
+<BaseLayout title="Schedule" path="/schedule">
+  <section class="container-shell py-12">
+    <h1 class="font-display text-5xl text-brand-secondary">Schedule</h1>
+    <p class="mt-4 max-w-3xl text-slate-600">
+      Upcoming events are loaded from our shared calendar feed. Current mode: <strong>{calendarConfig.mode}</strong>.
+    </p>
+  </section>
+
+  <section class="container-shell pb-6">
+    <div class="card p-6">
+      <div class="grid gap-4 md:grid-cols-[240px_1fr]">
+        <label class="text-sm font-semibold text-brand-secondary">
+          Division
+          <select data-schedule-filter class="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+            <option value="all">All divisions</option>
+          </select>
+        </label>
+        <label class="text-sm font-semibold text-brand-secondary">
+          Search events
+          <input data-schedule-search class="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" type="search" placeholder="Search by team, location, or notes" />
+        </label>
+      </div>
+      <p data-schedule-status class="mt-4 text-sm text-slate-600">Loading events...</p>
+    </div>
+  </section>
+
+  <section class="container-shell pb-12">
+    <div class="grid gap-6 xl:grid-cols-[1fr_340px]">
+      <article class="card p-6">
+        <h2 class="font-display text-3xl text-brand-secondary">Upcoming Events</h2>
+        <ul data-schedule-list class="mt-5 space-y-3 p-0"></ul>
+      </article>
+
+      <aside class="card p-6">
+        <h2 class="font-display text-3xl text-brand-secondary">Next 35 Days</h2>
+        <div data-calendar-grid class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3"></div>
+      </aside>
+    </div>
+  </section>
+
+  <script>
+    import "../scripts/schedule-page.js";
+  </script>
+</BaseLayout>

@@ -1,0 +1,30 @@
+---
+interface Props {
+  announcement: {
+    enabled: boolean;
+    label: string;
+    message: string;
+    ctaLabel?: string;
+    ctaUrl?: string;
+  };
+}
+
+const { announcement } = Astro.props as Props;
+---
+
+{
+  announcement?.enabled && (
+    <div class="bg-brand-accent text-brand-secondary">
+      <div class="container-shell flex flex-wrap items-center justify-between gap-3 py-2.5 text-sm font-medium">
+        <p class="m-0">
+          <span class="font-bold uppercase tracking-wide">{announcement.label}:</span> {announcement.message}
+        </p>
+        {announcement.ctaLabel && announcement.ctaUrl && (
+          <a class="btn-secondary !border-brand-secondary/25 !bg-white/70 !text-brand-secondary" href={announcement.ctaUrl}>
+            {announcement.ctaLabel}
+          </a>
+        )}
+      </div>
+    </div>
+  )
+}

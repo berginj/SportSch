@@ -1,0 +1,101 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import site from "../config/site.json";
+import registrationLinks from "../config/registration-links.json";
+import sponsors from "../config/sponsors.json";
+import SocialEmbeds from "../components/SocialEmbeds.astro";
+import CtaStrip from "../components/CtaStrip.astro";
+
+const topLinks = [...registrationLinks].sort((a, b) => a.priority - b.priority).slice(0, 2);
+---
+
+<BaseLayout title="Home" path="/">
+  <section class="container-shell py-12">
+    <div class="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
+      <article class="card p-8">
+        <p class="text-xs font-bold uppercase tracking-[0.12em] text-brand-primary">Avenel Green Street Association</p>
+        <h1 class="mt-3 font-display text-5xl leading-[0.95] text-brand-secondary sm:text-6xl">
+          Fastpitch Built for Player Growth
+        </h1>
+        <p class="mt-5 max-w-2xl text-lg text-slate-600">
+          {site.tagline}
+        </p>
+        <div class="mt-7 flex flex-wrap gap-3">
+          <a href="/register" class="btn-primary">Register Now</a>
+          <a href="/schedule" class="btn-secondary">View Schedule</a>
+          <a href="/contact" class="btn-secondary">Contact AGSA</a>
+        </div>
+      </article>
+
+      <aside class="card p-6">
+        <h2 class="font-display text-3xl text-brand-secondary">Quick Actions</h2>
+        <ul class="mt-5 space-y-3">
+          {
+            site.quickActions.map((action) => (
+              <li class="list-none">
+                <a class="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 text-sm font-semibold no-underline hover:bg-brand-mist" href={action.href}>
+                  {action.label}
+                  <span aria-hidden="true">→</span>
+                </a>
+              </li>
+            ))
+          }
+        </ul>
+      </aside>
+    </div>
+  </section>
+
+  <section class="container-shell pb-12">
+    <div class="grid gap-6 lg:grid-cols-3">
+      <article class="card p-6 lg:col-span-2">
+        <h2 class="font-display text-3xl text-brand-secondary">Next Steps</h2>
+        <div class="mt-5 grid gap-4 sm:grid-cols-2">
+          {
+            topLinks.map((link) => (
+              <a href={link.url} class="rounded-lg border border-slate-200 p-4 no-underline hover:bg-brand-mist" target="_blank" rel="noreferrer">
+                <p class="m-0 text-xs font-bold uppercase tracking-wide text-brand-primary">{link.season}</p>
+                <h3 class="mt-2 text-lg font-semibold text-brand-secondary">{link.label}</h3>
+                <p class="mt-1 text-sm text-slate-600">{link.description}</p>
+              </a>
+            ))
+          }
+        </div>
+      </article>
+
+      <article class="card p-6">
+        <h2 class="font-display text-3xl text-brand-secondary">Need Help?</h2>
+        <p class="mt-3 text-sm text-slate-600">Contact the board for registration and team placement support.</p>
+        <div class="mt-4 space-y-2 text-sm">
+          <p class="m-0"><strong>Email:</strong> <a href={`mailto:${site.contactEmail}`}>{site.contactEmail}</a></p>
+          <p class="m-0"><strong>Phone:</strong> <a href={`tel:${site.phone.replace(/[^\d]/g, "")}`}>{site.phone}</a></p>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section class="container-shell pb-12">
+    <SocialEmbeds instagramUrl={site.socials.instagramUrl} facebookUrl={site.socials.facebookUrl} />
+  </section>
+
+  <section class="container-shell pb-12">
+    <article class="card p-6">
+      <div class="flex items-center justify-between gap-4">
+        <h2 class="font-display text-3xl text-brand-secondary">Sponsors</h2>
+        <a href="/sponsors" class="text-sm font-semibold text-brand-primary">View all sponsors</a>
+      </div>
+      <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {
+          sponsors.tiers.flatMap((tier) => tier.sponsors).slice(0, 4).map((sponsor) => (
+            <a class="flex min-h-24 items-center justify-center rounded-lg border border-slate-200 bg-white p-3" href={sponsor.website} target="_blank" rel="noreferrer">
+              <img src={sponsor.logo} alt={`${sponsor.name} logo`} loading="lazy" class="max-h-12 w-auto" />
+            </a>
+          ))
+        }
+      </div>
+    </article>
+  </section>
+
+  <section class="container-shell pb-12">
+    <CtaStrip title="Get Involved" items={site.getInvolved} />
+  </section>
+</BaseLayout>
