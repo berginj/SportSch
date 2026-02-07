@@ -12,8 +12,8 @@
     "body": "Inter"
   },
   "logo": {
-    "light": "/images/logo-placeholder-light.svg",
-    "dark": "/images/logo-placeholder-dark.svg",
-    "mark": "/images/logo-placeholder-mark.svg"
+    "light": "/images/agsa/logo-small.png",
+    "dark": "/images/agsa/logo-medium.png",
+    "mark": "/images/agsa/logo-mark-32.png"
   }
 }

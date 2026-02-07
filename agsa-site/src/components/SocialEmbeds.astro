@@ -2,15 +2,19 @@
 interface Props {
   instagramUrl: string;
   facebookUrl: string;
+  instagramHandle: string;
 }
 
-const { instagramUrl, facebookUrl } = Astro.props as Props;
-const encodedFacebookUrl = encodeURIComponent(facebookUrl);
+const { instagramUrl, facebookUrl, instagramHandle } = Astro.props as Props;
 ---
 
-<section class="grid gap-6 lg:grid-cols-2">
-  <article class="card p-5">
-    <h2 class="font-display text-2xl font-semibold text-brand-secondary">Instagram</h2>
+<section class="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+  <article class="card p-6">
+    <p class="text-xs font-bold uppercase tracking-wide text-brand-primary">Primary Channel</p>
+    <h2 class="mt-2 font-display text-3xl font-semibold text-brand-secondary">Instagram</h2>
+    <p class="mt-2 text-sm text-slate-600">
+      Follow <strong>@{instagramHandle}</strong> for game-day updates, weather notices, and season highlights.
+    </p>
     <blockquote class="instagram-media mt-4" data-instgrm-permalink={instagramUrl} data-instgrm-version="14">
       <a href={instagramUrl}>View AGSA on Instagram</a>
     </blockquote>
@@ -20,20 +24,12 @@ const encodedFacebookUrl = encodeURIComponent(facebookUrl);
     <a class="btn-secondary mt-4" href={instagramUrl} target="_blank" rel="noreferrer">Follow on Instagram</a>
   </article>
 
-  <article class="card p-5">
-    <h2 class="font-display text-2xl font-semibold text-brand-secondary">Facebook</h2>
-    <div class="mt-4 overflow-hidden rounded-lg border border-slate-200">
-      <iframe
-        title="AGSA Facebook Page"
-        src={`https://www.facebook.com/plugins/page.php?href=${encodedFacebookUrl}&tabs=timeline&width=500&height=520&small_header=false&adapt_container_width=true&hide_cover=false&show_facepile=true&appId`}
-        width="500"
-        height="520"
-        style="border:none;overflow:hidden;max-width:100%;display:block;"
-        loading="lazy"
-        allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
-      ></iframe>
-    </div>
-    <a class="btn-secondary mt-4" href={facebookUrl} target="_blank" rel="noreferrer">Follow on Facebook</a>
+  <article class="card p-6">
+    <h2 class="font-display text-3xl font-semibold text-brand-secondary">More Channels</h2>
+    <p class="mt-2 text-sm text-slate-600">
+      Facebook remains available for families who prefer it, but Instagram is our primary updates channel.
+    </p>
+    <a class="btn-secondary mt-4" href={facebookUrl} target="_blank" rel="noreferrer">Visit Facebook Page</a>
   </article>
 
   <script async src="//www.instagram.com/embed.js"></script>

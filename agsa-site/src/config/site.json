@@ -1,22 +1,30 @@
 {
   "name": "AGSA Fastpitch",
-  "tagline": "Competitive and recreational girls fastpitch softball in Avenel, New Jersey.",
-  "description": "AGSA Fastpitch provides a positive, high-quality softball program focused on development, teamwork, and sportsmanship.",
+  "tagline": "Competitive and recreational girls fastpitch softball in Arlington, Virginia.",
+  "description": "Arlington Girls Softball Association provides a positive, high-quality softball program focused on development, teamwork, and sportsmanship.",
+  "lastUpdated": "2026-02-07",
   "contactEmail": "info@agsafastpitch.com",
+  "contactRouting": {
+    "registration": "registration@agsafastpitch.com",
+    "schedule": "schedule@agsafastpitch.com",
+    "coaching": "coaching@agsafastpitch.com",
+    "sponsorship": "sponsors@agsafastpitch.com"
+  },
   "phone": "(908) 279-0303",
-  "region": "Avenel, NJ",
-  "address": "Avenel, New Jersey",
+  "region": "Arlington, VA",
+  "address": "Arlington, Virginia",
+  "instagramHandle": "agsafastpitch",
   "socials": {
-    "instagramUrl": "https://www.instagram.com/arlington.softball/",
+    "instagramUrl": "https://www.instagram.com/agsafastpitch/",
     "facebookUrl": "https://www.facebook.com/AGSAFastpitch"
   },
-  "announcement": {
-    "enabled": true,
-    "label": "Registration Open",
-    "message": "Spring/Summer registration is now open for all divisions.",
-    "ctaLabel": "Register Today",
-    "ctaUrl": "/register"
+  "partnerOrg": {
+    "name": "Arlington Little League",
+    "url": "https://www.arlingtonlittleleague.org/"
   },
+  "whoItsFor": "Girls ages 4-18 in 6U, 8U, 10U, 12U, 14U, and 16/18U divisions.",
+  "nextSeasonDates": "Spring season runs April-June with playoffs in late June.",
+  "seasonTimelineUrl": "/programs",
   "quickActions": [
     { "label": "Register", "href": "/register" },
     { "label": "Schedule", "href": "/schedule" },

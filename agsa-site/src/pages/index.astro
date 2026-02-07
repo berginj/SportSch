@@ -5,100 +5,87 @@ import registrationLinks from "../config/registration-links.json";
 import sponsors from "../config/sponsors.json";
 import SocialEmbeds from "../components/SocialEmbeds.astro";
 import CtaStrip from "../components/CtaStrip.astro";
+import LastUpdated from "../components/LastUpdated.astro";
 
-const topLinks = [...registrationLinks].sort((a, b) => a.priority - b.priority).slice(0, 2);
+const topRegistration = [...registrationLinks]
+  .filter((x) => x.status === "open")
+  .sort((a, b) => a.priority - b.priority)[0];
 ---
 
 <BaseLayout title="Home" path="/">
-  <section class="container-shell py-12">
-    <div class="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
-      <article class="card p-8">
-        <p class="text-xs font-bold uppercase tracking-[0.12em] text-brand-primary">Avenel Green Street Association</p>
-        <h1 class="mt-3 font-display text-5xl leading-[0.95] text-brand-secondary sm:text-6xl">
-          Fastpitch Built for Player Growth
-        </h1>
-        <p class="mt-5 max-w-2xl text-lg text-slate-600">
-          {site.tagline}
+  <section class="container-shell py-8 sm:py-10">
+    <div class="card p-6 sm:p-8">
+      <p class="text-xs font-bold uppercase tracking-[0.12em] text-brand-primary">Avenel Green Street Association</p>
+      <h1 class="mt-2 font-display text-4xl leading-[0.95] text-brand-secondary sm:text-6xl">
+        Fastpitch built for youth development and community.
+      </h1>
+      <div class="mt-4 grid gap-3 text-sm text-slate-700 sm:grid-cols-2">
+        <p class="m-0"><strong>What:</strong> {site.description}</p>
+        <p class="m-0"><strong>Who:</strong> {site.whoItsFor}</p>
+        <p class="m-0"><strong>Where:</strong> {site.region}</p>
+        <p class="m-0">
+          <strong>Next season:</strong> {site.nextSeasonDates}
+          <a class="ml-1 text-brand-primary" href={site.seasonTimelineUrl}>Season timeline</a>
         </p>
-        <div class="mt-7 flex flex-wrap gap-3">
-          <a href="/register" class="btn-primary">Register Now</a>
-          <a href="/schedule" class="btn-secondary">View Schedule</a>
-          <a href="/contact" class="btn-secondary">Contact AGSA</a>
-        </div>
-      </article>
-
-      <aside class="card p-6">
-        <h2 class="font-display text-3xl text-brand-secondary">Quick Actions</h2>
-        <ul class="mt-5 space-y-3">
-          {
-            site.quickActions.map((action) => (
-              <li class="list-none">
-                <a class="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 text-sm font-semibold no-underline hover:bg-brand-mist" href={action.href}>
-                  {action.label}
-                  <span aria-hidden="true">→</span>
-                </a>
-              </li>
-            ))
-          }
-        </ul>
-      </aside>
+      </div>
+      <div class="mt-6 flex flex-wrap gap-3">
+        <a href="/register" class="btn-primary min-w-32">Register</a>
+        <a href="/schedule" class="btn-secondary min-w-32">Schedule</a>
+        <a href="/contact" class="btn-secondary min-w-32">Contact</a>
+      </div>
+      <LastUpdated date={site.lastUpdated} />
     </div>
   </section>
 
   <section class="container-shell pb-12">
     <div class="grid gap-6 lg:grid-cols-3">
       <article class="card p-6 lg:col-span-2">
-        <h2 class="font-display text-3xl text-brand-secondary">Next Steps</h2>
-        <div class="mt-5 grid gap-4 sm:grid-cols-2">
-          {
-            topLinks.map((link) => (
-              <a
-                href={link.url}
-                class="rounded-lg border border-slate-200 p-4 no-underline hover:bg-brand-mist"
-                target="_blank"
-                rel="noreferrer"
-                data-highlight-until={link.highlightUntil || ""}
-              >
-                <p class="m-0 text-xs font-bold uppercase tracking-wide text-brand-primary">{link.season}</p>
-                {
-                  link.highlightLabel && (
-                    <p
-                      data-highlight-badge
-                      hidden
-                      class="mt-2 inline-flex rounded-full bg-brand-accent px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-brand-secondary"
-                    >
-                      {link.highlightLabel}
-                    </p>
-                  )
-                }
-                <h3 class="mt-2 text-lg font-semibold text-brand-secondary">{link.label}</h3>
-                <p class="mt-1 text-sm text-slate-600">{link.description}</p>
-              </a>
-            ))
-          }
-        </div>
+        <h2 class="font-display text-3xl text-brand-secondary">Registration Doorway</h2>
+        <p class="mt-2 text-sm text-slate-600">
+          AGSA uses one registration router page by season and program. Start there for the most current links.
+        </p>
+        {topRegistration && (
+          <div class="mt-4 rounded-lg border border-brand-primary/20 bg-brand-mist p-4">
+            <p class="m-0 text-xs font-bold uppercase tracking-wide text-brand-primary">{topRegistration.season}</p>
+            <p class="mt-1 text-sm font-semibold text-brand-secondary">{topRegistration.label}</p>
+            <a href="/register" class="btn-primary mt-3">Go to Registration</a>
+          </div>
+        )}
       </article>
 
       <article class="card p-6">
         <h2 class="font-display text-3xl text-brand-secondary">Need Help?</h2>
-        <p class="mt-3 text-sm text-slate-600">Contact the board for registration and team placement support.</p>
-        <div class="mt-4 space-y-2 text-sm">
-          <p class="m-0"><strong>Email:</strong> <a href={`mailto:${site.contactEmail}`}>{site.contactEmail}</a></p>
-          <p class="m-0"><strong>Phone:</strong> <a href={`tel:${site.phone.replace(/[^\d]/g, "")}`}>{site.phone}</a></p>
-        </div>
+        <p class="mt-2 text-sm text-slate-600">Contact us for registration, schedule, and coaching support.</p>
+        <p class="mt-3 text-sm"><strong>Email:</strong> <a href={`mailto:${site.contactEmail}`}>{site.contactEmail}</a></p>
+        <p class="mt-1 text-sm"><strong>Phone:</strong> <a href={`tel:${site.phone.replace(/[^\d]/g, "")}`}>{site.phone}</a></p>
       </article>
     </div>
   </section>
 
   <section class="container-shell pb-12">
-    <SocialEmbeds instagramUrl={site.socials.instagramUrl} facebookUrl={site.socials.facebookUrl} />
+    <article class="card p-6">
+      <h2 class="font-display text-3xl text-brand-secondary">On the Field</h2>
+      <div class="mt-5 grid gap-4 md:grid-cols-3">
+        <img src="/images/agsa/team-pixie.jpg" alt="AGSA Pixie team group photo" class="h-48 w-full rounded-lg object-cover" loading="lazy" />
+        <img src="/images/agsa/team-hit-squad.jpg" alt="AGSA Hit Squad team group photo" class="h-48 w-full rounded-lg object-cover" loading="lazy" />
+        <img src="/images/agsa/agsa-contact-graphic.png" alt="AGSA graphic from league site" class="h-48 w-full rounded-lg object-contain bg-slate-50 p-4" loading="lazy" />
+      </div>
+    </article>
+  </section>
+
+  <section class="container-shell pb-12">
+    <SocialEmbeds
+      instagramUrl={site.socials.instagramUrl}
+      facebookUrl={site.socials.facebookUrl}
+      instagramHandle={site.instagramHandle}
+    />
   </section>
 
   <section class="container-shell pb-12">
     <article class="card p-6">
       <div class="flex items-center justify-between gap-4">
         <h2 class="font-display text-3xl text-brand-secondary">Sponsors</h2>
-        <a href="/sponsors" class="text-sm font-semibold text-brand-primary">View all sponsors</a>
+        <a href="/sponsors" class="text-sm font-semibold text-brand-primary">View sponsor opportunities</a>
       </div>
       <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {
@@ -115,8 +102,4 @@ const topLinks = [...registrationLinks].sort((a, b) => a.priority - b.priority).
   <section class="container-shell pb-12">
     <CtaStrip title="Get Involved" items={site.getInvolved} />
   </section>
-
-  <script>
-    import "../scripts/registration-highlight.js";
-  </script>
 </BaseLayout>

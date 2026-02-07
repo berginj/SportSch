@@ -1,43 +1,39 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
+import { getCollection, render } from "astro:content";
+import LastUpdated from "../components/LastUpdated.astro";
 
-const policies = [
-  {
-    title: "Code of Conduct",
-    body: "Players, coaches, and families are expected to demonstrate respect, sportsmanship, and accountability at all practices and games."
-  },
-  {
-    title: "Refund Policy",
-    body: "Refund windows, administrative fees, and special-case exceptions are determined per season and posted before registration closes."
-  },
-  {
-    title: "Weather Policy",
-    body: "Field safety decisions are final and communicated through the hotline, social channels, and schedule updates."
-  },
-  {
-    title: "Concussion & Safety Resources",
-    body: "AGSA follows league and state safety guidance. Families should review annual concussion and return-to-play recommendations."
-  }
-];
+const sections = (await getCollection("policies")).sort((a, b) => a.data.order - b.data.order);
+const latest = [...sections].sort((a, b) => new Date(b.data.lastUpdated).valueOf() - new Date(a.data.lastUpdated).valueOf())[0];
 ---
 
 <BaseLayout title="Policies" path="/policies">
   <section class="container-shell py-12">
     <h1 class="font-display text-5xl text-brand-secondary">Policies</h1>
     <p class="mt-4 max-w-3xl text-slate-600">
-      League policies help maintain a safe, consistent, and fair environment for all athletes and families.
+      Plain-language policies for conduct, safety, weather, refunds, and operations.
     </p>
+    {latest && <LastUpdated date={latest.data.lastUpdated} />}
   </section>
 
   <section class="container-shell pb-12">
-    <div class="space-y-4">
+    <div class="space-y-5">
       {
-        policies.map((policy) => (
-          <article class="card p-6">
-            <h2 class="font-display text-3xl text-brand-secondary">{policy.title}</h2>
-            <p class="mt-3 text-sm leading-7 text-slate-600">{policy.body}</p>
-          </article>
-        ))
+        await Promise.all(
+          sections.map(async (section) => {
+            const { Content } = await render(section);
+            return (
+              <article class="card p-6">
+                <h2 class="font-display text-3xl text-brand-secondary">{section.data.title}</h2>
+                <p class="mt-2 text-sm text-slate-600">{section.data.summary}</p>
+                <div class="prose prose-slate mt-4 max-w-none">
+                  <Content />
+                </div>
+                <LastUpdated date={section.data.lastUpdated} />
+              </article>
+            );
+          })
+        )
       }
     </div>
   </section>

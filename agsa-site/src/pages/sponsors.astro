@@ -1,14 +1,17 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
 import sponsors from "../config/sponsors.json";
+import site from "../config/site.json";
+import LastUpdated from "../components/LastUpdated.astro";
 ---
 
 <BaseLayout title="Sponsors" path="/sponsors">
   <section class="container-shell py-12">
     <h1 class="font-display text-5xl text-brand-secondary">Sponsors</h1>
     <p class="mt-4 max-w-3xl text-slate-600">
-      Our sponsors directly support uniforms, field improvements, and player development opportunities.
+      Sponsor support helps fund uniforms, field improvements, and player development opportunities.
     </p>
+    <LastUpdated date={site.lastUpdated} />
   </section>
 
   <section class="container-shell space-y-8 pb-12">
@@ -32,12 +35,36 @@ import sponsors from "../config/sponsors.json";
   </section>
 
   <section class="container-shell pb-12">
-    <article class="card p-6">
-      <h2 class="font-display text-3xl text-brand-secondary">Become a Sponsor</h2>
-      <p class="mt-3 text-sm text-slate-600">
-        Partner with AGSA to support youth sports in our community. We offer seasonal and annual sponsorship packages.
-      </p>
-      <a href="/contact" class="btn-primary mt-5">Request Sponsorship Info</a>
-    </article>
+    <div class="grid gap-6 lg:grid-cols-[1fr_1fr]">
+      <article class="card p-6">
+        <h2 class="font-display text-3xl text-brand-secondary">Become a Sponsor</h2>
+        <p class="mt-3 text-sm text-slate-600">
+          We offer local business sponsorship tiers with logo placement and community visibility.
+        </p>
+        <p class="mt-2 text-sm text-slate-600">
+          For immediate inquiries, email <a href={`mailto:${site.contactRouting.sponsorship}`}>{site.contactRouting.sponsorship}</a>.
+        </p>
+      </article>
+
+      <form class="card p-6" action="https://formspree.io/f/PLACEHOLDER_SPONSOR_FORM_ID" method="POST">
+        <h2 class="font-display text-3xl text-brand-secondary">Sponsor Interest</h2>
+        <div class="mt-4 grid gap-4">
+          <label class="text-sm font-semibold text-brand-secondary">
+            Organization
+            <input class="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" type="text" name="organization" required />
+          </label>
+          <label class="text-sm font-semibold text-brand-secondary">
+            Contact Email
+            <input class="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" type="email" name="email" required />
+          </label>
+          <label class="text-sm font-semibold text-brand-secondary">
+            Message
+            <textarea class="mt-2 min-h-28 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" name="message"></textarea>
+          </label>
+          <input type="text" name="_gotcha" class="hidden" tabindex="-1" autocomplete="off" aria-hidden="true" />
+        </div>
+        <button type="submit" class="btn-primary mt-5">Send sponsor inquiry</button>
+      </form>
+    </div>
   </section>
 </BaseLayout>

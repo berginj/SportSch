@@ -10,4 +10,14 @@ const news = defineCollection({
   }),
 });
 
-export const collections = { news };
+const policies = defineCollection({
+  type: "content",
+  schema: z.object({
+    title: z.string(),
+    summary: z.string(),
+    order: z.number(),
+    lastUpdated: z.string(),
+  }),
+});
+
+export const collections = { news, policies };

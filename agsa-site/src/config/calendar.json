@@ -1,5 +1,6 @@
 {
   "mode": "ics",
+  "lastUpdated": "2026-02-07",
   "calendarId": "example_calendar_id@group.calendar.google.com",
   "icsUrl": "https://calendar.google.com/calendar/ical/example/public/basic.ics",
   "apiKeyEnvVarName": "PUBLIC_GCAL_API_KEY",

@@ -5,9 +5,11 @@ interface Props {
   email: string;
   instagramUrl: string;
   facebookUrl: string;
+  partnerOrgName?: string;
+  partnerOrgUrl?: string;
 }
 
-const { siteName, region, email, instagramUrl, facebookUrl } = Astro.props as Props;
+const { siteName, region, email, instagramUrl, facebookUrl, partnerOrgName, partnerOrgUrl } = Astro.props as Props;
 const year = new Date().getFullYear();
 ---
 
@@ -26,6 +28,7 @@ const year = new Date().getFullYear();
         <li><a href="/register">Registration</a></li>
         <li><a href="/schedule">Schedule</a></li>
         <li><a href="/programs">Programs</a></li>
+        <li><a href="/get-involved">Get Involved</a></li>
         <li><a href="/sponsors">Sponsors</a></li>
       </ul>
     </div>
@@ -38,8 +41,14 @@ const year = new Date().getFullYear();
     </div>
   </div>
   <div class="border-t border-white/15">
-    <div class="container-shell py-4 text-xs text-slate-300">
-      <p class="m-0">© {year} {siteName}. All rights reserved.</p>
+    <div class="container-shell py-4 text-xs text-slate-300 space-y-2">
+      <p class="m-0">(c) {year} {siteName}. All rights reserved.</p>
+      {partnerOrgName && partnerOrgUrl && (
+        <p class="m-0">
+          Looking for baseball? Visit our partner organization:
+          <a class="ml-1 text-white underline" href={partnerOrgUrl} target="_blank" rel="noreferrer">{partnerOrgName}</a>
+        </p>
+      )}
     </div>
   </div>
 </footer>
