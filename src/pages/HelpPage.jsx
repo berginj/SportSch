@@ -22,7 +22,7 @@ export default function HelpPage({ me, leagueId }) {
     { id: "filters", label: "Filters first" },
   ];
 
-  function LayoutPreview() {
+  function renderLayoutPreview() {
     switch (layoutKey) {
       case "mobile":
         return (
@@ -420,7 +420,7 @@ export default function HelpPage({ me, leagueId }) {
             </button>
           ))}
         </div>
-        <LayoutPreview />
+        {renderLayoutPreview()}
       </Section>
 
       <details className="mb-4">

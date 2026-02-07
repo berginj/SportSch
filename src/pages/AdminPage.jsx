@@ -131,7 +131,6 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
 
   useEffect(() => {
     loadMembershipsAndTeams();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leagueId]);
 
   useEffect(() => {

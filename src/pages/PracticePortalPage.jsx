@@ -37,7 +37,10 @@ function formatSlotLocation(slot) {
 
 export default function PracticePortalPage({ me, leagueId }) {
   const isGlobalAdmin = !!me?.isGlobalAdmin;
-  const memberships = Array.isArray(me?.memberships) ? me.memberships : [];
+  const memberships = useMemo(
+    () => (Array.isArray(me?.memberships) ? me.memberships : []),
+    [me]
+  );
   const role = useMemo(() => {
     const inLeague = memberships.filter((m) => (m?.leagueId || "").trim() === (leagueId || "").trim());
     const roles = inLeague.map((m) => normalizeRole(m?.role));

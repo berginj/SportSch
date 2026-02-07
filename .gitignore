@@ -274,6 +274,8 @@ lerna-debug.log*
 dist
 dist-ssr
 *.local
+playwright-report/
+test-results/
 
 # Generated API client (regenerate with npm run generate:api)
 src/generated-api/

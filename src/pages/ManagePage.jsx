@@ -23,7 +23,10 @@ function Pill({ active, children, onClick }) {
 }
 
 export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
-  const memberships = Array.isArray(me?.memberships) ? me.memberships : [];
+  const memberships = useMemo(
+    () => (Array.isArray(me?.memberships) ? me.memberships : []),
+    [me]
+  );
   const isGlobalAdmin = !!me?.isGlobalAdmin;
   const isLeagueAdmin = useMemo(() => {
     if (!leagueId) return false;
@@ -52,14 +55,7 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
     if (next && tabIds.has(next)) return next;
     return defaultTabId;
   });
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    const next = (params.get("manageTab") || defaultTabId).trim();
-    const safeNext = tabIds.has(next) ? next : defaultTabId;
-    if (safeNext !== active) setActive(safeNext);
-  }, [leagueId, tabIds, defaultTabId, active]);
+  const activeTabId = tabIds.has(active) ? active : defaultTabId;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -67,20 +63,20 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
       const params = new URLSearchParams(window.location.search);
       const next = (params.get("manageTab") || defaultTabId).trim();
       const safeNext = tabIds.has(next) ? next : defaultTabId;
-      if (safeNext !== active) setActive(safeNext);
+      setActive(safeNext);
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, [active, tabIds, defaultTabId]);
+  }, [tabIds, defaultTabId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
-    if (active) params.set("manageTab", active);
+    if (activeTabId) params.set("manageTab", activeTabId);
     else params.delete("manageTab");
     const next = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
     window.history.replaceState({}, "", next);
-  }, [active]);
+  }, [activeTabId]);
 
   return (
     <div className="container">
@@ -93,7 +89,7 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
         </div>
         <div className="card__body row row--wrap items-end gap-3">
           {tabs.map((t) => (
-            <Pill key={t.id} active={active === t.id} onClick={() => setActive(t.id)}>
+            <Pill key={t.id} active={activeTabId === t.id} onClick={() => setActive(t.id)}>
               {t.label}
             </Pill>
           ))}
@@ -103,7 +99,7 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
         </div>
       </div>
 
-      {active === "commissioner" && canSchedule && (
+      {activeTabId === "commissioner" && canSchedule && (
         <div className="card">
           <div className="card__header">
             <div className="h2">Commissioner Hub</div>
@@ -115,7 +111,7 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
         </div>
       )}
 
-      {active === "fields" && (
+      {activeTabId === "fields" && (
         <div className="stack gap-4">
           <div className="card">
             <div className="card__header">
@@ -160,7 +156,7 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
         </div>
       )}
 
-      {active === "settings" && canSchedule && (
+      {activeTabId === "settings" && canSchedule && (
         <div className="stack gap-4">
           <div className="card">
             <div className="card__header">
@@ -192,7 +188,7 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
         </div>
       )}
 
-      {active === "invites" && (
+      {activeTabId === "invites" && (
         <div className="card">
           <div className="card__header">
             <div className="h2">Invites</div>
@@ -205,7 +201,7 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
       )}
 
 
-      {active === "scheduler" && canSchedule && (
+      {activeTabId === "scheduler" && canSchedule && (
         <div className="card">
           <div className="card__header">
             <div className="h2">Scheduler</div>

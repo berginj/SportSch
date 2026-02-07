@@ -3,7 +3,10 @@ import { apiFetch } from "../lib/api";
 import NotificationBell from "./NotificationBell";
 
 export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
-  const memberships = Array.isArray(me?.memberships) ? me.memberships : [];
+  const memberships = useMemo(
+    () => (Array.isArray(me?.memberships) ? me.memberships : []),
+    [me]
+  );
   const email = me?.email || "";
   const isGlobalAdmin = !!me?.isGlobalAdmin;
   const [globalLeagues, setGlobalLeagues] = useState([]);

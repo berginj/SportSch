@@ -20,7 +20,7 @@ export default function NotificationDropdown({
 
     // Navigate to link if provided
     if (notification.link) {
-      window.location.hash = notification.link;
+      window.location.assign(notification.link);
       onClose();
     }
   }

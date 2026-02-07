@@ -24,7 +24,6 @@ export default function DivisionsManager({ leagueId }) {
   useEffect(() => {
     if (!leagueId) return;
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leagueId]);
 
   async function create() {

@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { getDefaultRangeFallback, getSeasonRange } from "../lib/season";
 import { SLOT_STATUS } from "../lib/constants";
@@ -8,13 +8,6 @@ import Toast from "../components/Toast";
 import { ConfirmDialog, PromptDialog } from "../components/Dialogs";
 import { useConfirmDialog, usePromptDialog } from "../lib/useDialogs";
 import { trackEvent } from "../lib/telemetry";
-
-function toDateInputValue(d) {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
 
 function normalizeRole(role) {
   return (role || "").trim();
@@ -82,7 +75,10 @@ function slotMatchupLabel(slot) {
 
 export default function CalendarPage({ me, leagueId, setLeagueId }) {
   const isGlobalAdmin = !!me?.isGlobalAdmin;
-  const memberships = Array.isArray(me?.memberships) ? me.memberships : [];
+  const memberships = useMemo(
+    () => (Array.isArray(me?.memberships) ? me.memberships : []),
+    [me]
+  );
   const role = useMemo(() => {
     const inLeague = memberships.filter((m) => (m?.leagueId || "").trim() === (leagueId || "").trim());
     const roles = inLeague.map((m) => normalizeRole(m?.role));
@@ -541,7 +537,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
       if (dateTo) params.set("dateTo", dateTo);
 
       const activeStatuses = Object.entries(slotStatusFilter)
-        .filter(([_, enabled]) => enabled)
+        .filter(([, enabled]) => enabled)
         .map(([status]) => status);
       if (activeStatuses.length > 0 && activeStatuses.length < 3) {
         params.set("status", activeStatuses.join(","));

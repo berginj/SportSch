@@ -70,7 +70,10 @@ function parseStatusFilter(params) {
 
 export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
   const isMobile = useIsMobile();
-  const memberships = Array.isArray(me?.memberships) ? me.memberships : [];
+  const memberships = useMemo(
+    () => (Array.isArray(me?.memberships) ? me.memberships : []),
+    [me]
+  );
   const role = useMemo(() => {
     const inLeague = memberships.filter((m) => (m?.leagueId || "").trim() === (leagueId || "").trim());
     const roles = inLeague.map((m) => normalizeRole(m?.role));
@@ -214,15 +217,6 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
     () => slots.filter((s) => s.status === SLOT_STATUS.CONFIRMED && !s.isAvailability && isPracticeSlot(s)),
     [slots]
   );
-
-  function activateSlotFilter(status) {
-    setShowSlots(true);
-    setSlotStatusFilter({
-      [SLOT_STATUS.OPEN]: status === SLOT_STATUS.OPEN,
-      [SLOT_STATUS.CONFIRMED]: status === SLOT_STATUS.CONFIRMED,
-      [SLOT_STATUS.CANCELLED]: status === SLOT_STATUS.CANCELLED,
-    });
-  }
 
   function goToCalendarWithStatus(status) {
     if (typeof window === "undefined") return;

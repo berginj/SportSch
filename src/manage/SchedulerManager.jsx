@@ -295,7 +295,7 @@ export default function SchedulerManager({ leagueId }) {
       try {
         const data = await apiFetch(`/api/divisions/${encodeURIComponent(division)}/season`);
         setDivisionSeason(data?.season || null);
-      } catch (e) {
+      } catch {
         setDivisionSeason(null);
       }
     })();

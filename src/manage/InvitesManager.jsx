@@ -10,7 +10,10 @@ function normalizeRole(role) {
 }
 
 export default function InvitesManager({ leagueId, me }) {
-  const memberships = Array.isArray(me?.memberships) ? me.memberships : [];
+  const memberships = useMemo(
+    () => (Array.isArray(me?.memberships) ? me.memberships : []),
+    [me]
+  );
   const isGlobalAdmin = !!me?.isGlobalAdmin;
 
   const role = useMemo(() => {

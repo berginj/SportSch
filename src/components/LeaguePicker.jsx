@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 
 export default function LeaguePicker({ leagueId, setLeagueId, me, label = "League", title }) {
-  const memberships = Array.isArray(me?.memberships) ? me.memberships : [];
+  const memberships = useMemo(
+    () => (Array.isArray(me?.memberships) ? me.memberships : []),
+    [me]
+  );
   const isGlobalAdmin = !!me?.isGlobalAdmin;
   const [globalLeagues, setGlobalLeagues] = useState([]);
   const [globalErr, setGlobalErr] = useState("");

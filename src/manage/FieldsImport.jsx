@@ -77,7 +77,6 @@ export default function FieldsImport({ leagueId, tableView = "A" }) {
   useEffect(() => {
     if (!leagueId) return;
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leagueId]);
 
   const canImport = useMemo(() => !!leagueId && !busy, [leagueId, busy]);

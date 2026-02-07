@@ -55,12 +55,6 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
     return { desiredLeague, requestedRole, autoSubmit };
   }, []);
 
-  const selectedLeague = useMemo(() => {
-    const id = (leagueId || "").trim();
-    if (!id) return null;
-    return leagues.find((l) => (l.leagueId || "") === id) || null;
-  }, [leagues, leagueId]);
-
   async function refresh() {
     setErr("");
     try {
