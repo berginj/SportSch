@@ -6,6 +6,7 @@ import sponsors from "../config/sponsors.json";
 import SocialEmbeds from "../components/SocialEmbeds.astro";
 import CtaStrip from "../components/CtaStrip.astro";
 import LastUpdated from "../components/LastUpdated.astro";
+import ApprovedActionGallery from "../components/ApprovedActionGallery.astro";
 
 const topRegistration = [...registrationLinks]
   .filter((x) => x.status === "open")
@@ -62,16 +63,7 @@ const topRegistration = [...registrationLinks]
     </div>
   </section>
 
-  <section class="container-shell pb-12">
-    <article class="card p-6">
-      <h2 class="font-display text-3xl text-brand-secondary">On the Field</h2>
-      <div class="mt-5 grid gap-4 md:grid-cols-3">
-        <img src="/images/agsa/team-pixie.jpg" alt="AGSA Pixie team group photo" class="h-48 w-full rounded-lg object-cover" loading="lazy" />
-        <img src="/images/agsa/team-hit-squad.jpg" alt="AGSA Hit Squad team group photo" class="h-48 w-full rounded-lg object-cover" loading="lazy" />
-        <img src="/images/agsa/agsa-contact-graphic.png" alt="AGSA graphic from league site" class="h-48 w-full rounded-lg object-contain bg-slate-50 p-4" loading="lazy" />
-      </div>
-    </article>
-  </section>
+  <ApprovedActionGallery />
 
   <section class="container-shell pb-12">
     <article class="card p-6">

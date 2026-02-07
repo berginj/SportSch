@@ -17,6 +17,56 @@ Build:
 npm run build
 ```
 
+## Action image extraction pipeline
+
+Tooling script:
+
+- `tools/extract_site_images.py`
+
+Install dependencies:
+
+```bash
+pip install requests beautifulsoup4 pillow imagehash
+```
+
+Run from `agsa-site/`:
+
+```bash
+python tools/extract_site_images.py \
+  --base-url https://agsafastpitch.com \
+  --max-pages 200 \
+  --max-depth 3 \
+  --rate-limit-ms 800 \
+  --output-dir ./public/images/candidates \
+  --allow-domains agsafastpitch.com,cdn2.sportngin.com
+```
+
+Outputs:
+
+- `public/images/candidates/manifest.json` (all candidate images)
+- `public/images/candidates/review.html` (local approval UI)
+- `public/images/candidates/approved-manifest.json` (approved-only list for website use)
+
+Review workflow:
+
+1. Open `public/images/candidates/review.html` in your browser.
+2. Mark items as approved / needs rights check / reject.
+3. Click export to download `approved-manifest.json`.
+4. Replace `public/images/candidates/approved-manifest.json` with the exported file.
+5. Rebuild the site (`npm run build`).
+
+Legal/ethical guardrails:
+
+- Crawl public pages only, no auth bypass.
+- Script respects `robots.txt`.
+- Do not identify or label minors.
+- Human rights/consent review is required before publishing images.
+
+Homepage integration:
+
+- `src/components/ApprovedActionGallery.astro` reads `approved-manifest.json`.
+- Only approved images are used in the hero/moments/highlights photo sections.
+
 ## Sponsorship routes
 
 - `/sponsor` main sponsorship workflow (Choose Tier -> Sponsor Info -> Review -> Pay)
