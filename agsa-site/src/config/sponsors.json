@@ -4,8 +4,8 @@
       "name": "Title Sponsors",
       "description": "League-wide partners with premier visibility.",
       "sponsors": [
-        { "name": "Avenel Sports Medicine", "website": "https://example.com", "logo": "/images/sponsors/sponsor-1.svg" },
-        { "name": "Garden State Bank", "website": "https://example.com", "logo": "/images/sponsors/sponsor-2.svg" }
+        { "name": "Arlington Sports Medicine", "website": "https://example.com", "logo": "/images/sponsors/sponsor-1.svg" },
+        { "name": "Arlington Community Bank", "website": "https://example.com", "logo": "/images/sponsors/sponsor-2.svg" }
       ]
     },
     {
