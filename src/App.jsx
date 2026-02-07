@@ -1,7 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import TopNav from "./components/TopNav";
 import StatusCard from "./components/StatusCard";
-import KeyboardShortcutsModal from "./components/KeyboardShortcutsModal";
 import { useSession } from "./lib/useSession";
 import { trackPageView } from "./lib/telemetry";
 import { useKeyboardShortcuts, COMMON_SHORTCUTS } from "./lib/hooks/useKeyboardShortcuts";
@@ -19,6 +18,7 @@ const DebugPage = lazy(() => import("./pages/DebugPage"));
 const PracticePortalPage = lazy(() => import("./pages/PracticePortalPage"));
 const NotificationSettingsPage = lazy(() => import("./pages/NotificationSettingsPage"));
 const NotificationCenterPage = lazy(() => import("./pages/NotificationCenterPage"));
+const KeyboardShortcutsModal = lazy(() => import("./components/KeyboardShortcutsModal"));
 
 const VALID_TABS = new Set(["home", "calendar", "schedule", "offers", "manage", "admin", "debug", "help", "practice", "settings", "notifications"]);
 
@@ -247,10 +247,14 @@ export default function App() {
         </Suspense>
       </main>
 
-      <KeyboardShortcutsModal
-        isOpen={showShortcuts}
-        onClose={() => setShowShortcuts(false)}
-      />
+      {showShortcuts ? (
+        <Suspense fallback={null}>
+          <KeyboardShortcutsModal
+            isOpen={showShortcuts}
+            onClose={() => setShowShortcuts(false)}
+          />
+        </Suspense>
+      ) : null}
     </div>
   );
 }

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
-import NotificationBell from "./NotificationBell";
+
+const NotificationBell = lazy(() => import("./NotificationBell"));
 
 export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
   const memberships = useMemo(
@@ -158,7 +159,9 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
           <span className="topnav__user" title={email}>
             {email || "Signed in"}
           </span>
-          <NotificationBell leagueId={leagueId} />
+          <Suspense fallback={null}>
+            <NotificationBell leagueId={leagueId} />
+          </Suspense>
           <div className="topnav__league">
             <select
               className="topnav__league-select"
