@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { useAccessRequests } from '../../../lib/hooks/useAccessRequests';
 import * as api from '../../../lib/api';
 
@@ -12,7 +12,7 @@ describe('useAccessRequests', () => {
     vi.clearAllMocks();
   });
 
-  it('should initialize with loading state', () => {
+  it('should initialize with loading state', async () => {
     api.apiFetch.mockResolvedValue([]);
     const { result } = renderHook(() =>
       useAccessRequests('league-1', false, 'Pending', 'league', '')
@@ -21,6 +21,10 @@ describe('useAccessRequests', () => {
     expect(result.current.loading).toBe(true);
     expect(result.current.items).toEqual([]);
     expect(result.current.err).toBe('');
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
   });
 
   it('should load access requests for league scope', async () => {
@@ -118,7 +122,10 @@ describe('useAccessRequests', () => {
       expect(result.current.loading).toBe(false);
     });
 
-    const approveResult = await result.current.approve('user-1');
+    let approveResult;
+    await act(async () => {
+      approveResult = await result.current.approve('user-1');
+    });
 
     expect(approveResult.success).toBe(true);
     expect(api.apiFetch).toHaveBeenCalledWith(
@@ -147,7 +154,10 @@ describe('useAccessRequests', () => {
       expect(result.current.loading).toBe(false);
     });
 
-    const denyResult = await result.current.deny('user-1', 'Not eligible');
+    let denyResult;
+    await act(async () => {
+      denyResult = await result.current.deny('user-1', 'Not eligible');
+    });
 
     expect(denyResult.success).toBe(true);
     expect(api.apiFetch).toHaveBeenCalledWith(
@@ -176,7 +186,10 @@ describe('useAccessRequests', () => {
       expect(result.current.loading).toBe(false);
     });
 
-    const approveResult = await result.current.approve('user-1');
+    let approveResult;
+    await act(async () => {
+      approveResult = await result.current.approve('user-1');
+    });
 
     expect(approveResult.success).toBe(false);
     expect(approveResult.error).toBe('Approval failed');
