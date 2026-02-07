@@ -42,8 +42,8 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
       ...(canSchedule ? [{ id: "commissioner", label: "Commissioner Hub" }] : []),
       ...(canSchedule ? [{ id: "settings", label: "League Settings" }] : []),
       { id: "invites", label: "Invites" },
-      { id: "fields", label: "Fields" },
       ...(canSchedule ? [{ id: "scheduler", label: "Scheduler" }] : []),
+      { id: "fields", label: "Fields" },
     ],
     [canSchedule]
   );
@@ -117,26 +117,6 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
 
       {activeTabId === "fields" && (
         <div className="stack gap-4">
-          <div className="card">
-            <div className="card__header">
-              <div className="h2">Fields</div>
-              <div className="subtle">Import fields via CSV (the only supported fields workflow).</div>
-            </div>
-            <div className="card__body">
-              <div className="callout">
-                <div className="font-bold mb-2">CSV rules</div>
-                <div className="subtle leading-relaxed">
-                  CSV must include <b>fieldKey</b> + <b>parkName</b> + <b>fieldName</b> (and optionally displayName, address, notes, status). DisplayName should be what you want coaches to see.
-                  Keep it consistent (example: <code>Tuckahoe Park &gt; Field 2</code>). fieldKey is stable and is how slots reference a field.
-                </div>
-              </div>
-              <div className="mt-3">
-                <Suspense fallback={sectionFallback}>
-                  <FieldsImport leagueId={leagueId} me={me} tableView={tableView} />
-                </Suspense>
-              </div>
-            </div>
-          </div>
           {canSchedule && (
             <>
               <div className="card">
@@ -163,6 +143,26 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
               </div>
             </>
           )}
+          <div className="card">
+            <div className="card__header">
+              <div className="h2">Fields</div>
+              <div className="subtle">Import fields via CSV (the only supported fields workflow).</div>
+            </div>
+            <div className="card__body">
+              <div className="callout">
+                <div className="font-bold mb-2">CSV rules</div>
+                <div className="subtle leading-relaxed">
+                  CSV must include <b>fieldKey</b> + <b>parkName</b> + <b>fieldName</b> (and optionally displayName, address, notes, status). DisplayName should be what you want coaches to see.
+                  Keep it consistent (example: <code>Tuckahoe Park &gt; Field 2</code>). fieldKey is stable and is how slots reference a field.
+                </div>
+              </div>
+              <div className="mt-3">
+                <Suspense fallback={sectionFallback}>
+                  <FieldsImport leagueId={leagueId} me={me} tableView={tableView} />
+                </Suspense>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
