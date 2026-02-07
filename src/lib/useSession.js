@@ -78,8 +78,10 @@ export function useSession() {
   useEffect(() => {
     if (!me) return;
     const initial = getInitialLeagueId(me);
-    if (initial && !activeLeagueId) setActiveLeagueId(initial);
-  }, [me]); // intentionally omit activeLeagueId
+    if (initial) {
+      setActiveLeagueId((prev) => prev || initial);
+    }
+  }, [me]);
 
   // Persist league changes
   useEffect(() => {

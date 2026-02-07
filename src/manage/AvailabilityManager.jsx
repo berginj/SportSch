@@ -58,12 +58,17 @@ export default function AvailabilityManager({ leagueId }) {
         setFields(list);
         setDivisions(divList);
         setLeagueSeason(league?.season || null);
-        if (!fieldKey && list.length) setFieldKey(list[0].fieldKey || "");
-        if (!ruleDraft.division && divList.length) {
-          setRuleDraft((prev) => ({
-            ...prev,
-            division: divList[0].code || divList[0].division || "",
-          }));
+        if (list.length) {
+          setFieldKey((prev) => prev || list[0].fieldKey || "");
+        }
+        if (divList.length) {
+          setRuleDraft((prev) => {
+            if (prev.division) return prev;
+            return {
+              ...prev,
+              division: divList[0].code || divList[0].division || "",
+            };
+          });
         }
       } catch (e) {
         setErr(e?.message || "Failed to load fields/divisions.");

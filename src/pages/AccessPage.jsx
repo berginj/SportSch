@@ -55,7 +55,7 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
     return { desiredLeague, requestedRole, autoSubmit };
   }, []);
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     setErr("");
     try {
       const [ls, my] = await Promise.all([
@@ -69,12 +69,49 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
       setErr(e?.message || "Failed to load.");
       setMineLoaded(true);
     }
-  }
+  }, [signedIn]);
+
+  const submitRequest = useCallback(async (roleOverride, source = "manual") => {
+    setErr("");
+    setOk("");
+    if (!signedIn) {
+      setErr("You must sign in before requesting access.");
+      return;
+    }
+
+    const id = (requestLeagueId || "").trim();
+    if (!id) {
+      setErr("Choose a league.");
+      return;
+    }
+
+    const requestedRole = roleOverride || role;
+
+    setBusy(true);
+    try {
+      await apiFetch("/api/accessrequests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", [LEAGUE_HEADER_NAME]: id },
+        body: JSON.stringify({ requestedRole, notes }),
+      });
+      setOk("Request submitted. An admin will review it.");
+      trackEvent("ui_access_request_submit", {
+        leagueId: id,
+        requestedRole,
+        source,
+      });
+      setNotes("");
+      await refresh();
+    } catch (e) {
+      setErr(e?.message || "Request failed.");
+    } finally {
+      setBusy(false);
+    }
+  }, [notes, refresh, requestLeagueId, role, signedIn]);
 
   useEffect(() => {
     refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signedIn]);
+  }, [refresh]);
 
   useEffect(() => {
     applyFiltersFromUrl();
@@ -141,45 +178,7 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
     if (mine.length > 0) return;
     autoRequested.current = true;
     submitRequest(role, "auto").catch(() => {});
-  }, [signedIn, mineLoaded, mine, leagueId, leagues.length, role, accessIntent]);
-
-  async function submitRequest(roleOverride, source = "manual") {
-    setErr("");
-    setOk("");
-    if (!signedIn) {
-      setErr("You must sign in before requesting access.");
-      return;
-    }
-
-    const id = (requestLeagueId || "").trim();
-    if (!id) {
-      setErr("Choose a league.");
-      return;
-    }
-
-    const requestedRole = roleOverride || role;
-
-    setBusy(true);
-    try {
-      await apiFetch("/api/accessrequests", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", [LEAGUE_HEADER_NAME]: id },
-        body: JSON.stringify({ requestedRole, notes }),
-      });
-      setOk("Request submitted. An admin will review it.");
-      trackEvent("ui_access_request_submit", {
-        leagueId: id,
-        requestedRole,
-        source,
-      });
-      setNotes("");
-      await refresh();
-    } catch (e) {
-      setErr(e?.message || "Request failed.");
-    } finally {
-      setBusy(false);
-    }
-  }
+  }, [signedIn, mineLoaded, mine, leagueId, leagues.length, role, accessIntent, submitRequest]);
 
   useEffect(() => {
     if (!accessIntent || autoSubmitted.current) return;
@@ -196,7 +195,7 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
       url.searchParams.delete("requestRole");
       window.history.replaceState({}, "", url.pathname + url.search);
     }
-  }, [accessIntent, leagueId, signedIn]);
+  }, [accessIntent, leagueId, signedIn, submitRequest]);
 
   return (
     <div className="page">

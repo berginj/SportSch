@@ -278,7 +278,9 @@ export default function SchedulerManager({ leagueId }) {
         setDivisions(list);
         setFields(Array.isArray(flds) ? flds : []);
         setLeagueSeason(league?.season || null);
-        if (!division && list.length) setDivision(list[0].code || list[0].division || "");
+        if (list.length) {
+          setDivision((prev) => prev || list[0].code || list[0].division || "");
+        }
       } catch (e) {
         setErr(e?.message || "Failed to load divisions");
         setDivisions([]);

@@ -67,8 +67,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         ]);
         const list = Array.isArray(divs) ? divs : [];
         setDivisions(list);
-        if (!division && list.length) {
-          setDivision(list[0].code || list[0].division || "");
+        if (list.length) {
+          setDivision((prev) => prev || list[0].code || list[0].division || "");
         }
         const season = league?.season || {};
         setSeasonStart(season.springStart || "");

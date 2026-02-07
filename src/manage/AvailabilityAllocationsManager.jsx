@@ -108,7 +108,9 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
         setDivisions(list);
         setFields(Array.isArray(flds) ? flds : []);
         setLeagueSeason(league?.season || null);
-        if (!genDivision && list.length) setGenDivision(list[0].code || list[0].division || "");
+        if (list.length) {
+          setGenDivision((prev) => prev || list[0].code || list[0].division || "");
+        }
       } catch (e) {
         setAllocErr(e?.message || "Failed to load divisions/fields.");
         setDivisions([]);

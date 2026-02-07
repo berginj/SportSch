@@ -14,7 +14,7 @@ export default function NotificationCenterPage({ leagueId }) {
   const [continuationToken, setContinuationToken] = useState(null);
   const [hasMore, setHasMore] = useState(false);
 
-  const loadNotifications = useCallback(async (append = false) => {
+  const loadNotifications = useCallback(async (append = false, token = null) => {
     if (!leagueId) {
       setLoading(false);
       return;
@@ -24,8 +24,8 @@ export default function NotificationCenterPage({ leagueId }) {
     setError('');
 
     try {
-      const token = append ? continuationToken : null;
-      const url = `/api/notifications?pageSize=50${token ? `&continuationToken=${token}` : ''}`;
+      const requestToken = append ? token : null;
+      const url = `/api/notifications?pageSize=50${requestToken ? `&continuationToken=${requestToken}` : ''}`;
       const result = await apiFetch(url);
 
       const data = result?.data || result;
@@ -40,11 +40,11 @@ export default function NotificationCenterPage({ leagueId }) {
     } finally {
       setLoading(false);
     }
-  }, [leagueId, continuationToken]);
+  }, [leagueId]);
 
   useEffect(() => {
     loadNotifications(false);
-  }, [leagueId]); // Only reload when league changes
+  }, [loadNotifications]);
 
   const handleMarkAsRead = async (notificationId) => {
     try {
@@ -76,7 +76,7 @@ export default function NotificationCenterPage({ leagueId }) {
 
   const handleLoadMore = () => {
     if (!loading && hasMore) {
-      loadNotifications(true);
+      loadNotifications(true, continuationToken);
     }
   };
 

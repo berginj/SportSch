@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { validateIsoDates } from "../lib/date";
 import Toast from "../components/Toast";
@@ -163,8 +163,12 @@ export default function SlotGeneratorManager({ leagueId }) {
         setDivisions(list);
         setFields(Array.isArray(flds) ? flds : []);
         setLeagueSeason(league?.season || null);
-        if (!slotGenDivision && list.length) setSlotGenDivision(list[0].code || list[0].division || "");
-        if (!slotGenFieldKey && Array.isArray(flds) && flds.length) setSlotGenFieldKey(flds[0].fieldKey || "");
+        if (list.length) {
+          setSlotGenDivision((prev) => prev || list[0].code || list[0].division || "");
+        }
+        if (Array.isArray(flds) && flds.length) {
+          setSlotGenFieldKey((prev) => prev || flds[0].fieldKey || "");
+        }
       } catch (e) {
         setErr(e?.message || "Failed to load divisions/fields.");
         setDivisions([]);
@@ -213,10 +217,42 @@ export default function SlotGeneratorManager({ leagueId }) {
     }
   }, [fields, availFieldKey]);
 
+  const loadAvailabilitySlots = useCallback(async () => {
+    setAvailListLoading(true);
+    setAvailListErr("");
+    setAvailListMsg("");
+    const dateError = validateIsoDates([
+      { label: "Date from", value: availDateFrom, required: false },
+      { label: "Date to", value: availDateTo, required: false },
+    ]);
+    if (dateError) {
+      setAvailListLoading(false);
+      return setAvailListErr(dateError);
+    }
+    try {
+      const qs = new URLSearchParams();
+      if (availDivision) qs.set("division", availDivision);
+      if (availDateFrom) qs.set("dateFrom", availDateFrom);
+      if (availDateTo) qs.set("dateTo", availDateTo);
+      const data = await apiFetch(`/api/slots?${qs.toString()}`);
+      const list = Array.isArray(data) ? data : [];
+      const filtered = list.filter((s) => s.isAvailability && (!availFieldKey || s.fieldKey === availFieldKey));
+      setAvailSlots(filtered);
+      setAvailListMsg(filtered.length === 0
+        ? "No availability slots found for this filter."
+        : `Loaded ${filtered.length} availability slots.`);
+    } catch (e) {
+      setAvailListErr(e?.message || "Failed to load availability slots.");
+      setAvailSlots([]);
+    } finally {
+      setAvailListLoading(false);
+    }
+  }, [availDateFrom, availDateTo, availDivision, availFieldKey]);
+
   useEffect(() => {
     if (!leagueId || !availDateFrom || !availDateTo) return;
     loadAvailabilitySlots().catch(() => {});
-  }, [leagueId, availDivision, availDateFrom, availDateTo, availFieldKey]);
+  }, [leagueId, availDateFrom, availDateTo, loadAvailabilitySlots]);
 
   function toggleDay(day) {
     setSlotGenDays((prev) => ({ ...prev, [day]: !prev[day] }));
@@ -426,38 +462,6 @@ export default function SlotGeneratorManager({ leagueId }) {
     const safeLeague = (leagueId || "league").replace(/[^a-z0-9_-]+/gi, "_");
     downloadCsv(csv, `availability_template_${safeLeague}.csv`);
     trackEvent("ui_availability_slots_template_download", { leagueId });
-  }
-
-  async function loadAvailabilitySlots() {
-    setAvailListLoading(true);
-    setAvailListErr("");
-    setAvailListMsg("");
-    const dateError = validateIsoDates([
-      { label: "Date from", value: availDateFrom, required: false },
-      { label: "Date to", value: availDateTo, required: false },
-    ]);
-    if (dateError) {
-      setAvailListLoading(false);
-      return setAvailListErr(dateError);
-    }
-    try {
-      const qs = new URLSearchParams();
-      if (availDivision) qs.set("division", availDivision);
-      if (availDateFrom) qs.set("dateFrom", availDateFrom);
-      if (availDateTo) qs.set("dateTo", availDateTo);
-      const data = await apiFetch(`/api/slots?${qs.toString()}`);
-      const list = Array.isArray(data) ? data : [];
-      const filtered = list.filter((s) => s.isAvailability && (!availFieldKey || s.fieldKey === availFieldKey));
-      setAvailSlots(filtered);
-      setAvailListMsg(filtered.length === 0
-        ? "No availability slots found for this filter."
-        : `Loaded ${filtered.length} availability slots.`);
-    } catch (e) {
-      setAvailListErr(e?.message || "Failed to load availability slots.");
-      setAvailSlots([]);
-    } finally {
-      setAvailListLoading(false);
-    }
   }
 
   async function deleteAvailabilitySlots() {
