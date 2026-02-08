@@ -56,6 +56,43 @@ function maxIsoDate(a, b) {
   return left || right || "";
 }
 
+function extractSlotItems(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== "object") return [];
+  if (Array.isArray(payload.items)) return payload.items;
+  if (payload.data && typeof payload.data === "object" && Array.isArray(payload.data.items)) {
+    return payload.data.items;
+  }
+  if (Array.isArray(payload.data)) return payload.data;
+  return [];
+}
+
+function extractContinuationToken(payload) {
+  if (!payload || typeof payload !== "object") return "";
+  const token = payload.continuationToken || payload.nextContinuationToken || payload.nextToken || "";
+  return String(token || "").trim();
+}
+
+function parseMinutes(raw) {
+  const parts = String(raw || "").split(":");
+  if (parts.length < 2) return null;
+  const h = Number(parts[0]);
+  const m = Number(parts[1]);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  return h * 60 + m;
+}
+
+function computeSlotScore(slot, weekday, patternCounts, dayCounts) {
+  const patternKey = `${weekday}|${slot.startTime || ""}|${slot.endTime || ""}|${slot.fieldKey || ""}`;
+  const patternCount = patternCounts.get(patternKey) || 1;
+  const dayCount = dayCounts.get(weekday) || 0;
+  const start = parseMinutes(slot.startTime);
+  const end = parseMinutes(slot.endTime);
+  const duration = start != null && end != null && end > start ? end - start : 0;
+  const durationBucket = Math.min(20, Math.floor(duration / 15));
+  return patternCount * 100 + dayCount + durationBucket;
+}
+
 function StepButton({ active, onClick, children }) {
   return (
     <button
@@ -144,7 +181,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         .filter((s) => s.slotType === "game" || s.slotType === "both")
         .map((s) => ({
           slotId: s.slotId,
-          label: `${s.weekday} ${s.gameDate} ${s.startTime}-${s.endTime} ${s.fieldKey}`,
+          label: `${s.weekday} ${s.gameDate} ${s.startTime}-${s.endTime} ${s.fieldKey} (score ${s.score ?? 0})`,
         })),
     [slotPlan]
   );
@@ -200,13 +237,32 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       setAvailabilityLoading(true);
       try {
         const planningDateTo = maxIsoDate(seasonEnd, bracketEnd) || seasonEnd;
-        const qs = new URLSearchParams();
-        qs.set("division", division);
-        qs.set("dateFrom", seasonStart);
-        qs.set("dateTo", planningDateTo);
-        qs.set("status", "Open");
-        const data = await apiFetch(`/api/slots?${qs.toString()}`);
-        const list = Array.isArray(data) ? data : [];
+        const list = [];
+        const seenSlotIds = new Set();
+        let continuationToken = "";
+        for (let page = 0; page < 50; page += 1) {
+          const qs = new URLSearchParams();
+          qs.set("division", division);
+          qs.set("dateFrom", seasonStart);
+          qs.set("dateTo", planningDateTo);
+          qs.set("status", "Open");
+          qs.set("pageSize", "500");
+          if (continuationToken) qs.set("continuationToken", continuationToken);
+
+          const data = await apiFetch(`/api/slots?${qs.toString()}`);
+          const pageItems = extractSlotItems(data);
+          for (const slot of pageItems) {
+            const slotId = String(slot?.slotId || "").trim();
+            if (!slotId || seenSlotIds.has(slotId)) continue;
+            seenSlotIds.add(slotId);
+            list.push(slot);
+          }
+
+          const nextToken = extractContinuationToken(data);
+          if (!nextToken || pageItems.length === 0) break;
+          continuationToken = nextToken;
+        }
+
         const availability = list
           .filter((s) => s.isAvailability)
           .sort((a, b) => {
@@ -215,24 +271,36 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
             return ad.localeCompare(bd);
           });
 
+        const insights = buildAvailabilityInsights(availability);
+        const dayCounts = new Map(
+          (insights?.dayStats || []).map((day) => [day.day, day.slots])
+        );
+        const patternCounts = new Map();
+        for (const slot of availability) {
+          const weekday = isoDayShort(slot.gameDate || "");
+          const patternKey = `${weekday}|${slot.startTime || ""}|${slot.endTime || ""}|${slot.fieldKey || ""}`;
+          patternCounts.set(patternKey, (patternCounts.get(patternKey) || 0) + 1);
+        }
+
         setSlotPlan((prev) => {
           const previousById = new Map((prev || []).map((item) => [item.slotId, item]));
           return availability.map((slot) => {
             const prior = previousById.get(slot.slotId);
+            const weekday = isoDayShort(slot.gameDate || "");
             return {
               slotId: slot.slotId,
               gameDate: slot.gameDate || "",
               startTime: slot.startTime || "",
               endTime: slot.endTime || "",
               fieldKey: slot.fieldKey || "",
-              weekday: isoDayShort(slot.gameDate || ""),
+              weekday,
               slotType: normalizeSlotType(prior?.slotType || "practice"),
               priorityRank: normalizePriorityRank(prior?.priorityRank || ""),
+              score: computeSlotScore(slot, weekday, patternCounts, dayCounts),
             };
           });
         });
 
-        const insights = buildAvailabilityInsights(availability);
         setAvailabilityInsights(insights);
         if (!preferredTouched && insights.suggested.length) {
           setPreferredWeeknights(insights.suggested);
@@ -533,6 +601,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
               <div className="subtle mt-2">
                 Scheduler only uses slots marked <b>Game</b> or <b>Both</b> across regular season, pool play, and bracket. Practice slots remain available and unscheduled.
               </div>
+              <div className="subtle">
+                Score is based on how consistently the same weekday/time/field pattern appears in the queried window.
+              </div>
             </div>
 
             <div className="row row--wrap gap-2">
@@ -586,6 +657,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                       <th>Day</th>
                       <th>Time</th>
                       <th>Field</th>
+                      <th>Score</th>
                       <th>Type</th>
                       <th>Priority</th>
                     </tr>
@@ -599,6 +671,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                           {slot.startTime}-{slot.endTime}
                         </td>
                         <td>{slot.fieldKey}</td>
+                        <td title="Higher score means this slot pattern appears more consistently in the queried window.">
+                          {slot.score ?? 0}
+                        </td>
                         <td>
                           <select
                             value={slot.slotType}
