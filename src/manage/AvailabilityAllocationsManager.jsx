@@ -234,7 +234,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
     if (dateError) return setAllocErr(dateError);
     if (manualDateTo < manualDateFrom) return setAllocErr("Date to must be on or after date from.");
 
-    const selectedDays = DAY_OPTIONS.filter((day) => manualDays[day]?.enabled);
+    const selectedDays = selectedManualDays;
     if (selectedDays.length === 0) return setAllocErr("Enable at least one weekday section.");
 
     for (const day of selectedDays) {
@@ -576,6 +576,10 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
     }
     return map;
   }, [fields]);
+  const selectedManualDays = useMemo(
+    () => DAY_OPTIONS.filter((day) => manualDays[day]?.enabled),
+    [manualDays]
+  );
 
   return (
     <div className="stack">
@@ -592,7 +596,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
         <div className="card__header">
           <div className="h2">Manual allocation builder (no CSV)</div>
           <div className="subtle">
-            Use seven weekday sections to add recurring field allocations directly.
+            Set Active, pick weekdays, then fill details for only those selected days.
           </div>
         </div>
         <div className="card__body grid2">
@@ -631,82 +635,94 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
           </label>
         </div>
         <div className="card__body stack gap-2">
-          {DAY_OPTIONS.map((day) => {
-            const row = manualDays[day] || {};
-            const rowType = normalizeManualSlotType(row.slotType);
-            return (
-              <div key={day} className="card">
-                <div className="card__body grid2">
-                  <label className="inlineCheck">
+          {manualIsActive ? (
+            <>
+              <div className="row row--wrap gap-2">
+                {DAY_OPTIONS.map((day) => (
+                  <label key={day} className="inlineCheck">
                     <input
                       type="checkbox"
-                      checked={!!row.enabled}
+                      checked={!!manualDays[day]?.enabled}
                       onChange={(e) => updateManualDay(day, { enabled: e.target.checked })}
                     />
                     {day}
                   </label>
-                  <label>
-                    Slot type
-                    <select
-                      value={rowType}
-                      onChange={(e) =>
-                        updateManualDay(day, {
-                          slotType: normalizeManualSlotType(e.target.value),
-                          priorityRank: normalizeManualSlotType(e.target.value) === "practice" ? "" : row.priorityRank,
-                        })}
-                      disabled={!row.enabled}
-                    >
-                      <option value="practice">Practice</option>
-                      <option value="game">Game</option>
-                      <option value="both">Both</option>
-                    </select>
-                  </label>
-                  <label>
-                    Start time
-                    <input
-                      type="time"
-                      value={row.startTime || ""}
-                      onChange={(e) => updateManualDay(day, { startTime: e.target.value })}
-                      disabled={!row.enabled}
-                    />
-                  </label>
-                  <label>
-                    End time
-                    <input
-                      type="time"
-                      value={row.endTime || ""}
-                      onChange={(e) => updateManualDay(day, { endTime: e.target.value })}
-                      disabled={!row.enabled}
-                    />
-                  </label>
-                  <label>
-                    Priority rank
-                    <input
-                      type="number"
-                      min="1"
-                      value={row.priorityRank || ""}
-                      onChange={(e) => updateManualDay(day, { priorityRank: e.target.value })}
-                      disabled={!row.enabled || rowType === "practice"}
-                      placeholder={rowType === "practice" ? "-" : "1"}
-                    />
-                  </label>
-                  <label className="col-span-2">
-                    Notes (optional)
-                    <input
-                      value={row.notes || ""}
-                      onChange={(e) => updateManualDay(day, { notes: e.target.value })}
-                      disabled={!row.enabled}
-                      placeholder={`${day} notes`}
-                    />
-                  </label>
-                </div>
+                ))}
               </div>
-            );
-          })}
+              {!selectedManualDays.length ? <div className="subtle">Select at least one weekday.</div> : null}
+              {selectedManualDays.map((day) => {
+                const row = manualDays[day] || {};
+                const rowType = normalizeManualSlotType(row.slotType);
+                return (
+                  <div key={day} className="card">
+                    <div className="card__body grid2">
+                      <div className="font-bold col-span-2">{day}</div>
+                      <label>
+                        Slot type
+                        <select
+                          value={rowType}
+                          onChange={(e) =>
+                            updateManualDay(day, {
+                              slotType: normalizeManualSlotType(e.target.value),
+                              priorityRank: normalizeManualSlotType(e.target.value) === "practice" ? "" : row.priorityRank,
+                            })}
+                        >
+                          <option value="practice">Practice</option>
+                          <option value="game">Game</option>
+                          <option value="both">Both</option>
+                        </select>
+                      </label>
+                      <label>
+                        Start time
+                        <input
+                          type="time"
+                          value={row.startTime || ""}
+                          onChange={(e) => updateManualDay(day, { startTime: e.target.value })}
+                        />
+                      </label>
+                      <label>
+                        End time
+                        <input
+                          type="time"
+                          value={row.endTime || ""}
+                          onChange={(e) => updateManualDay(day, { endTime: e.target.value })}
+                        />
+                      </label>
+                      <label>
+                        Priority rank
+                        <input
+                          type="number"
+                          min="1"
+                          value={row.priorityRank || ""}
+                          onChange={(e) => updateManualDay(day, { priorityRank: e.target.value })}
+                          disabled={rowType === "practice"}
+                          placeholder={rowType === "practice" ? "-" : "1"}
+                        />
+                      </label>
+                      <label className="col-span-2">
+                        Notes (optional)
+                        <input
+                          value={row.notes || ""}
+                          onChange={(e) => updateManualDay(day, { notes: e.target.value })}
+                          placeholder={`${day} notes`}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          ) : (
+            <div className="subtle">Turn on Active to select weekdays and configure day details.</div>
+          )}
         </div>
         <div className="card__body row gap-2">
-          <button className="btn btn--primary" onClick={addManualAllocations} disabled={manualBusy || !manualFieldKey}>
-            {manualBusy ? "Saving..." : "Add enabled day allocations"}
+          <button
+            className="btn btn--primary"
+            onClick={addManualAllocations}
+            disabled={manualBusy || !manualFieldKey || selectedManualDays.length === 0}
+          >
+            {manualBusy ? "Saving..." : "Add selected day allocations"}
           </button>
           <button className="btn btn--ghost" onClick={resetManualDays} disabled={manualBusy}>
             Reset weekdays
