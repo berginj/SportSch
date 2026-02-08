@@ -95,7 +95,7 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
               {t.label}
             </Pill>
           ))}
-          <div className="min-w-[220px]">
+          <div className="w-full min-[740px]:w-auto min-[740px]:min-w-[220px]">
             <LeaguePicker leagueId={leagueId} setLeagueId={setLeagueId} me={me} label="Switch league" />
           </div>
         </div>

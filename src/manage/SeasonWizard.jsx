@@ -877,14 +877,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                     <div className="h4">Weekly availability view</div>
                     <div className="subtle">Recurring patterns by weekday; useful for spotting time overlaps before ranking.</div>
                   </div>
-                  <div
-                    className="card__body"
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-                      gap: "0.5rem",
-                    }}
-                  >
+                  <div className="card__body seasonWeekGrid">
                     {WEEKDAY_OPTIONS.map((day) => {
                       const dayPatterns = slotPatterns.filter((p) => p.weekday === day);
                       return (
