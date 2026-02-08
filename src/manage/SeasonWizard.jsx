@@ -6,6 +6,11 @@ import { trackEvent } from "../lib/telemetry";
 import Toast from "../components/Toast";
 
 const WEEKDAY_OPTIONS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const SLOT_TYPE_OPTIONS = [
+  { value: "practice", label: "Practice" },
+  { value: "game", label: "Game" },
+  { value: "both", label: "Both" },
+];
 const ISSUE_HINTS = {
   "unassigned-matchups": "Not enough availability slots, or constraints are too tight for the slot pool.",
   "unassigned-slots": "More availability than matchups. These can become extra offers or remain unused.",
@@ -13,6 +18,32 @@ const ISSUE_HINTS = {
   "max-games-per-week": "Max games/week is too low for available slots. Increase the limit or add more slots.",
   "missing-opponent": "A slot is missing an opponent. Check team count or external/guest game settings.",
 };
+
+function isoDayShort(value) {
+  if (!value) return "";
+  const parts = value.split("-");
+  if (parts.length !== 3) return "";
+  const year = Number(parts[0]);
+  const month = Number(parts[1]) - 1;
+  const day = Number(parts[2]);
+  const dt = new Date(Date.UTC(year, month, day));
+  if (Number.isNaN(dt.getTime())) return "";
+  return WEEKDAY_OPTIONS[(dt.getUTCDay() + 6) % 7] || "";
+}
+
+function normalizeSlotType(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "game" || raw === "both") return raw;
+  return "practice";
+}
+
+function normalizePriorityRank(value) {
+  if (value === "" || value === null || value === undefined) return "";
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return "";
+  const rounded = Math.trunc(parsed);
+  return rounded > 0 ? String(rounded) : "";
+}
 
 function StepButton({ active, onClick, children }) {
   return (
@@ -50,6 +81,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [toast, setToast] = useState(null);
+  const [slotPlan, setSlotPlan] = useState([]);
+  const [guestAnchorPrimarySlotId, setGuestAnchorPrimarySlotId] = useState("");
+  const [guestAnchorSecondarySlotId, setGuestAnchorSecondarySlotId] = useState("");
   const [availabilityInsights, setAvailabilityInsights] = useState(null);
   const [autoAppliedPreferred, setAutoAppliedPreferred] = useState(false);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
@@ -80,8 +114,28 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   }, [leagueId]);
 
   const steps = useMemo(
-    () => ["Basics", "Postseason", "Rules", "Preview"],
+    () => ["Basics", "Postseason", "Slot plan", "Rules", "Preview"],
     []
+  );
+
+  const slotPlanSummary = useMemo(() => {
+    const total = slotPlan.length;
+    const practice = slotPlan.filter((s) => s.slotType === "practice").length;
+    const game = slotPlan.filter((s) => s.slotType === "game").length;
+    const both = slotPlan.filter((s) => s.slotType === "both").length;
+    const ranked = slotPlan.filter((s) => Number(s.priorityRank) > 0).length;
+    return { total, practice, game, both, ranked, gameCapable: game + both };
+  }, [slotPlan]);
+
+  const guestAnchorOptions = useMemo(
+    () =>
+      slotPlan
+        .filter((s) => s.slotType === "game" || s.slotType === "both")
+        .map((s) => ({
+          slotId: s.slotId,
+          label: `${s.weekday} ${s.gameDate} ${s.startTime}-${s.endTime} ${s.fieldKey}`,
+        })),
+    [slotPlan]
   );
 
   function toggleWeeknight(day) {
@@ -92,11 +146,39 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     });
   }
 
+  function updateSlotPlanItem(slotId, patch) {
+    setSlotPlan((prev) =>
+      prev.map((item) => (item.slotId === slotId ? { ...item, ...patch } : item))
+    );
+  }
+
+  function setAllSlotTypes(nextType) {
+    const normalized = normalizeSlotType(nextType);
+    setSlotPlan((prev) => prev.map((item) => ({ ...item, slotType: normalized })));
+  }
+
+  function autoRankGameSlots() {
+    setSlotPlan((prev) => {
+      let rank = 1;
+      return prev.map((item) => {
+        if (item.slotType === "game" || item.slotType === "both") {
+          const next = { ...item, priorityRank: String(rank) };
+          rank += 1;
+          return next;
+        }
+        return { ...item, priorityRank: "" };
+      });
+    });
+  }
+
   useEffect(() => {
     if (!division) return;
     setPreferredTouched(false);
     setPreferredWeeknights([]);
     setAutoAppliedPreferred(false);
+    setSlotPlan([]);
+    setGuestAnchorPrimarySlotId("");
+    setGuestAnchorSecondarySlotId("");
   }, [division]);
 
   useEffect(() => {
@@ -113,7 +195,31 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         qs.set("status", "Open");
         const data = await apiFetch(`/api/slots?${qs.toString()}`);
         const list = Array.isArray(data) ? data : [];
-        const availability = list.filter((s) => s.isAvailability);
+        const availability = list
+          .filter((s) => s.isAvailability)
+          .sort((a, b) => {
+            const ad = `${a.gameDate || ""}|${a.startTime || ""}|${a.fieldKey || ""}|${a.slotId || ""}`;
+            const bd = `${b.gameDate || ""}|${b.startTime || ""}|${b.fieldKey || ""}|${b.slotId || ""}`;
+            return ad.localeCompare(bd);
+          });
+
+        setSlotPlan((prev) => {
+          const previousById = new Map((prev || []).map((item) => [item.slotId, item]));
+          return availability.map((slot) => {
+            const prior = previousById.get(slot.slotId);
+            return {
+              slotId: slot.slotId,
+              gameDate: slot.gameDate || "",
+              startTime: slot.startTime || "",
+              endTime: slot.endTime || "",
+              fieldKey: slot.fieldKey || "",
+              weekday: isoDayShort(slot.gameDate || ""),
+              slotType: normalizeSlotType(prior?.slotType || "practice"),
+              priorityRank: normalizePriorityRank(prior?.priorityRank || ""),
+            };
+          });
+        });
+
         const insights = buildAvailabilityInsights(availability);
         setAvailabilityInsights(insights);
         if (!preferredTouched && insights.suggested.length) {
@@ -123,11 +229,76 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       } catch (e) {
         setAvailabilityErr(e?.message || "Failed to load availability insights.");
         setAvailabilityInsights(null);
+        setSlotPlan([]);
+        setGuestAnchorPrimarySlotId("");
+        setGuestAnchorSecondarySlotId("");
       } finally {
         setAvailabilityLoading(false);
       }
     })();
   }, [leagueId, division, seasonStart, seasonEnd, preferredTouched]);
+
+  useEffect(() => {
+    const allowed = new Set(
+      slotPlan
+        .filter((s) => s.slotType === "game" || s.slotType === "both")
+        .map((s) => s.slotId)
+    );
+    if (guestAnchorPrimarySlotId && !allowed.has(guestAnchorPrimarySlotId)) {
+      setGuestAnchorPrimarySlotId("");
+    }
+    if (guestAnchorSecondarySlotId && !allowed.has(guestAnchorSecondarySlotId)) {
+      setGuestAnchorSecondarySlotId("");
+    }
+  }, [slotPlan, guestAnchorPrimarySlotId, guestAnchorSecondarySlotId]);
+
+  function guestAnchorPayloadFromSlotId(slotId) {
+    if (!slotId) return null;
+    const slot = slotPlan.find((s) => s.slotId === slotId);
+    if (!slot) return null;
+    return {
+      dayOfWeek: slot.weekday,
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+      fieldKey: slot.fieldKey,
+    };
+  }
+
+  function buildWizardPayload() {
+    const slotPlanPayload = slotPlan.map((slot) => {
+      const rank = Number(slot.priorityRank);
+      return {
+        slotId: slot.slotId,
+        slotType: normalizeSlotType(slot.slotType),
+        priorityRank: Number.isFinite(rank) && rank > 0 ? rank : undefined,
+      };
+    });
+
+    const payload = {
+      division,
+      seasonStart,
+      seasonEnd,
+      poolStart: poolStart || undefined,
+      poolEnd: poolEnd || undefined,
+      bracketStart: bracketStart || undefined,
+      bracketEnd: bracketEnd || undefined,
+      minGamesPerTeam: Number(minGamesPerTeam) || 0,
+      poolGamesPerTeam: Number(poolGamesPerTeam) || 1,
+      preferredWeeknights,
+      strictPreferredWeeknights,
+      externalOfferPerWeek: Number(guestGamesPerWeek) || 0,
+      maxGamesPerWeek: Number(maxGamesPerWeek) || 0,
+      noDoubleHeaders,
+      balanceHomeAway,
+      slotPlan: slotPlanPayload,
+    };
+
+    const primaryAnchor = guestAnchorPayloadFromSlotId(guestAnchorPrimarySlotId);
+    const secondaryAnchor = guestAnchorPayloadFromSlotId(guestAnchorSecondarySlotId);
+    if (primaryAnchor) payload.guestAnchorPrimary = primaryAnchor;
+    if (secondaryAnchor) payload.guestAnchorSecondary = secondaryAnchor;
+    return payload;
+  }
 
   async function runPreview() {
     setErr("");
@@ -140,32 +311,23 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       { label: "Bracket end", value: bracketEnd, required: false },
     ]);
     if (dateError) return setErr(dateError);
+    if (!division) return setErr("Division is required.");
+    if (slotPlanSummary.gameCapable <= 0) {
+      return setErr("Select at least one availability slot as Game or Both in Slot plan.");
+    }
+    if (guestAnchorPrimarySlotId && guestAnchorSecondarySlotId && guestAnchorPrimarySlotId === guestAnchorSecondarySlotId) {
+      return setErr("Guest anchor option 1 and option 2 must be different slots.");
+    }
     setLoading(true);
     try {
-      const payload = {
-        division,
-        seasonStart,
-        seasonEnd,
-        poolStart: poolStart || undefined,
-        poolEnd: poolEnd || undefined,
-        bracketStart: bracketStart || undefined,
-        bracketEnd: bracketEnd || undefined,
-        minGamesPerTeam: Number(minGamesPerTeam) || 0,
-        poolGamesPerTeam: Number(poolGamesPerTeam) || 1,
-        preferredWeeknights,
-        strictPreferredWeeknights,
-        externalOfferPerWeek: Number(guestGamesPerWeek) || 0,
-        maxGamesPerWeek: Number(maxGamesPerWeek) || 0,
-        noDoubleHeaders,
-        balanceHomeAway,
-      };
+      const payload = buildWizardPayload();
       const data = await apiFetch("/api/schedule/wizard/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       setPreview(data || null);
-      setStep(3);
+      setStep(4);
       trackEvent("ui_season_wizard_preview", { leagueId, division });
     } catch (e) {
       setErr(e?.message || "Preview failed.");
@@ -187,25 +349,15 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       { label: "Bracket end", value: bracketEnd, required: false },
     ]);
     if (dateError) return setErr(dateError);
+    if (slotPlanSummary.gameCapable <= 0) {
+      return setErr("Select at least one availability slot as Game or Both in Slot plan.");
+    }
+    if (guestAnchorPrimarySlotId && guestAnchorSecondarySlotId && guestAnchorPrimarySlotId === guestAnchorSecondarySlotId) {
+      return setErr("Guest anchor option 1 and option 2 must be different slots.");
+    }
     setLoading(true);
     try {
-      const payload = {
-        division,
-        seasonStart,
-        seasonEnd,
-        poolStart: poolStart || undefined,
-        poolEnd: poolEnd || undefined,
-        bracketStart: bracketStart || undefined,
-        bracketEnd: bracketEnd || undefined,
-        minGamesPerTeam: Number(minGamesPerTeam) || 0,
-        poolGamesPerTeam: Number(poolGamesPerTeam) || 1,
-        preferredWeeknights,
-        strictPreferredWeeknights,
-        externalOfferPerWeek: Number(guestGamesPerWeek) || 0,
-        maxGamesPerWeek: Number(maxGamesPerWeek) || 0,
-        noDoubleHeaders,
-        balanceHomeAway,
-      };
+      const payload = buildWizardPayload();
       await apiFetch("/api/schedule/wizard/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -352,6 +504,144 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       {step === 2 ? (
         <div className="card">
           <div className="card__header">
+            <div className="h3">Slot planning</div>
+            <div className="subtle">
+              Mark each availability as practice/game/both (defaults to practice), set priority rank, and pick guest game anchor options.
+            </div>
+          </div>
+          <div className="card__body stack gap-3">
+            <div className="callout">
+              <div className="row row--wrap gap-2">
+                <span className="pill">Total: {slotPlanSummary.total}</span>
+                <span className="pill">Practice: {slotPlanSummary.practice}</span>
+                <span className="pill">Game: {slotPlanSummary.game}</span>
+                <span className="pill">Both: {slotPlanSummary.both}</span>
+                <span className="pill">Ranked: {slotPlanSummary.ranked}</span>
+              </div>
+              <div className="subtle mt-2">
+                Scheduler only uses slots marked <b>Game</b> or <b>Both</b>. Practice slots remain available and unscheduled.
+              </div>
+            </div>
+
+            <div className="row row--wrap gap-2">
+              <button className="btn btn--ghost" type="button" onClick={() => setAllSlotTypes("practice")}>
+                Set all Practice
+              </button>
+              <button className="btn btn--ghost" type="button" onClick={() => setAllSlotTypes("both")}>
+                Set all Both
+              </button>
+              <button className="btn btn--ghost" type="button" onClick={autoRankGameSlots}>
+                Auto-rank Game/Both
+              </button>
+            </div>
+
+            <div className="grid2">
+              <label>
+                Guest anchor option 1
+                <select value={guestAnchorPrimarySlotId} onChange={(e) => setGuestAnchorPrimarySlotId(e.target.value)}>
+                  <option value="">None</option>
+                  {guestAnchorOptions.map((opt) => (
+                    <option key={opt.slotId} value={opt.slotId}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Guest anchor option 2
+                <select value={guestAnchorSecondarySlotId} onChange={(e) => setGuestAnchorSecondarySlotId(e.target.value)}>
+                  <option value="">None</option>
+                  {guestAnchorOptions.map((opt) => (
+                    <option key={opt.slotId} value={opt.slotId}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            {availabilityLoading ? <div className="muted">Loading availability slots...</div> : null}
+            {!availabilityLoading && !slotPlan.length ? (
+              <div className="callout callout--error">No availability slots found in the selected season window.</div>
+            ) : null}
+
+            {slotPlan.length ? (
+              <div className={`tableWrap ${tableView === "B" ? "tableWrap--sticky" : ""}`}>
+                <table className={`table ${tableView === "B" ? "table--compact table--sticky" : ""}`}>
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Day</th>
+                      <th>Time</th>
+                      <th>Field</th>
+                      <th>Type</th>
+                      <th>Priority</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {slotPlan.map((slot) => (
+                      <tr key={slot.slotId}>
+                        <td>{slot.gameDate}</td>
+                        <td>{slot.weekday}</td>
+                        <td>
+                          {slot.startTime}-{slot.endTime}
+                        </td>
+                        <td>{slot.fieldKey}</td>
+                        <td>
+                          <select
+                            value={slot.slotType}
+                            onChange={(e) => {
+                              const nextType = normalizeSlotType(e.target.value);
+                              updateSlotPlanItem(slot.slotId, {
+                                slotType: nextType,
+                                priorityRank:
+                                  nextType === "practice" ? "" : normalizePriorityRank(slot.priorityRank),
+                              });
+                            }}
+                          >
+                            {SLOT_TYPE_OPTIONS.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            min="1"
+                            value={slot.priorityRank}
+                            disabled={slot.slotType === "practice"}
+                            onChange={(e) =>
+                              updateSlotPlanItem(slot.slotId, {
+                                priorityRank:
+                                  slot.slotType === "practice" ? "" : normalizePriorityRank(e.target.value),
+                              })
+                            }
+                            placeholder={slot.slotType === "practice" ? "-" : "1"}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </div>
+          <div className="row row--end gap-2">
+            <button className="btn btn--ghost" type="button" onClick={() => setStep(1)}>
+              Back
+            </button>
+            <button className="btn btn--primary" type="button" onClick={() => setStep(3)}>
+              Next
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {step === 3 ? (
+        <div className="card">
+          <div className="card__header">
             <div className="h3">Scheduling rules</div>
             <div className="subtle">Set regular season and pool play constraints.</div>
           </div>
@@ -435,9 +725,14 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                 Only use preferred nights (ignore other days)
               </label>
             </div>
+            {Number(guestGamesPerWeek) > 0 ? (
+              <div className="callout">
+                Guest games are enabled. Anchor options from Slot plan are used first each week; otherwise highest-priority remaining slots are used.
+              </div>
+            ) : null}
           </div>
           <div className="row row--end gap-2">
-            <button className="btn btn--ghost" type="button" onClick={() => setStep(1)}>
+            <button className="btn btn--ghost" type="button" onClick={() => setStep(2)}>
               Back
             </button>
             <button className="btn btn--primary" type="button" onClick={runPreview} disabled={loading}>
@@ -447,7 +742,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         </div>
       ) : null}
 
-      {step === 3 ? (
+      {step === 4 ? (
         <div className="card">
           <div className="card__header">
             <div className="h3">Preview & apply</div>
@@ -473,7 +768,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                   </div>
                   <div className="layoutStat">
                     <div className="layoutStat__value">{preview.summary?.totalSlots ?? 0}</div>
-                    <div className="layoutStat__label">Total availability slots</div>
+                    <div className="layoutStat__label">Game-capable slots</div>
                   </div>
                 </div>
 
@@ -589,7 +884,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
             )}
           </div>
           <div className="row row--end gap-2">
-            <button className="btn btn--ghost" type="button" onClick={() => setStep(2)}>
+            <button className="btn btn--ghost" type="button" onClick={() => setStep(3)}>
               Back
             </button>
             <button className="btn btn--primary" type="button" onClick={applySchedule} disabled={loading || !preview}>

@@ -37,7 +37,23 @@ public class ScheduleWizardFunctions
         int? externalOfferPerWeek,
         int? maxGamesPerWeek,
         bool? noDoubleHeaders,
-        bool? balanceHomeAway
+        bool? balanceHomeAway,
+        List<SlotPlanItem>? slotPlan,
+        GuestAnchorOption? guestAnchorPrimary,
+        GuestAnchorOption? guestAnchorSecondary
+    );
+
+    public record SlotPlanItem(
+        string? slotId,
+        string? slotType,
+        int? priorityRank
+    );
+
+    public record GuestAnchorOption(
+        string? dayOfWeek,
+        string? startTime,
+        string? endTime,
+        string? fieldKey
     );
 
     public record PhaseSummary(
@@ -150,32 +166,39 @@ public class ScheduleWizardFunctions
             if (teams.Count < 2)
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Need at least two teams to schedule.");
 
-            var allSlots = await LoadAvailabilitySlotsAsync(leagueId, division, seasonStart, bracketEnd ?? seasonEnd);
-            if (allSlots.Count == 0)
+            var rawSlots = await LoadAvailabilitySlotsAsync(leagueId, division, seasonStart, bracketEnd ?? seasonEnd);
+            if (rawSlots.Count == 0)
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "No availability slots found for this division.");
+            var slotPlanLookup = BuildSlotPlanLookup(body.slotPlan);
+            var hasSlotPlan = body.slotPlan is not null && body.slotPlan.Count > 0;
+            var allSlots = ApplySlotPlan(rawSlots, slotPlanLookup, hasSlotPlan);
+            var gameCapableSlots = allSlots.Where(IsGameCapableSlotType).ToList();
+            if (gameCapableSlots.Count == 0)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "No game-capable slots selected. Mark at least one slot as game or both.");
+            var guestAnchors = NormalizeGuestAnchors(body.guestAnchorPrimary, body.guestAnchorSecondary);
 
             var regularRangeEnd = poolStart.HasValue ? poolStart.Value.AddDays(-1) : seasonEnd;
-            var regularSlots = FilterSlots(allSlots, seasonStart, regularRangeEnd);
+            var regularSlots = FilterSlots(gameCapableSlots, seasonStart, regularRangeEnd);
             var poolSlots = poolStart.HasValue && poolEnd.HasValue
-                ? FilterSlots(allSlots, poolStart.Value, poolEnd.Value)
+                ? FilterSlots(gameCapableSlots, poolStart.Value, poolEnd.Value)
                 : new List<SlotInfo>();
             var bracketSlots = bracketStart.HasValue && bracketEnd.HasValue
-                ? FilterSlots(allSlots, bracketStart.Value, bracketEnd.Value)
+                ? FilterSlots(gameCapableSlots, bracketStart.Value, bracketEnd.Value)
                 : new List<SlotInfo>();
 
             var regularMatchups = BuildRepeatedMatchups(teams, minGamesPerTeam);
             var poolMatchups = BuildTargetMatchups(teams, poolGamesPerTeam);
             var bracketMatchups = BuildBracketMatchups();
 
-            var regularAssignments = AssignPhaseSlots("Regular Season", regularSlots, regularMatchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek, preferredDays, strictPreferredWeeknights);
-            var poolAssignments = AssignPhaseSlots("Pool Play", poolSlots, poolMatchups, teams, null, noDoubleHeaders, balanceHomeAway, 0, preferredDays: new List<DayOfWeek>(), strictPreferredWeeknights: false);
+            var regularAssignments = AssignPhaseSlots("Regular Season", regularSlots, regularMatchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek, preferredDays, strictPreferredWeeknights, guestAnchors);
+            var poolAssignments = AssignPhaseSlots("Pool Play", poolSlots, poolMatchups, teams, null, noDoubleHeaders, balanceHomeAway, 0, preferredDays: new List<DayOfWeek>(), strictPreferredWeeknights: false, guestAnchors: null);
             var bracketAssignments = AssignBracketSlots(bracketSlots, bracketMatchups);
 
             var summary = new WizardSummary(
                 regularSeason: BuildPhaseSummary("Regular Season", regularSlots.Count, regularAssignments.Assignments.Count, regularMatchups.Count, regularAssignments.UnassignedMatchups.Count),
                 poolPlay: BuildPhaseSummary("Pool Play", poolSlots.Count, poolAssignments.Assignments.Count, poolMatchups.Count, poolAssignments.UnassignedMatchups.Count),
                 bracket: BuildPhaseSummary("Bracket", bracketSlots.Count, bracketAssignments.Assignments.Count, bracketMatchups.Count, bracketAssignments.UnassignedMatchups.Count),
-                totalSlots: allSlots.Count,
+                totalSlots: gameCapableSlots.Count,
                 totalAssigned: regularAssignments.Assignments.Count + poolAssignments.Assignments.Count + bracketAssignments.Assignments.Count,
                 teamCount: teams.Count
             );
@@ -284,6 +307,20 @@ public class ScheduleWizardFunctions
         List<MatchupPair> UnassignedMatchups
     );
 
+    private record SlotPlanConfig(string SlotType, int? PriorityRank);
+
+    private record GuestAnchor(
+        DayOfWeek DayOfWeek,
+        string StartTime,
+        string EndTime,
+        string FieldKey
+    );
+
+    private record GuestAnchorSet(
+        GuestAnchor? Primary,
+        GuestAnchor? Secondary
+    );
+
     private static PhaseAssignments AssignPhaseSlots(
         string phase,
         List<SlotInfo> slots,
@@ -294,7 +331,8 @@ public class ScheduleWizardFunctions
         bool balanceHomeAway,
         int externalOfferPerWeek,
         List<DayOfWeek> preferredDays,
-        bool strictPreferredWeeknights)
+        bool strictPreferredWeeknights,
+        GuestAnchorSet? guestAnchors)
     {
         if (slots.Count == 0)
             return new PhaseAssignments(new List<ScheduleAssignment>(), new List<ScheduleAssignment>(), new List<MatchupPair>(matchups));
@@ -308,9 +346,13 @@ public class ScheduleWizardFunctions
 
         var orderedSlots = OrderSlotsByPreference(slots, preferredDays);
 
-        var constraints = new ScheduleConstraints(maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek);
+        var constraints = new ScheduleConstraints(maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, 0);
         var result = ScheduleEngine.AssignMatchups(orderedSlots, matchups, teams, constraints);
-        return new PhaseAssignments(result.Assignments, result.UnassignedSlots, result.UnassignedMatchups);
+        if (externalOfferPerWeek <= 0 || result.UnassignedSlots.Count == 0)
+            return new PhaseAssignments(result.Assignments, result.UnassignedSlots, result.UnassignedMatchups);
+
+        var withExternal = AddExternalOffers(result.Assignments, result.UnassignedSlots, result.UnassignedMatchups, teams, externalOfferPerWeek, guestAnchors);
+        return withExternal;
     }
 
     private static PhaseAssignments AssignBracketSlots(List<SlotInfo> slots, List<MatchupPair> matchups)
@@ -332,6 +374,142 @@ public class ScheduleWizardFunctions
         }
 
         return new PhaseAssignments(assignments, unassignedSlots, remaining.ToList());
+    }
+
+    private static PhaseAssignments AddExternalOffers(
+        List<ScheduleAssignment> assignments,
+        List<ScheduleAssignment> unassignedSlots,
+        List<MatchupPair> unassignedMatchups,
+        IReadOnlyList<string> teams,
+        int externalOfferPerWeek,
+        GuestAnchorSet? guestAnchors)
+    {
+        if (externalOfferPerWeek <= 0 || unassignedSlots.Count == 0 || teams.Count == 0)
+            return new PhaseAssignments(assignments, unassignedSlots, unassignedMatchups);
+
+        var nextAssignments = new List<ScheduleAssignment>(assignments);
+        var remainingSlots = new List<ScheduleAssignment>();
+
+        var totalCounts = teams
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
+        var homeCounts = teams
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var existing in assignments)
+        {
+            IncrementTeamCount(totalCounts, existing.HomeTeamId);
+            IncrementTeamCount(totalCounts, existing.AwayTeamId);
+            IncrementTeamCount(homeCounts, existing.HomeTeamId);
+        }
+
+        var byWeek = unassignedSlots
+            .GroupBy(s => WeekKey(s.GameDate))
+            .OrderBy(g => g.Key)
+            .ToList();
+
+        foreach (var weekGroup in byWeek)
+        {
+            if (string.IsNullOrWhiteSpace(weekGroup.Key))
+            {
+                remainingSlots.AddRange(weekGroup);
+                continue;
+            }
+
+            var ordered = OrderGuestCandidates(weekGroup.ToList(), guestAnchors);
+            var picks = ordered.Take(externalOfferPerWeek).ToList();
+            var pickIds = new HashSet<string>(picks.Select(p => p.SlotId), StringComparer.OrdinalIgnoreCase);
+
+            foreach (var slot in weekGroup)
+            {
+                if (!pickIds.Contains(slot.SlotId))
+                {
+                    remainingSlots.Add(slot);
+                    continue;
+                }
+
+                var home = PickExternalHomeTeam(teams, totalCounts, homeCounts);
+                if (string.IsNullOrWhiteSpace(home))
+                {
+                    remainingSlots.Add(slot);
+                    continue;
+                }
+
+                IncrementTeamCount(totalCounts, home);
+                IncrementTeamCount(homeCounts, home);
+                nextAssignments.Add(slot with
+                {
+                    HomeTeamId = home,
+                    AwayTeamId = "",
+                    IsExternalOffer = true
+                });
+            }
+        }
+
+        return new PhaseAssignments(nextAssignments, remainingSlots, unassignedMatchups);
+    }
+
+    private static List<ScheduleAssignment> OrderGuestCandidates(List<ScheduleAssignment> slots, GuestAnchorSet? guestAnchors)
+    {
+        return slots
+            .OrderBy(s => GuestAnchorScore(s, guestAnchors))
+            .ThenBy(s => s.GameDate)
+            .ThenBy(s => s.StartTime)
+            .ThenBy(s => s.FieldKey)
+            .ToList();
+    }
+
+    private static int GuestAnchorScore(ScheduleAssignment slot, GuestAnchorSet? guestAnchors)
+    {
+        if (guestAnchors is null) return 100;
+
+        if (MatchesGuestAnchor(slot, guestAnchors.Primary, strictField: true)) return 0;
+        if (MatchesGuestAnchor(slot, guestAnchors.Secondary, strictField: true)) return 1;
+        if (MatchesGuestAnchor(slot, guestAnchors.Primary, strictField: false)) return 2;
+        if (MatchesGuestAnchor(slot, guestAnchors.Secondary, strictField: false)) return 3;
+        return 100;
+    }
+
+    private static bool MatchesGuestAnchor(ScheduleAssignment slot, GuestAnchor? anchor, bool strictField)
+    {
+        if (anchor is null) return false;
+        if (!DateTime.TryParseExact(slot.GameDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
+            return false;
+        if (dt.DayOfWeek != anchor.DayOfWeek) return false;
+        if (!string.Equals(slot.StartTime, anchor.StartTime, StringComparison.OrdinalIgnoreCase)) return false;
+        if (!string.Equals(slot.EndTime, anchor.EndTime, StringComparison.OrdinalIgnoreCase)) return false;
+        if (!strictField) return true;
+        return string.Equals(slot.FieldKey, anchor.FieldKey, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string PickExternalHomeTeam(
+        IReadOnlyList<string> teams,
+        Dictionary<string, int> totalCounts,
+        Dictionary<string, int> homeCounts)
+    {
+        return teams
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(t => totalCounts.TryGetValue(t, out var total) ? total : int.MaxValue)
+            .ThenBy(t => homeCounts.TryGetValue(t, out var home) ? home : int.MaxValue)
+            .ThenBy(t => t, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault() ?? "";
+    }
+
+    private static void IncrementTeamCount(Dictionary<string, int> counts, string teamId)
+    {
+        if (string.IsNullOrWhiteSpace(teamId)) return;
+        if (!counts.ContainsKey(teamId)) return;
+        counts[teamId] += 1;
+    }
+
+    private static string WeekKey(string gameDate)
+    {
+        if (!DateTime.TryParseExact(gameDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
+            return "";
+        var cal = CultureInfo.InvariantCulture.Calendar;
+        var week = cal.GetWeekOfYear(dt, CalendarWeekRule.FirstFourDayWeek, DayOfWeek.Monday);
+        return $"{dt.Year}-W{week:D2}";
     }
 
     private static WizardSlotDto ToWizardSlot(string phase, ScheduleAssignment assignment)
@@ -365,11 +543,10 @@ public class ScheduleWizardFunctions
 
     private static List<ScheduleSlot> OrderSlotsByPreference(List<SlotInfo> slots, List<DayOfWeek> preferredDays)
     {
-        if (preferredDays.Count == 0)
-            return slots.Select(s => new ScheduleSlot(s.slotId, s.gameDate, s.startTime, s.endTime, s.fieldKey, s.offeringTeamId)).ToList();
-
         return slots
-            .OrderBy(s => PreferredDayRank(s.gameDate, preferredDays))
+            .OrderBy(s => s.priorityRank.HasValue ? 0 : 1)
+            .ThenBy(s => s.priorityRank ?? int.MaxValue)
+            .ThenBy(s => PreferredDayRank(s.gameDate, preferredDays))
             .ThenBy(s => s.gameDate)
             .ThenBy(s => s.startTime)
             .ThenBy(s => s.fieldKey)
@@ -411,6 +588,98 @@ public class ScheduleWizardFunctions
         }
 
         return ordered.Distinct().ToList();
+    }
+
+    private static Dictionary<string, SlotPlanConfig> BuildSlotPlanLookup(List<SlotPlanItem>? slotPlan)
+    {
+        var result = new Dictionary<string, SlotPlanConfig>(StringComparer.OrdinalIgnoreCase);
+        if (slotPlan is null) return result;
+
+        foreach (var item in slotPlan)
+        {
+            var slotId = (item.slotId ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(slotId)) continue;
+
+            var slotType = NormalizeSlotType(item.slotType);
+            var priority = item.priorityRank.HasValue && item.priorityRank.Value > 0 ? item.priorityRank.Value : (int?)null;
+            result[slotId] = new SlotPlanConfig(slotType, priority);
+        }
+
+        return result;
+    }
+
+    private static List<SlotInfo> ApplySlotPlan(List<SlotInfo> slots, Dictionary<string, SlotPlanConfig> slotPlanLookup, bool hasSlotPlan)
+    {
+        var planned = new List<SlotInfo>(slots.Count);
+        foreach (var slot in slots)
+        {
+            SlotPlanConfig config;
+            if (slotPlanLookup.TryGetValue(slot.slotId, out var matched))
+            {
+                config = matched;
+            }
+            else
+            {
+                config = hasSlotPlan
+                    ? new SlotPlanConfig("practice", null)
+                    : new SlotPlanConfig("game", null);
+            }
+
+            var normalizedType = NormalizeSlotType(config.SlotType);
+            var rank = normalizedType == "practice" ? null : config.PriorityRank;
+            planned.Add(slot with
+            {
+                slotType = normalizedType,
+                priorityRank = rank
+            });
+        }
+        return planned;
+    }
+
+    private static string NormalizeSlotType(string? raw)
+    {
+        var key = (raw ?? "").Trim().ToLowerInvariant();
+        if (key == "both") return "both";
+        if (key == "game") return "game";
+        return "practice";
+    }
+
+    private static bool IsGameCapableSlotType(SlotInfo slot)
+    {
+        return slot.slotType == "game" || slot.slotType == "both";
+    }
+
+    private static GuestAnchorSet? NormalizeGuestAnchors(GuestAnchorOption? primary, GuestAnchorOption? secondary)
+    {
+        var normalizedPrimary = NormalizeGuestAnchor(primary);
+        var normalizedSecondary = NormalizeGuestAnchor(secondary);
+        if (normalizedPrimary is null && normalizedSecondary is null) return null;
+        return new GuestAnchorSet(normalizedPrimary, normalizedSecondary);
+    }
+
+    private static GuestAnchor? NormalizeGuestAnchor(GuestAnchorOption? option)
+    {
+        if (option is null) return null;
+        var day = ParseDayOfWeek(option.dayOfWeek);
+        var start = (option.startTime ?? "").Trim();
+        var end = (option.endTime ?? "").Trim();
+        var fieldKey = (option.fieldKey ?? "").Trim();
+        if (!day.HasValue) return null;
+        if (string.IsNullOrWhiteSpace(start) || string.IsNullOrWhiteSpace(end) || string.IsNullOrWhiteSpace(fieldKey)) return null;
+        return new GuestAnchor(day.Value, start, end, fieldKey);
+    }
+
+    private static DayOfWeek? ParseDayOfWeek(string? raw)
+    {
+        var key = (raw ?? "").Trim().ToLowerInvariant();
+        if (key.StartsWith("sun")) return DayOfWeek.Sunday;
+        if (key.StartsWith("mon")) return DayOfWeek.Monday;
+        if (key.StartsWith("tue")) return DayOfWeek.Tuesday;
+        if (key.StartsWith("wed")) return DayOfWeek.Wednesday;
+        if (key.StartsWith("thu")) return DayOfWeek.Thursday;
+        if (key.StartsWith("fri")) return DayOfWeek.Friday;
+        if (key.StartsWith("sat")) return DayOfWeek.Saturday;
+        return null;
     }
 
     private static List<MatchupPair> BuildRepeatedMatchups(IReadOnlyList<string> teams, int gamesPerTeam)
@@ -515,7 +784,9 @@ public class ScheduleWizardFunctions
                 startTime: (e.GetString("StartTime") ?? "").Trim(),
                 endTime: (e.GetString("EndTime") ?? "").Trim(),
                 fieldKey: (e.GetString("FieldKey") ?? "").Trim(),
-                offeringTeamId: (e.GetString("OfferingTeamId") ?? "").Trim()
+                offeringTeamId: (e.GetString("OfferingTeamId") ?? "").Trim(),
+                slotType: "game",
+                priorityRank: null
             ));
         }
 
@@ -595,12 +866,20 @@ public class ScheduleWizardFunctions
             ["MaxGamesPerWeek"] = request.maxGamesPerWeek ?? 0,
             ["NoDoubleHeaders"] = request.noDoubleHeaders ?? true,
             ["BalanceHomeAway"] = request.balanceHomeAway ?? true,
-            ["ExternalOfferPerWeek"] = 0,
+            ["ExternalOfferPerWeek"] = request.externalOfferPerWeek ?? 0,
             ["Summary"] = System.Text.Json.JsonSerializer.Serialize(summary)
         };
 
         await table.AddEntityAsync(entity);
     }
 
-    private record SlotInfo(string slotId, string gameDate, string startTime, string endTime, string fieldKey, string offeringTeamId);
+    private record SlotInfo(
+        string slotId,
+        string gameDate,
+        string startTime,
+        string endTime,
+        string fieldKey,
+        string offeringTeamId,
+        string slotType,
+        int? priorityRank);
 }
