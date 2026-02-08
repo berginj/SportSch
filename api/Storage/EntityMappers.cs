@@ -31,6 +31,12 @@ public static class EntityMappers
             displayName = e.GetString("DisplayName") ?? "",
             fieldKey = e.GetString("FieldKey") ?? "",
             gameType = e.GetString("GameType") ?? "",
+            allocationSlotType = e.GetString("AllocationSlotType") ?? "",
+            allocationPriorityRank = (
+                (e.GetInt32("AllocationPriorityRank") is int rank && rank > 0)
+                    ? rank
+                    : (int.TryParse(e.GetString("AllocationPriorityRank"), out var parsed) && parsed > 0 ? parsed : (int?)null)
+            ),
             status = e.GetString("Status") ?? Constants.Status.SlotOpen,
             notes = e.GetString("Notes") ?? "",
             createdUtc = e.GetDateTimeOffset("CreatedUtc"),

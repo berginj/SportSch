@@ -1446,12 +1446,15 @@ Required columns:
 Optional columns:
 - `division` (blank or `LEAGUE` = league-wide allocation)
 - `daysOfWeek` (comma-separated, e.g. `Mon,Wed`)
+- `slotType` (`Practice`, `Game`, or `Both`; defaults to `Practice`)
+- `priorityRank` (positive integer; used when `slotType` is `Game` or `Both`)
 - `notes`
 - `isActive` (true/false)
 
 Import behavior:
 - Creates allocations (each CSV row is a new allocation id).
 - `division` values are treated as allocation scope; `LEAGUE` applies to all divisions.
+- Generated availability slots inherit allocation `slotType`/`priorityRank` defaults for Season Wizard planning.
 - Response may include `warnings` for duplicate allocations (skipped) or overlaps with existing non-availability slots.
 
 ### GET /availability/allocations (league-scoped)

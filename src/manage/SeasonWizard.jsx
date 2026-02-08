@@ -404,6 +404,11 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
             const basePatternKey = patternKeyFromParts(weekday, baseStartTime, baseEndTime, slot.fieldKey || "");
             const nextStartTime = prior?.startTime || baseStartTime;
             const nextEndTime = prior?.endTime || baseEndTime;
+            const allocationSlotType = normalizeSlotType(slot.allocationSlotType || "practice");
+            const allocationPriority = normalizePriorityRank(slot.allocationPriorityRank ?? "");
+            const baselinePriority = allocationSlotType === "practice" ? "" : allocationPriority;
+            const nextSlotType = normalizeSlotType(prior?.slotType || allocationSlotType);
+            const nextPriority = normalizePriorityRank(prior?.priorityRank || baselinePriority);
             return {
               slotId: slot.slotId,
               gameDate: slot.gameDate || "",
@@ -414,8 +419,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
               baseStartTime,
               baseEndTime,
               basePatternKey,
-              slotType: normalizeSlotType(prior?.slotType || "practice"),
-              priorityRank: normalizePriorityRank(prior?.priorityRank || ""),
+              slotType: nextSlotType,
+              priorityRank: nextSlotType === "practice" ? "" : nextPriority,
               score: computeSlotScore(slot, weekday, patternCounts, dayCounts),
             };
           });

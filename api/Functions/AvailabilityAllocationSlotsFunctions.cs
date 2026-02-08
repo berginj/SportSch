@@ -33,7 +33,9 @@ public class AvailabilityAllocationSlotsFunctions
         string startTime,
         string endTime,
         string fieldKey,
-        string division
+        string division,
+        string slotType,
+        int? priorityRank
     );
 
     public record GenerateSlotsPreview(List<SlotCandidate> slots, List<SlotCandidate> conflicts);
@@ -125,7 +127,9 @@ public class AvailabilityAllocationSlotsFunctions
                             FormatTime(start),
                             FormatTime(end),
                             alloc.fieldKey,
-                            division
+                            division,
+                            alloc.slotType,
+                            alloc.priorityRank
                         ));
                         start = end;
                     }
@@ -206,6 +210,8 @@ public class AvailabilityAllocationSlotsFunctions
         string daysOfWeek,
         string startTimeLocal,
         string endTimeLocal,
+        string slotType,
+        int? priorityRank,
         bool isActive
     );
 
@@ -256,6 +262,8 @@ public class AvailabilityAllocationSlotsFunctions
                     daysOfWeek: e.GetString("DaysOfWeek") ?? "",
                     startTimeLocal: e.GetString("StartTimeLocal") ?? "",
                     endTimeLocal: e.GetString("EndTimeLocal") ?? "",
+                    slotType: NormalizeSlotType(e.GetString("SlotType")),
+                    priorityRank: ParsePriorityRank(e.GetInt32("PriorityRank"), e.GetString("PriorityRank")),
                     isActive: e.GetBoolean("IsActive") ?? true
                 ));
             }
@@ -411,7 +419,7 @@ public class AvailabilityAllocationSlotsFunctions
         var now = DateTimeOffset.UtcNow;
         var pk = Constants.Pk.Slots(leagueId, slot.division);
         var slotId = Guid.NewGuid().ToString("N");
-        return new TableEntity(pk, slotId)
+        var entity = new TableEntity(pk, slotId)
         {
             ["LeagueId"] = leagueId,
             ["SlotId"] = slotId,
@@ -430,11 +438,31 @@ public class AvailabilityAllocationSlotsFunctions
             ["DisplayName"] = fieldMeta.displayName,
             ["FieldKey"] = slot.fieldKey,
             ["GameType"] = "Availability",
+            ["AllocationSlotType"] = slot.slotType,
             ["Status"] = Constants.Status.SlotOpen,
             ["Notes"] = "Allocation",
             ["UpdatedUtc"] = now,
             ["LastUpdatedUtc"] = now
         };
+        if (slot.priorityRank.HasValue)
+            entity["AllocationPriorityRank"] = slot.priorityRank.Value;
+        return entity;
+    }
+
+    private static string NormalizeSlotType(string? raw)
+    {
+        var key = (raw ?? "").Trim().ToLowerInvariant();
+        if (key == "game") return "game";
+        if (key == "both") return "both";
+        return "practice";
+    }
+
+    private static int? ParsePriorityRank(int? intValue, string? rawValue)
+    {
+        if (intValue.HasValue && intValue.Value > 0) return intValue.Value;
+        var raw = (rawValue ?? "").Trim();
+        if (int.TryParse(raw, out var parsed) && parsed > 0) return parsed;
+        return null;
     }
 
     private static string ExtractParkCodeFromPk(string pk, string leagueId)

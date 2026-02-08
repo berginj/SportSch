@@ -32,6 +32,8 @@ function buildAllocationTemplateCsv(divisions, fields) {
     "daysOfWeek",
     "startTime",
     "endTime",
+    "slotType",
+    "priorityRank",
     "notes",
     "isActive",
     "parkName",
@@ -55,6 +57,8 @@ function buildAllocationTemplateCsv(divisions, fields) {
         "",
         "",
         "",
+        "",
+        "practice",
         "",
         "",
         "true",
@@ -357,7 +361,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
         <div className="card__body">
           <div className="subtle mb-2">
             Required columns: <code>fieldKey</code>, <code>dateFrom</code>, <code>dateTo</code>, <code>startTime</code>, <code>endTime</code>.
-            Optional: <code>division</code>, <code>daysOfWeek</code>, <code>notes</code>, <code>isActive</code>.
+            Optional: <code>division</code>, <code>daysOfWeek</code>, <code>slotType</code> (<code>Practice</code>/<code>Game</code>/<code>Both</code>), <code>priorityRank</code>, <code>notes</code>, <code>isActive</code>.
           </div>
           <div className="row items-end gap-3">
             <label className="flex-1">
@@ -483,6 +487,8 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
                   <th>Dates</th>
                   <th>Days</th>
                   <th>Time</th>
+                  <th>Type</th>
+                  <th>Priority</th>
                   <th>Active</th>
                   <th>Notes</th>
                 </tr>
@@ -495,6 +501,8 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
                     <td>{a.startsOn} - {a.endsOn}</td>
                     <td>{(a.daysOfWeek || []).join(", ") || "Any"}</td>
                     <td>{a.startTimeLocal} - {a.endTimeLocal}</td>
+                    <td>{a.slotType || "practice"}</td>
+                    <td>{a.priorityRank || "-"}</td>
                     <td>{a.isActive ? "Yes" : "No"}</td>
                     <td>{a.notes || ""}</td>
                   </tr>

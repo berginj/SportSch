@@ -32,6 +32,8 @@ public class AvailabilityAllocationsFunctions
         List<string> daysOfWeek,
         string startTimeLocal,
         string endTimeLocal,
+        string slotType,
+        int? priorityRank,
         string notes,
         bool isActive
     );
@@ -80,7 +82,7 @@ public class AvailabilityAllocationsFunctions
             {
                 var headerPreview = string.Join(",", header.Select(x => (x ?? "").Trim()).Take(12));
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST",
-                    "Missing required columns. Required: fieldKey, dateFrom, dateTo, startTime, endTime. Optional: division, daysOfWeek, notes, isActive.",
+                    "Missing required columns. Required: fieldKey, dateFrom, dateTo, startTime, endTime. Optional: division, daysOfWeek, slotType, priorityRank, notes, isActive.",
                     new { headerPreview, missing });
             }
 
@@ -108,6 +110,8 @@ public class AvailabilityAllocationsFunctions
                 var startTime = CsvMini.Get(r, idx, "starttime").Trim();
                 var endTime = CsvMini.Get(r, idx, "endtime").Trim();
                 var daysRaw = CsvMini.Get(r, idx, "daysofweek").Trim();
+                var slotTypeRaw = CsvMini.Get(r, idx, "slottype").Trim();
+                var priorityRankRaw = CsvMini.Get(r, idx, "priorityrank").Trim();
                 var notes = CsvMini.Get(r, idx, "notes").Trim();
                 var isActiveRaw = CsvMini.Get(r, idx, "isactive").Trim();
 
@@ -176,6 +180,23 @@ public class AvailabilityAllocationsFunctions
                     continue;
                 }
 
+                var slotType = NormalizeSlotType(slotTypeRaw);
+                if (slotType is null)
+                {
+                    rejected++;
+                    errors.Add(new { row = i + 1, error = "slotType must be Practice, Game, or Both." });
+                    continue;
+                }
+
+                if (!TryParsePriorityRank(priorityRankRaw, out var priorityRank))
+                {
+                    rejected++;
+                    errors.Add(new { row = i + 1, error = "priorityRank must be a positive whole number." });
+                    continue;
+                }
+                if (string.Equals(slotType, "practice", StringComparison.OrdinalIgnoreCase))
+                    priorityRank = null;
+
                 var allocKey = BuildAllocationKey(normalizedFieldKey, dateFromVal, dateToVal, startTime, endTime, daysSet);
                 if (existing.exactKeys.Contains(allocKey))
                 {
@@ -216,10 +237,13 @@ public class AvailabilityAllocationsFunctions
                     ["DaysOfWeek"] = string.Join(",", daysList),
                     ["StartTimeLocal"] = startTime,
                     ["EndTimeLocal"] = endTime,
+                    ["SlotType"] = slotType,
                     ["Notes"] = notes,
                     ["IsActive"] = isActive,
                     ["UpdatedUtc"] = DateTimeOffset.UtcNow
                 };
+                if (priorityRank.HasValue)
+                    entity["PriorityRank"] = priorityRank.Value;
 
                 if (!actionsByPartition.TryGetValue(pk, out var actions))
                 {
@@ -333,6 +357,16 @@ public class AvailabilityAllocationsFunctions
                 var days = (e.GetString("DaysOfWeek") ?? "")
                     .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                     .ToList();
+                var slotType = NormalizeSlotType(e.GetString("SlotType")) ?? "practice";
+                int? priorityRank = e.GetInt32("PriorityRank");
+                if (!priorityRank.HasValue)
+                {
+                    var rawPriority = (e.GetString("PriorityRank") ?? "").Trim();
+                    if (int.TryParse(rawPriority, out var parsed) && parsed > 0)
+                        priorityRank = parsed;
+                }
+                if (priorityRank.HasValue && priorityRank.Value <= 0) priorityRank = null;
+                if (string.Equals(slotType, "practice", StringComparison.OrdinalIgnoreCase)) priorityRank = null;
                 list.Add(new AllocationDto(
                     allocationId: e.RowKey,
                     scope: e.GetString("Scope") ?? ScopeLeague,
@@ -343,6 +377,8 @@ public class AvailabilityAllocationsFunctions
                     daysOfWeek: days,
                     startTimeLocal: e.GetString("StartTimeLocal") ?? "",
                     endTimeLocal: e.GetString("EndTimeLocal") ?? "",
+                    slotType: slotType,
+                    priorityRank: priorityRank,
                     notes: e.GetString("Notes") ?? "",
                     isActive: e.GetBoolean("IsActive") ?? true
                 ));
@@ -454,6 +490,27 @@ public class AvailabilityAllocationsFunctions
             else return false;
         }
 
+        return true;
+    }
+
+    private static string? NormalizeSlotType(string? raw)
+    {
+        var key = (raw ?? "").Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(key)) return "practice";
+        if (key == "practice") return "practice";
+        if (key == "game") return "game";
+        if (key == "both") return "both";
+        return null;
+    }
+
+    private static bool TryParsePriorityRank(string? raw, out int? priorityRank)
+    {
+        priorityRank = null;
+        var value = (raw ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(value)) return true;
+        if (!int.TryParse(value, out var parsed)) return false;
+        if (parsed <= 0) return false;
+        priorityRank = parsed;
         return true;
     }
 
