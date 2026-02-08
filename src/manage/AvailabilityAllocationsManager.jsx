@@ -511,12 +511,14 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
       });
       const slots = Array.isArray(data?.slots) ? data.slots : [];
       const conflicts = Array.isArray(data?.conflicts) ? data.conflicts : [];
-      setGenPreview({ slots, conflicts, failed: [] });
-      setAllocOk(`Preview ready: ${slots.length} candidate slots, ${conflicts.length} conflicts.`);
-      if (slots.length === 0 && conflicts.length === 0) {
+      const slotCount = Number.isFinite(Number(data?.slotCount)) ? Number(data.slotCount) : slots.length;
+      const conflictCount = Number.isFinite(Number(data?.conflictCount)) ? Number(data.conflictCount) : conflicts.length;
+      setGenPreview({ slots, conflicts, failed: [], slotCount, conflictCount, failedCount: 0 });
+      setAllocOk(`Preview ready: ${slotCount} candidate slots, ${conflictCount} conflicts.`);
+      if (slotCount === 0 && conflictCount === 0) {
         setGenStatus("Preview complete: no candidate slots or conflicts were found for this filter.");
       } else {
-        setGenStatus(`Preview complete: ${slots.length} candidate slots, ${conflicts.length} conflicts.`);
+        setGenStatus(`Preview complete: ${slotCount} candidate slots, ${conflictCount} conflicts.`);
       }
     } catch (e) {
       const message = formatApiError(e, "Failed to preview allocation slots.");
@@ -557,12 +559,19 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
       const created = Array.isArray(data?.created) ? data.created : [];
       const conflicts = Array.isArray(data?.conflicts) ? data.conflicts : [];
       const failed = Array.isArray(data?.failed) ? data.failed : [];
-      const createdCount = created.length;
-      const conflictCount = conflicts.length;
-      const failedCount = failed.length;
+      const createdCount = Number.isFinite(Number(data?.createdCount)) ? Number(data.createdCount) : created.length;
+      const conflictCount = Number.isFinite(Number(data?.conflictCount)) ? Number(data.conflictCount) : conflicts.length;
+      const failedCount = Number.isFinite(Number(data?.failedCount)) ? Number(data.failedCount) : failed.length;
 
       // Keep result details on-screen so zero-create runs are diagnosable.
-      setGenPreview({ slots: created, conflicts, failed });
+      setGenPreview({
+        slots: created,
+        conflicts,
+        failed,
+        slotCount: createdCount,
+        conflictCount,
+        failedCount,
+      });
       setAllocOk(`Generate complete: created ${createdCount} slots, conflicts ${conflictCount}, failed writes ${failedCount}.`);
       if (createdCount === 0 && conflictCount === 0 && failedCount === 0) {
         setGenStatus("Generate complete: created 0 slots, and no conflicts or write failures were found for this filter.");
@@ -1015,15 +1024,15 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
           <div className="card__body">
             <div className="row row--wrap gap-4">
               <div className="layoutStat">
-                <div className="layoutStat__value">{genPreview.slots?.length || 0}</div>
+                <div className="layoutStat__value">{genPreview.slotCount ?? genPreview.slots?.length ?? 0}</div>
                 <div className="layoutStat__label">Slots</div>
               </div>
               <div className="layoutStat">
-                <div className="layoutStat__value">{genPreview.conflicts?.length || 0}</div>
+                <div className="layoutStat__value">{genPreview.conflictCount ?? genPreview.conflicts?.length ?? 0}</div>
                 <div className="layoutStat__label">Conflicts</div>
               </div>
               <div className="layoutStat">
-                <div className="layoutStat__value">{genPreview.failed?.length || 0}</div>
+                <div className="layoutStat__value">{genPreview.failedCount ?? genPreview.failed?.length ?? 0}</div>
                 <div className="layoutStat__label">Failed Writes</div>
               </div>
             </div>
@@ -1049,7 +1058,38 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
                     ))}
                   </tbody>
                 </table>
-                {genPreview.conflicts.length > 20 ? <div className="subtle">Showing first 20 conflicts.</div> : null}
+                {(genPreview.conflictCount ?? genPreview.conflicts.length) > 20 ? (
+                  <div className="subtle">Showing first 20 conflicts.</div>
+                ) : null}
+              </div>
+            ) : null}
+            {genPreview.failed?.length ? (
+              <div className="mt-3 tableWrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Time</th>
+                      <th>Field</th>
+                      <th>Status</th>
+                      <th>Code</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {genPreview.failed.slice(0, 20).map((f, idx) => (
+                      <tr key={`${f.gameDate}-${f.startTime}-${idx}`}>
+                        <td>{f.gameDate}</td>
+                        <td>{f.startTime}-{f.endTime}</td>
+                        <td>{fieldLabelMap.get(f.fieldKey) || f.fieldKey}</td>
+                        <td>{f.status ?? "-"}</td>
+                        <td>{f.code || "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {(genPreview.failedCount ?? genPreview.failed.length) > 20 ? (
+                  <div className="subtle">Showing first 20 failed writes.</div>
+                ) : null}
               </div>
             ) : null}
           </div>

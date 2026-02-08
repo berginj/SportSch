@@ -56,12 +56,15 @@ public class AvailabilityAllocationSlotsFunctions
 
     private async Task<HttpResponseData> Generate(HttpRequestData req, bool apply)
     {
+        var stage = "init";
         try
         {
+            stage = "auth";
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
             await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
 
+            stage = "read_body";
             var body = await HttpUtil.ReadJsonAsync<GenerateFromAllocationsRequest>(req);
             if (body is null)
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Invalid JSON body");
@@ -82,33 +85,55 @@ public class AvailabilityAllocationSlotsFunctions
             if (to < from)
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "dateTo must be on or after dateFrom.");
 
+            stage = "load_fields";
             var fieldsTable = await TableClients.GetTableAsync(_svc, Constants.Tables.Fields);
             var fieldMap = await LoadFieldMapAsync(fieldsTable, leagueId);
 
             if (!string.IsNullOrWhiteSpace(fieldKeyFilter) && !fieldMap.ContainsKey(fieldKeyFilter))
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "fieldKey not found.");
 
+            stage = "load_allocations";
             var allocations = await LoadAllocationsAsync(leagueId, division, fieldKeyFilter);
             if (allocations.Count == 0)
                 return ApiResponses.Ok(req, new GenerateSlotsPreview(new List<SlotCandidate>(), new List<SlotCandidate>()));
 
+            stage = "load_season_context";
             var leagueContext = await GetSeasonContextAsync(leagueId, division);
             if (leagueContext.gameLengthMinutes <= 0)
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Season game length must be set for the league or division.");
 
-            var candidates = new List<SlotCandidate>();
+            stage = "load_existing_ranges";
+            var existingRanges = await LoadExistingSlotRangesAsync(leagueId, from, to);
+
+            const int MaxResponseItems = 200;
+            var slotSamples = new List<SlotCandidate>();
+            var conflictSamples = new List<SlotCandidate>();
+            var failed = new List<object>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var newRanges = new Dictionary<string, List<(int startMin, int endMin)>>(StringComparer.OrdinalIgnoreCase);
+            var slotCount = 0;
+            var conflictCount = 0;
+            var failedCount = 0;
+
+            TableClient? slotsTable = null;
+            if (apply)
+            {
+                stage = "load_slots_table";
+                slotsTable = await TableClients.GetTableAsync(_svc, Constants.Tables.Slots);
+            }
+
+            stage = "generate";
             foreach (var alloc in allocations)
             {
                 if (!fieldMap.TryGetValue(alloc.fieldKey, out var fieldMeta)) continue;
                 if (IsBlackoutRange(alloc.startsOn, alloc.endsOn, from, to) == false) continue;
 
+                if (!DateOnly.TryParseExact(alloc.startsOn, "yyyy-MM-dd", out var allocStart)) continue;
+                if (!DateOnly.TryParseExact(alloc.endsOn, "yyyy-MM-dd", out var allocEnd)) continue;
                 var days = NormalizeDays(alloc.daysOfWeek);
                 var startMin = SlotOverlap.ParseMinutes(alloc.startTimeLocal);
                 var endMin = SlotOverlap.ParseMinutes(alloc.endTimeLocal);
                 if (startMin < 0 || endMin <= startMin) continue;
-
-                if (!DateOnly.TryParseExact(alloc.startsOn, "yyyy-MM-dd", out var allocStart)) continue;
-                if (!DateOnly.TryParseExact(alloc.endsOn, "yyyy-MM-dd", out var allocEnd)) continue;
                 var windowStart = allocStart > from ? allocStart : from;
                 var windowEnd = allocEnd < to ? allocEnd : to;
 
@@ -122,7 +147,7 @@ public class AvailabilityAllocationSlotsFunctions
                     while (start + leagueContext.gameLengthMinutes <= endMin)
                     {
                         var end = start + leagueContext.gameLengthMinutes;
-                        candidates.Add(new SlotCandidate(
+                        var candidate = new SlotCandidate(
                             date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                             FormatTime(start),
                             FormatTime(end),
@@ -130,37 +155,66 @@ public class AvailabilityAllocationSlotsFunctions
                             division,
                             alloc.slotType,
                             alloc.priorityRank
-                        ));
+                        );
+
+                        if (!seen.Add(TimeKey(candidate)))
+                        {
+                            start = end;
+                            continue;
+                        }
+
+                        var key = SlotOverlap.BuildRangeKey(candidate.fieldKey, candidate.gameDate);
+                        if (SlotOverlap.HasOverlap(existingRanges, key, start, end) || SlotOverlap.HasOverlap(newRanges, key, start, end))
+                        {
+                            conflictCount++;
+                            if (conflictSamples.Count < MaxResponseItems)
+                                conflictSamples.Add(candidate);
+                            start = end;
+                            continue;
+                        }
+
+                        SlotOverlap.AddRange(newRanges, key, start, end);
+
+                        if (!apply)
+                        {
+                            slotCount++;
+                            if (slotSamples.Count < MaxResponseItems)
+                                slotSamples.Add(candidate);
+                        }
+                        else
+                        {
+                            var entity = BuildSlotEntity(leagueId, candidate, fieldMeta);
+                            try
+                            {
+                                await slotsTable!.AddEntityAsync(entity);
+                                slotCount++;
+                                if (slotSamples.Count < MaxResponseItems)
+                                    slotSamples.Add(candidate);
+                            }
+                            catch (RequestFailedException ex)
+                            {
+                                _log.LogWarning(ex, "Create allocation slot failed for {fieldKey} {gameDate} {startTime}-{endTime}",
+                                    candidate.fieldKey, candidate.gameDate, candidate.startTime, candidate.endTime);
+                                failedCount++;
+                                if (failed.Count < MaxResponseItems)
+                                {
+                                    failed.Add(new
+                                    {
+                                        candidate.gameDate,
+                                        candidate.startTime,
+                                        candidate.endTime,
+                                        candidate.fieldKey,
+                                        candidate.division,
+                                        status = ex.Status,
+                                        code = ex.ErrorCode
+                                    });
+                                }
+                            }
+                        }
+
                         start = end;
                     }
                 }
-            }
-
-            candidates = DeduplicateCandidates(candidates);
-
-            var existingRanges = await LoadExistingSlotRangesAsync(leagueId, from, to);
-            var conflicts = new List<SlotCandidate>();
-            var toCreate = new List<SlotCandidate>();
-            var newRanges = new Dictionary<string, List<(int startMin, int endMin)>>(StringComparer.OrdinalIgnoreCase);
-            foreach (var c in candidates)
-            {
-                var startMin = SlotOverlap.ParseMinutes(c.startTime);
-                var endMin = SlotOverlap.ParseMinutes(c.endTime);
-                if (startMin < 0 || endMin <= startMin)
-                {
-                    conflicts.Add(c);
-                    continue;
-                }
-
-                var key = SlotOverlap.BuildRangeKey(c.fieldKey, c.gameDate);
-                if (SlotOverlap.HasOverlap(existingRanges, key, startMin, endMin) || SlotOverlap.HasOverlap(newRanges, key, startMin, endMin))
-                {
-                    conflicts.Add(c);
-                    continue;
-                }
-
-                SlotOverlap.AddRange(newRanges, key, startMin, endMin);
-                toCreate.Add(c);
             }
 
             if (!apply)
@@ -168,50 +222,36 @@ public class AvailabilityAllocationSlotsFunctions
                 UsageTelemetry.Track(_log, "api_availability_allocations_slots_preview", leagueId, me.UserId, new
                 {
                     division,
-                    slots = toCreate.Count,
-                    conflicts = conflicts.Count
+                    slots = slotCount,
+                    conflicts = conflictCount
                 });
-                return ApiResponses.Ok(req, new GenerateSlotsPreview(toCreate, conflicts));
-            }
-
-            var slotsTable = await TableClients.GetTableAsync(_svc, Constants.Tables.Slots);
-            var created = new List<SlotCandidate>();
-            var failed = new List<object>();
-            foreach (var slot in toCreate)
-            {
-                if (!fieldMap.TryGetValue(slot.fieldKey, out var fieldMeta)) continue;
-                var entity = BuildSlotEntity(leagueId, slot, fieldMeta);
-                try
+                return ApiResponses.Ok(req, new
                 {
-                    await slotsTable.AddEntityAsync(entity);
-                    created.Add(slot);
-                }
-                catch (RequestFailedException ex)
-                {
-                    _log.LogWarning(ex, "Create allocation slot failed for {fieldKey} {gameDate} {startTime}-{endTime}",
-                        slot.fieldKey, slot.gameDate, slot.startTime, slot.endTime);
-                    failed.Add(new
-                    {
-                        slot.gameDate,
-                        slot.startTime,
-                        slot.endTime,
-                        slot.fieldKey,
-                        slot.division,
-                        status = ex.Status,
-                        code = ex.ErrorCode
-                    });
-                }
+                    slots = slotSamples,
+                    conflicts = conflictSamples,
+                    slotCount,
+                    conflictCount
+                });
             }
 
             UsageTelemetry.Track(_log, "api_availability_allocations_slots_apply", leagueId, me.UserId, new
             {
                 division,
-                created = created.Count,
-                conflicts = conflicts.Count,
-                failed = failed.Count
+                created = slotCount,
+                conflicts = conflictCount,
+                failed = failedCount
             });
 
-            return ApiResponses.Ok(req, new { created, conflicts, failed, skipped = conflicts.Count + failed.Count });
+            return ApiResponses.Ok(req, new
+            {
+                created = slotSamples,
+                conflicts = conflictSamples,
+                failed,
+                createdCount = slotCount,
+                conflictCount,
+                failedCount,
+                skipped = conflictCount + failedCount
+            });
         }
         catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
         catch (RequestFailedException ex)
@@ -226,7 +266,7 @@ public class AvailabilityAllocationSlotsFunctions
             _log.LogError(ex, "Generate allocation slots failed");
             var requestId = req.FunctionContext.InvocationId.ToString();
             return ApiResponses.Error(req, HttpStatusCode.InternalServerError, ErrorCodes.INTERNAL_ERROR, "Internal Server Error",
-                new { requestId });
+                new { requestId, stage, exception = ex.GetType().Name, message = ex.Message });
         }
     }
 
