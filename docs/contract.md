@@ -1114,6 +1114,7 @@ Required columns:
 - `fieldName`
 
 Optional columns:
+- `division` (advisory default division allocation for the field, e.g. `10U`)
 - `displayName`
 - `address`
 - `city`

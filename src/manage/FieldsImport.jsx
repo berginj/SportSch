@@ -8,9 +8,9 @@ import Toast from "../components/Toast";
 // Contract: POST /import/fields with required columns: fieldKey, parkName, fieldName.
 // Single-field add/edit/delete uses /api/fields.
 
-const SAMPLE_CSV = `fieldKey,parkName,fieldName,displayName,address,city,state,notes,status
-gunston/turf,Gunston Park,Turf,Gunston Park > Turf,2701 S Lang St,Arlington,VA,,${FIELD_STATUS.ACTIVE}
-tuckahoe/field-2,Tuckahoe Park,Field 2,Tuckahoe Park > Field 2,123 Park Ave,Arlington,VA,,${FIELD_STATUS.ACTIVE}
+const SAMPLE_CSV = `fieldKey,parkName,fieldName,division,displayName,address,city,state,notes,status
+gunston/turf,Gunston Park,Turf,10U,Gunston Park > Turf,2701 S Lang St,Arlington,VA,,${FIELD_STATUS.ACTIVE}
+tuckahoe/field-2,Tuckahoe Park,Field 2,12U,Tuckahoe Park > Field 2,123 Park Ave,Arlington,VA,,${FIELD_STATUS.ACTIVE}
 `;
 
 export default function FieldsImport({ leagueId, tableView = "A" }) {
@@ -20,6 +20,7 @@ export default function FieldsImport({ leagueId, tableView = "A" }) {
     fieldKey: "",
     parkName: "",
     fieldName: "",
+    division: "",
     displayName: "",
     address: "",
     city: "",
@@ -59,6 +60,7 @@ export default function FieldsImport({ leagueId, tableView = "A" }) {
           next[f.fieldKey] = {
             parkName: f.parkName ?? "",
             fieldName: f.fieldName ?? "",
+            division: f.division ?? "",
             displayName: f.displayName ?? "",
             address: f.address ?? "",
             city: f.city ?? "",
@@ -200,6 +202,7 @@ export default function FieldsImport({ leagueId, tableView = "A" }) {
         body: JSON.stringify({
           parkName: edits.parkName ?? "",
           fieldName: edits.fieldName ?? "",
+          division: edits.division ?? "",
           displayName: edits.displayName ?? "",
           address: edits.address ?? "",
           city: edits.city ?? "",
@@ -228,6 +231,7 @@ export default function FieldsImport({ leagueId, tableView = "A" }) {
       fieldKey: (newField.fieldKey || "").trim(),
       parkName: (newField.parkName || "").trim(),
       fieldName: (newField.fieldName || "").trim(),
+      division: (newField.division || "").trim(),
       displayName: (newField.displayName || "").trim(),
       address: (newField.address || "").trim(),
       city: (newField.city || "").trim(),
@@ -254,6 +258,7 @@ export default function FieldsImport({ leagueId, tableView = "A" }) {
         fieldKey: "",
         parkName: "",
         fieldName: "",
+        division: "",
         displayName: "",
         address: "",
         city: "",
@@ -372,7 +377,7 @@ export default function FieldsImport({ leagueId, tableView = "A" }) {
           <>
         <div className="subtle mb-3 leading-relaxed">
           Required columns: <code>fieldKey</code>, <code>parkName</code>, <code>fieldName</code>. Optional:{" "}
-          <code>displayName</code>, <code>address</code>, <code>city</code>, <code>state</code>, <code>notes</code>,{" "}
+          <code>division</code>, <code>displayName</code>, <code>address</code>, <code>city</code>, <code>state</code>, <code>notes</code>,{" "}
           <code>status</code> ({FIELD_STATUS.ACTIVE}/
           {FIELD_STATUS.INACTIVE}).
         </div>
@@ -550,6 +555,15 @@ export default function FieldsImport({ leagueId, tableView = "A" }) {
             />
           </label>
           <label>
+            Division Allocation
+            <input
+              value={newField.division}
+              onChange={(e) => setNewField((prev) => ({ ...prev, division: e.target.value }))}
+              placeholder="e.g. 10U"
+              disabled={!canEdit}
+            />
+          </label>
+          <label>
             Display Name
             <input
               value={newField.displayName}
@@ -654,6 +668,15 @@ export default function FieldsImport({ leagueId, tableView = "A" }) {
                         />
                       </label>
                       <label>
+                        Division allocation
+                        <input
+                          value={fieldEdits[f.fieldKey]?.division ?? ""}
+                          onChange={(e) => updateEdit(f.fieldKey, "division", e.target.value)}
+                          disabled={!canEdit || savingKey === f.fieldKey}
+                          placeholder="e.g. 10U"
+                        />
+                      </label>
+                      <label>
                         Display name
                         <input
                           value={fieldEdits[f.fieldKey]?.displayName ?? ""}
@@ -729,6 +752,7 @@ export default function FieldsImport({ leagueId, tableView = "A" }) {
                       <th>Field Key</th>
                       <th>Park Name</th>
                       <th>Field Name</th>
+                      <th>Division</th>
                       <th>Display Name</th>
                       <th>Address</th>
                       <th>City</th>
@@ -757,6 +781,14 @@ export default function FieldsImport({ leagueId, tableView = "A" }) {
                             value={fieldEdits[f.fieldKey]?.fieldName ?? ""}
                             onChange={(e) => updateEdit(f.fieldKey, "fieldName", e.target.value)}
                             disabled={!canEdit || savingKey === f.fieldKey}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            value={fieldEdits[f.fieldKey]?.division ?? ""}
+                            onChange={(e) => updateEdit(f.fieldKey, "division", e.target.value)}
+                            disabled={!canEdit || savingKey === f.fieldKey}
+                            placeholder="e.g. 10U"
                           />
                         </td>
                         <td>

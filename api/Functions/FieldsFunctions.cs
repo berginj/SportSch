@@ -33,6 +33,7 @@ public class FieldsFunctions
         string fieldKey,
         string parkName,
         string fieldName,
+        string division,
         string displayName,
         string address,
         string city,
@@ -45,6 +46,7 @@ public class FieldsFunctions
     public record UpdateFieldRequest(
         string? parkName,
         string? fieldName,
+        string? division,
         string? displayName,
         string? address,
         string? city,
@@ -58,6 +60,7 @@ public class FieldsFunctions
         string? fieldKey,
         string? parkName,
         string? fieldName,
+        string? division,
         string? displayName,
         string? address,
         string? city,
@@ -112,6 +115,7 @@ public class FieldsFunctions
                     fieldKey: $"{parkCode}/{fieldCode}",
                     parkName: parkName,
                     fieldName: fieldName,
+                    division: e.GetString("Division") ?? "",
                     displayName: displayName,
                     address: e.GetString("Address") ?? "",
                     city: e.GetString("City") ?? "",
@@ -241,6 +245,7 @@ public class FieldsFunctions
             {
                 ["ParkName"] = parkName,
                 ["FieldName"] = fieldName,
+                ["Division"] = (body.division ?? "").Trim(),
                 ["DisplayName"] = displayName,
                 ["Address"] = (body.address ?? "").Trim(),
                 ["City"] = (body.city ?? "").Trim(),
@@ -261,6 +266,7 @@ public class FieldsFunctions
                 fieldKey: $"{parkCode}/{fieldCode}",
                 parkName: parkName,
                 fieldName: fieldName,
+                division: entity.GetString("Division") ?? "",
                 displayName: displayName,
                 address: entity.GetString("Address") ?? "",
                 city: entity.GetString("City") ?? "",
@@ -351,6 +357,7 @@ public class FieldsFunctions
             if (body.displayName is not null) entity["DisplayName"] = body.displayName;
             if (body.parkName is not null) entity["ParkName"] = body.parkName;
             if (body.fieldName is not null) entity["FieldName"] = body.fieldName;
+            if (body.division is not null) entity["Division"] = body.division.Trim();
             if (body.address is not null) entity["Address"] = body.address;
             if (body.city is not null) entity["City"] = body.city;
             if (body.state is not null) entity["State"] = body.state;
@@ -369,6 +376,7 @@ public class FieldsFunctions
             return ApiResponses.Ok(req, new
             {
                 fieldKey = $"{parkCode}/{fieldCode}",
+                division = entity.GetString("Division") ?? "",
                 displayName = entity.GetString("DisplayName") ?? "",
                 address = entity.GetString("Address") ?? "",
                 city = entity.GetString("City") ?? "",
