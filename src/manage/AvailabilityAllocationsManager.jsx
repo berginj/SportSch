@@ -91,8 +91,16 @@ function createManualDays() {
 function formatApiError(error, fallback) {
   const base = error?.originalMessage || error?.message || fallback;
   const requestId = error?.details?.requestId;
-  if (!requestId) return base;
-  return `${base} (requestId: ${requestId})`;
+  const stage = error?.details?.stage;
+  const exception = error?.details?.exception;
+  const detailMessage = error?.details?.message;
+  const parts = [];
+  if (requestId) parts.push(`requestId: ${requestId}`);
+  if (stage) parts.push(`stage: ${stage}`);
+  if (exception) parts.push(`exception: ${exception}`);
+  if (detailMessage) parts.push(`detail: ${detailMessage}`);
+  if (!parts.length) return base;
+  return `${base} (${parts.join(", ")})`;
 }
 
 export default function AvailabilityAllocationsManager({ leagueId }) {
