@@ -383,14 +383,30 @@ export default function LeagueSettings({ leagueId }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ confirm: "RESET SEASON" }),
       });
-      setSeasonResetResult(data?.deleted || null);
-      setToast({
-        tone: "success",
-        message: `Season reset complete. Deleted ${data?.deleted?.total ?? 0} records.`,
-      });
+      const errors = Array.isArray(data?.errors) ? data.errors : [];
+      setSeasonResetResult({ ...(data?.deleted || {}), errors });
+      if (errors.length) {
+        setToast({
+          tone: "error",
+          message: `Season reset partially completed. Deleted ${data?.deleted?.total ?? 0} records, with ${errors.length} category errors.`,
+        });
+      } else {
+        setToast({
+          tone: "success",
+          message: `Season reset complete. Deleted ${data?.deleted?.total ?? 0} records.`,
+        });
+      }
       await loadSettings();
     } catch (e) {
-      setToast({ tone: "error", message: e?.message || "Season reset failed." });
+      let msg = e?.message || "Season reset failed.";
+      if (e?.status === 404) {
+        msg = "Season reset endpoint is not deployed yet. Refresh after deployment completes.";
+      } else if (e?.status === 403) {
+        msg = e?.message || "Access denied. LeagueAdmin role is required for this action.";
+      } else if (e?.status >= 500 && e?.details?.requestId) {
+        msg = `${msg} (Request ID: ${e.details.requestId})`;
+      }
+      setToast({ tone: "error", message: msg });
     } finally {
       setSeasonResetBusy(false);
     }
@@ -473,26 +489,40 @@ export default function LeagueSettings({ leagueId }) {
             </button>
           </div>
           {seasonResetResult ? (
-            <div className="tableWrap">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Category</th>
-                    <th>Deleted</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr><td>Fields</td><td>{seasonResetResult.fields ?? 0}</td></tr>
-                  <tr><td>Slots</td><td>{seasonResetResult.slots ?? 0}</td></tr>
-                  <tr><td>Slot requests</td><td>{seasonResetResult.slotRequests ?? 0}</td></tr>
-                  <tr><td>Events</td><td>{seasonResetResult.events ?? 0}</td></tr>
-                  <tr><td>Availability allocations</td><td>{seasonResetResult.availabilityAllocations ?? 0}</td></tr>
-                  <tr><td>Availability rules</td><td>{seasonResetResult.availabilityRules ?? 0}</td></tr>
-                  <tr><td>Availability exceptions</td><td>{seasonResetResult.availabilityExceptions ?? 0}</td></tr>
-                  <tr><td>Schedule runs</td><td>{seasonResetResult.scheduleRuns ?? 0}</td></tr>
-                  <tr><td><b>Total</b></td><td><b>{seasonResetResult.total ?? 0}</b></td></tr>
-                </tbody>
-              </table>
+            <div className="stack gap-3">
+              <div className="tableWrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Category</th>
+                      <th>Deleted</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr><td>Fields</td><td>{seasonResetResult.fields ?? 0}</td></tr>
+                    <tr><td>Slots</td><td>{seasonResetResult.slots ?? 0}</td></tr>
+                    <tr><td>Slot requests</td><td>{seasonResetResult.slotRequests ?? 0}</td></tr>
+                    <tr><td>Events</td><td>{seasonResetResult.events ?? 0}</td></tr>
+                    <tr><td>Availability allocations</td><td>{seasonResetResult.availabilityAllocations ?? 0}</td></tr>
+                    <tr><td>Availability rules</td><td>{seasonResetResult.availabilityRules ?? 0}</td></tr>
+                    <tr><td>Availability exceptions</td><td>{seasonResetResult.availabilityExceptions ?? 0}</td></tr>
+                    <tr><td>Schedule runs</td><td>{seasonResetResult.scheduleRuns ?? 0}</td></tr>
+                    <tr><td><b>Total</b></td><td><b>{seasonResetResult.total ?? 0}</b></td></tr>
+                  </tbody>
+                </table>
+              </div>
+              {Array.isArray(seasonResetResult.errors) && seasonResetResult.errors.length ? (
+                <div className="callout callout--error">
+                  <div className="font-bold mb-2">Category errors</div>
+                  <ul className="m-0 pl-5">
+                    {seasonResetResult.errors.map((x, idx) => (
+                      <li key={`${x.category || "error"}-${idx}`}>
+                        {(x.category || "unknown")}: {x.error || "Delete step failed"}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>

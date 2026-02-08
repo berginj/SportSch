@@ -731,6 +731,7 @@ Notes
   - availability rule exceptions (for deleted rules)
   - schedule runs
 - Does **not** delete memberships, teams, divisions, or league profile metadata.
+- Returns per-category delete counts and may include an `errors` array when one or more categories fail to reset.
 
 ### Admin: POST /admin/migrate/fields (league-scoped)
 Requires: global admin.

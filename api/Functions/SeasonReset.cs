@@ -37,17 +37,48 @@ public class SeasonReset
             if (!string.Equals((body.confirm ?? "").Trim(), "RESET SEASON", StringComparison.OrdinalIgnoreCase))
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Missing confirm=RESET SEASON");
 
-            var slotRequestsDeleted = await DeleteByFilterAsync(Constants.Tables.SlotRequests, PrefixFilter($"SLOTREQ|{leagueId}|"));
-            var slotsDeleted = await DeleteByFilterAsync(Constants.Tables.Slots, PrefixFilter($"SLOT|{leagueId}|"));
-            var eventsDeleted = await DeleteByFilterAsync(Constants.Tables.Events,
-                $"PartitionKey eq '{ApiGuards.EscapeOData(Constants.Pk.Events(leagueId))}'");
+            var errors = new List<object>();
+            var slotRequestsDeleted = await RunDeleteStepAsync(
+                "slotRequests",
+                () => DeleteByFilterAsync(Constants.Tables.SlotRequests, PrefixFilter($"SLOTREQ|{leagueId}|")),
+                errors);
+            var slotsDeleted = await RunDeleteStepAsync(
+                "slots",
+                () => DeleteByFilterAsync(Constants.Tables.Slots, PrefixFilter($"SLOT|{leagueId}|")),
+                errors);
+            var eventsDeleted = await RunDeleteStepAsync(
+                "events",
+                () => DeleteByFilterAsync(Constants.Tables.Events, $"PartitionKey eq '{ApiGuards.EscapeOData(Constants.Pk.Events(leagueId))}'"),
+                errors);
+            var allocationsDeleted = await RunDeleteStepAsync(
+                "availabilityAllocations",
+                () => DeleteByFilterAsync(Constants.Tables.FieldAvailabilityAllocations, PrefixFilter($"ALLOC|{leagueId}|")),
+                errors);
 
-            var allocationsDeleted = await DeleteByFilterAsync(Constants.Tables.FieldAvailabilityAllocations, PrefixFilter($"ALLOC|{leagueId}|"));
-            var (rulesDeleted, ruleIds) = await DeleteAvailabilityRulesAndCollectRuleIdsAsync(leagueId);
-            var exceptionsDeleted = await DeleteAvailabilityExceptionsByRuleIdsAsync(ruleIds);
+            HashSet<string> ruleIds = new(StringComparer.OrdinalIgnoreCase);
+            var rulesDeleted = await RunDeleteStepAsync(
+                "availabilityRules",
+                async () =>
+                {
+                    var result = await DeleteAvailabilityRulesAndCollectRuleIdsAsync(leagueId);
+                    ruleIds = result.ruleIds;
+                    return result.deleted;
+                },
+                errors);
 
-            var fieldsDeleted = await DeleteByFilterAsync(Constants.Tables.Fields, PrefixFilter($"FIELD|{leagueId}|"));
-            var scheduleRunsDeleted = await DeleteByFilterAsync(Constants.Tables.ScheduleRuns, PrefixFilter($"SCHED|{leagueId}|"));
+            var exceptionsDeleted = await RunDeleteStepAsync(
+                "availabilityExceptions",
+                () => DeleteAvailabilityExceptionsByRuleIdsAsync(ruleIds),
+                errors);
+
+            var fieldsDeleted = await RunDeleteStepAsync(
+                "fields",
+                () => DeleteByFilterAsync(Constants.Tables.Fields, PrefixFilter($"FIELD|{leagueId}|")),
+                errors);
+            var scheduleRunsDeleted = await RunDeleteStepAsync(
+                "scheduleRuns",
+                () => DeleteByFilterAsync(Constants.Tables.ScheduleRuns, PrefixFilter($"SCHED|{leagueId}|")),
+                errors);
 
             var totalDeleted = slotRequestsDeleted + slotsDeleted + eventsDeleted + allocationsDeleted + rulesDeleted
                 + exceptionsDeleted + fieldsDeleted + scheduleRunsDeleted;
@@ -66,14 +97,41 @@ public class SeasonReset
                     fields = fieldsDeleted,
                     scheduleRuns = scheduleRunsDeleted,
                     total = totalDeleted
-                }
+                },
+                errors
             });
         }
         catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
         catch (Exception ex)
         {
-            _log.LogError(ex, "SeasonReset failed");
-            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
+            var requestId = req.FunctionContext.InvocationId.ToString();
+            _log.LogError(ex, "SeasonReset failed. requestId={requestId}", requestId);
+            return ApiResponses.Error(
+                req,
+                HttpStatusCode.InternalServerError,
+                "INTERNAL",
+                "Season reset failed.",
+                new { requestId, exception = ex.GetType().Name, message = ex.Message });
+        }
+    }
+
+    private async Task<int> RunDeleteStepAsync(string category, Func<Task<int>> action, List<object> errors)
+    {
+        try
+        {
+            return await action();
+        }
+        catch (RequestFailedException ex)
+        {
+            _log.LogError(ex, "Season reset delete step failed: {category}", category);
+            errors.Add(new { category, error = ex.Message, status = ex.Status, code = ex.ErrorCode });
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Season reset delete step failed: {category}", category);
+            errors.Add(new { category, error = ex.Message });
+            return 0;
         }
     }
 
