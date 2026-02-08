@@ -131,6 +131,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
   const [genDateTo, setGenDateTo] = useState("");
   const [genPreview, setGenPreview] = useState(null);
   const [genLoading, setGenLoading] = useState(false);
+  const [genStatus, setGenStatus] = useState("");
 
   useEffect(() => {
     if (!leagueId) return;
@@ -487,12 +488,14 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
     setGenLoading(true);
     setAllocErr("");
     setAllocOk("");
+    setGenStatus("Running preview...");
     const dateError = validateIsoDates([
       { label: "Date from", value: genDateFrom, required: true },
       { label: "Date to", value: genDateTo, required: true },
     ]);
     if (dateError) {
       setGenLoading(false);
+      setGenStatus(dateError);
       return setAllocErr(dateError);
     }
     try {
@@ -510,8 +513,15 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
       const conflicts = Array.isArray(data?.conflicts) ? data.conflicts : [];
       setGenPreview({ slots, conflicts });
       setAllocOk(`Preview ready: ${slots.length} candidate slots, ${conflicts.length} conflicts.`);
+      if (slots.length === 0 && conflicts.length === 0) {
+        setGenStatus("Preview complete: no candidate slots or conflicts were found for this filter.");
+      } else {
+        setGenStatus(`Preview complete: ${slots.length} candidate slots, ${conflicts.length} conflicts.`);
+      }
     } catch (e) {
-      setAllocErr(formatApiError(e, "Failed to preview allocation slots."));
+      const message = formatApiError(e, "Failed to preview allocation slots.");
+      setAllocErr(message);
+      setGenStatus(message);
       setGenPreview(null);
     } finally {
       setGenLoading(false);
@@ -523,12 +533,14 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
     setGenLoading(true);
     setAllocErr("");
     setAllocOk("");
+    setGenStatus("Generating slots...");
     const dateError = validateIsoDates([
       { label: "Date from", value: genDateFrom, required: true },
       { label: "Date to", value: genDateTo, required: true },
     ]);
     if (dateError) {
       setGenLoading(false);
+      setGenStatus(dateError);
       return setAllocErr(dateError);
     }
     try {
@@ -550,6 +562,11 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
       // Keep result details on-screen so zero-create runs are diagnosable.
       setGenPreview({ slots: created, conflicts });
       setAllocOk(`Generate complete: created ${createdCount} slots, conflicts ${conflictCount}.`);
+      if (createdCount === 0 && conflictCount === 0) {
+        setGenStatus("Generate complete: created 0 slots, and no conflicts were found for this filter.");
+      } else {
+        setGenStatus(`Generate complete: created ${createdCount} slots, conflicts ${conflictCount}.`);
+      }
       setToast({
         tone: createdCount > 0 ? "success" : conflictCount > 0 ? "warning" : "info",
         message:
@@ -560,7 +577,9 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
               : "Created 0 slots.",
       });
     } catch (e) {
-      setAllocErr(formatApiError(e, "Failed to apply allocation slots."));
+      const message = formatApiError(e, "Failed to apply allocation slots.");
+      setAllocErr(message);
+      setGenStatus(message);
     } finally {
       setGenLoading(false);
     }
@@ -989,6 +1008,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
         <div className="card__body subtle">
           Tip: if generation creates 0 slots with conflicts, clear or move overlapping non-availability slots for that field/date window.
         </div>
+        {genStatus ? <div className="card__body"><div className="callout">{genStatus}</div></div> : null}
         {genPreview ? (
           <div className="card__body">
             <div className="row row--wrap gap-4">
