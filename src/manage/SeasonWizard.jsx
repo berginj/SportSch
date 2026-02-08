@@ -93,12 +93,48 @@ function computeSlotScore(slot, weekday, patternCounts, dayCounts) {
   return patternCount * 100 + dayCount + durationBucket;
 }
 
-function StepButton({ active, onClick, children }) {
+function patternKeyFromParts(weekday, startTime, endTime, fieldKey) {
+  return `${weekday || ""}|${startTime || ""}|${endTime || ""}|${fieldKey || ""}`;
+}
+
+function dayOrderIndex(weekday) {
+  const idx = WEEKDAY_OPTIONS.indexOf(weekday || "");
+  return idx >= 0 ? idx : 999;
+}
+
+function StepButton({ active, status = "neutral", onClick, children }) {
+  const stylesByStatus = {
+    complete: {
+      backgroundColor: "#1f7a43",
+      borderColor: "#1f7a43",
+      color: "#fff",
+    },
+    error: {
+      backgroundColor: "#b42318",
+      borderColor: "#b42318",
+      color: "#fff",
+    },
+    active: {
+      backgroundColor: "#0f172a",
+      borderColor: "#0f172a",
+      color: "#fff",
+    },
+    neutral: {
+      backgroundColor: "#f8fafc",
+      borderColor: "#cbd5e1",
+      color: "#0f172a",
+    },
+  };
+  const style = stylesByStatus[status] || stylesByStatus.neutral;
   return (
     <button
       className={`btn btn--ghost ${active ? "is-active" : ""}`}
       type="button"
       onClick={onClick}
+      style={{
+        ...style,
+        boxShadow: active ? "0 0 0 2px rgba(15,23,42,0.25)" : "none",
+      }}
     >
       {children}
     </button>
@@ -171,19 +207,65 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     const practice = slotPlan.filter((s) => s.slotType === "practice").length;
     const game = slotPlan.filter((s) => s.slotType === "game").length;
     const both = slotPlan.filter((s) => s.slotType === "both").length;
-    const ranked = slotPlan.filter((s) => Number(s.priorityRank) > 0).length;
-    return { total, practice, game, both, ranked, gameCapable: game + both };
+    const ranked = slotPlan.filter((s) => Number(s.priorityRank) > 0);
+    const uniqueRankedPatterns = new Set(ranked.map((s) => s.basePatternKey)).size;
+    return { total, practice, game, both, ranked: uniqueRankedPatterns, gameCapable: game + both };
+  }, [slotPlan]);
+
+  const slotPatterns = useMemo(() => {
+    const map = new Map();
+    for (const slot of slotPlan) {
+      const key = slot.basePatternKey || patternKeyFromParts(slot.weekday, slot.baseStartTime, slot.baseEndTime, slot.fieldKey);
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          weekday: slot.weekday,
+          fieldKey: slot.fieldKey,
+          startTime: slot.startTime,
+          endTime: slot.endTime,
+          baseStartTime: slot.baseStartTime || slot.startTime,
+          baseEndTime: slot.baseEndTime || slot.endTime,
+          slotType: slot.slotType,
+          priorityRank: slot.priorityRank,
+          count: 0,
+          scoreTotal: 0,
+          scoreMax: slot.score || 0,
+          firstDate: slot.gameDate || "",
+        });
+      }
+      const row = map.get(key);
+      row.count += 1;
+      row.scoreTotal += Number(slot.score || 0);
+      row.scoreMax = Math.max(row.scoreMax, Number(slot.score || 0));
+      if (!row.firstDate || (slot.gameDate && slot.gameDate < row.firstDate)) row.firstDate = slot.gameDate;
+      row.startTime = slot.startTime || row.startTime;
+      row.endTime = slot.endTime || row.endTime;
+      row.slotType = slot.slotType || row.slotType;
+      row.priorityRank = slot.priorityRank || row.priorityRank;
+    }
+    return Array.from(map.values())
+      .map((row) => ({
+        ...row,
+        score: Math.round(row.scoreTotal / Math.max(1, row.count)),
+      }))
+      .sort((a, b) => {
+        const day = dayOrderIndex(a.weekday) - dayOrderIndex(b.weekday);
+        if (day !== 0) return day;
+        const start = (a.startTime || "").localeCompare(b.startTime || "");
+        if (start !== 0) return start;
+        return (a.fieldKey || "").localeCompare(b.fieldKey || "");
+      });
   }, [slotPlan]);
 
   const guestAnchorOptions = useMemo(
     () =>
-      slotPlan
-        .filter((s) => s.slotType === "game" || s.slotType === "both")
-        .map((s) => ({
-          slotId: s.slotId,
-          label: `${s.weekday} ${s.gameDate} ${s.startTime}-${s.endTime} ${s.fieldKey} (score ${s.score ?? 0})`,
+      slotPatterns
+        .filter((p) => p.slotType === "game" || p.slotType === "both")
+        .map((p) => ({
+          slotId: p.key,
+          label: `${p.weekday} ${p.startTime}-${p.endTime} ${p.fieldKey} (score ${p.score}, ${p.count} opening${p.count === 1 ? "" : "s"})`,
         })),
-    [slotPlan]
+    [slotPatterns]
   );
 
   function toggleWeeknight(day) {
@@ -194,29 +276,59 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     });
   }
 
-  function updateSlotPlanItem(slotId, patch) {
+  function updatePatternPlan(patternKey, patch) {
     setSlotPlan((prev) =>
-      prev.map((item) => (item.slotId === slotId ? { ...item, ...patch } : item))
+      prev.map((item) => (item.basePatternKey === patternKey ? { ...item, ...patch } : item))
     );
+    setPreview(null);
+  }
+
+  function updatePatternStartTime(patternKey, nextStart) {
+    const representative = slotPatterns.find((p) => p.key === patternKey);
+    if (!representative) return;
+    const start = String(nextStart || "").trim();
+    if (!start) return;
+    const startMin = parseMinutes(start);
+    const endMin = parseMinutes(representative.endTime);
+    if (startMin == null || endMin == null) {
+      setErr("Start time must be in HH:mm format.");
+      return;
+    }
+    if (startMin >= endMin) {
+      setErr(`Start time must be earlier than ${representative.endTime} for ${representative.weekday} ${representative.fieldKey}.`);
+      return;
+    }
+    setErr("");
+    updatePatternPlan(patternKey, { startTime: start });
   }
 
   function setAllSlotTypes(nextType) {
     const normalized = normalizeSlotType(nextType);
     setSlotPlan((prev) => prev.map((item) => ({ ...item, slotType: normalized })));
+    setPreview(null);
   }
 
   function autoRankGameSlots() {
-    setSlotPlan((prev) => {
-      let rank = 1;
-      return prev.map((item) => {
+    const rankedPatterns = slotPatterns
+      .filter((p) => p.slotType === "game" || p.slotType === "both")
+      .sort((a, b) => {
+        const score = (b.score || 0) - (a.score || 0);
+        if (score !== 0) return score;
+        const day = dayOrderIndex(a.weekday) - dayOrderIndex(b.weekday);
+        if (day !== 0) return day;
+        return (a.startTime || "").localeCompare(b.startTime || "");
+      });
+    const rankByPattern = new Map();
+    rankedPatterns.forEach((p, idx) => rankByPattern.set(p.key, String(idx + 1)));
+    setSlotPlan((prev) =>
+      prev.map((item) => {
         if (item.slotType === "game" || item.slotType === "both") {
-          const next = { ...item, priorityRank: String(rank) };
-          rank += 1;
-          return next;
+          return { ...item, priorityRank: rankByPattern.get(item.basePatternKey) || "" };
         }
         return { ...item, priorityRank: "" };
-      });
-    });
+      })
+    );
+    setPreview(null);
   }
 
   useEffect(() => {
@@ -287,13 +399,21 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
           return availability.map((slot) => {
             const prior = previousById.get(slot.slotId);
             const weekday = isoDayShort(slot.gameDate || "");
+            const baseStartTime = slot.startTime || "";
+            const baseEndTime = slot.endTime || "";
+            const basePatternKey = patternKeyFromParts(weekday, baseStartTime, baseEndTime, slot.fieldKey || "");
+            const nextStartTime = prior?.startTime || baseStartTime;
+            const nextEndTime = prior?.endTime || baseEndTime;
             return {
               slotId: slot.slotId,
               gameDate: slot.gameDate || "",
-              startTime: slot.startTime || "",
-              endTime: slot.endTime || "",
+              startTime: nextStartTime,
+              endTime: nextEndTime,
               fieldKey: slot.fieldKey || "",
               weekday,
+              baseStartTime,
+              baseEndTime,
+              basePatternKey,
               slotType: normalizeSlotType(prior?.slotType || "practice"),
               priorityRank: normalizePriorityRank(prior?.priorityRank || ""),
               score: computeSlotScore(slot, weekday, patternCounts, dayCounts),
@@ -320,9 +440,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
   useEffect(() => {
     const allowed = new Set(
-      slotPlan
+      slotPatterns
         .filter((s) => s.slotType === "game" || s.slotType === "both")
-        .map((s) => s.slotId)
+        .map((s) => s.key)
     );
     if (guestAnchorPrimarySlotId && !allowed.has(guestAnchorPrimarySlotId)) {
       setGuestAnchorPrimarySlotId("");
@@ -330,11 +450,11 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     if (guestAnchorSecondarySlotId && !allowed.has(guestAnchorSecondarySlotId)) {
       setGuestAnchorSecondarySlotId("");
     }
-  }, [slotPlan, guestAnchorPrimarySlotId, guestAnchorSecondarySlotId]);
+  }, [slotPatterns, guestAnchorPrimarySlotId, guestAnchorSecondarySlotId]);
 
   function guestAnchorPayloadFromSlotId(slotId) {
     if (!slotId) return null;
-    const slot = slotPlan.find((s) => s.slotId === slotId);
+    const slot = slotPatterns.find((s) => s.key === slotId);
     if (!slot) return null;
     return {
       dayOfWeek: slot.weekday,
@@ -351,6 +471,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         slotId: slot.slotId,
         slotType: normalizeSlotType(slot.slotType),
         priorityRank: Number.isFinite(rank) && rank > 0 ? rank : undefined,
+        startTime: slot.startTime || undefined,
+        endTime: slot.endTime || undefined,
       };
     });
 
@@ -499,6 +621,100 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     return notes;
   }
 
+  const basicsError = useMemo(() => {
+    if (!division) return "Division is required.";
+    if (!isIsoDate(seasonStart) || !isIsoDate(seasonEnd)) return "Season start/end must be YYYY-MM-DD.";
+    if (seasonStart > seasonEnd) return "Season start must be before season end.";
+    return "";
+  }, [division, seasonStart, seasonEnd]);
+
+  const postseasonError = useMemo(() => {
+    if (!poolStart && !poolEnd && !bracketStart && !bracketEnd) return "";
+    if ((poolStart && !poolEnd) || (!poolStart && poolEnd)) return "Pool play start and end must both be set.";
+    if ((bracketStart && !bracketEnd) || (!bracketStart && bracketEnd)) return "Bracket start and end must both be set.";
+    if (poolStart && (!isIsoDate(poolStart) || !isIsoDate(poolEnd))) return "Pool play dates must be YYYY-MM-DD.";
+    if (bracketStart && (!isIsoDate(bracketStart) || !isIsoDate(bracketEnd))) return "Bracket dates must be YYYY-MM-DD.";
+    if (poolStart && poolEnd && poolStart > poolEnd) return "Pool play start must be before pool play end.";
+    if (bracketStart && bracketEnd && bracketStart > bracketEnd) return "Bracket start must be before bracket end.";
+    if (poolStart && poolEnd && (poolStart < seasonStart || poolEnd > seasonEnd)) return "Pool play must stay within the season range.";
+    if (bracketStart && bracketStart < seasonStart) return "Bracket must start on or after season start.";
+    return "";
+  }, [poolStart, poolEnd, bracketStart, bracketEnd, seasonStart, seasonEnd]);
+
+  const slotPlanError = useMemo(() => {
+    if (availabilityErr) return availabilityErr;
+    if (availabilityLoading) return "";
+    if (!slotPlan.length) return "No availability slots loaded.";
+    const invalidTime = slotPatterns.find((p) => {
+      const startMin = parseMinutes(p.startTime);
+      const endMin = parseMinutes(p.endTime);
+      return startMin == null || endMin == null || startMin >= endMin;
+    });
+    if (invalidTime) return `Invalid time window for ${invalidTime.weekday} ${invalidTime.fieldKey}.`;
+    if (slotPlanSummary.gameCapable <= 0) return "Select at least one pattern as Game or Both.";
+    if (guestAnchorPrimarySlotId && guestAnchorSecondarySlotId && guestAnchorPrimarySlotId === guestAnchorSecondarySlotId) {
+      return "Guest anchor option 1 and option 2 must be different.";
+    }
+    return "";
+  }, [
+    availabilityErr,
+    availabilityLoading,
+    slotPlan,
+    slotPatterns,
+    slotPlanSummary.gameCapable,
+    guestAnchorPrimarySlotId,
+    guestAnchorSecondarySlotId,
+  ]);
+
+  const rulesError = useMemo(() => {
+    const maxGames = Number(maxGamesPerWeek);
+    const minGames = Number(minGamesPerTeam);
+    const poolGames = Number(poolGamesPerTeam);
+    const guestGames = Number(guestGamesPerWeek);
+    if (!Number.isFinite(maxGames) || maxGames < 0) return "Max games/week must be 0 or greater.";
+    if (!Number.isFinite(minGames) || minGames < 0) return "Min games/team must be 0 or greater.";
+    if (!Number.isFinite(poolGames) || poolGames < 0) return "Pool games/team must be 0 or greater.";
+    if (!Number.isFinite(guestGames) || guestGames < 0) return "Guest games/week must be 0 or greater.";
+    return "";
+  }, [maxGamesPerWeek, minGamesPerTeam, poolGamesPerTeam, guestGamesPerWeek]);
+
+  const previewError = useMemo(() => {
+    if (!preview) return "";
+    if ((preview.totalIssues || 0) > 0) return `${preview.totalIssues} validation issue(s) in preview.`;
+    return "";
+  }, [preview]);
+
+  const stepStatuses = useMemo(() => {
+    const errors = [basicsError, postseasonError, slotPlanError, rulesError, previewError];
+    if (err && step >= 0 && step < errors.length) {
+      errors[step] = errors[step] || err;
+    }
+    const completed = [
+      !basicsError,
+      !postseasonError && step > 1,
+      !slotPlanError && slotPlanSummary.gameCapable > 0 && step > 2,
+      !rulesError && step > 3,
+      !!preview && !previewError,
+    ];
+    return steps.map((_, idx) => {
+      if (errors[idx]) return "error";
+      if (idx === step) return "active";
+      if (completed[idx]) return "complete";
+      return "neutral";
+    });
+  }, [
+    basicsError,
+    postseasonError,
+    slotPlanError,
+    rulesError,
+    previewError,
+    err,
+    step,
+    slotPlanSummary.gameCapable,
+    preview,
+    steps,
+  ]);
+
   return (
     <div className="stack gap-3">
       {toast ? <Toast {...toast} onClose={() => setToast(null)} /> : null}
@@ -506,11 +722,12 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
       <div className="row row--wrap gap-2">
         {steps.map((label, idx) => (
-          <StepButton key={label} active={step === idx} onClick={() => setStep(idx)}>
+          <StepButton key={label} active={step === idx} status={stepStatuses[idx]} onClick={() => setStep(idx)}>
             {label}
           </StepButton>
         ))}
       </div>
+      <div className="subtle">Step state: green = complete, red = needs attention, neutral = pending.</div>
 
       {step === 0 ? (
         <div className="card">
@@ -648,71 +865,119 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
               <div className="callout callout--error">No availability slots found in the selected season window.</div>
             ) : null}
 
-            {slotPlan.length ? (
-              <div className={`tableWrap ${tableView === "B" ? "tableWrap--sticky" : ""}`}>
-                <table className={`table ${tableView === "B" ? "table--compact table--sticky" : ""}`}>
-                  <thead>
-                    <tr>
-                      <th>Date</th>
-                      <th>Day</th>
-                      <th>Time</th>
-                      <th>Field</th>
-                      <th>Score</th>
-                      <th>Type</th>
-                      <th>Priority</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {slotPlan.map((slot) => (
-                      <tr key={slot.slotId}>
-                        <td>{slot.gameDate}</td>
-                        <td>{slot.weekday}</td>
-                        <td>
-                          {slot.startTime}-{slot.endTime}
-                        </td>
-                        <td>{slot.fieldKey}</td>
-                        <td title="Higher score means this slot pattern appears more consistently in the queried window.">
-                          {slot.score ?? 0}
-                        </td>
-                        <td>
-                          <select
-                            value={slot.slotType}
-                            onChange={(e) => {
-                              const nextType = normalizeSlotType(e.target.value);
-                              updateSlotPlanItem(slot.slotId, {
-                                slotType: nextType,
-                                priorityRank:
-                                  nextType === "practice" ? "" : normalizePriorityRank(slot.priorityRank),
-                              });
-                            }}
-                          >
-                            {SLOT_TYPE_OPTIONS.map((opt) => (
-                              <option key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td>
-                          <input
-                            type="number"
-                            min="1"
-                            value={slot.priorityRank}
-                            disabled={slot.slotType === "practice"}
-                            onChange={(e) =>
-                              updateSlotPlanItem(slot.slotId, {
-                                priorityRank:
-                                  slot.slotType === "practice" ? "" : normalizePriorityRank(e.target.value),
-                              })
-                            }
-                            placeholder={slot.slotType === "practice" ? "-" : "1"}
-                          />
-                        </td>
+            {slotPatterns.length ? (
+              <>
+                <div className="card">
+                  <div className="card__header">
+                    <div className="h4">Weekly availability view</div>
+                    <div className="subtle">Recurring patterns by weekday; useful for spotting time overlaps before ranking.</div>
+                  </div>
+                  <div
+                    className="card__body"
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+                      gap: "0.5rem",
+                    }}
+                  >
+                    {WEEKDAY_OPTIONS.map((day) => {
+                      const dayPatterns = slotPatterns.filter((p) => p.weekday === day);
+                      return (
+                        <div key={day} className="card" style={{ border: "1px solid #cbd5e1" }}>
+                          <div className="card__header" style={{ paddingBottom: "0.25rem" }}>
+                            <div className="h5">{day}</div>
+                          </div>
+                          <div className="card__body stack gap-1" style={{ paddingTop: 0 }}>
+                            {!dayPatterns.length ? (
+                              <div className="subtle">No openings</div>
+                            ) : (
+                              dayPatterns.map((p) => (
+                                <div key={p.key} className="callout" style={{ marginBottom: 0 }}>
+                                  <div><b>{p.startTime}-{p.endTime}</b></div>
+                                  <div className="subtle">{p.fieldKey}</div>
+                                  <div className="subtle">Type: {p.slotType} | Rank: {p.priorityRank || "-"} | Openings: {p.count}</div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className={`tableWrap ${tableView === "B" ? "tableWrap--sticky" : ""}`}>
+                  <table className={`table ${tableView === "B" ? "table--compact table--sticky" : ""}`}>
+                    <thead>
+                      <tr>
+                        <th>Day</th>
+                        <th>Start</th>
+                        <th>End</th>
+                        <th>Field</th>
+                        <th>Openings</th>
+                        <th>Score</th>
+                        <th>Type</th>
+                        <th>Priority</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {slotPatterns.map((pattern) => (
+                        <tr key={pattern.key}>
+                          <td>{pattern.weekday}</td>
+                          <td>
+                            <input
+                              type="time"
+                              value={pattern.startTime || ""}
+                              onChange={(e) => updatePatternStartTime(pattern.key, e.target.value)}
+                              title={`Applies to all ${pattern.count} opening(s) in this pattern.`}
+                            />
+                          </td>
+                          <td>{pattern.endTime}</td>
+                          <td>{pattern.fieldKey}</td>
+                          <td>{pattern.count}</td>
+                          <td title="Higher score means this pattern appears more consistently in the season window.">
+                            {pattern.score ?? 0}
+                          </td>
+                          <td>
+                            <select
+                              value={pattern.slotType}
+                              onChange={(e) => {
+                                const nextType = normalizeSlotType(e.target.value);
+                                updatePatternPlan(pattern.key, {
+                                  slotType: nextType,
+                                  priorityRank:
+                                    nextType === "practice" ? "" : normalizePriorityRank(pattern.priorityRank),
+                                });
+                              }}
+                            >
+                              {SLOT_TYPE_OPTIONS.map((opt) => (
+                                <option key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              min="1"
+                              value={pattern.priorityRank}
+                              disabled={pattern.slotType === "practice"}
+                              onChange={(e) =>
+                                updatePatternPlan(pattern.key, {
+                                  priorityRank:
+                                    pattern.slotType === "practice" ? "" : normalizePriorityRank(e.target.value),
+                                })
+                              }
+                              placeholder={pattern.slotType === "practice" ? "-" : "1"}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             ) : null}
           </div>
           <div className="row row--end gap-2">

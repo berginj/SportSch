@@ -46,7 +46,9 @@ public class ScheduleWizardFunctions
     public record SlotPlanItem(
         string? slotId,
         string? slotType,
-        int? priorityRank
+        int? priorityRank,
+        string? startTime,
+        string? endTime
     );
 
     public record GuestAnchorOption(
@@ -307,7 +309,7 @@ public class ScheduleWizardFunctions
         List<MatchupPair> UnassignedMatchups
     );
 
-    private record SlotPlanConfig(string SlotType, int? PriorityRank);
+    private record SlotPlanConfig(string SlotType, int? PriorityRank, string? StartTime, string? EndTime);
 
     private record GuestAnchor(
         DayOfWeek DayOfWeek,
@@ -602,7 +604,9 @@ public class ScheduleWizardFunctions
 
             var slotType = NormalizeSlotType(item.slotType);
             var priority = item.priorityRank.HasValue && item.priorityRank.Value > 0 ? item.priorityRank.Value : (int?)null;
-            result[slotId] = new SlotPlanConfig(slotType, priority);
+            var startTime = NormalizeTime(item.startTime);
+            var endTime = NormalizeTime(item.endTime);
+            result[slotId] = new SlotPlanConfig(slotType, priority, startTime, endTime);
         }
 
         return result;
@@ -621,19 +625,37 @@ public class ScheduleWizardFunctions
             else
             {
                 config = hasSlotPlan
-                    ? new SlotPlanConfig("practice", null)
-                    : new SlotPlanConfig("game", null);
+                    ? new SlotPlanConfig("practice", null, null, null)
+                    : new SlotPlanConfig("game", null, null, null);
             }
 
             var normalizedType = NormalizeSlotType(config.SlotType);
             var rank = normalizedType == "practice" ? null : config.PriorityRank;
+            var startTime = string.IsNullOrWhiteSpace(config.StartTime) ? slot.startTime : config.StartTime;
+            var endTime = string.IsNullOrWhiteSpace(config.EndTime) ? slot.endTime : config.EndTime;
+            if (!TimeUtil.IsValidRange(startTime, endTime, out _, out _, out _))
+            {
+                throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, $"Invalid slot timing for slotId {slot.slotId}. startTime must be before endTime and use HH:MM.");
+            }
             planned.Add(slot with
             {
                 slotType = normalizedType,
-                priorityRank = rank
+                priorityRank = rank,
+                startTime = startTime,
+                endTime = endTime
             });
         }
         return planned;
+    }
+
+    private static string? NormalizeTime(string? raw)
+    {
+        var value = (raw ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        if (!TimeUtil.TryParseMinutes(value, out var minutes)) return null;
+        var h = minutes / 60;
+        var m = minutes % 60;
+        return $"{h:D2}:{m:D2}";
     }
 
     private static string NormalizeSlotType(string? raw)
@@ -820,6 +842,17 @@ public class ScheduleWizardFunctions
             slot["AwayTeamId"] = a.isExternalOffer ? "" : (a.awayTeamId ?? "");
             slot["IsExternalOffer"] = a.isExternalOffer;
             slot["IsAvailability"] = false;
+            slot["GameDate"] = a.gameDate ?? (slot.GetString("GameDate") ?? "");
+            slot["StartTime"] = a.startTime ?? (slot.GetString("StartTime") ?? "");
+            slot["EndTime"] = a.endTime ?? (slot.GetString("EndTime") ?? "");
+            if (TimeUtil.TryParseMinutes(a.startTime ?? "", out var startMin))
+            {
+                slot["StartMin"] = startMin;
+            }
+            if (TimeUtil.TryParseMinutes(a.endTime ?? "", out var endMin))
+            {
+                slot["EndMin"] = endMin;
+            }
             if (a.isExternalOffer)
             {
                 slot["Status"] = Constants.Status.SlotOpen;
