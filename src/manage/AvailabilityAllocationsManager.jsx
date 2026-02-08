@@ -479,6 +479,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
     if (!genDivision) return;
     setGenLoading(true);
     setAllocErr("");
+    setAllocOk("");
     const dateError = validateIsoDates([
       { label: "Date from", value: genDateFrom, required: true },
       { label: "Date to", value: genDateTo, required: true },
@@ -498,7 +499,10 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
           fieldKey: genFieldKey || undefined,
         }),
       });
-      setGenPreview(data || null);
+      const slots = Array.isArray(data?.slots) ? data.slots : [];
+      const conflicts = Array.isArray(data?.conflicts) ? data.conflicts : [];
+      setGenPreview({ slots, conflicts });
+      setAllocOk(`Preview ready: ${slots.length} candidate slots, ${conflicts.length} conflicts.`);
     } catch (e) {
       setAllocErr(e?.message || "Failed to preview allocation slots.");
       setGenPreview(null);
@@ -511,6 +515,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
     if (!genDivision) return;
     setGenLoading(true);
     setAllocErr("");
+    setAllocOk("");
     const dateError = validateIsoDates([
       { label: "Date from", value: genDateFrom, required: true },
       { label: "Date to", value: genDateTo, required: true },
@@ -530,8 +535,23 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
           fieldKey: genFieldKey || undefined,
         }),
       });
-      setGenPreview(null);
-      setToast({ tone: "success", message: `Created ${data?.created?.length ?? 0} availability slots.` });
+      const created = Array.isArray(data?.created) ? data.created : [];
+      const conflicts = Array.isArray(data?.conflicts) ? data.conflicts : [];
+      const createdCount = created.length;
+      const conflictCount = conflicts.length;
+
+      // Keep result details on-screen so zero-create runs are diagnosable.
+      setGenPreview({ slots: created, conflicts });
+      setAllocOk(`Generate complete: created ${createdCount} slots, conflicts ${conflictCount}.`);
+      setToast({
+        tone: createdCount > 0 ? "success" : conflictCount > 0 ? "warning" : "info",
+        message:
+          createdCount > 0
+            ? `Created ${createdCount} availability slots.`
+            : conflictCount > 0
+              ? `Created 0 slots. ${conflictCount} conflicts blocked generation.`
+              : "Created 0 slots.",
+      });
     } catch (e) {
       setAllocErr(e?.message || "Failed to apply allocation slots.");
     } finally {
@@ -942,6 +962,9 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
           <button className="btn btn--primary" onClick={applyAllocations} disabled={genLoading || !genDivision}>
             Generate slots
           </button>
+        </div>
+        <div className="card__body subtle">
+          Tip: if generation creates 0 slots with conflicts, clear or move overlapping non-availability slots for that field/date window.
         </div>
         {genPreview ? (
           <div className="card__body">
