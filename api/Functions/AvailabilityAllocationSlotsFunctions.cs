@@ -107,8 +107,8 @@ public class AvailabilityAllocationSlotsFunctions
                 var endMin = SlotOverlap.ParseMinutes(alloc.endTimeLocal);
                 if (startMin < 0 || endMin <= startMin) continue;
 
-                var allocStart = DateOnly.ParseExact(alloc.startsOn, "yyyy-MM-dd");
-                var allocEnd = DateOnly.ParseExact(alloc.endsOn, "yyyy-MM-dd");
+                if (!DateOnly.TryParseExact(alloc.startsOn, "yyyy-MM-dd", out var allocStart)) continue;
+                if (!DateOnly.TryParseExact(alloc.endsOn, "yyyy-MM-dd", out var allocEnd)) continue;
                 var windowStart = allocStart > from ? allocStart : from;
                 var windowEnd = allocEnd < to ? allocEnd : to;
 
@@ -197,7 +197,9 @@ public class AvailabilityAllocationSlotsFunctions
         catch (Exception ex)
         {
             _log.LogError(ex, "Generate allocation slots failed");
-            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
+            var requestId = req.FunctionContext.InvocationId.ToString();
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, ErrorCodes.INTERNAL_ERROR, "Internal Server Error",
+                new { requestId });
         }
     }
 

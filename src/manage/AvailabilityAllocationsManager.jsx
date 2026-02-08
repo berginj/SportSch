@@ -88,6 +88,13 @@ function createManualDays() {
   return next;
 }
 
+function formatApiError(error, fallback) {
+  const base = error?.originalMessage || error?.message || fallback;
+  const requestId = error?.details?.requestId;
+  if (!requestId) return base;
+  return `${base} (requestId: ${requestId})`;
+}
+
 export default function AvailabilityAllocationsManager({ leagueId }) {
   const [divisions, setDivisions] = useState([]);
   const [fields, setFields] = useState([]);
@@ -143,7 +150,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
           setGenDivision((prev) => prev || list[0].code || list[0].division || "");
         }
       } catch (e) {
-        setAllocErr(e?.message || "Failed to load divisions/fields.");
+        setAllocErr(formatApiError(e, "Failed to load divisions/fields."));
         setDivisions([]);
         setFields([]);
         setLeagueSeason(null);
@@ -313,7 +320,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
       if (Array.isArray(res?.warnings) && res.warnings.length) setAllocWarnings(res.warnings);
       await loadAllocations();
     } catch (e) {
-      setAllocErr(e?.message || "Manual allocation save failed.");
+      setAllocErr(formatApiError(e, "Manual allocation save failed."));
     } finally {
       setManualBusy(false);
     }
@@ -364,7 +371,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
       setFields((prev) => prev.map((f) => (f.fieldKey === manualFieldKey ? { ...f, blackouts: nextBlackouts } : f)));
       setToast({ tone: "success", message: "Field blackouts saved." });
     } catch (e) {
-      setAllocErr(e?.message || "Failed to save field blackouts.");
+      setAllocErr(formatApiError(e, "Failed to save field blackouts."));
     } finally {
       setManualBlackoutBusy(false);
     }
@@ -393,7 +400,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
       if (Array.isArray(res?.errors) && res.errors.length) setAllocErrors(res.errors);
       if (Array.isArray(res?.warnings) && res.warnings.length) setAllocWarnings(res.warnings);
     } catch (e) {
-      setAllocErr(e?.message || "Import failed");
+      setAllocErr(formatApiError(e, "Import failed"));
     } finally {
       setAllocBusy(false);
     }
@@ -421,7 +428,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
       setAllocations(Array.isArray(data) ? data : []);
       if (!data || data.length === 0) setAllocOk("No allocations found for this filter.");
     } catch (e) {
-      setAllocErr(e?.message || "Failed to load allocations.");
+      setAllocErr(formatApiError(e, "Failed to load allocations."));
       setAllocations([]);
     } finally {
       setAllocListLoading(false);
@@ -469,7 +476,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
       setToast({ tone: "success", message: `Deleted ${res?.deleted ?? 0} allocations.` });
       await loadAllocations();
     } catch (e) {
-      setAllocErr(e?.message || "Delete failed.");
+      setAllocErr(formatApiError(e, "Delete failed."));
     } finally {
       setAllocListLoading(false);
     }
@@ -504,7 +511,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
       setGenPreview({ slots, conflicts });
       setAllocOk(`Preview ready: ${slots.length} candidate slots, ${conflicts.length} conflicts.`);
     } catch (e) {
-      setAllocErr(e?.message || "Failed to preview allocation slots.");
+      setAllocErr(formatApiError(e, "Failed to preview allocation slots."));
       setGenPreview(null);
     } finally {
       setGenLoading(false);
@@ -553,7 +560,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
               : "Created 0 slots.",
       });
     } catch (e) {
-      setAllocErr(e?.message || "Failed to apply allocation slots.");
+      setAllocErr(formatApiError(e, "Failed to apply allocation slots."));
     } finally {
       setGenLoading(false);
     }
