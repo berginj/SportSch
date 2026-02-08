@@ -71,6 +71,23 @@ function buildAllocationTemplateCsv(divisions, fields) {
   return [header, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n");
 }
 
+const DAY_OPTIONS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+function createManualDays() {
+  const next = {};
+  for (const day of DAY_OPTIONS) {
+    next[day] = {
+      enabled: false,
+      startTime: "",
+      endTime: "",
+      slotType: "practice",
+      priorityRank: "",
+      notes: "",
+    };
+  }
+  return next;
+}
+
 export default function AvailabilityAllocationsManager({ leagueId }) {
   const [divisions, setDivisions] = useState([]);
   const [fields, setFields] = useState([]);
@@ -90,6 +107,16 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
   const [allocDateFrom, setAllocDateFrom] = useState("");
   const [allocDateTo, setAllocDateTo] = useState("");
   const [allocListLoading, setAllocListLoading] = useState(false);
+
+  const [manualScope, setManualScope] = useState("LEAGUE");
+  const [manualFieldKey, setManualFieldKey] = useState("");
+  const [manualDateFrom, setManualDateFrom] = useState("");
+  const [manualDateTo, setManualDateTo] = useState("");
+  const [manualIsActive, setManualIsActive] = useState(true);
+  const [manualDays, setManualDays] = useState(createManualDays);
+  const [manualBusy, setManualBusy] = useState(false);
+  const [manualBlackouts, setManualBlackouts] = useState([]);
+  const [manualBlackoutBusy, setManualBlackoutBusy] = useState(false);
 
   const [genDivision, setGenDivision] = useState("");
   const [genFieldKey, setGenFieldKey] = useState("");
@@ -141,16 +168,206 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
   }, [seasonRange, genDateFrom, genDateTo]);
 
   useEffect(() => {
+    if (!manualDateFrom) setManualDateFrom(seasonRange.from);
+    if (!manualDateTo) setManualDateTo(seasonRange.to);
+  }, [seasonRange, manualDateFrom, manualDateTo]);
+
+  useEffect(() => {
     if (!genDivision && divisions.length) {
       setGenDivision(divisions[0].code || divisions[0].division || "");
     }
   }, [divisions, genDivision]);
+
+  useEffect(() => {
+    if (!manualFieldKey && fields.length) {
+      setManualFieldKey(fields[0].fieldKey || "");
+    }
+  }, [fields, manualFieldKey]);
+
+  useEffect(() => {
+    if (!manualFieldKey) {
+      setManualBlackouts([]);
+      return;
+    }
+    const selected = fields.find((f) => f.fieldKey === manualFieldKey);
+    setManualBlackouts(Array.isArray(selected?.blackouts) ? selected.blackouts : []);
+  }, [manualFieldKey, fields]);
 
   function downloadTemplate() {
     const csv = buildAllocationTemplateCsv(divisions, fields);
     const safeLeague = (leagueId || "league").replace(/[^a-z0-9_-]+/gi, "_");
     downloadCsv(csv, `availability_allocations_${safeLeague}.csv`);
     trackEvent("ui_availability_allocations_template_download", { leagueId });
+  }
+
+  function updateManualDay(day, patch) {
+    setManualDays((prev) => ({
+      ...prev,
+      [day]: {
+        ...(prev[day] || {}),
+        ...patch,
+      },
+    }));
+  }
+
+  function resetManualDays() {
+    setManualDays(createManualDays());
+  }
+
+  function normalizeManualSlotType(raw) {
+    const key = String(raw || "").trim().toLowerCase();
+    if (key === "game" || key === "both") return key;
+    return "practice";
+  }
+
+  async function addManualAllocations() {
+    setAllocErr("");
+    setAllocOk("");
+    setAllocErrors([]);
+    setAllocWarnings([]);
+
+    if (!manualFieldKey) return setAllocErr("Select a field.");
+    const dateError = validateIsoDates([
+      { label: "Date from", value: manualDateFrom, required: true },
+      { label: "Date to", value: manualDateTo, required: true },
+    ]);
+    if (dateError) return setAllocErr(dateError);
+    if (manualDateTo < manualDateFrom) return setAllocErr("Date to must be on or after date from.");
+
+    const selectedDays = DAY_OPTIONS.filter((day) => manualDays[day]?.enabled);
+    if (selectedDays.length === 0) return setAllocErr("Enable at least one weekday section.");
+
+    for (const day of selectedDays) {
+      const row = manualDays[day] || {};
+      if (!row.startTime || !row.endTime) {
+        return setAllocErr(`${day}: start and end time are required.`);
+      }
+      const slotType = normalizeManualSlotType(row.slotType);
+      if (slotType !== "practice") {
+        const priorityRaw = String(row.priorityRank || "").trim();
+        if (priorityRaw && (!/^\d+$/.test(priorityRaw) || Number(priorityRaw) <= 0)) {
+          return setAllocErr(`${day}: priority rank must be a positive whole number.`);
+        }
+      }
+    }
+
+    setManualBusy(true);
+    try {
+      const selectedField = fields.find((f) => f.fieldKey === manualFieldKey);
+      const header = [
+        "division",
+        "fieldKey",
+        "dateFrom",
+        "dateTo",
+        "daysOfWeek",
+        "startTime",
+        "endTime",
+        "slotType",
+        "priorityRank",
+        "notes",
+        "isActive",
+        "parkName",
+        "fieldName",
+        "displayName",
+      ];
+      const rows = selectedDays.map((day) => {
+        const row = manualDays[day] || {};
+        const slotType = normalizeManualSlotType(row.slotType);
+        const priorityRank = slotType === "practice" ? "" : String(row.priorityRank || "").trim();
+        return [
+          manualScope || "LEAGUE",
+          manualFieldKey,
+          manualDateFrom,
+          manualDateTo,
+          day,
+          String(row.startTime || "").trim(),
+          String(row.endTime || "").trim(),
+          slotType,
+          priorityRank,
+          String(row.notes || "").trim(),
+          manualIsActive ? "true" : "false",
+          selectedField?.parkName || "",
+          selectedField?.fieldName || "",
+          selectedField?.displayName || "",
+        ];
+      });
+      const csv = [header, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n");
+
+      const res = await apiFetch("/api/import/availability-allocations", {
+        method: "POST",
+        headers: { "Content-Type": "text/csv" },
+        body: csv,
+      });
+      setAllocOk(`Added allocations. Upserted: ${res?.upserted ?? 0}, Rejected: ${res?.rejected ?? 0}, Skipped: ${res?.skipped ?? 0}`);
+      setToast({ tone: "success", message: "Manual allocations saved." });
+      trackEvent("ui_availability_allocations_manual_add", {
+        leagueId,
+        scope: manualScope || "LEAGUE",
+        fieldKey: manualFieldKey,
+        days: selectedDays.length,
+        upserted: res?.upserted ?? 0,
+        rejected: res?.rejected ?? 0,
+        skipped: res?.skipped ?? 0,
+      });
+      if (Array.isArray(res?.errors) && res.errors.length) setAllocErrors(res.errors);
+      if (Array.isArray(res?.warnings) && res.warnings.length) setAllocWarnings(res.warnings);
+      await loadAllocations();
+    } catch (e) {
+      setAllocErr(e?.message || "Manual allocation save failed.");
+    } finally {
+      setManualBusy(false);
+    }
+  }
+
+  function updateManualBlackout(index, key, value) {
+    setManualBlackouts((prev) => prev.map((item, i) => (i === index ? { ...item, [key]: value } : item)));
+  }
+
+  function addManualBlackout() {
+    setManualBlackouts((prev) => [...prev, { startDate: "", endDate: "", label: "" }]);
+  }
+
+  function removeManualBlackout(index) {
+    setManualBlackouts((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  async function saveManualFieldBlackouts() {
+    setAllocErr("");
+    if (!manualFieldKey) return setAllocErr("Select a field to save blackouts.");
+    const [parkCode, fieldCode] = manualFieldKey.split("/");
+    if (!parkCode || !fieldCode) return setAllocErr("Invalid field key.");
+
+    const dateFields = (manualBlackouts || []).flatMap((b, idx) => ([
+      { label: `Blackout ${idx + 1} start`, value: b.startDate, required: !!b.endDate },
+      { label: `Blackout ${idx + 1} end`, value: b.endDate, required: !!b.startDate },
+    ]));
+    const dateError = validateIsoDates(dateFields);
+    if (dateError) return setAllocErr(dateError);
+    for (let i = 0; i < (manualBlackouts || []).length; i += 1) {
+      const b = manualBlackouts[i] || {};
+      const from = String(b.startDate || "").trim();
+      const to = String(b.endDate || "").trim();
+      if (from && to && to < from) {
+        return setAllocErr(`Blackout ${i + 1} end must be on or after start.`);
+      }
+    }
+
+    setManualBlackoutBusy(true);
+    try {
+      const updated = await apiFetch(`/api/fields/${encodeURIComponent(parkCode)}/${encodeURIComponent(fieldCode)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ blackouts: manualBlackouts }),
+      });
+      const nextBlackouts = Array.isArray(updated?.blackouts) ? updated.blackouts : [];
+      setManualBlackouts(nextBlackouts);
+      setFields((prev) => prev.map((f) => (f.fieldKey === manualFieldKey ? { ...f, blackouts: nextBlackouts } : f)));
+      setToast({ tone: "success", message: "Field blackouts saved." });
+    } catch (e) {
+      setAllocErr(e?.message || "Failed to save field blackouts.");
+    } finally {
+      setManualBlackoutBusy(false);
+    }
   }
 
   async function importAllocationsCsv() {
@@ -350,6 +567,175 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
       />
       {allocErr ? <div className="callout callout--error">{allocErr}</div> : null}
       {allocOk ? <div className="callout callout--ok">{allocOk}</div> : null}
+
+      <div className="card">
+        <div className="card__header">
+          <div className="h2">Manual allocation builder (no CSV)</div>
+          <div className="subtle">
+            Use seven weekday sections to add recurring field allocations directly.
+          </div>
+        </div>
+        <div className="card__body grid2">
+          <label>
+            Scope
+            <select value={manualScope} onChange={(e) => setManualScope(e.target.value)}>
+              {scopes.map((s) => (
+                <option key={s} value={s}>
+                  {s === "LEAGUE" ? "League-wide" : s}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Field
+            <select value={manualFieldKey} onChange={(e) => setManualFieldKey(e.target.value)}>
+              <option value="">Select field</option>
+              {fields.map((f) => (
+                <option key={f.fieldKey} value={f.fieldKey}>
+                  {f.displayName || f.fieldKey}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Date from
+            <input value={manualDateFrom} onChange={(e) => setManualDateFrom(e.target.value)} placeholder="YYYY-MM-DD" />
+          </label>
+          <label>
+            Date to
+            <input value={manualDateTo} onChange={(e) => setManualDateTo(e.target.value)} placeholder="YYYY-MM-DD" />
+          </label>
+          <label className="inlineCheck">
+            <input type="checkbox" checked={manualIsActive} onChange={(e) => setManualIsActive(e.target.checked)} />
+            Active
+          </label>
+        </div>
+        <div className="card__body stack gap-2">
+          {DAY_OPTIONS.map((day) => {
+            const row = manualDays[day] || {};
+            const rowType = normalizeManualSlotType(row.slotType);
+            return (
+              <div key={day} className="card">
+                <div className="card__body grid2">
+                  <label className="inlineCheck">
+                    <input
+                      type="checkbox"
+                      checked={!!row.enabled}
+                      onChange={(e) => updateManualDay(day, { enabled: e.target.checked })}
+                    />
+                    {day}
+                  </label>
+                  <label>
+                    Slot type
+                    <select
+                      value={rowType}
+                      onChange={(e) =>
+                        updateManualDay(day, {
+                          slotType: normalizeManualSlotType(e.target.value),
+                          priorityRank: normalizeManualSlotType(e.target.value) === "practice" ? "" : row.priorityRank,
+                        })}
+                      disabled={!row.enabled}
+                    >
+                      <option value="practice">Practice</option>
+                      <option value="game">Game</option>
+                      <option value="both">Both</option>
+                    </select>
+                  </label>
+                  <label>
+                    Start time
+                    <input
+                      type="time"
+                      value={row.startTime || ""}
+                      onChange={(e) => updateManualDay(day, { startTime: e.target.value })}
+                      disabled={!row.enabled}
+                    />
+                  </label>
+                  <label>
+                    End time
+                    <input
+                      type="time"
+                      value={row.endTime || ""}
+                      onChange={(e) => updateManualDay(day, { endTime: e.target.value })}
+                      disabled={!row.enabled}
+                    />
+                  </label>
+                  <label>
+                    Priority rank
+                    <input
+                      type="number"
+                      min="1"
+                      value={row.priorityRank || ""}
+                      onChange={(e) => updateManualDay(day, { priorityRank: e.target.value })}
+                      disabled={!row.enabled || rowType === "practice"}
+                      placeholder={rowType === "practice" ? "-" : "1"}
+                    />
+                  </label>
+                  <label className="col-span-2">
+                    Notes (optional)
+                    <input
+                      value={row.notes || ""}
+                      onChange={(e) => updateManualDay(day, { notes: e.target.value })}
+                      disabled={!row.enabled}
+                      placeholder={`${day} notes`}
+                    />
+                  </label>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="card__body row gap-2">
+          <button className="btn btn--primary" onClick={addManualAllocations} disabled={manualBusy || !manualFieldKey}>
+            {manualBusy ? "Saving..." : "Add enabled day allocations"}
+          </button>
+          <button className="btn btn--ghost" onClick={resetManualDays} disabled={manualBusy}>
+            Reset weekdays
+          </button>
+        </div>
+        <div className="card__body">
+          <div className="font-bold mb-2">Field blackouts for selected field</div>
+          <div className="subtle mb-2">
+            Optional: add blackout ranges before generating slots so blocked dates are automatically skipped.
+          </div>
+          {manualBlackouts.length === 0 ? <div className="muted mb-2">No blackouts yet.</div> : null}
+          {manualBlackouts.map((b, idx) => (
+            <div key={`${idx}-${b.startDate || ""}-${b.endDate || ""}`} className="row row--wrap gap-2 items-center mb-2">
+              <input
+                value={b.startDate || ""}
+                onChange={(e) => updateManualBlackout(idx, "startDate", e.target.value)}
+                placeholder="YYYY-MM-DD"
+              />
+              <span className="muted">to</span>
+              <input
+                value={b.endDate || ""}
+                onChange={(e) => updateManualBlackout(idx, "endDate", e.target.value)}
+                placeholder="YYYY-MM-DD"
+              />
+              <input
+                value={b.label || ""}
+                onChange={(e) => updateManualBlackout(idx, "label", e.target.value)}
+                placeholder="Label"
+              />
+              <button className="btn btn--ghost" type="button" onClick={() => removeManualBlackout(idx)}>
+                Remove
+              </button>
+            </div>
+          ))}
+          <div className="row gap-2">
+            <button className="btn btn--ghost" type="button" onClick={addManualBlackout}>
+              Add blackout
+            </button>
+            <button
+              className="btn"
+              type="button"
+              onClick={saveManualFieldBlackouts}
+              disabled={!manualFieldKey || manualBlackoutBusy}
+            >
+              {manualBlackoutBusy ? "Saving..." : "Save field blackouts"}
+            </button>
+          </div>
+        </div>
+      </div>
 
       <div className="card">
         <div className="card__header">
