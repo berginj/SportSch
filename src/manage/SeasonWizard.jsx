@@ -45,6 +45,17 @@ function normalizePriorityRank(value) {
   return rounded > 0 ? String(rounded) : "";
 }
 
+function isIsoDate(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""));
+}
+
+function maxIsoDate(a, b) {
+  const left = isIsoDate(a) ? a : "";
+  const right = isIsoDate(b) ? b : "";
+  if (left && right) return left > right ? left : right;
+  return left || right || "";
+}
+
 function StepButton({ active, onClick, children }) {
   return (
     <button
@@ -114,7 +125,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   }, [leagueId]);
 
   const steps = useMemo(
-    () => ["Basics", "Postseason", "Slot plan", "Rules", "Preview"],
+    () => ["Basics", "Postseason", "Slot plan (all phases)", "Rules", "Preview"],
     []
   );
 
@@ -188,10 +199,11 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       setAvailabilityErr("");
       setAvailabilityLoading(true);
       try {
+        const planningDateTo = maxIsoDate(seasonEnd, bracketEnd) || seasonEnd;
         const qs = new URLSearchParams();
         qs.set("division", division);
         qs.set("dateFrom", seasonStart);
-        qs.set("dateTo", seasonEnd);
+        qs.set("dateTo", planningDateTo);
         qs.set("status", "Open");
         const data = await apiFetch(`/api/slots?${qs.toString()}`);
         const list = Array.isArray(data) ? data : [];
@@ -236,7 +248,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         setAvailabilityLoading(false);
       }
     })();
-  }, [leagueId, division, seasonStart, seasonEnd, preferredTouched]);
+  }, [leagueId, division, seasonStart, seasonEnd, bracketEnd, preferredTouched]);
 
   useEffect(() => {
     const allowed = new Set(
@@ -506,7 +518,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
           <div className="card__header">
             <div className="h3">Slot planning</div>
             <div className="subtle">
-              Mark each availability as practice/game/both (defaults to practice), set priority rank, and pick guest game anchor options.
+              Mark each availability as practice/game/both (defaults to practice), set priority rank, and pick guest game anchor options for all phases.
             </div>
           </div>
           <div className="card__body stack gap-3">
@@ -519,7 +531,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                 <span className="pill">Ranked: {slotPlanSummary.ranked}</span>
               </div>
               <div className="subtle mt-2">
-                Scheduler only uses slots marked <b>Game</b> or <b>Both</b>. Practice slots remain available and unscheduled.
+                Scheduler only uses slots marked <b>Game</b> or <b>Both</b> across regular season, pool play, and bracket. Practice slots remain available and unscheduled.
               </div>
             </div>
 
