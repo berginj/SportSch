@@ -110,6 +110,8 @@ export default function LeagueSettings({ leagueId }) {
   const [availabilityDateFrom, setAvailabilityDateFrom] = useState("");
   const [availabilityDateTo, setAvailabilityDateTo] = useState("");
   const [seasonRange, setSeasonRange] = useState(getDefaultRangeFallback());
+  const [seasonResetBusy, setSeasonResetBusy] = useState(false);
+  const [seasonResetResult, setSeasonResetResult] = useState(null);
 
   async function loadSettings() {
     if (!leagueId) return;
@@ -363,6 +365,37 @@ export default function LeagueSettings({ leagueId }) {
     }
   }
 
+  async function resetSeasonData() {
+    if (!leagueId) return;
+    const confirmText = window.prompt(
+      `Type RESET SEASON to delete fields, games/practices, slot requests, and availability setup for ${leagueId}.`
+    );
+    if (confirmText == null) return;
+    if (confirmText.trim().toUpperCase() !== "RESET SEASON") {
+      setToast({ tone: "error", message: "Confirmation text mismatch. Type RESET SEASON exactly." });
+      return;
+    }
+
+    setSeasonResetBusy(true);
+    try {
+      const data = await apiFetch("/api/admin/season-reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: "RESET SEASON" }),
+      });
+      setSeasonResetResult(data?.deleted || null);
+      setToast({
+        tone: "success",
+        message: `Season reset complete. Deleted ${data?.deleted?.total ?? 0} records.`,
+      });
+      await loadSettings();
+    } catch (e) {
+      setToast({ tone: "error", message: e?.message || "Season reset failed." });
+    } finally {
+      setSeasonResetBusy(false);
+    }
+  }
+
   return (
     <div className="stack gap-4">
       {toast ? <Toast {...toast} onClose={() => setToast(null)} /> : null}
@@ -424,6 +457,46 @@ export default function LeagueSettings({ leagueId }) {
           </div>
         </div>
       </div>
+
+      <details className="card">
+        <summary className="card__header cursor-pointer">
+          <div className="h3">Season reset (test cleanup)</div>
+          <div className="subtle">Danger zone: clear fields, games/practices, requests, and availability setup.</div>
+        </summary>
+        <div className="card__body stack gap-3">
+          <div className="callout callout--warning">
+            This permanently deletes field rows, slots, slot requests, events, availability allocations/rules/exceptions, and scheduler runs for the selected league.
+          </div>
+          <div className="row row--wrap gap-2">
+            <button className="btn btn--danger" type="button" onClick={resetSeasonData} disabled={seasonResetBusy}>
+              {seasonResetBusy ? "Resetting..." : "Reset season data"}
+            </button>
+          </div>
+          {seasonResetResult ? (
+            <div className="tableWrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Category</th>
+                    <th>Deleted</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td>Fields</td><td>{seasonResetResult.fields ?? 0}</td></tr>
+                  <tr><td>Slots</td><td>{seasonResetResult.slots ?? 0}</td></tr>
+                  <tr><td>Slot requests</td><td>{seasonResetResult.slotRequests ?? 0}</td></tr>
+                  <tr><td>Events</td><td>{seasonResetResult.events ?? 0}</td></tr>
+                  <tr><td>Availability allocations</td><td>{seasonResetResult.availabilityAllocations ?? 0}</td></tr>
+                  <tr><td>Availability rules</td><td>{seasonResetResult.availabilityRules ?? 0}</td></tr>
+                  <tr><td>Availability exceptions</td><td>{seasonResetResult.availabilityExceptions ?? 0}</td></tr>
+                  <tr><td>Schedule runs</td><td>{seasonResetResult.scheduleRuns ?? 0}</td></tr>
+                  <tr><td><b>Total</b></td><td><b>{seasonResetResult.total ?? 0}</b></td></tr>
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </div>
+      </details>
 
       <div className="card">
         <div className="card__header">

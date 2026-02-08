@@ -488,6 +488,7 @@ the notes for required headers or roles.
 | POST | /globaladmins | `Functions/GlobalAdminsFunctions.cs` | Add global admin (alt route). |
 | DELETE | /globaladmins/{userId} | `Functions/GlobalAdminsFunctions.cs` | Remove global admin (alt route). |
 | POST | /admin/wipe | `Functions/AdminWipe.cs` | Global admin wipe for league-scoped tables (requires `x-league-id`). |
+| POST | /admin/season-reset | `Functions/SeasonReset.cs` | LeagueAdmin/global cleanup of fields + game/practice data + availability setup for selected league (requires `x-league-id`). |
 | POST | /admin/migrate/fields | `Functions/AdminMigrateFields.cs` | Global admin migrate fields PKs from legacy format (requires `x-league-id`). |
 | POST | /global/migrate/fields | `Functions/AdminMigrateFields.cs` | Global admin migrate fields PKs from legacy format (alt route). |
 | GET | /admin/storage/health | `Functions/StorageHealth.cs` | Global admin storage connectivity check. |
@@ -709,6 +710,27 @@ Body
 Notes
 - `tables` is optional; when omitted, defaults to all supported league tables.
 - Supported table keys: `accessrequests`, `divisions`, `events`, `fields`, `invites`, `memberships`, `slotrequests`, `slots`, `teams`.
+
+### Admin: POST /admin/season-reset (league-scoped)
+Requires: LeagueAdmin or global admin.
+Header: `x-league-id`
+
+Body
+```json
+{ "confirm": "RESET SEASON" }
+```
+
+Notes
+- Deletes season/test artifacts for the selected league:
+  - fields
+  - slots (games/practices/availability)
+  - slot requests
+  - events
+  - availability allocations
+  - availability rules + rule index rows
+  - availability rule exceptions (for deleted rules)
+  - schedule runs
+- Does **not** delete memberships, teams, divisions, or league profile metadata.
 
 ### Admin: POST /admin/migrate/fields (league-scoped)
 Requires: global admin.
