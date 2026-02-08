@@ -511,7 +511,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
       });
       const slots = Array.isArray(data?.slots) ? data.slots : [];
       const conflicts = Array.isArray(data?.conflicts) ? data.conflicts : [];
-      setGenPreview({ slots, conflicts });
+      setGenPreview({ slots, conflicts, failed: [] });
       setAllocOk(`Preview ready: ${slots.length} candidate slots, ${conflicts.length} conflicts.`);
       if (slots.length === 0 && conflicts.length === 0) {
         setGenStatus("Preview complete: no candidate slots or conflicts were found for this filter.");
@@ -556,24 +556,26 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
       });
       const created = Array.isArray(data?.created) ? data.created : [];
       const conflicts = Array.isArray(data?.conflicts) ? data.conflicts : [];
+      const failed = Array.isArray(data?.failed) ? data.failed : [];
       const createdCount = created.length;
       const conflictCount = conflicts.length;
+      const failedCount = failed.length;
 
       // Keep result details on-screen so zero-create runs are diagnosable.
-      setGenPreview({ slots: created, conflicts });
-      setAllocOk(`Generate complete: created ${createdCount} slots, conflicts ${conflictCount}.`);
-      if (createdCount === 0 && conflictCount === 0) {
-        setGenStatus("Generate complete: created 0 slots, and no conflicts were found for this filter.");
+      setGenPreview({ slots: created, conflicts, failed });
+      setAllocOk(`Generate complete: created ${createdCount} slots, conflicts ${conflictCount}, failed writes ${failedCount}.`);
+      if (createdCount === 0 && conflictCount === 0 && failedCount === 0) {
+        setGenStatus("Generate complete: created 0 slots, and no conflicts or write failures were found for this filter.");
       } else {
-        setGenStatus(`Generate complete: created ${createdCount} slots, conflicts ${conflictCount}.`);
+        setGenStatus(`Generate complete: created ${createdCount} slots, conflicts ${conflictCount}, failed writes ${failedCount}.`);
       }
       setToast({
-        tone: createdCount > 0 ? "success" : conflictCount > 0 ? "warning" : "info",
+        tone: createdCount > 0 ? "success" : conflictCount > 0 || failedCount > 0 ? "warning" : "info",
         message:
           createdCount > 0
             ? `Created ${createdCount} availability slots.`
-            : conflictCount > 0
-              ? `Created 0 slots. ${conflictCount} conflicts blocked generation.`
+            : conflictCount > 0 || failedCount > 0
+              ? `Created 0 slots. ${conflictCount} conflicts and ${failedCount} write failures blocked generation.`
               : "Created 0 slots.",
       });
     } catch (e) {
@@ -1019,6 +1021,10 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
               <div className="layoutStat">
                 <div className="layoutStat__value">{genPreview.conflicts?.length || 0}</div>
                 <div className="layoutStat__label">Conflicts</div>
+              </div>
+              <div className="layoutStat">
+                <div className="layoutStat__value">{genPreview.failed?.length || 0}</div>
+                <div className="layoutStat__label">Failed Writes</div>
               </div>
             </div>
             {genPreview.conflicts?.length ? (

@@ -176,24 +176,51 @@ public class AvailabilityAllocationSlotsFunctions
 
             var slotsTable = await TableClients.GetTableAsync(_svc, Constants.Tables.Slots);
             var created = new List<SlotCandidate>();
+            var failed = new List<object>();
             foreach (var slot in toCreate)
             {
                 if (!fieldMap.TryGetValue(slot.fieldKey, out var fieldMeta)) continue;
                 var entity = BuildSlotEntity(leagueId, slot, fieldMeta);
-                await slotsTable.AddEntityAsync(entity);
-                created.Add(slot);
+                try
+                {
+                    await slotsTable.AddEntityAsync(entity);
+                    created.Add(slot);
+                }
+                catch (RequestFailedException ex)
+                {
+                    _log.LogWarning(ex, "Create allocation slot failed for {fieldKey} {gameDate} {startTime}-{endTime}",
+                        slot.fieldKey, slot.gameDate, slot.startTime, slot.endTime);
+                    failed.Add(new
+                    {
+                        slot.gameDate,
+                        slot.startTime,
+                        slot.endTime,
+                        slot.fieldKey,
+                        slot.division,
+                        status = ex.Status,
+                        code = ex.ErrorCode
+                    });
+                }
             }
 
             UsageTelemetry.Track(_log, "api_availability_allocations_slots_apply", leagueId, me.UserId, new
             {
                 division,
                 created = created.Count,
-                conflicts = conflicts.Count
+                conflicts = conflicts.Count,
+                failed = failed.Count
             });
 
-            return ApiResponses.Ok(req, new { created, conflicts, skipped = conflicts.Count });
+            return ApiResponses.Ok(req, new { created, conflicts, failed, skipped = conflicts.Count + failed.Count });
         }
         catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
+        catch (RequestFailedException ex)
+        {
+            _log.LogError(ex, "Generate allocation slots storage request failed");
+            var requestId = req.FunctionContext.InvocationId.ToString();
+            return ApiResponses.Error(req, HttpStatusCode.BadGateway, "STORAGE_ERROR", "Storage request failed",
+                new { requestId, status = ex.Status, code = ex.ErrorCode });
+        }
         catch (Exception ex)
         {
             _log.LogError(ex, "Generate allocation slots failed");
