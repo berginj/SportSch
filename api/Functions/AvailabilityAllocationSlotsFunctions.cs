@@ -323,17 +323,17 @@ public class AvailabilityAllocationSlotsFunctions
 
             await foreach (var e in table.QueryAsync<TableEntity>(filter: filter))
             {
-                if (!(e.GetBoolean("IsActive") ?? true)) continue;
+                if (!ReadBool(e, "IsActive", true)) continue;
                 list.Add(new AllocationRow(
-                    fieldKey: e.GetString("FieldKey") ?? "",
-                    startsOn: e.GetString("StartsOn") ?? "",
-                    endsOn: e.GetString("EndsOn") ?? "",
-                    daysOfWeek: e.GetString("DaysOfWeek") ?? "",
-                    startTimeLocal: e.GetString("StartTimeLocal") ?? "",
-                    endTimeLocal: e.GetString("EndTimeLocal") ?? "",
-                    slotType: NormalizeSlotType(e.GetString("SlotType")),
-                    priorityRank: ParsePriorityRank(e.GetInt32("PriorityRank"), e.GetString("PriorityRank")),
-                    isActive: e.GetBoolean("IsActive") ?? true
+                    fieldKey: ReadString(e, "FieldKey"),
+                    startsOn: ReadString(e, "StartsOn"),
+                    endsOn: ReadString(e, "EndsOn"),
+                    daysOfWeek: ReadString(e, "DaysOfWeek"),
+                    startTimeLocal: ReadString(e, "StartTimeLocal"),
+                    endTimeLocal: ReadString(e, "EndTimeLocal"),
+                    slotType: NormalizeSlotType(ReadString(e, "SlotType")),
+                    priorityRank: ParsePriorityRank(ReadObject(e, "PriorityRank")),
+                    isActive: ReadBool(e, "IsActive", true)
                 ));
             }
         }
@@ -526,12 +526,36 @@ public class AvailabilityAllocationSlotsFunctions
         return "practice";
     }
 
-    private static int? ParsePriorityRank(int? intValue, string? rawValue)
+    private static int? ParsePriorityRank(object? rawValue)
     {
-        if (intValue.HasValue && intValue.Value > 0) return intValue.Value;
-        var raw = (rawValue ?? "").Trim();
+        if (rawValue is null) return null;
+        if (rawValue is int i && i > 0) return i;
+        if (rawValue is long l && l > 0 && l <= int.MaxValue) return (int)l;
+        if (rawValue is double d && d > 0)
+        {
+            var rounded = (int)Math.Round(d);
+            return rounded > 0 ? rounded : null;
+        }
+        var raw = rawValue.ToString()?.Trim() ?? "";
         if (int.TryParse(raw, out var parsed) && parsed > 0) return parsed;
         return null;
+    }
+
+    private static object? ReadObject(TableEntity entity, string key)
+        => entity.TryGetValue(key, out var value) ? value : null;
+
+    private static string ReadString(TableEntity entity, string key)
+    {
+        if (!entity.TryGetValue(key, out var value) || value is null) return "";
+        return value.ToString()?.Trim() ?? "";
+    }
+
+    private static bool ReadBool(TableEntity entity, string key, bool defaultValue)
+    {
+        if (!entity.TryGetValue(key, out var value) || value is null) return defaultValue;
+        if (value is bool b) return b;
+        if (bool.TryParse(value.ToString(), out var parsed)) return parsed;
+        return defaultValue;
     }
 
     private static string ExtractParkCodeFromPk(string pk, string leagueId)
