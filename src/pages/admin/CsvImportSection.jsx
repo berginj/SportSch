@@ -34,6 +34,7 @@ export default function CsvImportSection({
         badge="Setup Phase"
         badgeColor="blue"
         defaultExpanded={false}
+        storageKey="csv-slots-upload"
         icon="📅"
       >
         <div className="stack gap-3">
@@ -118,6 +119,7 @@ export default function CsvImportSection({
         badge="Setup Phase"
         badgeColor="blue"
         defaultExpanded={false}
+        storageKey="csv-teams-upload"
         icon="👥"
       >
         <div className="stack gap-3">

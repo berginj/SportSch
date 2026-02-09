@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 /**
  * CollapsibleSection - Progressive disclosure component for less frequently used features
@@ -8,29 +8,69 @@ import { useState } from 'react';
  *   title="Advanced Settings"
  *   subtitle="Configure rarely-changed league options"
  *   defaultExpanded={false}
+ *   storageKey="league-settings-advanced" // Optional: persist state in localStorage
  *   badge="Setup Only"
  *   badgeColor="blue"
  * >
  *   {content}
  * </CollapsibleSection>
+ *
+ * Controlled mode (for Expand All / Collapse All):
+ * <CollapsibleSection
+ *   isExpanded={controlledState}
+ *   onToggle={(state) => setControlledState(state)}
+ * />
  */
 export default function CollapsibleSection({
   title,
   subtitle,
   children,
   defaultExpanded = false,
+  storageKey,
   badge,
   badgeColor = 'gray',
   icon,
   className = '',
   headerClassName = '',
-  onChange
+  onChange,
+  // Controlled mode props
+  isExpanded: controlledIsExpanded,
+  onToggle: controlledOnToggle,
 }) {
-  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+  // Load saved state from localStorage if storageKey is provided
+  const [internalIsExpanded, setInternalIsExpanded] = useState(() => {
+    if (!storageKey || typeof window === 'undefined') return defaultExpanded;
+    try {
+      const saved = localStorage.getItem(`collapsible-${storageKey}`);
+      return saved !== null ? JSON.parse(saved) : defaultExpanded;
+    } catch {
+      return defaultExpanded;
+    }
+  });
+
+  // Use controlled state if provided, otherwise use internal state
+  const isControlled = controlledIsExpanded !== undefined;
+  const isExpanded = isControlled ? controlledIsExpanded : internalIsExpanded;
+
+  // Save to localStorage when state changes (only in uncontrolled mode)
+  useEffect(() => {
+    if (isControlled || !storageKey || typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(`collapsible-${storageKey}`, JSON.stringify(internalIsExpanded));
+    } catch {
+      // Ignore localStorage errors (quota exceeded, private browsing, etc.)
+    }
+  }, [internalIsExpanded, storageKey, isControlled]);
 
   const toggleExpanded = () => {
     const newState = !isExpanded;
-    setIsExpanded(newState);
+    if (isControlled) {
+      // Controlled mode: call the onToggle callback
+      if (controlledOnToggle) controlledOnToggle(newState);
+    } else {
+      // Uncontrolled mode: update internal state
+      setInternalIsExpanded(newState);
+    }
     if (onChange) onChange(newState);
   };
 

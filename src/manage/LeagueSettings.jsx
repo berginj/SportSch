@@ -452,6 +452,7 @@ export default function LeagueSettings({ leagueId }) {
         badge="Rare"
         badgeColor="gray"
         defaultExpanded={false}
+        storageKey="league-backup"
         icon="💾"
       >
         <div className="stack gap-3">
@@ -512,6 +513,7 @@ export default function LeagueSettings({ leagueId }) {
         badge="Danger"
         badgeColor="red"
         defaultExpanded={false}
+        storageKey="season-reset"
         icon="⚠️"
       >
         <div className="stack gap-3">
@@ -627,6 +629,7 @@ export default function LeagueSettings({ leagueId }) {
         badge="Occasional"
         badgeColor="yellow"
         defaultExpanded={false}
+        storageKey="division-overrides"
         icon="🔧"
       >
         <div className="stack gap-3">
@@ -707,6 +710,7 @@ export default function LeagueSettings({ leagueId }) {
         badge="Occasional"
         badgeColor="yellow"
         defaultExpanded={false}
+        storageKey="field-blackouts"
         icon="🚫"
       >
         <div className="stack gap-3">
@@ -735,6 +739,7 @@ export default function LeagueSettings({ leagueId }) {
         badge="Advanced"
         badgeColor="purple"
         defaultExpanded={false}
+        storageKey="availability-insights"
         icon="📊"
       >
         <div className="stack gap-4">

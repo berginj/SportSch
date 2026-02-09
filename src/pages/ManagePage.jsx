@@ -128,6 +128,7 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
             badge="Setup Phase"
             badgeColor="blue"
             defaultExpanded={true}
+            storageKey="manage-fields-import"
             icon="🏟️"
           >
             <div className="callout mb-3">
@@ -150,6 +151,7 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
                 badge="Setup Phase"
                 badgeColor="blue"
                 defaultExpanded={false}
+                storageKey="manage-availability-setup"
                 icon="📅"
               >
                 <Suspense fallback={sectionFallback}>
@@ -163,6 +165,7 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
                 badge="Advanced"
                 badgeColor="purple"
                 defaultExpanded={false}
+                storageKey="manage-availability-slots"
                 icon="🎯"
               >
                 <Suspense fallback={sectionFallback}>
@@ -182,6 +185,7 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
             badge="Setup Phase"
             badgeColor="blue"
             defaultExpanded={false}
+            storageKey="manage-league-settings"
             icon="⚙️"
           >
             <Suspense fallback={sectionFallback}>
@@ -195,6 +199,7 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
             badge="Setup Phase"
             badgeColor="blue"
             defaultExpanded={true}
+            storageKey="manage-teams-coaches"
             icon="👥"
           >
             <Suspense fallback={sectionFallback}>
@@ -208,6 +213,7 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
             badge="Setup Only"
             badgeColor="blue"
             defaultExpanded={false}
+            storageKey="manage-divisions"
             icon="📂"
           >
             <Suspense fallback={sectionFallback}>
