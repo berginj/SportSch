@@ -94,10 +94,6 @@ public class ClearAvailabilitySlots
                         continue;
                 }
 
-                var status = ReadString(e, "Status", Constants.Status.SlotOpen);
-                if (!string.Equals(status, Constants.Status.SlotOpen, StringComparison.OrdinalIgnoreCase))
-                    continue;
-
                 try
                 {
                     await table.DeleteEntityAsync(e.PartitionKey, e.RowKey, e.ETag);
