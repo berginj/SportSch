@@ -245,6 +245,11 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [availabilityErr, setAvailabilityErr] = useState("");
   const [preferredTouched, setPreferredTouched] = useState(false);
 
+  // Feasibility state
+  const [feasibility, setFeasibility] = useState(null);
+  const [feasibilityLoading, setFeasibilityLoading] = useState(false);
+  const [hasAutoApplied, setHasAutoApplied] = useState(false);
+
   useEffect(() => {
     if (!leagueId) return;
     (async () => {
@@ -702,6 +707,41 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     }
   }, [slotPatterns, guestAnchorPrimarySlotId, guestAnchorSecondarySlotId]);
 
+  // Feasibility check with debouncing (triggered when rules change in Step 4)
+  useEffect(() => {
+    if (step !== 3) return; // Only run on Step 4 (Rules)
+    if (!division || !seasonStart || !seasonEnd) return;
+    if (slotPlan.length === 0) return;
+
+    const timer = setTimeout(() => {
+      fetchFeasibility();
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [
+    step,
+    division,
+    seasonStart,
+    seasonEnd,
+    minGamesPerTeam,
+    poolGamesPerTeam,
+    maxGamesPerWeek,
+    noDoubleHeaders,
+    guestGamesPerWeek,
+    slotPlan.length,
+  ]);
+
+  // Auto-fill logic: apply recommended values when feasibility loads for the first time
+  useEffect(() => {
+    if (!feasibility || hasAutoApplied) return;
+    if (minGamesPerTeam > 0) return; // Only auto-fill if unset
+
+    // Apply recommendations
+    setMinGamesPerTeam(feasibility.recommendations.minGamesPerTeam);
+    setGuestGamesPerWeek(feasibility.recommendations.optimalGuestGamesPerWeek);
+    setHasAutoApplied(true);
+  }, [feasibility, hasAutoApplied, minGamesPerTeam]);
+
   function guestAnchorPayloadFromSlotId(slotId) {
     if (!slotId) return null;
     const slot = slotPatterns.find((s) => s.key === slotId);
@@ -752,6 +792,27 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     if (primaryAnchor) payload.guestAnchorPrimary = primaryAnchor;
     if (secondaryAnchor) payload.guestAnchorSecondary = secondaryAnchor;
     return payload;
+  }
+
+  async function fetchFeasibility() {
+    if (!division || !seasonStart || !seasonEnd) return;
+    if (slotPlan.length === 0) return;
+
+    setFeasibilityLoading(true);
+    try {
+      const payload = buildWizardPayload();
+      const data = await apiFetch("/api/schedule/wizard/feasibility", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      setFeasibility(data || null);
+    } catch (e) {
+      console.error("Feasibility check failed:", e);
+      setFeasibility(null);
+    } finally {
+      setFeasibilityLoading(false);
+    }
   }
 
   async function runPreview() {
@@ -1436,9 +1497,48 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         <div className="card">
           <div className="card__header">
             <div className="h3">Scheduling rules</div>
-            <div className="subtle">Set regular season and pool play constraints.</div>
+            <div className="subtle">Set regular season and pool play constraints with live feasibility checking.</div>
           </div>
-          <div className="card__body grid2">
+          <div className="card__body stack gap-3">
+
+            {/* Feasibility Loading Banner */}
+            {feasibilityLoading ? (
+              <div className="callout">
+                <div className="subtle">Checking feasibility...</div>
+              </div>
+            ) : null}
+
+            {/* Conflict Banner (Errors/Warnings) */}
+            {feasibility && feasibility.conflicts && feasibility.conflicts.length > 0 ? (
+              <div className={`callout ${feasibility.conflicts.some(c => c.severity === "error") ? "callout--error" : "callout--warning"}`}>
+                <div className="font-bold mb-2">
+                  {feasibility.conflicts.some(c => c.severity === "error") ? "Constraint Conflicts" : "Warnings"}
+                </div>
+                {feasibility.conflicts.map((conflict, idx) => (
+                  <div key={idx} className="subtle mb-1">
+                    {conflict.severity === "error" ? "❌" : "⚠️"} {conflict.message}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {/* Recommendation Banner (Success) */}
+            {feasibility && (!feasibility.conflicts || feasibility.conflicts.length === 0) ? (
+              <div className="callout callout--ok">
+                <div className="font-bold mb-2">✅ Recommended Configuration</div>
+                <div className="subtle mb-2">{feasibility.recommendations.message}</div>
+                <div className="subtle">
+                  Utilization: {feasibility.recommendations.utilizationStatus} ({feasibility.capacity.requiredRegularSlots} of {feasibility.capacity.availableRegularSlots} regular-season slots)
+                </div>
+                {feasibility.capacity.guestSlotsReserved > 0 ? (
+                  <div className="subtle">
+                    Guest games reserve {feasibility.capacity.guestSlotsReserved} slots, leaving {feasibility.capacity.effectiveSlotsRemaining} for regular season
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="grid2">
             <label>
               Min games per team (regular season)
               <input
@@ -1447,6 +1547,11 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                 value={minGamesPerTeam}
                 onChange={(e) => setMinGamesPerTeam(e.target.value)}
               />
+              {feasibility && feasibility.recommendations ? (
+                <div className="subtle text-sm mt-1">
+                  Recommended: {feasibility.recommendations.minGamesPerTeam}-{feasibility.recommendations.maxGamesPerTeam}
+                </div>
+              ) : null}
             </label>
             <label>
               Pool games per team (pool week, min 2)
@@ -1465,6 +1570,11 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                 value={guestGamesPerWeek}
                 onChange={(e) => setGuestGamesPerWeek(e.target.value)}
               />
+              {feasibility && feasibility.recommendations && feasibility.recommendations.optimalGuestGamesPerWeek > 0 ? (
+                <div className="subtle text-sm mt-1">
+                  Recommended: {feasibility.recommendations.optimalGuestGamesPerWeek} (helps balance odd team count)
+                </div>
+              ) : null}
             </label>
             <label>
               Max games per team per week
@@ -1536,6 +1646,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                 />
                 Only use preferred nights (ignore other days)
               </label>
+            </div>
             </div>
             <div className={`callout ${planningIntel.totalShortfall > 0 ? "callout--error" : "callout--ok"}`}>
               <div className="font-bold mb-2">Capacity planner</div>

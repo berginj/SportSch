@@ -120,6 +120,99 @@ public class ScheduleWizardFunctions
         return await RunWizard(req, apply: true);
     }
 
+    [Function("ScheduleWizardFeasibility")]
+    public async Task<HttpResponseData> Feasibility(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "schedule/wizard/feasibility")] HttpRequestData req)
+    {
+        try
+        {
+            var leagueId = ApiGuards.RequireLeagueId(req);
+            var me = IdentityUtil.GetMe(req);
+            await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+
+            var body = await HttpUtil.ReadJsonAsync<WizardRequest>(req);
+            if (body is null)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Invalid JSON body");
+
+            var division = (body.division ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(division))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "division is required");
+            ApiGuards.EnsureValidTableKeyPart("division", division);
+
+            var seasonStart = RequireDate(body.seasonStart, "seasonStart");
+            var seasonEnd = RequireDate(body.seasonEnd, "seasonEnd");
+            if (seasonStart > seasonEnd)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "seasonStart must be before seasonEnd.");
+
+            var poolStart = OptionalDate(body.poolStart);
+            var poolEnd = OptionalDate(body.poolEnd);
+            var bracketStart = OptionalDate(body.bracketStart);
+            var bracketEnd = OptionalDate(body.bracketEnd);
+
+            var minGamesPerTeam = Math.Max(0, body.minGamesPerTeam ?? 0);
+            var poolGamesPerTeam = Math.Max(2, body.poolGamesPerTeam ?? 2);
+            var externalOfferPerWeek = Math.Max(0, body.externalOfferPerWeek ?? 0);
+            var maxGamesPerWeek = (body.maxGamesPerWeek ?? 0) <= 0 ? 0 : body.maxGamesPerWeek.Value;
+            var noDoubleHeaders = body.noDoubleHeaders ?? true;
+            var blockedRanges = NormalizeBlockedDateRanges(body.blockedDateRanges);
+
+            // Load teams
+            var teams = await LoadTeamsAsync(leagueId, division);
+            if (teams.Count < 2)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Need at least two teams to schedule.");
+
+            // Load and filter slots
+            var rawSlots = await LoadAvailabilitySlotsAsync(leagueId, division, seasonStart, bracketEnd ?? seasonEnd);
+            if (rawSlots.Count == 0)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "No availability slots found for this division.");
+
+            var slotPlanLookup = BuildSlotPlanLookup(body.slotPlan);
+            var hasSlotPlan = body.slotPlan is not null && body.slotPlan.Count > 0;
+            var allSlots = ApplySlotPlan(rawSlots, slotPlanLookup, hasSlotPlan);
+            var filteredAllSlots = ApplyDateBlackouts(allSlots, blockedRanges);
+            if (filteredAllSlots.Count == 0)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "No slots remain after applying blocked date ranges.");
+
+            var gameCapableSlots = filteredAllSlots.Where(IsGameCapableSlotType).ToList();
+            if (gameCapableSlots.Count == 0)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "No game-capable slots selected. Mark at least one slot as game or both.");
+
+            // Calculate phase slot counts
+            var regularRangeEnd = poolStart.HasValue ? poolStart.Value.AddDays(-1) : seasonEnd;
+            var regularSlots = FilterSlots(gameCapableSlots, seasonStart, regularRangeEnd);
+            var poolSlots = poolStart.HasValue && poolEnd.HasValue
+                ? FilterSlots(filteredAllSlots, poolStart.Value, poolEnd.Value)
+                : new List<SlotInfo>();
+            var bracketSlots = bracketStart.HasValue && bracketEnd.HasValue
+                ? FilterSlots(filteredAllSlots, bracketStart.Value, bracketEnd.Value)
+                : new List<SlotInfo>();
+
+            // Calculate weeks in regular season
+            var regularWeeksCount = (regularRangeEnd.DayNumber - seasonStart.DayNumber) / 7 + 1;
+
+            // Run feasibility analysis
+            var feasibilityResult = GameSwap.Scheduling.ScheduleFeasibility.Analyze(
+                teamCount: teams.Count,
+                availableRegularSlots: regularSlots.Count,
+                availablePoolSlots: poolSlots.Count,
+                availableBracketSlots: bracketSlots.Count,
+                minGamesPerTeam: minGamesPerTeam,
+                poolGamesPerTeam: poolGamesPerTeam,
+                maxGamesPerWeek: maxGamesPerWeek,
+                noDoubleHeaders: noDoubleHeaders,
+                regularWeeksCount: regularWeeksCount,
+                guestGamesPerWeek: externalOfferPerWeek
+            );
+
+            return ApiResponses.Ok(req, feasibilityResult);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Error in ScheduleWizardFeasibility");
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL_ERROR", "An error occurred while analyzing feasibility.");
+        }
+    }
+
     private async Task<HttpResponseData> RunWizard(HttpRequestData req, bool apply)
     {
         try
