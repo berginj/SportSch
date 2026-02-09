@@ -16,11 +16,12 @@ const InviteAcceptPage = lazy(() => import("./pages/InviteAcceptPage"));
 const HomePage = lazy(() => import("./pages/HomePage"));
 const DebugPage = lazy(() => import("./pages/DebugPage"));
 const PracticePortalPage = lazy(() => import("./pages/PracticePortalPage"));
+const CoachOnboardingPage = lazy(() => import("./pages/CoachOnboardingPage"));
 const NotificationSettingsPage = lazy(() => import("./pages/NotificationSettingsPage"));
 const NotificationCenterPage = lazy(() => import("./pages/NotificationCenterPage"));
 const KeyboardShortcutsModal = lazy(() => import("./components/KeyboardShortcutsModal"));
 
-const VALID_TABS = new Set(["home", "calendar", "schedule", "offers", "manage", "admin", "debug", "help", "practice", "settings", "notifications"]);
+const VALID_TABS = new Set(["home", "calendar", "schedule", "offers", "manage", "admin", "debug", "help", "practice", "coach-setup", "settings", "notifications"]);
 
 function readInviteFromUrl() {
   if (typeof window === "undefined") return null;
@@ -239,6 +240,9 @@ export default function App() {
           )}
           {effectiveTab === "practice" && (
             <PracticePortalPage me={me} leagueId={activeLeagueId} />
+          )}
+          {effectiveTab === "coach-setup" && (
+            <CoachOnboardingPage me={me} leagueId={activeLeagueId} />
           )}
           {effectiveTab === "settings" && (
             <NotificationSettingsPage leagueId={activeLeagueId} />

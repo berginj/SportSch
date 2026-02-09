@@ -188,8 +188,10 @@
   }
 
   .btn {
-    @apply inline-flex items-center gap-2 rounded-[10px] border-2 border-border bg-white px-3 py-2 text-sm text-text shadow-sm;
+    @apply inline-flex items-center justify-center gap-2 rounded-[10px] border-2 border-border bg-white px-4 py-2.5 text-sm text-text shadow-sm;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    min-height: 44px; /* iOS touch target minimum */
+    -webkit-tap-highlight-color: transparent;
   }
   .btn:hover:not(:disabled) {
     @apply bg-gray-50 border-gray-300;
@@ -206,6 +208,13 @@
   .layoutItem--link:focus-visible {
     @apply outline-none ring-2 ring-amber-400 ring-offset-2 ring-offset-white;
     animation: focusPulse 1s ease-in-out infinite;
+  }
+  .btn:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+  .btn.btn--sm {
+    @apply px-3 py-2 text-xs;
+    min-height: 36px; /* Still large enough for touch but more compact */
   }
   .btn.btn--primary {
     @apply border-accent bg-accent text-gray-900 font-semibold;
@@ -321,6 +330,60 @@
   .timelineItem--slot.status-open { @apply border-l-amber-400; }
   .timelineItem--slot.status-confirmed { @apply border-l-green-500; }
   .timelineItem--slot.status-cancelled { @apply border-l-red-500; }
+
+  /* Hierarchical slot layout */
+  .slotHeader {
+    @apply flex items-center justify-between mb-2.5;
+  }
+  .slotHeader__meta {
+    @apply flex flex-wrap items-center gap-2 text-sm;
+  }
+  .slotHeader__date {
+    @apply font-medium text-text;
+  }
+  .slotHeader__time {
+    @apply font-medium text-text;
+  }
+  .slotHeader__division {
+    @apply text-xs px-2 py-0.5 rounded-full bg-gray-100 text-muted;
+  }
+  .slotBody {
+    @apply flex items-center justify-between gap-3;
+  }
+  .slotBody__primary {
+    @apply flex-1 grid gap-1.5;
+  }
+  .slotBody__actions {
+    @apply flex items-center gap-2;
+  }
+  .slotField {
+    @apply text-base font-bold flex items-center gap-1.5;
+  }
+  .slotField__icon {
+    @apply text-accent text-lg;
+  }
+  .slotMatchup {
+    @apply text-sm text-muted;
+  }
+  .slotDivision {
+    @apply text-xs text-muted;
+  }
+
+  /* Mobile adjustments for hierarchical slots */
+  @media (max-width: 768px) {
+    .slotHeader__meta {
+      @apply text-xs;
+    }
+    .slotBody {
+      @apply flex-col items-stretch;
+    }
+    .slotBody__actions {
+      @apply w-full justify-between mt-2;
+    }
+    .slotBody__actions .btn {
+      @apply flex-1;
+    }
+  }
 
   .statusBadge { @apply inline-flex items-center rounded-full border-2 border-border bg-gray-50 px-2 py-1 text-xs text-gray-700 capitalize font-medium; }
   .statusBadge--link { @apply transition hover:border-accent hover:bg-amber-50 hover:text-gray-900; }
@@ -701,6 +764,195 @@
     }
     100% {
       background-position: 1000px 0;
+    }
+  }
+
+  /* ==================== Mobile Responsiveness Improvements ==================== */
+
+  /* Touch target improvements for mobile */
+  @media (max-width: 640px) {
+    /* Ensure all interactive elements meet 44px touch target minimum */
+    select,
+    input[type="text"],
+    input[type="email"],
+    input[type="tel"],
+    input[type="password"],
+    textarea {
+      @apply text-base; /* Prevent iOS zoom on focus */
+      min-height: 44px;
+      -webkit-appearance: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* Improve button touch targets on mobile */
+    .btn {
+      @apply px-4 py-3;
+      min-height: 48px;
+    }
+
+    .btn.btn--sm {
+      @apply px-3 py-2.5;
+      min-height: 44px;
+    }
+
+    /* Make cards more mobile-friendly */
+    .card {
+      @apply mx-0 px-3 py-4;
+    }
+
+    /* Better spacing for mobile */
+    .container {
+      @apply px-3;
+    }
+
+    /* Improve tab navigation on mobile */
+    .navTabs,
+    .tabs {
+      @apply overflow-x-auto -mx-3 px-3;
+      scrollbar-width: none; /* Firefox */
+      -ms-overflow-style: none; /* IE/Edge */
+    }
+
+    .navTabs::-webkit-scrollbar,
+    .tabs::-webkit-scrollbar {
+      display: none; /* Chrome/Safari */
+    }
+
+    .tabBtn,
+    .tab {
+      padding-left: 0.75rem;
+      padding-right: 0.75rem;
+      padding-top: 0.5rem;
+      padding-bottom: 0.5rem;
+      font-size: 0.875rem;
+      min-height: 44px;
+      flex-shrink: 0;
+    }
+
+    /* Better badge sizing on mobile */
+    .badge {
+      font-size: 0.75rem;
+      padding-left: 0.5rem;
+      padding-right: 0.5rem;
+      padding-top: 0.25rem;
+      padding-bottom: 0.25rem;
+      white-space: nowrap;
+    }
+  }
+
+  /* Tablet improvements (640px - 1024px) */
+  @media (min-width: 640px) and (max-width: 1024px) {
+    .container {
+      padding-left: 1rem;
+      padding-right: 1rem;
+    }
+
+    /* Better tab spacing on tablets */
+    .tabBtn,
+    .tab {
+      padding-left: 0.75rem;
+      padding-right: 0.75rem;
+      padding-top: 0.5rem;
+      padding-bottom: 0.5rem;
+    }
+  }
+
+  /* Landscape mobile optimizations */
+  @media (max-width: 896px) and (orientation: landscape) {
+    .card {
+      padding-top: 0.75rem;
+      padding-bottom: 0.75rem;
+    }
+
+    .h1 {
+      font-size: 1.25rem;
+    }
+
+    .h2 {
+      font-size: 1.125rem;
+    }
+
+    /* Reduce vertical padding in landscape to save space */
+    .mb-6 {
+      margin-bottom: 1rem;
+    }
+
+    .mb-4 {
+      margin-bottom: 0.75rem;
+    }
+  }
+
+  /* Prevent horizontal scrolling on small screens */
+  @media (max-width: 640px) {
+    body {
+      overflow-x: hidden;
+    }
+
+    .overflow-x-auto {
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* Better table handling on mobile */
+    .tableWrap {
+      margin-left: -0.75rem;
+      margin-right: -0.75rem;
+      padding-left: 0.75rem;
+      padding-right: 0.75rem;
+    }
+
+    .table {
+      font-size: 0.75rem;
+    }
+
+    .table th {
+      padding-left: 0.5rem;
+      padding-right: 0.5rem;
+      padding-top: 0.375rem;
+      padding-bottom: 0.375rem;
+    }
+
+    .table td {
+      padding-left: 0.5rem;
+      padding-right: 0.5rem;
+      padding-top: 0.375rem;
+      padding-bottom: 0.375rem;
+    }
+
+    /* Improve slot display on mobile */
+    .slotHeader {
+      flex-wrap: wrap;
+    }
+
+    .slotHeader__meta {
+      flex-wrap: wrap;
+      gap: 0.25rem;
+    }
+
+    .slotField {
+      font-size: 0.875rem;
+    }
+
+    .slotMatchup {
+      font-size: 0.875rem;
+    }
+  }
+
+  /* High DPI screens (Retina displays) */
+  @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+    .border-2 {
+      /* Use slightly thicker borders on high DPI screens for better visibility */
+      border-width: 1.5px;
+    }
+  }
+
+  /* Accessibility: Reduce motion for users who prefer it */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
     }
   }
 }

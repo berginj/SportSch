@@ -30,13 +30,44 @@ public class TeamsFunctions
     }
 
     public record ContactDto(string? name, string? email, string? phone);
-    public record TeamDto(string division, string teamId, string name, ContactDto primaryContact);
-    public record UpsertTeamReq(string? division, string? teamId, string? name, ContactDto? primaryContact);
+    public record TeamDto(
+        string division,
+        string teamId,
+        string name,
+        ContactDto primaryContact,
+        List<ContactDto>? assistantCoaches,
+        string? clinicPreference,
+        bool onboardingComplete
+    );
+    public record UpsertTeamReq(
+        string? division,
+        string? teamId,
+        string? name,
+        ContactDto? primaryContact,
+        List<ContactDto>? assistantCoaches,
+        string? clinicPreference,
+        bool? onboardingComplete
+    );
 
     private static string TeamPk(string leagueId, string division) => $"TEAM|{leagueId}|{division}";
 
     private static TeamDto ToDto(TableEntity e)
     {
+        // Deserialize assistant coaches from JSON array
+        var assistantCoachesJson = (e.GetString("AssistantCoaches") ?? "").Trim();
+        List<ContactDto>? assistantCoaches = null;
+        if (!string.IsNullOrWhiteSpace(assistantCoachesJson))
+        {
+            try
+            {
+                assistantCoaches = System.Text.Json.JsonSerializer.Deserialize<List<ContactDto>>(assistantCoachesJson);
+            }
+            catch
+            {
+                assistantCoaches = new List<ContactDto>();
+            }
+        }
+
         return new TeamDto(
             division: (e.GetString("Division") ?? "").Trim(),
             teamId: e.RowKey,
@@ -45,7 +76,10 @@ public class TeamsFunctions
                 name: (e.GetString("PrimaryContactName") ?? "").Trim(),
                 email: (e.GetString("PrimaryContactEmail") ?? "").Trim(),
                 phone: (e.GetString("PrimaryContactPhone") ?? "").Trim()
-            )
+            ),
+            assistantCoaches: assistantCoaches,
+            clinicPreference: (e.GetString("ClinicPreference") ?? "").Trim(),
+            onboardingComplete: e.GetBoolean("OnboardingComplete") ?? false
         );
     }
 
@@ -140,6 +174,13 @@ public class TeamsFunctions
             ApiGuards.EnsureValidTableKeyPart("division", division);
             ApiGuards.EnsureValidTableKeyPart("teamId", teamId);
 
+            // Serialize assistant coaches to JSON
+            var assistantCoachesJson = "";
+            if (body.assistantCoaches is not null && body.assistantCoaches.Count > 0)
+            {
+                assistantCoachesJson = System.Text.Json.JsonSerializer.Serialize(body.assistantCoaches);
+            }
+
             var e = new TableEntity(TeamPk(leagueId, division), teamId)
             {
                 ["LeagueId"] = leagueId,
@@ -149,6 +190,9 @@ public class TeamsFunctions
                 ["PrimaryContactName"] = (body.primaryContact?.name ?? "").Trim(),
                 ["PrimaryContactEmail"] = (body.primaryContact?.email ?? "").Trim(),
                 ["PrimaryContactPhone"] = (body.primaryContact?.phone ?? "").Trim(),
+                ["AssistantCoaches"] = assistantCoachesJson,
+                ["ClinicPreference"] = (body.clinicPreference ?? "").Trim(),
+                ["OnboardingComplete"] = body.onboardingComplete ?? false,
                 ["UpdatedUtc"] = DateTimeOffset.UtcNow
             };
 
@@ -191,16 +235,24 @@ public class TeamsFunctions
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
 
-            // Authorization - league admin only
-            if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
+            // Authorization - league admin OR coach editing their own team
+            var isGlobalAdmin = await _membershipRepo.IsGlobalAdminAsync(me.UserId);
+            var membership = await _membershipRepo.GetMembershipAsync(me.UserId, leagueId);
+            var role = (membership?.GetString("Role") ?? Constants.Roles.Viewer).Trim();
+            var isLeagueAdmin = string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase);
+            var isCoach = string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase);
+
+            // Check if coach is assigned to this specific team
+            var coachTeamDivision = (membership?.GetString("Division") ?? "").Trim();
+            var coachTeamId = (membership?.GetString("TeamId") ?? "").Trim();
+            var isOwnTeam = isCoach &&
+                            string.Equals(coachTeamDivision, division, StringComparison.OrdinalIgnoreCase) &&
+                            string.Equals(coachTeamId, teamId, StringComparison.OrdinalIgnoreCase);
+
+            if (!isGlobalAdmin && !isLeagueAdmin && !isOwnTeam)
             {
-                var membership = await _membershipRepo.GetMembershipAsync(me.UserId, leagueId);
-                var role = (membership?.GetString("Role") ?? Constants.Roles.Viewer).Trim();
-                if (!string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
-                {
-                    return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
-                        "Only league admins can update teams");
-                }
+                return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                    "Only league admins or assigned coaches can update this team");
             }
 
             var body = await HttpUtil.ReadJsonAsync<UpsertTeamReq>(req);
@@ -222,6 +274,24 @@ public class TeamsFunctions
                 e["PrimaryContactName"] = (body.primaryContact.name ?? "").Trim();
                 e["PrimaryContactEmail"] = (body.primaryContact.email ?? "").Trim();
                 e["PrimaryContactPhone"] = (body.primaryContact.phone ?? "").Trim();
+            }
+
+            if (body.assistantCoaches is not null)
+            {
+                var assistantCoachesJson = body.assistantCoaches.Count > 0
+                    ? System.Text.Json.JsonSerializer.Serialize(body.assistantCoaches)
+                    : "";
+                e["AssistantCoaches"] = assistantCoachesJson;
+            }
+
+            if (body.clinicPreference is not null)
+            {
+                e["ClinicPreference"] = body.clinicPreference.Trim();
+            }
+
+            if (body.onboardingComplete.HasValue)
+            {
+                e["OnboardingComplete"] = body.onboardingComplete.Value;
             }
 
             e["UpdatedUtc"] = DateTimeOffset.UtcNow;

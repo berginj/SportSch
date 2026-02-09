@@ -737,18 +737,34 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
           ) : null}
           {timeline.length === 0 ? <div className="muted">No items in this range.</div> : null}
           <div className="stack">
-            {timeline.map((it) => (
-              <div key={`${it.kind}:${it.id}`} className={statusClassForItem(it)}>
-                <div className="row row--between">
-                  <div>
-                    <div className="font-bold">
-                      {it.date} {it.start ? `${it.start}${it.end ? `-${it.end}` : ""}` : ""} - {it.title}
-                    </div>
-                    {it.subtitle ? <div className="muted">{it.subtitle}</div> : null}
-                    {it.kind === "event" && it.raw?.notes ? <div className="mt-2">{it.raw.notes}</div> : null}
-                  </div>
-                  <div className="row">
-                    {it.kind === "slot" ? (
+            {timeline.map((it) => {
+              if (it.kind === "slot") {
+                const slot = it.raw;
+                const fieldName = slot?.displayName || `${slot?.parkName || ""} ${slot?.fieldName || ""}`.trim();
+                const matchup = slotMatchupLabel(slot);
+                const division = slot?.division;
+
+                return (
+                  <div key={`${it.kind}:${it.id}`} className={statusClassForItem(it)}>
+                    {/* Slot Header: Date, Time, Division, Status */}
+                    <div className="slotHeader">
+                      <div className="slotHeader__meta">
+                        <span className="slotHeader__date">{it.date}</span>
+                        {it.start && (
+                          <>
+                            <span>•</span>
+                            <span className="slotHeader__time">
+                              {it.start}{it.end ? `-${it.end}` : ""}
+                            </span>
+                          </>
+                        )}
+                        {division && (
+                          <>
+                            <span>•</span>
+                            <span className="slotHeader__division">{division}</span>
+                          </>
+                        )}
+                      </div>
                       <button
                         className={`statusBadge statusBadge--link status-${(statusLabelForItem(it) || "").toLowerCase()}`}
                         type="button"
@@ -757,61 +773,93 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
                       >
                         {statusLabelForItem(it)}
                       </button>
-                    ) : (
+                    </div>
+
+                    {/* Slot Body: Field, Matchup, Actions */}
+                    <div className="slotBody">
+                      <div className="slotBody__primary">
+                        <div className="slotField">
+                          <span className="slotField__icon">📍</span>
+                          <span>{fieldName || "Field TBD"}</span>
+                        </div>
+                        {matchup && <div className="slotMatchup">{matchup}</div>}
+                        {slot?.confirmedTeamId && (
+                          <div className="slotDivision">Confirmed: {slot.confirmedTeamId}</div>
+                        )}
+                      </div>
+                      <div className="slotBody__actions">
+                        {canPickTeam && canAcceptSlot(slot) ? (
+                          (() => {
+                            const divisionKey = (slot?.division || "").trim().toUpperCase();
+                            const teamsForDivision = teamsByDivision.get(divisionKey) || [];
+                            const selectedTeamId = acceptTeamBySlot[it.id] || "";
+                            return (
+                              <>
+                                <select
+                                  value={selectedTeamId}
+                                  onChange={(e) => setAcceptTeam(it.id, e.target.value)}
+                                  title="Pick a team to accept this offer as."
+                                >
+                                  <option value="">Select team</option>
+                                  {teamsForDivision.map((t) => (
+                                    <option key={t.teamId} value={t.teamId}>
+                                      {t.name || t.teamId}
+                                    </option>
+                                  ))}
+                                </select>
+                                <button
+                                  className="btn btn--primary"
+                                  onClick={() => requestSlot(slot, selectedTeamId)}
+                                  disabled={!selectedTeamId}
+                                  title="Accept this offer on behalf of the selected team."
+                                >
+                                  Accept as
+                                </button>
+                              </>
+                            );
+                          })()
+                        ) : null}
+                        {!canPickTeam && role !== "Viewer" && canAcceptSlot(slot) && (slot?.offeringTeamId || "") !== myCoachTeamId ? (
+                          <button className="btn btn--primary" onClick={() => requestSlot(slot)} title="Accept this open slot and confirm the game.">
+                            Accept
+                          </button>
+                        ) : null}
+                        {canCancelSlot(slot) && (slot?.status || "") !== "Cancelled" ? (
+                          <button className="btn" onClick={() => cancelSlot(slot)} title="Cancel this game/slot.">
+                            Cancel
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              // Event rendering (unchanged)
+              return (
+                <div key={`${it.kind}:${it.id}`} className={statusClassForItem(it)}>
+                  <div className="row row--between">
+                    <div>
+                      <div className="font-bold">
+                        {it.date} {it.start ? `${it.start}${it.end ? `-${it.end}` : ""}` : ""} - {it.title}
+                      </div>
+                      {it.subtitle ? <div className="muted">{it.subtitle}</div> : null}
+                      {it.raw?.notes ? <div className="mt-2">{it.raw.notes}</div> : null}
+                    </div>
+                    <div className="row">
                       <span className={`statusBadge status-${(statusLabelForItem(it) || "").toLowerCase()}`}>
                         {statusLabelForItem(it)}
                       </span>
-                    )}
-                    {it.kind === "slot" && canPickTeam && canAcceptSlot(it.raw) ? (
-                      (() => {
-                        const divisionKey = (it.raw?.division || "").trim().toUpperCase();
-                        const teamsForDivision = teamsByDivision.get(divisionKey) || [];
-                        const selectedTeamId = acceptTeamBySlot[it.id] || "";
-                        return (
-                          <div className="row">
-                            <select
-                              value={selectedTeamId}
-                              onChange={(e) => setAcceptTeam(it.id, e.target.value)}
-                              title="Pick a team to accept this offer as."
-                            >
-                              <option value="">Select team</option>
-                              {teamsForDivision.map((t) => (
-                                <option key={t.teamId} value={t.teamId}>
-                                  {t.name || t.teamId}
-                                </option>
-                              ))}
-                            </select>
-                            <button
-                              className="btn btn--primary"
-                              onClick={() => requestSlot(it.raw, selectedTeamId)}
-                              disabled={!selectedTeamId}
-                              title="Accept this offer on behalf of the selected team."
-                            >
-                              Accept as
-                            </button>
-                          </div>
-                        );
-                      })()
-                    ) : null}
-                    {it.kind === "slot" && !canPickTeam && role !== "Viewer" && canAcceptSlot(it.raw) && (it.raw?.offeringTeamId || "") !== myCoachTeamId ? (
-                      <button className="btn btn--primary" onClick={() => requestSlot(it.raw)} title="Accept this open slot and confirm the game.">
-                        Accept
-                      </button>
-                    ) : null}
-                    {it.kind === "slot" && canCancelSlot(it.raw) && (it.raw?.status || "") !== "Cancelled" ? (
-                      <button className="btn" onClick={() => cancelSlot(it.raw)} title="Cancel this game/slot.">
-                        Cancel
-                      </button>
-                    ) : null}
-                    {it.kind === "event" && canDeleteAnyEvent ? (
-                      <button className="btn" onClick={() => deleteEvent(it.id)} title="Delete this event from the calendar.">
-                        Delete
-                      </button>
-                    ) : null}
+                      {canDeleteAnyEvent ? (
+                        <button className="btn" onClick={() => deleteEvent(it.id)} title="Delete this event from the calendar.">
+                          Delete
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>

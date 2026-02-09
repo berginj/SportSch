@@ -190,10 +190,15 @@ public class ScheduleWizardFunctions
             // Calculate weeks in regular season
             var regularWeeksCount = (regularRangeEnd.DayNumber - seasonStart.DayNumber) / 7 + 1;
 
+            // Account for guest anchor slot reservation (same logic as AssignPhaseSlots)
+            var guestAnchors = NormalizeGuestAnchors(body.guestAnchorPrimary, body.guestAnchorSecondary);
+            var anchoredGuestSlots = SelectAnchoredExternalSlots(regularSlots, externalOfferPerWeek, guestAnchors);
+            var regularSlotsAfterGuestReservation = regularSlots.Count - anchoredGuestSlots.Count;
+
             // Run feasibility analysis
             var feasibilityResult = GameSwap.Scheduling.ScheduleFeasibility.Analyze(
                 teamCount: teams.Count,
-                availableRegularSlots: regularSlots.Count,
+                availableRegularSlots: regularSlotsAfterGuestReservation,
                 availablePoolSlots: poolSlots.Count,
                 availableBracketSlots: bracketSlots.Count,
                 minGamesPerTeam: minGamesPerTeam,

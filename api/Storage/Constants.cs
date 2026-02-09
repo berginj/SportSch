@@ -28,6 +28,7 @@ public static class Constants
         public const string Events = "GameSwapEvents";
         public const string Slots = "GameSwapSlots";
         public const string SlotRequests = "GameSwapSlotRequests";
+        public const string PracticeRequests = "GameSwapPracticeRequests";
         public const string ScheduleRuns = "GameSwapScheduleRuns";
         public const string FieldAvailabilityRules = "GameSwapFieldAvailabilityRules";
         public const string FieldAvailabilityExceptions = "GameSwapFieldAvailabilityExceptions";
@@ -132,6 +133,8 @@ public static class Constants
         public const string SlotOpen = "Open";
         public const string SlotCancelled = "Cancelled";
         public const string SlotConfirmed = "Confirmed";
+        public const string SlotCompleted = "Completed";
+        public const string SlotPostponed = "Postponed";
 
         // Slot requests
         public const string SlotRequestPending = "Pending";

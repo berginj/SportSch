@@ -10,6 +10,8 @@ const SlotGeneratorManager = lazy(() => import("../manage/SlotGeneratorManager")
 const LeagueSettings = lazy(() => import("../manage/LeagueSettings"));
 const TeamsManager = lazy(() => import("../manage/TeamsManager"));
 const DivisionsManager = lazy(() => import("../manage/DivisionsManager"));
+const PracticeRequestsManager = lazy(() => import("../manage/PracticeRequestsManager"));
+const CoachLinksGenerator = lazy(() => import("../manage/CoachLinksGenerator"));
 
 function Pill({ active, children, onClick }) {
   return (
@@ -43,6 +45,8 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
       ...(canSchedule ? [{ id: "settings", label: "League Settings" }] : []),
       { id: "invites", label: "Invites" },
       ...(canSchedule ? [{ id: "scheduler", label: "Scheduler" }] : []),
+      ...(canSchedule ? [{ id: "coach-links", label: "Coach Links" }] : []),
+      ...(canSchedule ? [{ id: "practice-requests", label: "Practice Requests" }] : []),
       { id: "fields", label: "Fields" },
     ],
     [canSchedule]
@@ -228,6 +232,34 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
           <div className="card__body">
             <Suspense fallback={sectionFallback}>
               <SchedulerManager leagueId={leagueId} />
+            </Suspense>
+          </div>
+        </div>
+      )}
+
+      {activeTabId === "coach-links" && canSchedule && (
+        <div className="card">
+          <div className="card__header">
+            <div className="h2">Coach Onboarding Links</div>
+            <div className="subtle">Generate personalized onboarding links for all coaches to complete team setup.</div>
+          </div>
+          <div className="card__body">
+            <Suspense fallback={sectionFallback}>
+              <CoachLinksGenerator leagueId={leagueId} />
+            </Suspense>
+          </div>
+        </div>
+      )}
+
+      {activeTabId === "practice-requests" && canSchedule && (
+        <div className="card">
+          <div className="card__header">
+            <div className="h2">Practice Slot Requests</div>
+            <div className="subtle">Review and approve/reject practice slot requests from coaches.</div>
+          </div>
+          <div className="card__body">
+            <Suspense fallback={sectionFallback}>
+              <PracticeRequestsManager leagueId={leagueId} />
             </Suspense>
           </div>
         </div>

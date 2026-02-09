@@ -237,6 +237,114 @@ See you on the field!
         await QueueEmailAsync(to, subject, body, "GameReminder", null, leagueId);
     }
 
+    public async Task SendCoachOnboardingEmailAsync(string to, string leagueId, string teamName, string onboardingLink)
+    {
+        var subject = $"Complete Your Team Setup - {teamName}";
+        var body = BuildHtmlEmail(
+            "Complete Your Team Setup",
+            $@"
+            <p>Welcome to the league! Please complete your team setup before the season starts.</p>
+            <p>Your team: <strong>{teamName}</strong></p>
+            <p>This will take about 5-10 minutes and includes:</p>
+            <ul style='margin: 15px 0; padding-left: 20px;'>
+                <li>Team name and contact information</li>
+                <li>Practice slot requests (select 1-3 preferred times)</li>
+                <li>Clinic preferences</li>
+                <li>Schedule review</li>
+            </ul>
+            <div style='text-align: center; margin: 30px 0;'>
+                <a href='{onboardingLink}' style='background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 600;'>Complete Team Setup</a>
+            </div>
+            <p style='color: #6b7280; font-size: 14px;'>If you have any questions, reply to this email.</p>
+            ",
+            null
+        );
+
+        await QueueEmailAsync(to, subject, body, "CoachOnboarding", null, leagueId);
+    }
+
+    public async Task SendPracticeRequestApprovedEmailAsync(string to, string leagueId, string teamName, string gameDate, string startTime, string endTime, string field)
+    {
+        var subject = $"Practice Request Approved - {gameDate}";
+        var body = BuildHtmlEmail(
+            "Practice Request Approved",
+            $@"
+            <p>Great news! Your practice request has been approved.</p>
+            <table style='margin: 20px 0; border-collapse: collapse; width: 100%;'>
+                <tr><td style='padding: 8px; font-weight: bold; width: 100px;'>Team:</td><td style='padding: 8px;'>{teamName}</td></tr>
+                <tr><td style='padding: 8px; font-weight: bold;'>Date:</td><td style='padding: 8px;'>{gameDate}</td></tr>
+                <tr><td style='padding: 8px; font-weight: bold;'>Time:</td><td style='padding: 8px;'>{startTime} - {endTime}</td></tr>
+                <tr><td style='padding: 8px; font-weight: bold;'>Location:</td><td style='padding: 8px;'>{field}</td></tr>
+            </table>
+            <p>This practice slot is now confirmed for your team.</p>
+            ",
+            "View Schedule"
+        );
+
+        await QueueEmailAsync(to, subject, body, "PracticeRequestApproved", null, leagueId);
+    }
+
+    public async Task SendPracticeRequestRejectedEmailAsync(string to, string leagueId, string teamName, string gameDate, string startTime, string endTime, string reason)
+    {
+        var subject = $"Practice Request Update - {gameDate}";
+        var body = BuildHtmlEmail(
+            "Practice Request Update",
+            $@"
+            <p>Unfortunately, your practice request could not be approved.</p>
+            <table style='margin: 20px 0; border-collapse: collapse; width: 100%;'>
+                <tr><td style='padding: 8px; font-weight: bold; width: 100px;'>Team:</td><td style='padding: 8px;'>{teamName}</td></tr>
+                <tr><td style='padding: 8px; font-weight: bold;'>Date:</td><td style='padding: 8px;'>{gameDate}</td></tr>
+                <tr><td style='padding: 8px; font-weight: bold;'>Time:</td><td style='padding: 8px;'>{startTime} - {endTime}</td></tr>
+                <tr><td style='padding: 8px; font-weight: bold;'>Reason:</td><td style='padding: 8px;'>{reason}</td></tr>
+            </table>
+            <p>Please check the available practice slots for other options.</p>
+            ",
+            "View Available Slots"
+        );
+
+        await QueueEmailAsync(to, subject, body, "PracticeRequestRejected", null, leagueId);
+    }
+
+    public async Task SendSchedulePublishedEmailAsync(string to, string leagueId, string division, int gameCount)
+    {
+        var subject = $"Season Schedule Published - {division}";
+        var body = BuildHtmlEmail(
+            "Season Schedule Published",
+            $@"
+            <p>The season schedule for your division has been published!</p>
+            <table style='margin: 20px 0; border-collapse: collapse; width: 100%;'>
+                <tr><td style='padding: 8px; font-weight: bold; width: 100px;'>Division:</td><td style='padding: 8px;'>{division}</td></tr>
+                <tr><td style='padding: 8px; font-weight: bold;'>Games:</td><td style='padding: 8px;'>{gameCount} games scheduled</td></tr>
+            </table>
+            <p>Review your team's schedule and add game dates to your calendar.</p>
+            ",
+            "View Schedule"
+        );
+
+        await QueueEmailAsync(to, subject, body, "SchedulePublished", null, leagueId);
+    }
+
+    public async Task SendGameCancelledEmailAsync(string to, string leagueId, string gameDate, string startTime, string field, string reason)
+    {
+        var subject = $"Game Cancelled - {gameDate} at {startTime}";
+        var body = BuildHtmlEmail(
+            "Game Cancelled",
+            $@"
+            <p>We regret to inform you that a game has been cancelled.</p>
+            <table style='margin: 20px 0; border-collapse: collapse; width: 100%;'>
+                <tr><td style='padding: 8px; font-weight: bold; width: 100px;'>Date:</td><td style='padding: 8px;'>{gameDate}</td></tr>
+                <tr><td style='padding: 8px; font-weight: bold;'>Time:</td><td style='padding: 8px;'>{startTime}</td></tr>
+                <tr><td style='padding: 8px; font-weight: bold;'>Field:</td><td style='padding: 8px;'>{field}</td></tr>
+                <tr><td style='padding: 8px; font-weight: bold;'>Reason:</td><td style='padding: 8px;'>{reason}</td></tr>
+            </table>
+            <p>We will notify you if the game is rescheduled.</p>
+            ",
+            "View Schedule"
+        );
+
+        await QueueEmailAsync(to, subject, body, "GameCancelled", null, leagueId);
+    }
+
     private static string BuildHtmlEmail(string title, string content, string? ctaText = null)
     {
         var cta = string.IsNullOrEmpty(ctaText) ? "" : $@"
