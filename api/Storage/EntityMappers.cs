@@ -12,35 +12,32 @@ public static class EntityMappers
     /// </summary>
     public static object MapSlot(TableEntity e)
     {
+        var allocationPriority = ReadPositiveInt(e, "AllocationPriorityRank");
         return new
         {
             slotId = e.RowKey,
-            leagueId = e.GetString("LeagueId") ?? "",
-            division = e.GetString("Division") ?? "",
-            offeringTeamId = e.GetString("OfferingTeamId") ?? "",
-            homeTeamId = e.GetString("HomeTeamId") ?? "",
-            awayTeamId = e.GetString("AwayTeamId") ?? "",
-            isExternalOffer = e.GetBoolean("IsExternalOffer") ?? false,
-            isAvailability = e.GetBoolean("IsAvailability") ?? false,
-            offeringEmail = e.GetString("OfferingEmail") ?? "",
-            gameDate = e.GetString("GameDate") ?? "",
-            startTime = e.GetString("StartTime") ?? "",
-            endTime = e.GetString("EndTime") ?? "",
-            parkName = e.GetString("ParkName") ?? "",
-            fieldName = e.GetString("FieldName") ?? "",
-            displayName = e.GetString("DisplayName") ?? "",
-            fieldKey = e.GetString("FieldKey") ?? "",
-            gameType = e.GetString("GameType") ?? "",
-            allocationSlotType = e.GetString("AllocationSlotType") ?? "",
-            allocationPriorityRank = (
-                (e.GetInt32("AllocationPriorityRank") is int rank && rank > 0)
-                    ? rank
-                    : (int.TryParse(e.GetString("AllocationPriorityRank"), out var parsed) && parsed > 0 ? parsed : (int?)null)
-            ),
-            status = e.GetString("Status") ?? Constants.Status.SlotOpen,
-            notes = e.GetString("Notes") ?? "",
-            createdUtc = e.GetDateTimeOffset("CreatedUtc"),
-            updatedUtc = e.GetDateTimeOffset("UpdatedUtc")
+            leagueId = ReadString(e, "LeagueId"),
+            division = ReadString(e, "Division"),
+            offeringTeamId = ReadString(e, "OfferingTeamId"),
+            homeTeamId = ReadString(e, "HomeTeamId"),
+            awayTeamId = ReadString(e, "AwayTeamId"),
+            isExternalOffer = ReadBool(e, "IsExternalOffer", false),
+            isAvailability = ReadBool(e, "IsAvailability", false),
+            offeringEmail = ReadString(e, "OfferingEmail"),
+            gameDate = ReadString(e, "GameDate"),
+            startTime = ReadString(e, "StartTime"),
+            endTime = ReadString(e, "EndTime"),
+            parkName = ReadString(e, "ParkName"),
+            fieldName = ReadString(e, "FieldName"),
+            displayName = ReadString(e, "DisplayName"),
+            fieldKey = ReadString(e, "FieldKey"),
+            gameType = ReadString(e, "GameType"),
+            allocationSlotType = ReadString(e, "AllocationSlotType"),
+            allocationPriorityRank = allocationPriority,
+            status = ReadString(e, "Status", Constants.Status.SlotOpen),
+            notes = ReadString(e, "Notes"),
+            createdUtc = ReadDateTimeOffset(e, "CreatedUtc"),
+            updatedUtc = ReadDateTimeOffset(e, "UpdatedUtc")
         };
     }
 
@@ -52,17 +49,17 @@ public static class EntityMappers
         return new
         {
             ruleId = e.RowKey,
-            fieldKey = e.GetString(Constants.FieldAvailabilityColumns.FieldKey) ?? "",
-            division = e.GetString(Constants.FieldAvailabilityColumns.Division) ?? "",
-            divisionIds = SplitList(e.GetString(Constants.FieldAvailabilityColumns.DivisionIds)),
-            startsOn = e.GetString(Constants.FieldAvailabilityColumns.StartsOn) ?? "",
-            endsOn = e.GetString(Constants.FieldAvailabilityColumns.EndsOn) ?? "",
-            daysOfWeek = SplitList(e.GetString(Constants.FieldAvailabilityColumns.DaysOfWeek)),
-            startTimeLocal = e.GetString(Constants.FieldAvailabilityColumns.StartTimeLocal) ?? "",
-            endTimeLocal = e.GetString(Constants.FieldAvailabilityColumns.EndTimeLocal) ?? "",
-            recurrencePattern = e.GetString(Constants.FieldAvailabilityColumns.RecurrencePattern) ?? "",
-            timezone = e.GetString(Constants.FieldAvailabilityColumns.Timezone) ?? "",
-            isActive = e.GetBoolean(Constants.FieldAvailabilityColumns.IsActive) ?? false
+            fieldKey = ReadString(e, Constants.FieldAvailabilityColumns.FieldKey),
+            division = ReadString(e, Constants.FieldAvailabilityColumns.Division),
+            divisionIds = SplitList(ReadString(e, Constants.FieldAvailabilityColumns.DivisionIds)),
+            startsOn = ReadString(e, Constants.FieldAvailabilityColumns.StartsOn),
+            endsOn = ReadString(e, Constants.FieldAvailabilityColumns.EndsOn),
+            daysOfWeek = SplitList(ReadString(e, Constants.FieldAvailabilityColumns.DaysOfWeek)),
+            startTimeLocal = ReadString(e, Constants.FieldAvailabilityColumns.StartTimeLocal),
+            endTimeLocal = ReadString(e, Constants.FieldAvailabilityColumns.EndTimeLocal),
+            recurrencePattern = ReadString(e, Constants.FieldAvailabilityColumns.RecurrencePattern),
+            timezone = ReadString(e, Constants.FieldAvailabilityColumns.Timezone),
+            isActive = ReadBool(e, Constants.FieldAvailabilityColumns.IsActive, false)
         };
     }
 
@@ -74,11 +71,11 @@ public static class EntityMappers
         return new
         {
             exceptionId = e.RowKey,
-            dateFrom = e.GetString(Constants.FieldAvailabilityExceptionColumns.DateFrom) ?? "",
-            dateTo = e.GetString(Constants.FieldAvailabilityExceptionColumns.DateTo) ?? "",
-            startTimeLocal = e.GetString(Constants.FieldAvailabilityExceptionColumns.StartTimeLocal) ?? "",
-            endTimeLocal = e.GetString(Constants.FieldAvailabilityExceptionColumns.EndTimeLocal) ?? "",
-            reason = e.GetString(Constants.FieldAvailabilityExceptionColumns.Reason) ?? ""
+            dateFrom = ReadString(e, Constants.FieldAvailabilityExceptionColumns.DateFrom),
+            dateTo = ReadString(e, Constants.FieldAvailabilityExceptionColumns.DateTo),
+            startTimeLocal = ReadString(e, Constants.FieldAvailabilityExceptionColumns.StartTimeLocal),
+            endTimeLocal = ReadString(e, Constants.FieldAvailabilityExceptionColumns.EndTimeLocal),
+            reason = ReadString(e, Constants.FieldAvailabilityExceptionColumns.Reason)
         };
     }
 
@@ -90,14 +87,14 @@ public static class EntityMappers
         return new
         {
             requestId = e.RowKey,
-            slotId = e.GetString("SlotId") ?? "",
-            requestingTeamId = e.GetString("RequestingTeamId") ?? "",
-            requestingUserId = e.GetString("RequestingUserId") ?? "",
-            requestingEmail = e.GetString("RequestingEmail") ?? "",
-            status = e.GetString("Status") ?? "Pending",
-            message = e.GetString("Message") ?? "",
-            createdUtc = e.GetDateTimeOffset("CreatedUtc"),
-            updatedUtc = e.GetDateTimeOffset("UpdatedUtc")
+            slotId = ReadString(e, "SlotId"),
+            requestingTeamId = ReadString(e, "RequestingTeamId"),
+            requestingUserId = ReadString(e, "RequestingUserId"),
+            requestingEmail = ReadString(e, "RequestingEmail"),
+            status = ReadString(e, "Status", "Pending"),
+            message = ReadString(e, "Message"),
+            createdUtc = ReadDateTimeOffset(e, "CreatedUtc"),
+            updatedUtc = ReadDateTimeOffset(e, "UpdatedUtc")
         };
     }
 
@@ -108,13 +105,13 @@ public static class EntityMappers
     {
         return new
         {
-            parkCode = e.GetString("ParkCode") ?? "",
-            fieldCode = e.GetString("FieldCode") ?? "",
-            parkName = e.GetString("ParkName") ?? "",
-            fieldName = e.GetString("FieldName") ?? "",
-            displayName = e.GetString("DisplayName") ?? "",
-            fieldKey = e.GetString("FieldKey") ?? "",
-            isActive = e.GetBoolean("IsActive") ?? true
+            parkCode = ReadString(e, "ParkCode"),
+            fieldCode = ReadString(e, "FieldCode"),
+            parkName = ReadString(e, "ParkName"),
+            fieldName = ReadString(e, "FieldName"),
+            displayName = ReadString(e, "DisplayName"),
+            fieldKey = ReadString(e, "FieldKey"),
+            isActive = ReadBool(e, "IsActive", true)
         };
     }
 
@@ -127,10 +124,10 @@ public static class EntityMappers
         {
             userId = e.PartitionKey,
             leagueId = e.RowKey,
-            role = e.GetString("Role") ?? Constants.Roles.Viewer,
-            coachDivision = e.GetString("CoachDivision") ?? "",
-            coachTeamId = e.GetString("CoachTeamId") ?? "",
-            joinedUtc = e.GetDateTimeOffset("JoinedUtc")
+            role = ReadString(e, "Role", Constants.Roles.Viewer),
+            coachDivision = ReadString(e, "CoachDivision"),
+            coachTeamId = ReadString(e, "CoachTeamId"),
+            joinedUtc = ReadDateTimeOffset(e, "JoinedUtc")
         };
     }
 
@@ -143,5 +140,54 @@ public static class EntityMappers
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(v => !string.IsNullOrWhiteSpace(v))
             .ToList();
+    }
+
+    private static object? ReadValue(TableEntity entity, string key)
+        => entity.TryGetValue(key, out var value) ? value : null;
+
+    private static string ReadString(TableEntity entity, string key, string defaultValue = "")
+    {
+        var value = ReadValue(entity, key);
+        if (value is null) return defaultValue;
+        var text = value.ToString();
+        return string.IsNullOrWhiteSpace(text) ? defaultValue : text.Trim();
+    }
+
+    private static bool ReadBool(TableEntity entity, string key, bool defaultValue)
+    {
+        var value = ReadValue(entity, key);
+        if (value is null) return defaultValue;
+        if (value is bool b) return b;
+        var text = value.ToString()?.Trim() ?? "";
+        if (bool.TryParse(text, out var parsedBool)) return parsedBool;
+        if (int.TryParse(text, out var parsedInt)) return parsedInt != 0;
+        return defaultValue;
+    }
+
+    private static int? ReadPositiveInt(TableEntity entity, string key)
+    {
+        var value = ReadValue(entity, key);
+        if (value is null) return null;
+
+        int? parsed = value switch
+        {
+            int i => i,
+            long l when l <= int.MaxValue => (int)l,
+            double d => (int)Math.Round(d),
+            _ => int.TryParse(value.ToString(), out var intParsed) ? intParsed : null
+        };
+
+        if (!parsed.HasValue || parsed.Value <= 0) return null;
+        return parsed.Value;
+    }
+
+    private static DateTimeOffset? ReadDateTimeOffset(TableEntity entity, string key)
+    {
+        var value = ReadValue(entity, key);
+        if (value is null) return null;
+        if (value is DateTimeOffset dto) return dto;
+        if (value is DateTime dt) return new DateTimeOffset(dt);
+        if (DateTimeOffset.TryParse(value.ToString(), out var parsed)) return parsed;
+        return null;
     }
 }
