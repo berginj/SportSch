@@ -229,6 +229,23 @@ function buildMonthWeeks(monthStart) {
   return weeks;
 }
 
+function extractSlotItems(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== "object") return [];
+  if (Array.isArray(payload.items)) return payload.items;
+  if (payload.data && typeof payload.data === "object" && Array.isArray(payload.data.items)) {
+    return payload.data.items;
+  }
+  if (Array.isArray(payload.data)) return payload.data;
+  return [];
+}
+
+function extractContinuationToken(payload) {
+  if (!payload || typeof payload !== "object") return "";
+  const token = payload.continuationToken || payload.nextContinuationToken || payload.nextToken || "";
+  return String(token || "").trim();
+}
+
 export default function SchedulerManager({ leagueId }) {
   const [divisions, setDivisions] = useState([]);
   const [division, setDivision] = useState("");
@@ -492,11 +509,23 @@ export default function SchedulerManager({ leagueId }) {
       const baseQuery = new URLSearchParams();
       if (dateFrom) baseQuery.set("dateFrom", dateFrom);
       if (dateTo) baseQuery.set("dateTo", dateTo);
-      const [slotList, eventList] = await Promise.all([
-        apiFetch(`/api/slots?${baseQuery.toString()}`),
-        apiFetch(`/api/events?${baseQuery.toString()}`),
-      ]);
-      setOverlaySlots(Array.isArray(slotList) ? slotList : []);
+
+      const slotList = [];
+      let continuationToken = "";
+      for (let page = 0; page < 50; page += 1) {
+        const slotQuery = new URLSearchParams(baseQuery);
+        slotQuery.set("pageSize", "200");
+        if (continuationToken) slotQuery.set("continuationToken", continuationToken);
+        const slotPage = await apiFetch(`/api/slots?${slotQuery.toString()}`);
+        const pageItems = extractSlotItems(slotPage);
+        slotList.push(...pageItems);
+        const nextToken = extractContinuationToken(slotPage);
+        if (!nextToken) break;
+        continuationToken = nextToken;
+      }
+
+      const eventList = await apiFetch(`/api/events?${baseQuery.toString()}`);
+      setOverlaySlots(slotList);
       setOverlayEvents(Array.isArray(eventList) ? eventList : []);
     } catch (e) {
       setErr(e?.message || "Failed to load overlay data");

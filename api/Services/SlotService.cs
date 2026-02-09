@@ -2,6 +2,7 @@ using Azure.Data.Tables;
 using GameSwap.Functions.Repositories;
 using GameSwap.Functions.Storage;
 using Microsoft.Extensions.Logging;
+using System.Globalization;
 
 namespace GameSwap.Functions.Services;
 
@@ -216,6 +217,9 @@ public class SlotService : ISlotService
     {
         // Parse multiple status values if provided
         var statusList = ParseStatusList(request.Status);
+        var fieldKeyFilter = (request.FieldKey ?? "").Trim();
+        var fromDateNorm = NormalizeIsoDate(request.FromDate);
+        var toDateNorm = NormalizeIsoDate(request.ToDate);
 
         var filter = new SlotQueryFilter
         {
@@ -230,23 +234,32 @@ public class SlotService : ISlotService
 
         var result = await _slotRepo.QuerySlotsAsync(filter, request.ContinuationToken);
 
-        // Apply multi-status filtering and default behavior in memory
+        // Apply filtering in memory as a safety net for legacy mixed-typed rows.
         var filteredItems = result.Items.Where(e =>
         {
-            var status = ReadString(e, "Status", Constants.Status.SlotOpen).Trim();
-
-            if (statusList.Count > 1)
+            var status = ReadString(e, "Status", Constants.Status.SlotOpen);
+            if (statusList.Count > 0)
             {
-                // Multiple statuses provided - must match one of them
-                return statusList.Contains(status, StringComparer.OrdinalIgnoreCase);
+                if (!statusList.Contains(status, StringComparer.OrdinalIgnoreCase))
+                    return false;
             }
-            else if (statusList.Count == 0 && string.IsNullOrEmpty(request.Status))
+            else if (string.IsNullOrWhiteSpace(request.Status))
             {
-                // No status filter - default behavior excludes Cancelled
-                return !string.Equals(status, Constants.Status.SlotCancelled, StringComparison.OrdinalIgnoreCase);
+                if (string.Equals(status, Constants.Status.SlotCancelled, StringComparison.OrdinalIgnoreCase))
+                    return false;
             }
 
-            // Single status already filtered by OData, or include all
+            if (!string.IsNullOrWhiteSpace(fieldKeyFilter))
+            {
+                var fieldKey = ReadString(e, "FieldKey");
+                if (!string.Equals(fieldKey, fieldKeyFilter, StringComparison.OrdinalIgnoreCase))
+                    return false;
+            }
+
+            var gameDate = ReadString(e, "GameDate");
+            if (!IsWithinDateRange(gameDate, fromDateNorm, toDateNorm))
+                return false;
+
             return true;
         }).ToList();
 
@@ -274,6 +287,36 @@ public class SlotService : ISlotService
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private static string NormalizeIsoDate(string? raw)
+    {
+        var value = (raw ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(value)) return "";
+        if (!DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+            return "";
+        return date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    }
+
+    private static bool IsWithinDateRange(string gameDate, string fromDate, string toDate)
+    {
+        if (string.IsNullOrWhiteSpace(fromDate) && string.IsNullOrWhiteSpace(toDate))
+            return true;
+
+        if (!DateOnly.TryParseExact(gameDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+            return false;
+
+        if (!string.IsNullOrWhiteSpace(fromDate) &&
+            DateOnly.TryParseExact(fromDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var from) &&
+            date < from)
+            return false;
+
+        if (!string.IsNullOrWhiteSpace(toDate) &&
+            DateOnly.TryParseExact(toDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var to) &&
+            date > to)
+            return false;
+
+        return true;
     }
 
     private static string ReadString(TableEntity entity, string key, string defaultValue = "")

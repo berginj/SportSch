@@ -88,6 +88,23 @@ function buildSeasonPayload(draft) {
   };
 }
 
+function extractSlotItems(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== "object") return [];
+  if (Array.isArray(payload.items)) return payload.items;
+  if (payload.data && typeof payload.data === "object" && Array.isArray(payload.data.items)) {
+    return payload.data.items;
+  }
+  if (Array.isArray(payload.data)) return payload.data;
+  return [];
+}
+
+function extractContinuationToken(payload) {
+  if (!payload || typeof payload !== "object") return "";
+  const token = payload.continuationToken || payload.nextContinuationToken || payload.nextToken || "";
+  return String(token || "").trim();
+}
+
 export default function LeagueSettings({ leagueId }) {
   const [divisions, setDivisions] = useState([]);
   const [fields, setFields] = useState([]);
@@ -345,13 +362,24 @@ export default function LeagueSettings({ leagueId }) {
     if (dateError) return setAvailabilityErr(dateError);
     setAvailabilityLoading(true);
     try {
-      const qs = new URLSearchParams();
-      if (!availabilityAllDivisions && availabilityDivision) qs.set("division", availabilityDivision);
-      if (availabilityDateFrom) qs.set("dateFrom", availabilityDateFrom);
-      if (availabilityDateTo) qs.set("dateTo", availabilityDateTo);
-      qs.set("status", "Open");
-      const data = await apiFetch(`/api/slots?${qs.toString()}`);
-      const list = Array.isArray(data) ? data : [];
+      const list = [];
+      let continuationToken = "";
+      for (let page = 0; page < 50; page += 1) {
+        const qs = new URLSearchParams();
+        if (!availabilityAllDivisions && availabilityDivision) qs.set("division", availabilityDivision);
+        if (availabilityDateFrom) qs.set("dateFrom", availabilityDateFrom);
+        if (availabilityDateTo) qs.set("dateTo", availabilityDateTo);
+        qs.set("status", "Open");
+        qs.set("pageSize", "200");
+        if (continuationToken) qs.set("continuationToken", continuationToken);
+
+        const data = await apiFetch(`/api/slots?${qs.toString()}`);
+        const pageItems = extractSlotItems(data);
+        list.push(...pageItems);
+        const nextToken = extractContinuationToken(data);
+        if (!nextToken) break;
+        continuationToken = nextToken;
+      }
       const availability = list.filter((s) => s.isAvailability);
       setAvailabilitySlots(availability);
       const insights = buildAvailabilityInsights(availability);

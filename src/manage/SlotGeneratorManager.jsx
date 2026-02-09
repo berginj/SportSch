@@ -106,6 +106,21 @@ function buildHeaderIndex(header) {
   return index;
 }
 
+function formatApiError(error, fallback) {
+  const base = error?.originalMessage || error?.message || fallback;
+  const requestId = error?.details?.requestId;
+  const stage = error?.details?.stage;
+  const exception = error?.details?.exception;
+  const detailMessage = error?.details?.message;
+  const parts = [];
+  if (requestId) parts.push(`requestId: ${requestId}`);
+  if (stage) parts.push(`stage: ${stage}`);
+  if (exception) parts.push(`exception: ${exception}`);
+  if (detailMessage) parts.push(`detail: ${detailMessage}`);
+  if (!parts.length) return base;
+  return `${base} (${parts.join(", ")})`;
+}
+
 function extractSlotItems(payload) {
   if (Array.isArray(payload)) return payload;
   if (!payload || typeof payload !== "object") return [];
@@ -259,7 +274,6 @@ export default function SlotGeneratorManager({ leagueId }) {
 
         const data = await apiFetch(`/api/slots?${qs.toString()}`);
         const pageItems = extractSlotItems(data);
-        if (pageItems.length === 0) break;
         list.push(...pageItems);
 
         const nextToken = extractContinuationToken(data);
@@ -273,7 +287,7 @@ export default function SlotGeneratorManager({ leagueId }) {
         ? "No availability slots found for this filter."
         : `Loaded ${filtered.length} availability slots.`);
     } catch (e) {
-      setAvailListErr(e?.message || "Failed to load availability slots.");
+      setAvailListErr(formatApiError(e, "Failed to load availability slots."));
       setAvailSlots([]);
     } finally {
       setAvailListLoading(false);

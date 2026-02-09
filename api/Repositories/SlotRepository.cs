@@ -40,9 +40,31 @@ public class SlotRepository : ISlotRepository
     public async Task<PaginationResult<TableEntity>> QuerySlotsAsync(SlotQueryFilter filter, string? continuationToken = null)
     {
         var table = await TableClients.GetTableAsync(_tableService, TableName);
+        var fullFilter = BuildSlotFilter(filter, includePropertyFilters: true);
+
+        _logger.LogDebug("Querying slots with filter: {Filter}", fullFilter);
+
+        try
+        {
+            return await PaginationUtil.QueryWithPaginationAsync(table, fullFilter, continuationToken, filter.PageSize);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 400 || ex.Status == 422)
+        {
+            // Some legacy rows were persisted with mixed property types.
+            // If OData property comparisons fail, retry with a safe partition-only filter
+            // and let service-layer filtering finish the request.
+            var safeFilter = BuildSlotFilter(filter, includePropertyFilters: false);
+            _logger.LogWarning(ex,
+                "QuerySlotsAsync failed with property filter. Retrying partition-only query. League={LeagueId}, Division={Division}",
+                filter.LeagueId, filter.Division);
+            return await PaginationUtil.QueryWithPaginationAsync(table, safeFilter, continuationToken, filter.PageSize);
+        }
+    }
+
+    private static string BuildSlotFilter(SlotQueryFilter filter, bool includePropertyFilters)
+    {
         var filters = new List<string>();
 
-        // Partition key filter (league + division)
         if (!string.IsNullOrEmpty(filter.Division))
         {
             var pk = Constants.Pk.Slots(filter.LeagueId, filter.Division);
@@ -50,40 +72,26 @@ public class SlotRepository : ISlotRepository
         }
         else
         {
-            // Query all divisions in league
             var pkPrefix = Constants.Pk.Slots(filter.LeagueId, "");
             filters.Add(ODataFilterBuilder.PartitionKeyPrefix(pkPrefix));
         }
 
-        // Status filter
+        if (!includePropertyFilters)
+            return ODataFilterBuilder.And(filters.ToArray());
+
         if (!string.IsNullOrEmpty(filter.Status))
-        {
             filters.Add(ODataFilterBuilder.StatusEquals(filter.Status));
-        }
 
-        // Date range filter
         if (!string.IsNullOrEmpty(filter.FromDate) || !string.IsNullOrEmpty(filter.ToDate))
-        {
             filters.Add(ODataFilterBuilder.DateRange("GameDate", filter.FromDate, filter.ToDate));
-        }
 
-        // Field key filter
         if (!string.IsNullOrEmpty(filter.FieldKey))
-        {
             filters.Add(ODataFilterBuilder.PropertyEquals("FieldKey", filter.FieldKey));
-        }
 
-        // External offer filter
         if (filter.IsExternalOffer.HasValue)
-        {
             filters.Add($"IsExternalOffer eq {filter.IsExternalOffer.Value.ToString().ToLower()}");
-        }
 
-        var filterString = ODataFilterBuilder.And(filters.ToArray());
-
-        _logger.LogDebug("Querying slots with filter: {Filter}", filterString);
-
-        return await PaginationUtil.QueryWithPaginationAsync(table, filterString, continuationToken, filter.PageSize);
+        return ODataFilterBuilder.And(filters.ToArray());
     }
 
     public async Task<bool> HasConflictAsync(string leagueId, string fieldKey, string gameDate, int startMin, int endMin, string? excludeSlotId = null)
