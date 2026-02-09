@@ -323,10 +323,19 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     const isBlocked = (gameDate) =>
       activeBlockedRanges.some((range) => isIsoDateInRange(gameDate, range.startDate, range.endDate));
 
-    const gameCapableSlots = (slotPlan || [])
-      .filter((slot) => slot?.slotType === "game" || slot?.slotType === "both")
+    const gameOnlySlots = (slotPlan || [])
+      .filter((slot) => slot?.slotType === "game")
       .filter((slot) => isIsoDate(slot?.gameDate));
+    const bothSlots = (slotPlan || [])
+      .filter((slot) => slot?.slotType === "both")
+      .filter((slot) => isIsoDate(slot?.gameDate));
+    const practiceOnlySlots = (slotPlan || [])
+      .filter((slot) => slot?.slotType === "practice")
+      .filter((slot) => isIsoDate(slot?.gameDate));
+
+    const gameCapableSlots = [...gameOnlySlots, ...bothSlots];
     const availableSlots = gameCapableSlots.filter((slot) => !isBlocked(slot.gameDate));
+    const practiceSlotsAvailable = practiceOnlySlots.filter((slot) => !isBlocked(slot.gameDate));
     const blockedOutSlots = Math.max(0, gameCapableSlots.length - availableSlots.length);
 
     const regularSlotsAvailable = hasSeasonRange
@@ -350,35 +359,46 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     const roundRobinMatchups = estimateRoundRobinMatchups(teams);
     const gamesPerTeamRound = Math.max(1, teams - 1);
     const roundRobinRounds = roundRobinMatchups > 0 ? Math.ceil(minRegularGames / gamesPerTeamRound) : 0;
-    const regularRequiredSlots = roundRobinMatchups * roundRobinRounds;
+    const regularRequiredCycleSlots = roundRobinMatchups * roundRobinRounds;
     const regularRequiredMinimum = teams >= 2 ? Math.ceil((teams * minRegularGames) / 2) : 0;
     const poolRequiredSlots = hasPoolRange && teams >= 2 ? Math.ceil((teams * poolGamesTarget) / 2) : 0;
     const bracketRequiredSlots = hasBracketRange ? 3 : 0;
 
     const totalAvailableSlots = availableSlots.length;
-    const totalRequiredSlots = regularRequiredSlots + poolRequiredSlots + bracketRequiredSlots;
+    const totalRequiredSlotsMinimum = regularRequiredMinimum + poolRequiredSlots + bracketRequiredSlots;
+    const totalRequiredSlotsCycle = regularRequiredCycleSlots + poolRequiredSlots + bracketRequiredSlots;
 
     return {
       teams,
       minRegularGames,
       poolGamesTarget,
+      totalGameOnlySlots: gameOnlySlots.length,
+      totalBothSlots: bothSlots.length,
+      totalPracticeOnlySlots: practiceOnlySlots.length,
       totalAvailableSlots,
+      totalPracticeSlotsAvailable: practiceSlotsAvailable.length,
       blockedOutSlots,
       regularSlotsAvailable,
       poolSlotsAvailable,
       bracketSlotsAvailable,
       preferredRegularSlotsAvailable,
-      regularRequiredSlots,
+      regularRequiredCycleSlots,
+      roundRobinMatchups,
+      roundRobinRounds,
+      gamesPerTeamRound,
       regularRequiredMinimum,
       poolRequiredSlots,
       bracketRequiredSlots,
-      totalRequiredSlots,
-      regularShortfall: Math.max(0, regularRequiredSlots - regularSlotsAvailable),
+      totalRequiredSlotsMinimum,
+      totalRequiredSlotsCycle,
+      regularShortfall: Math.max(0, regularRequiredMinimum - regularSlotsAvailable),
+      regularCycleShortfall: Math.max(0, regularRequiredCycleSlots - regularSlotsAvailable),
       poolShortfall: Math.max(0, poolRequiredSlots - poolSlotsAvailable),
       bracketShortfall: Math.max(0, bracketRequiredSlots - bracketSlotsAvailable),
-      totalShortfall: Math.max(0, totalRequiredSlots - totalAvailableSlots),
+      totalShortfall: Math.max(0, totalRequiredSlotsMinimum - totalAvailableSlots),
+      totalCycleShortfall: Math.max(0, totalRequiredSlotsCycle - totalAvailableSlots),
       strictCapacityShortfall: strictPreferredWeeknights
-        ? Math.max(0, regularRequiredSlots - preferredRegularSlotsAvailable)
+        ? Math.max(0, regularRequiredMinimum - preferredRegularSlotsAvailable)
         : 0,
     };
   }, [
@@ -1259,13 +1279,17 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
               <div className="subtle mb-2">
                 Live estimate using current slot plan and team count ({planningIntel.teams}). Pool play assumes at least <b>2 games/team</b>.
               </div>
+              <div className="subtle mb-2">
+                Game-capable slots: <b>{planningIntel.totalAvailableSlots}</b> (game: {planningIntel.totalGameOnlySlots}, both: {planningIntel.totalBothSlots}) |
+                Practice-only slots: <b>{planningIntel.totalPracticeSlotsAvailable}</b> ({planningIntel.totalPracticeOnlySlots} total tagged practice)
+              </div>
               <div className="tableWrap">
                 <table className="table">
                   <thead>
                     <tr>
                       <th>Phase</th>
                       <th>Available slots</th>
-                      <th>Target slots</th>
+                      <th>Min target slots</th>
                       <th>Gap</th>
                     </tr>
                   </thead>
@@ -1273,7 +1297,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                     <tr>
                       <td>Regular season</td>
                       <td>{planningIntel.regularSlotsAvailable}</td>
-                      <td>{planningIntel.regularRequiredSlots}</td>
+                      <td>{planningIntel.regularRequiredMinimum}</td>
                       <td>{planningIntel.regularShortfall > 0 ? `-${planningIntel.regularShortfall}` : "OK"}</td>
                     </tr>
                     <tr>
@@ -1291,14 +1315,27 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                     <tr>
                       <td><b>Total</b></td>
                       <td><b>{planningIntel.totalAvailableSlots}</b></td>
-                      <td><b>{planningIntel.totalRequiredSlots}</b></td>
+                      <td><b>{planningIntel.totalRequiredSlotsMinimum}</b></td>
                       <td><b>{planningIntel.totalShortfall > 0 ? `-${planningIntel.totalShortfall}` : "OK"}</b></td>
                     </tr>
                   </tbody>
                 </table>
               </div>
               <div className="subtle mt-2">
-                Regular season target uses round-robin cycle planning ({planningIntel.regularRequiredMinimum} is the raw minimum for {planningIntel.minRegularGames} game(s)/team).
+                Minimum target responds to every game-count change. Round-robin cycle estimate: {planningIntel.regularRequiredCycleSlots} regular-season slots
+                ({planningIntel.roundRobinRounds} cycle{planningIntel.roundRobinRounds === 1 ? "" : "s"} of {planningIntel.roundRobinMatchups} matchup slots each).
+              </div>
+              {planningIntel.totalCycleShortfall > 0 ? (
+                <div className="subtle">
+                  Cycle-model shortfall: {planningIntel.totalCycleShortfall} slot(s). This is stricter than the minimum model.
+                </div>
+              ) : (
+                <div className="subtle">
+                  Cycle-model capacity also fits current targets.
+                </div>
+              )}
+              <div className="subtle">
+                If 10 to 9 does not change cycle estimate, that means both values are in the same round-robin cycle band ({planningIntel.gamesPerTeamRound} games/team per full cycle).
               </div>
               {planningIntel.blockedOutSlots > 0 ? (
                 <div className="subtle">
