@@ -273,8 +273,31 @@ public class ScheduleWizardFunctions
             var validationResult = new ScheduleResult(validationSummary, regularAssignments.Assignments, regularAssignments.UnassignedSlots, regularAssignments.UnassignedMatchups);
             var validation = ScheduleValidation.Validate(validationResult, constraints);
             var issues = validation.Issues
-                .Select(i => (object)new { ruleId = i.RuleId, severity = i.Severity, message = i.Message, details = i.Details })
+                .Select(i => (object)new { phase = "Regular Season", ruleId = i.RuleId, severity = i.Severity, message = i.Message, details = i.Details })
                 .ToList();
+            if (poolAssignments.UnassignedMatchups.Count > 0)
+            {
+                issues.Add(new
+                {
+                    phase = "Pool Play",
+                    ruleId = "unassigned-matchups",
+                    severity = "warning",
+                    message = $"{poolAssignments.UnassignedMatchups.Count} pool play matchup(s) were not assigned.",
+                    details = new Dictionary<string, object?> { ["count"] = poolAssignments.UnassignedMatchups.Count, ["phase"] = "Pool Play" }
+                });
+            }
+            if (bracketAssignments.UnassignedMatchups.Count > 0)
+            {
+                issues.Add(new
+                {
+                    phase = "Bracket",
+                    ruleId = "unassigned-matchups",
+                    severity = "warning",
+                    message = $"{bracketAssignments.UnassignedMatchups.Count} bracket matchup(s) were not assigned.",
+                    details = new Dictionary<string, object?> { ["count"] = bracketAssignments.UnassignedMatchups.Count, ["phase"] = "Bracket" }
+                });
+            }
+            var totalIssues = issues.Count;
 
             if (apply)
             {
@@ -288,10 +311,10 @@ public class ScheduleWizardFunctions
                 division,
                 slotsTotal = summary.totalSlots,
                 assignedTotal = summary.totalAssigned,
-                issues = validation.TotalIssues
+                issues = totalIssues
             });
 
-            return ApiResponses.Ok(req, new WizardPreviewDto(summary, assignments, unassignedSlots, unassignedMatchups, warnings, issues, validation.TotalIssues));
+            return ApiResponses.Ok(req, new WizardPreviewDto(summary, assignments, unassignedSlots, unassignedMatchups, warnings, issues, totalIssues));
         }
         catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
         catch (Exception ex)
@@ -348,6 +371,11 @@ public class ScheduleWizardFunctions
         GuestAnchor? Secondary
     );
 
+    private record AnchoredExternalBuildResult(
+        List<ScheduleAssignment> Assignments,
+        List<ScheduleAssignment> UnassignedSlots
+    );
+
     private static PhaseAssignments AssignPhaseSlots(
         string phase,
         List<SlotInfo> slots,
@@ -383,14 +411,17 @@ public class ScheduleWizardFunctions
         var constraints = new ScheduleConstraints(maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, 0);
         var result = ScheduleEngine.AssignMatchups(orderedSlots, matchups, teams, constraints);
         var assignments = new List<ScheduleAssignment>(result.Assignments);
+        var carriedUnassignedSlots = new List<ScheduleAssignment>(result.UnassignedSlots);
         if (anchoredExternalSlots.Count > 0)
         {
-            assignments.AddRange(BuildAnchoredExternalAssignments(assignments, anchoredExternalSlots, teams));
+            var anchoredResult = BuildAnchoredExternalAssignments(assignments, anchoredExternalSlots, teams, maxGamesPerWeek);
+            assignments.AddRange(anchoredResult.Assignments);
+            carriedUnassignedSlots.AddRange(anchoredResult.UnassignedSlots);
         }
-        if (externalOfferPerWeek <= 0 || result.UnassignedSlots.Count == 0)
-            return new PhaseAssignments(assignments, result.UnassignedSlots, result.UnassignedMatchups);
+        if (externalOfferPerWeek <= 0 || carriedUnassignedSlots.Count == 0)
+            return new PhaseAssignments(assignments, carriedUnassignedSlots, result.UnassignedMatchups);
 
-        var withExternal = AddExternalOffers(assignments, result.UnassignedSlots, result.UnassignedMatchups, teams, externalOfferPerWeek, guestAnchors);
+        var withExternal = AddExternalOffers(assignments, carriedUnassignedSlots, result.UnassignedMatchups, teams, externalOfferPerWeek, guestAnchors, maxGamesPerWeek);
         return withExternal;
     }
 
@@ -426,13 +457,14 @@ public class ScheduleWizardFunctions
         return picked;
     }
 
-    private static List<ScheduleAssignment> BuildAnchoredExternalAssignments(
+    private static AnchoredExternalBuildResult BuildAnchoredExternalAssignments(
         List<ScheduleAssignment> existingAssignments,
         IReadOnlyList<SlotInfo> anchoredExternalSlots,
-        IReadOnlyList<string> teams)
+        IReadOnlyList<string> teams,
+        int? maxGamesPerWeek)
     {
         if (anchoredExternalSlots.Count == 0 || teams.Count == 0)
-            return new List<ScheduleAssignment>();
+            return new AnchoredExternalBuildResult(new List<ScheduleAssignment>(), new List<ScheduleAssignment>());
 
         var totalCounts = teams
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -440,6 +472,7 @@ public class ScheduleWizardFunctions
         var homeCounts = teams
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
+        var weekCounts = BuildTeamWeekCounts(existingAssignments);
 
         foreach (var existing in existingAssignments)
         {
@@ -449,17 +482,23 @@ public class ScheduleWizardFunctions
         }
 
         var anchoredAssignments = new List<ScheduleAssignment>();
+        var anchoredUnassigned = new List<ScheduleAssignment>();
         foreach (var slot in anchoredExternalSlots
             .OrderBy(s => s.gameDate)
             .ThenBy(s => s.startTime)
             .ThenBy(s => s.fieldKey))
         {
-            var home = PickExternalHomeTeam(teams, totalCounts, homeCounts);
+            var weekKey = WeekKey(slot.gameDate);
+            var home = PickExternalHomeTeam(teams, totalCounts, homeCounts, weekCounts, weekKey, maxGamesPerWeek);
             if (string.IsNullOrWhiteSpace(home))
+            {
+                anchoredUnassigned.Add(new ScheduleAssignment(slot.slotId, slot.gameDate, slot.startTime, slot.endTime, slot.fieldKey, "", "", false));
                 continue;
+            }
 
             IncrementTeamCount(totalCounts, home);
             IncrementTeamCount(homeCounts, home);
+            IncrementTeamWeekCount(weekCounts, home, weekKey);
             anchoredAssignments.Add(new ScheduleAssignment(
                 SlotId: slot.slotId,
                 GameDate: slot.gameDate,
@@ -472,7 +511,7 @@ public class ScheduleWizardFunctions
             ));
         }
 
-        return anchoredAssignments;
+        return new AnchoredExternalBuildResult(anchoredAssignments, anchoredUnassigned);
     }
 
     private static PhaseAssignments AssignBracketSlots(List<SlotInfo> slots, List<MatchupPair> matchups)
@@ -508,7 +547,8 @@ public class ScheduleWizardFunctions
         List<MatchupPair> unassignedMatchups,
         IReadOnlyList<string> teams,
         int externalOfferPerWeek,
-        GuestAnchorSet? guestAnchors)
+        GuestAnchorSet? guestAnchors,
+        int? maxGamesPerWeek)
     {
         if (externalOfferPerWeek <= 0 || unassignedSlots.Count == 0 || teams.Count == 0)
             return new PhaseAssignments(assignments, unassignedSlots, unassignedMatchups);
@@ -522,6 +562,7 @@ public class ScheduleWizardFunctions
         var homeCounts = teams
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
+        var weekCounts = BuildTeamWeekCounts(assignments);
 
         foreach (var existing in assignments)
         {
@@ -543,7 +584,7 @@ public class ScheduleWizardFunctions
                 continue;
             }
 
-            var existingExternalCount = assignments
+            var existingExternalCount = nextAssignments
                 .Where(a => a.IsExternalOffer && string.Equals(WeekKey(a.GameDate), weekGroup.Key, StringComparison.OrdinalIgnoreCase))
                 .Count();
             var remainingCapacity = Math.Max(0, externalOfferPerWeek - existingExternalCount);
@@ -565,7 +606,7 @@ public class ScheduleWizardFunctions
                     continue;
                 }
 
-                var home = PickExternalHomeTeam(teams, totalCounts, homeCounts);
+                var home = PickExternalHomeTeam(teams, totalCounts, homeCounts, weekCounts, weekGroup.Key, maxGamesPerWeek);
                 if (string.IsNullOrWhiteSpace(home))
                 {
                     remainingSlots.Add(slot);
@@ -574,6 +615,7 @@ public class ScheduleWizardFunctions
 
                 IncrementTeamCount(totalCounts, home);
                 IncrementTeamCount(homeCounts, home);
+                IncrementTeamWeekCount(weekCounts, home, weekGroup.Key);
                 nextAssignments.Add(slot with
                 {
                     HomeTeamId = home,
@@ -645,10 +687,14 @@ public class ScheduleWizardFunctions
     private static string PickExternalHomeTeam(
         IReadOnlyList<string> teams,
         Dictionary<string, int> totalCounts,
-        Dictionary<string, int> homeCounts)
+        Dictionary<string, int> homeCounts,
+        Dictionary<string, int> weekCounts,
+        string weekKey,
+        int? maxGamesPerWeek)
     {
         return teams
             .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(t => CanAssignExternalInWeek(t, weekCounts, weekKey, maxGamesPerWeek))
             .OrderBy(t => totalCounts.TryGetValue(t, out var total) ? total : int.MaxValue)
             .ThenBy(t => homeCounts.TryGetValue(t, out var home) ? home : int.MaxValue)
             .ThenBy(t => t, StringComparer.OrdinalIgnoreCase)
@@ -660,6 +706,45 @@ public class ScheduleWizardFunctions
         if (string.IsNullOrWhiteSpace(teamId)) return;
         if (!counts.ContainsKey(teamId)) return;
         counts[teamId] += 1;
+    }
+
+    private static Dictionary<string, int> BuildTeamWeekCounts(IEnumerable<ScheduleAssignment> assignments)
+    {
+        var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var assignment in assignments)
+        {
+            var weekKey = WeekKey(assignment.GameDate);
+            if (string.IsNullOrWhiteSpace(weekKey)) continue;
+            IncrementTeamWeekCount(counts, assignment.HomeTeamId, weekKey);
+            IncrementTeamWeekCount(counts, assignment.AwayTeamId, weekKey);
+        }
+        return counts;
+    }
+
+    private static bool CanAssignExternalInWeek(
+        string teamId,
+        Dictionary<string, int> weekCounts,
+        string weekKey,
+        int? maxGamesPerWeek)
+    {
+        if (string.IsNullOrWhiteSpace(teamId)) return false;
+        if (!maxGamesPerWeek.HasValue || maxGamesPerWeek.Value <= 0) return true;
+        if (string.IsNullOrWhiteSpace(weekKey)) return true;
+        return GetTeamWeekCount(weekCounts, teamId, weekKey) < maxGamesPerWeek.Value;
+    }
+
+    private static int GetTeamWeekCount(Dictionary<string, int> counts, string teamId, string weekKey)
+    {
+        if (string.IsNullOrWhiteSpace(teamId) || string.IsNullOrWhiteSpace(weekKey)) return 0;
+        var key = $"{teamId}|{weekKey}";
+        return counts.TryGetValue(key, out var count) ? count : 0;
+    }
+
+    private static void IncrementTeamWeekCount(Dictionary<string, int> counts, string teamId, string weekKey)
+    {
+        if (string.IsNullOrWhiteSpace(teamId) || string.IsNullOrWhiteSpace(weekKey)) return;
+        var key = $"{teamId}|{weekKey}";
+        counts[key] = counts.TryGetValue(key, out var value) ? value + 1 : 1;
     }
 
     private static string WeekKey(string gameDate)

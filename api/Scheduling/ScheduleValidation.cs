@@ -17,6 +17,7 @@ public static class ScheduleValidation
 
         AddMissingOpponentIssues(result.Assignments, issues);
         AddDoubleHeaderIssues(result.Assignments, issues);
+        AddDoubleHeaderBalanceIssues(result.Assignments, constraints.NoDoubleHeaders, issues);
         AddMaxGamesPerWeekIssues(result.Assignments, constraints.MaxGamesPerWeek, issues);
 
         if (result.UnassignedMatchups.Count > 0)
@@ -63,12 +64,7 @@ public static class ScheduleValidation
 
     private static void AddDoubleHeaderIssues(IEnumerable<ScheduleAssignment> assignments, List<ValidationIssue> issues)
     {
-        var byTeamDate = new Dictionary<string, Dictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
-        foreach (var a in assignments)
-        {
-            AddTeamDateCount(byTeamDate, a.HomeTeamId, a.GameDate);
-            AddTeamDateCount(byTeamDate, a.AwayTeamId, a.GameDate);
-        }
+        var byTeamDate = BuildTeamDateCounts(assignments);
 
         foreach (var (teamId, dateMap) in byTeamDate)
         {
@@ -82,6 +78,53 @@ public static class ScheduleValidation
                     new Dictionary<string, object?> { ["teamId"] = teamId, ["gameDate"] = date, ["count"] = count }));
             }
         }
+    }
+
+    private static void AddDoubleHeaderBalanceIssues(IEnumerable<ScheduleAssignment> assignments, bool noDoubleHeaders, List<ValidationIssue> issues)
+    {
+        if (noDoubleHeaders) return;
+
+        var byTeamDate = BuildTeamDateCounts(assignments);
+        if (byTeamDate.Count < 2) return;
+
+        var doubleHeaderCounts = byTeamDate.ToDictionary(
+            kvp => kvp.Key,
+            kvp => kvp.Value.Values.Where(count => count > 1).Sum(count => count - 1),
+            StringComparer.OrdinalIgnoreCase);
+
+        if (doubleHeaderCounts.Count < 2) return;
+
+        var maxDoubleHeaders = doubleHeaderCounts.Values.Max();
+        var minDoubleHeaders = doubleHeaderCounts.Values.Min();
+        var gap = maxDoubleHeaders - minDoubleHeaders;
+        var allowedGap = byTeamDate.Count % 2 == 1 ? 1 : 0;
+        if (gap <= allowedGap) return;
+
+        var maxTeams = doubleHeaderCounts
+            .Where(kvp => kvp.Value == maxDoubleHeaders)
+            .Select(kvp => kvp.Key)
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var minTeams = doubleHeaderCounts
+            .Where(kvp => kvp.Value == minDoubleHeaders)
+            .Select(kvp => kvp.Key)
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        issues.Add(new ValidationIssue(
+            "double-header-balance",
+            "warning",
+            $"Doubleheader distribution is uneven (max {maxDoubleHeaders}, min {minDoubleHeaders}).",
+            new Dictionary<string, object?>
+            {
+                ["maxDoubleHeaders"] = maxDoubleHeaders,
+                ["minDoubleHeaders"] = minDoubleHeaders,
+                ["gap"] = gap,
+                ["allowedGap"] = allowedGap,
+                ["teamCount"] = byTeamDate.Count,
+                ["teamsAtMax"] = maxTeams,
+                ["teamsAtMin"] = minTeams
+            }));
     }
 
     private static void AddMaxGamesPerWeekIssues(IEnumerable<ScheduleAssignment> assignments, int? maxGamesPerWeek, List<ValidationIssue> issues)
@@ -119,6 +162,17 @@ public static class ScheduleValidation
         }
 
         dates[gameDate] = dates.TryGetValue(gameDate, out var count) ? count + 1 : 1;
+    }
+
+    private static Dictionary<string, Dictionary<string, int>> BuildTeamDateCounts(IEnumerable<ScheduleAssignment> assignments)
+    {
+        var byTeamDate = new Dictionary<string, Dictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var a in assignments)
+        {
+            AddTeamDateCount(byTeamDate, a.HomeTeamId, a.GameDate);
+            AddTeamDateCount(byTeamDate, a.AwayTeamId, a.GameDate);
+        }
+        return byTeamDate;
     }
 
     private static void AddTeamWeekCount(Dictionary<string, Dictionary<string, int>> byTeamWeek, string teamId, string gameDate)

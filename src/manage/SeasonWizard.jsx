@@ -16,7 +16,8 @@ const ISSUE_HINTS = {
   "unassigned-matchups": "Not enough availability slots, or constraints are too tight for the slot pool.",
   "unassigned-slots": "More availability than matchups. These can become extra offers or remain unused.",
   "double-header": "Not enough slots to spread games across dates. Add slots or relax no-doubleheaders.",
-  "max-games-per-week": "Max games/week is too low for available slots. Increase the limit or add more slots.",
+  "double-header-balance": "Doubleheaders are not evenly distributed. Shift slot priorities/times to spread same-day load across teams.",
+  "max-games-per-week": "Max games/week is a hard cap. Add slots or widen the season window if assignments are short.",
   "missing-opponent": "A slot is missing an opponent. Check team count or external/guest game settings.",
 };
 
@@ -825,18 +826,37 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     }
   }
 
+  function getIssuePhase(issue) {
+    const value = issue?.phase || issue?.details?.phase || "";
+    const phase = String(value).trim();
+    return phase || "Regular Season";
+  }
+
   function buildIssueHint(issue, summary) {
     if (!issue) return "";
     const base = ISSUE_HINTS[issue.ruleId] || "";
+    const issuePhase = getIssuePhase(issue);
     if (!summary) return base;
     if (issue.ruleId === "unassigned-matchups") {
-      const phase = summary.regularSeason || {};
+      const phase =
+        issuePhase === "Pool Play"
+          ? summary.poolPlay || {}
+          : issuePhase === "Bracket"
+            ? summary.bracket || {}
+            : summary.regularSeason || {};
       if (phase.matchupsTotal > phase.slotsTotal) {
-        return `${base} Regular season has fewer slots (${phase.slotsTotal}) than matchups (${phase.matchupsTotal}).`;
+        return `${base} ${issuePhase} has fewer slots (${phase.slotsTotal}) than matchups (${phase.matchupsTotal}).`;
       }
     }
     if (issue.ruleId === "double-header" && summary.teamCount && summary.teamCount % 2 === 1) {
       return `${base} With an odd team count (${summary.teamCount}), some byes help reduce doubleheaders.`;
+    }
+    if (issue.ruleId === "double-header-balance") {
+      const max = Number(issue?.details?.maxDoubleHeaders ?? issue?.details?.max ?? NaN);
+      const min = Number(issue?.details?.minDoubleHeaders ?? issue?.details?.min ?? NaN);
+      if (Number.isFinite(max) && Number.isFinite(min)) {
+        return `${base} Current spread is max ${max} vs min ${min} doubleheaders.`;
+      }
     }
     return base;
   }
@@ -863,8 +883,14 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     if ((issues || []).some((i) => i.ruleId === "double-header")) {
       notes.push("Doubleheaders indicate tight slot density or too few usable dates.");
     }
+    if ((issues || []).some((i) => i.ruleId === "double-header-balance")) {
+      notes.push("Doubleheaders are allowed, but current assignment is uneven across teams.");
+    }
     if ((issues || []).some((i) => i.ruleId === "max-games-per-week")) {
-      notes.push("Max games/week is restricting assignments; increase it or add slots.");
+      notes.push("Max games/week is a hard limit and is restricting assignments; add slots or widen date range.");
+      if (summary.teamCount % 2 === 1) {
+        notes.push("Odd team count means one team will have a BYE and can have one fewer game in a given week.");
+      }
     }
     if ((issues || []).some((i) => i.ruleId === "missing-opponent")) {
       notes.push("Guest games or external offers may be enabled; missing opponents are expected there.");
@@ -1524,6 +1550,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                     <table className="table">
                       <thead>
                         <tr>
+                          <th>Phase</th>
                           <th>Rule</th>
                           <th>Severity</th>
                           <th>Message</th>
@@ -1532,7 +1559,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                       </thead>
                       <tbody>
                         {preview.issues.map((issue, idx) => (
-                          <tr key={`${issue.ruleId || "issue"}-${idx}`}>
+                          <tr key={`${getIssuePhase(issue)}-${issue.ruleId || "issue"}-${idx}`}>
+                            <td>{getIssuePhase(issue)}</td>
                             <td>{issue.ruleId || ""}</td>
                             <td>{issue.severity || ""}</td>
                             <td>{issue.message || ""}</td>
