@@ -1489,9 +1489,16 @@ Body
   "division": "10U",
   "dateFrom": "2026-03-01",
   "dateTo": "2026-06-30",
-  "fieldKey": "gunston/turf"
+  "fieldKey": "gunston/turf",
+  "practiceLengthMinutes": 90,
+  "gameLengthMinutes": 120
 }
 ```
+
+Notes
+- `practiceLengthMinutes` is optional (default: `90`).
+- `gameLengthMinutes` is optional (default: division/league game length when configured, otherwise `120`).
+- `gameLengthMinutes` is also used for allocations marked `both`.
 
 Response
 ```json
@@ -1500,7 +1507,28 @@ Response
     "slots": [
       { "gameDate": "2026-03-03", "startTime": "17:00", "endTime": "19:00", "fieldKey": "gunston/turf", "division": "10U" }
     ],
-    "conflicts": []
+    "conflicts": [
+      {
+        "gameDate": "2026-03-08",
+        "startTime": "17:00",
+        "endTime": "19:00",
+        "fieldKey": "gunston/turf",
+        "division": "10U",
+        "reason": "overlaps_existing_slot",
+        "overlapCount": 1,
+        "overlaps": [
+          {
+            "source": "existing_slot",
+            "slotId": "abc123",
+            "startTime": "17:30",
+            "endTime": "19:30",
+            "status": "Confirmed",
+            "gameType": "League Game",
+            "division": "10U"
+          }
+        ]
+      }
+    ]
   }
 }
 ```

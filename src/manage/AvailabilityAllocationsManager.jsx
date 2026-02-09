@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { validateIsoDates } from "../lib/date";
 import { getDefaultRangeFallback, getSeasonRange } from "../lib/season";
@@ -103,6 +103,34 @@ function formatApiError(error, fallback) {
   return `${base} (${parts.join(", ")})`;
 }
 
+function parsePositiveMinutes(raw) {
+  const text = String(raw ?? "").trim();
+  if (!/^\d+$/.test(text)) return null;
+  const value = Number(text);
+  if (!Number.isInteger(value) || value <= 0 || value > 600) return null;
+  return value;
+}
+
+function formatConflictReason(reason) {
+  if (reason === "overlaps_existing_slot") return "Overlaps an existing slot";
+  if (reason === "overlaps_generated_slot") return "Overlaps another generated slot";
+  return "Overlap detected";
+}
+
+function formatConflictSource(source) {
+  if (source === "existing_slot") return "Existing slot";
+  if (source === "generated_candidate") return "Generated in this run";
+  return source || "-";
+}
+
+function formatConflictTeams(conflict) {
+  const home = String(conflict?.homeTeamId || "").trim();
+  const away = String(conflict?.awayTeamId || "").trim();
+  if (home || away) return `${home || "TBD"} vs ${away || "TBD"}`;
+  const offering = String(conflict?.offeringTeamId || "").trim();
+  return offering || "-";
+}
+
 export default function AvailabilityAllocationsManager({ leagueId }) {
   const [divisions, setDivisions] = useState([]);
   const [fields, setFields] = useState([]);
@@ -137,9 +165,12 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
   const [genFieldKey, setGenFieldKey] = useState("");
   const [genDateFrom, setGenDateFrom] = useState("");
   const [genDateTo, setGenDateTo] = useState("");
+  const [genPracticeMinutes, setGenPracticeMinutes] = useState("90");
+  const [genGameMinutes, setGenGameMinutes] = useState("120");
   const [genPreview, setGenPreview] = useState(null);
   const [genLoading, setGenLoading] = useState(false);
   const [genStatus, setGenStatus] = useState("");
+  const [selectedConflictKey, setSelectedConflictKey] = useState("");
 
   useEffect(() => {
     if (!leagueId) return;
@@ -497,6 +528,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
     setAllocErr("");
     setAllocOk("");
     setGenStatus("Running preview...");
+    setSelectedConflictKey("");
     const dateError = validateIsoDates([
       { label: "Date from", value: genDateFrom, required: true },
       { label: "Date to", value: genDateTo, required: true },
@@ -505,6 +537,20 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
       setGenLoading(false);
       setGenStatus(dateError);
       return setAllocErr(dateError);
+    }
+    const practiceMinutes = parsePositiveMinutes(genPracticeMinutes);
+    if (!practiceMinutes) {
+      const message = "Practice slot length must be a whole number between 1 and 600.";
+      setGenLoading(false);
+      setGenStatus(message);
+      return setAllocErr(message);
+    }
+    const gameMinutes = parsePositiveMinutes(genGameMinutes);
+    if (!gameMinutes) {
+      const message = "Game/both slot length must be a whole number between 1 and 600.";
+      setGenLoading(false);
+      setGenStatus(message);
+      return setAllocErr(message);
     }
     try {
       const data = await apiFetch("/api/availability/allocations/slots/preview", {
@@ -515,6 +561,8 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
           dateFrom: genDateFrom,
           dateTo: genDateTo,
           fieldKey: genFieldKey || undefined,
+          practiceLengthMinutes: practiceMinutes,
+          gameLengthMinutes: gameMinutes,
         }),
       });
       const slots = Array.isArray(data?.slots) ? data.slots : [];
@@ -526,7 +574,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
       if (slotCount === 0 && conflictCount === 0) {
         setGenStatus("Preview complete: no candidate slots or conflicts were found for this filter.");
       } else {
-        setGenStatus(`Preview complete: ${slotCount} candidate slots, ${conflictCount} conflicts.`);
+        setGenStatus(`Preview complete: ${slotCount} candidate slots, ${conflictCount} conflicts (practice ${practiceMinutes}m, game ${gameMinutes}m).`);
       }
     } catch (e) {
       const message = formatApiError(e, "Failed to preview allocation slots.");
@@ -544,6 +592,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
     setAllocErr("");
     setAllocOk("");
     setGenStatus("Generating slots...");
+    setSelectedConflictKey("");
     const dateError = validateIsoDates([
       { label: "Date from", value: genDateFrom, required: true },
       { label: "Date to", value: genDateTo, required: true },
@@ -552,6 +601,20 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
       setGenLoading(false);
       setGenStatus(dateError);
       return setAllocErr(dateError);
+    }
+    const practiceMinutes = parsePositiveMinutes(genPracticeMinutes);
+    if (!practiceMinutes) {
+      const message = "Practice slot length must be a whole number between 1 and 600.";
+      setGenLoading(false);
+      setGenStatus(message);
+      return setAllocErr(message);
+    }
+    const gameMinutes = parsePositiveMinutes(genGameMinutes);
+    if (!gameMinutes) {
+      const message = "Game/both slot length must be a whole number between 1 and 600.";
+      setGenLoading(false);
+      setGenStatus(message);
+      return setAllocErr(message);
     }
     try {
       const data = await apiFetch("/api/availability/allocations/slots/apply", {
@@ -562,6 +625,8 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
           dateFrom: genDateFrom,
           dateTo: genDateTo,
           fieldKey: genFieldKey || undefined,
+          practiceLengthMinutes: practiceMinutes,
+          gameLengthMinutes: gameMinutes,
         }),
       });
       const created = Array.isArray(data?.created) ? data.created : [];
@@ -584,7 +649,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
       if (createdCount === 0 && conflictCount === 0 && failedCount === 0) {
         setGenStatus("Generate complete: created 0 slots, and no conflicts or write failures were found for this filter.");
       } else {
-        setGenStatus(`Generate complete: created ${createdCount} slots, conflicts ${conflictCount}, failed writes ${failedCount}.`);
+        setGenStatus(`Generate complete: created ${createdCount} slots, conflicts ${conflictCount}, failed writes ${failedCount} (practice ${practiceMinutes}m, game ${gameMinutes}m).`);
       }
       setToast({
         tone: createdCount > 0 ? "success" : conflictCount > 0 || failedCount > 0 ? "warning" : "info",
@@ -1015,6 +1080,24 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
             Date to
             <input value={genDateTo} onChange={(e) => setGenDateTo(e.target.value)} placeholder="YYYY-MM-DD" />
           </label>
+          <label>
+            Practice slot length (minutes)
+            <input
+              value={genPracticeMinutes}
+              onChange={(e) => setGenPracticeMinutes(e.target.value)}
+              inputMode="numeric"
+              placeholder="90"
+            />
+          </label>
+          <label>
+            Game/both slot length (minutes)
+            <input
+              value={genGameMinutes}
+              onChange={(e) => setGenGameMinutes(e.target.value)}
+              inputMode="numeric"
+              placeholder="120"
+            />
+          </label>
         </div>
         <div className="card__body row gap-2">
           <button className="btn" onClick={previewAllocations} disabled={genLoading || !genDivision}>
@@ -1053,17 +1136,79 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
                       <th>Time</th>
                       <th>Field</th>
                       <th>Division</th>
+                      <th>Reason</th>
+                      <th>Details</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {genPreview.conflicts.slice(0, 20).map((c, idx) => (
-                      <tr key={`${c.gameDate}-${c.startTime}-${idx}`}>
-                        <td>{c.gameDate}</td>
-                        <td>{c.startTime}-{c.endTime}</td>
-                        <td>{fieldLabelMap.get(c.fieldKey) || c.fieldKey}</td>
-                        <td>{c.division}</td>
-                      </tr>
-                    ))}
+                    {genPreview.conflicts.slice(0, 20).map((c, idx) => {
+                      const key = `${c.gameDate}-${c.startTime}-${c.endTime}-${c.fieldKey}-${idx}`;
+                      const isOpen = selectedConflictKey === key;
+                      const overlaps = Array.isArray(c?.overlaps) ? c.overlaps : [];
+                      const overlapCount = Number.isFinite(Number(c?.overlapCount)) ? Number(c.overlapCount) : overlaps.length;
+                      return (
+                        <Fragment key={key}>
+                          <tr>
+                            <td>{c.gameDate}</td>
+                            <td>{c.startTime}-{c.endTime}</td>
+                            <td>{fieldLabelMap.get(c.fieldKey) || c.fieldKey}</td>
+                            <td>{c.division}</td>
+                            <td>{formatConflictReason(c.reason)}</td>
+                            <td>
+                              <button
+                                type="button"
+                                className="btn"
+                                onClick={() => setSelectedConflictKey((prev) => (prev === key ? "" : key))}
+                              >
+                                {isOpen ? "Hide" : "View"}
+                              </button>
+                            </td>
+                          </tr>
+                          {isOpen ? (
+                            <tr>
+                              <td colSpan={6}>
+                                <div className="subtle">
+                                  Overlaps found: {overlapCount}
+                                  {c.slotType ? ` | Requested slot type: ${c.slotType}` : ""}
+                                  {c.priorityRank ? ` | Priority: ${c.priorityRank}` : ""}
+                                </div>
+                                {overlaps.length ? (
+                                  <div className="tableWrap mt-2">
+                                    <table className="table">
+                                      <thead>
+                                        <tr>
+                                          <th>Source</th>
+                                          <th>Time</th>
+                                          <th>Type</th>
+                                          <th>Status</th>
+                                          <th>Teams</th>
+                                          <th>Slot Id</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {overlaps.slice(0, 10).map((o, overlapIndex) => (
+                                          <tr key={`${key}-overlap-${overlapIndex}`}>
+                                            <td>{formatConflictSource(o.source)}</td>
+                                            <td>{o.startTime}-{o.endTime}</td>
+                                            <td>{o.gameType || (o.isAvailability ? "Availability" : "-")}</td>
+                                            <td>{o.status || "-"}</td>
+                                            <td>{formatConflictTeams(o)}</td>
+                                            <td>{o.slotId || "-"}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                    {overlapCount > 10 ? <div className="subtle">Showing first 10 overlaps.</div> : null}
+                                  </div>
+                                ) : (
+                                  <div className="subtle mt-2">No overlap details were returned.</div>
+                                )}
+                              </td>
+                            </tr>
+                          ) : null}
+                        </Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
                 {(genPreview.conflictCount ?? genPreview.conflicts.length) > 20 ? (

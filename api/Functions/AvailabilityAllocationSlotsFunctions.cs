@@ -25,7 +25,9 @@ public class AvailabilityAllocationSlotsFunctions
         string? division,
         string? dateFrom,
         string? dateTo,
-        string? fieldKey
+        string? fieldKey,
+        int? practiceLengthMinutes,
+        int? gameLengthMinutes
     );
 
     public record SlotCandidate(
@@ -38,7 +40,38 @@ public class AvailabilityAllocationSlotsFunctions
         int? priorityRank
     );
 
-    public record GenerateSlotsPreview(List<SlotCandidate> slots, List<SlotCandidate> conflicts);
+    public record ConflictTarget(
+        string source,
+        string? slotId,
+        string startTime,
+        string endTime,
+        string status,
+        string gameType,
+        bool isAvailability,
+        string division,
+        string displayName,
+        string offeringTeamId,
+        string homeTeamId,
+        string awayTeamId,
+        string notes,
+        string slotType,
+        int? priorityRank
+    );
+
+    public record ConflictSample(
+        string gameDate,
+        string startTime,
+        string endTime,
+        string fieldKey,
+        string division,
+        string slotType,
+        int? priorityRank,
+        string reason,
+        int overlapCount,
+        List<ConflictTarget> overlaps
+    );
+
+    public record GenerateSlotsPreview(List<SlotCandidate> slots, List<ConflictSample> conflicts);
 
     [Function("PreviewAllocationSlots")]
     public async Task<HttpResponseData> Preview(
@@ -73,6 +106,8 @@ public class AvailabilityAllocationSlotsFunctions
             var dateFrom = (body.dateFrom ?? "").Trim();
             var dateTo = (body.dateTo ?? "").Trim();
             var fieldKeyFilter = (body.fieldKey ?? "").Trim();
+            var requestedPracticeLengthMinutes = body.practiceLengthMinutes;
+            var requestedGameLengthMinutes = body.gameLengthMinutes;
 
             if (string.IsNullOrWhiteSpace(division))
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "division is required");
@@ -95,22 +130,29 @@ public class AvailabilityAllocationSlotsFunctions
             stage = "load_allocations";
             var allocations = await LoadAllocationsAsync(leagueId, division, fieldKeyFilter);
             if (allocations.Count == 0)
-                return ApiResponses.Ok(req, new GenerateSlotsPreview(new List<SlotCandidate>(), new List<SlotCandidate>()));
+                return ApiResponses.Ok(req, new GenerateSlotsPreview(new List<SlotCandidate>(), new List<ConflictSample>()));
 
             stage = "load_season_context";
             var leagueContext = await GetSeasonContextAsync(leagueId, division);
-            if (leagueContext.gameLengthMinutes <= 0)
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Season game length must be set for the league or division.");
+            var practiceLengthMinutes = requestedPracticeLengthMinutes ?? 90;
+            var gameLengthMinutes = requestedGameLengthMinutes ?? (leagueContext.gameLengthMinutes > 0 ? leagueContext.gameLengthMinutes : 120);
+            if (practiceLengthMinutes <= 0 || practiceLengthMinutes > 600)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "practiceLengthMinutes must be between 1 and 600.");
+            if (gameLengthMinutes <= 0 || gameLengthMinutes > 600)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "gameLengthMinutes must be between 1 and 600.");
 
             stage = "load_existing_ranges";
-            var existingRanges = await LoadExistingSlotRangesAsync(leagueId, from, to);
+            var existingRangeData = await LoadExistingSlotRangesAsync(leagueId, from, to);
+            var existingRanges = existingRangeData.ranges;
+            var existingRangeDetails = existingRangeData.details;
 
             const int MaxResponseItems = 200;
             var slotSamples = new List<SlotCandidate>();
-            var conflictSamples = new List<SlotCandidate>();
+            var conflictSamples = new List<ConflictSample>();
             var failed = new List<object>();
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var newRanges = new Dictionary<string, List<(int startMin, int endMin)>>(StringComparer.OrdinalIgnoreCase);
+            var newRangeDetails = new Dictionary<string, List<RangeDetail>>(StringComparer.OrdinalIgnoreCase);
             var slotCount = 0;
             var conflictCount = 0;
             var failedCount = 0;
@@ -134,6 +176,8 @@ public class AvailabilityAllocationSlotsFunctions
                 var startMin = SlotOverlap.ParseMinutes(alloc.startTimeLocal);
                 var endMin = SlotOverlap.ParseMinutes(alloc.endTimeLocal);
                 if (startMin < 0 || endMin <= startMin) continue;
+                var slotLengthMinutes = ResolveSlotLengthMinutes(alloc.slotType, practiceLengthMinutes, gameLengthMinutes);
+                if (slotLengthMinutes <= 0) continue;
                 var windowStart = allocStart > from ? allocStart : from;
                 var windowEnd = allocEnd < to ? allocEnd : to;
 
@@ -144,9 +188,9 @@ public class AvailabilityAllocationSlotsFunctions
                     if (IsBlackout(date, fieldMeta.blackouts)) continue;
 
                     var start = startMin;
-                    while (start + leagueContext.gameLengthMinutes <= endMin)
+                    while (start + slotLengthMinutes <= endMin)
                     {
-                        var end = start + leagueContext.gameLengthMinutes;
+                        var end = start + slotLengthMinutes;
                         var candidate = new SlotCandidate(
                             date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                             FormatTime(start),
@@ -168,12 +212,16 @@ public class AvailabilityAllocationSlotsFunctions
                         {
                             conflictCount++;
                             if (conflictSamples.Count < MaxResponseItems)
-                                conflictSamples.Add(candidate);
+                            {
+                                var overlaps = FindOverlapTargets(existingRangeDetails, newRangeDetails, key, start, end);
+                                conflictSamples.Add(BuildConflictSample(candidate, overlaps));
+                            }
                             start = end;
                             continue;
                         }
 
                         SlotOverlap.AddRange(newRanges, key, start, end);
+                        AddRangeDetail(newRangeDetails, key, start, end, BuildGeneratedTarget(candidate));
 
                         if (!apply)
                         {
@@ -230,7 +278,9 @@ public class AvailabilityAllocationSlotsFunctions
                     slots = slotSamples,
                     conflicts = conflictSamples,
                     slotCount,
-                    conflictCount
+                    conflictCount,
+                    practiceLengthMinutes,
+                    gameLengthMinutes
                 });
             }
 
@@ -250,7 +300,9 @@ public class AvailabilityAllocationSlotsFunctions
                 createdCount = slotCount,
                 conflictCount,
                 failedCount,
-                skipped = conflictCount + failedCount
+                skipped = conflictCount + failedCount,
+                practiceLengthMinutes,
+                gameLengthMinutes
             });
         }
         catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
@@ -283,6 +335,8 @@ public class AvailabilityAllocationSlotsFunctions
         int? priorityRank,
         bool isActive
     );
+
+    private record RangeDetail(int startMin, int endMin, ConflictTarget target);
 
     private async Task<Dictionary<string, FieldMeta>> LoadFieldMapAsync(TableClient fieldsTable, string leagueId)
     {
@@ -341,7 +395,7 @@ public class AvailabilityAllocationSlotsFunctions
         return list;
     }
 
-    private async Task<Dictionary<string, List<(int startMin, int endMin)>>> LoadExistingSlotRangesAsync(
+    private async Task<(Dictionary<string, List<(int startMin, int endMin)>> ranges, Dictionary<string, List<RangeDetail>> details)> LoadExistingSlotRangesAsync(
         string leagueId,
         DateOnly from,
         DateOnly to)
@@ -353,6 +407,7 @@ public class AvailabilityAllocationSlotsFunctions
                      $"and GameDate ge '{from:yyyy-MM-dd}' and GameDate le '{to:yyyy-MM-dd}'";
 
         var existing = new Dictionary<string, List<(int startMin, int endMin)>>(StringComparer.OrdinalIgnoreCase);
+        var details = new Dictionary<string, List<RangeDetail>>(StringComparer.OrdinalIgnoreCase);
         await foreach (var e in table.QueryAsync<TableEntity>(filter: filter))
         {
             var status = (e.GetString("Status") ?? Constants.Status.SlotOpen).Trim();
@@ -371,9 +426,10 @@ public class AvailabilityAllocationSlotsFunctions
 
             var key = SlotOverlap.BuildRangeKey(fieldKey, gameDate);
             SlotOverlap.AddRange(existing, key, startMin, endMin);
+            AddRangeDetail(details, key, startMin, endMin, BuildExistingTarget(e, leagueId, startTime, endTime, status));
         }
 
-        return existing;
+        return (existing, details);
     }
 
     private async Task<(int gameLengthMinutes, List<(DateOnly start, DateOnly end)> blackouts)> GetSeasonContextAsync(string leagueId, string division)
@@ -470,17 +526,107 @@ public class AvailabilityAllocationSlotsFunctions
     private static string TimeKey(SlotCandidate s)
         => $"{s.gameDate}|{s.startTime}|{s.endTime}|{s.fieldKey}";
 
-    private static List<SlotCandidate> DeduplicateCandidates(IEnumerable<SlotCandidate> candidates)
+    private static int ResolveSlotLengthMinutes(string slotType, int practiceLengthMinutes, int gameLengthMinutes)
     {
-        var list = new List<SlotCandidate>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var candidate in candidates)
+        var normalized = NormalizeSlotType(slotType);
+        return normalized == "practice" ? practiceLengthMinutes : gameLengthMinutes;
+    }
+
+    private static void AddRangeDetail(Dictionary<string, List<RangeDetail>> details, string key, int startMin, int endMin, ConflictTarget target)
+    {
+        if (!details.TryGetValue(key, out var list))
         {
-            var key = TimeKey(candidate);
-            if (seen.Add(key))
-                list.Add(candidate);
+            list = new List<RangeDetail>();
+            details[key] = list;
         }
-        return list;
+        list.Add(new RangeDetail(startMin, endMin, target));
+    }
+
+    private static List<ConflictTarget> FindOverlapTargets(
+        Dictionary<string, List<RangeDetail>> existing,
+        Dictionary<string, List<RangeDetail>> generated,
+        string key,
+        int startMin,
+        int endMin)
+    {
+        var overlaps = new List<ConflictTarget>();
+        if (existing.TryGetValue(key, out var existingList))
+        {
+            overlaps.AddRange(existingList
+                .Where(r => r.startMin < endMin && startMin < r.endMin)
+                .Select(r => r.target));
+        }
+        if (generated.TryGetValue(key, out var generatedList))
+        {
+            overlaps.AddRange(generatedList
+                .Where(r => r.startMin < endMin && startMin < r.endMin)
+                .Select(r => r.target));
+        }
+
+        return overlaps
+            .GroupBy(o => $"{o.source}|{o.slotId}|{o.startTime}|{o.endTime}|{o.division}", StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
+            .ToList();
+    }
+
+    private static ConflictSample BuildConflictSample(SlotCandidate candidate, List<ConflictTarget> overlaps)
+    {
+        var reason = overlaps.Any(o => o.source == "existing_slot")
+            ? "overlaps_existing_slot"
+            : overlaps.Any(o => o.source == "generated_candidate")
+                ? "overlaps_generated_slot"
+                : "overlap";
+        return new ConflictSample(
+            candidate.gameDate,
+            candidate.startTime,
+            candidate.endTime,
+            candidate.fieldKey,
+            candidate.division,
+            candidate.slotType,
+            candidate.priorityRank,
+            reason,
+            overlaps.Count,
+            overlaps.Take(5).ToList());
+    }
+
+    private static ConflictTarget BuildGeneratedTarget(SlotCandidate slot)
+    {
+        return new ConflictTarget(
+            source: "generated_candidate",
+            slotId: null,
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+            status: "PendingCreate",
+            gameType: "Availability",
+            isAvailability: true,
+            division: slot.division,
+            displayName: "",
+            offeringTeamId: "",
+            homeTeamId: "",
+            awayTeamId: "",
+            notes: "Generated from allocation in this run.",
+            slotType: slot.slotType,
+            priorityRank: slot.priorityRank);
+    }
+
+    private static ConflictTarget BuildExistingTarget(TableEntity entity, string leagueId, string startTime, string endTime, string status)
+    {
+        return new ConflictTarget(
+            source: "existing_slot",
+            slotId: (entity.GetString("SlotId") ?? entity.RowKey).Trim(),
+            startTime: startTime,
+            endTime: endTime,
+            status: status,
+            gameType: (entity.GetString("GameType") ?? "").Trim(),
+            isAvailability: ReadBool(entity, "IsAvailability", false),
+            division: ExtractDivision(entity.PartitionKey, leagueId),
+            displayName: (entity.GetString("DisplayName") ?? "").Trim(),
+            offeringTeamId: (entity.GetString("OfferingTeamId") ?? "").Trim(),
+            homeTeamId: (entity.GetString("HomeTeamId") ?? "").Trim(),
+            awayTeamId: (entity.GetString("AwayTeamId") ?? "").Trim(),
+            notes: (entity.GetString("Notes") ?? "").Trim(),
+            slotType: NormalizeSlotType(ReadString(entity, "AllocationSlotType")),
+            priorityRank: ParsePriorityRank(ReadObject(entity, "AllocationPriorityRank")));
     }
 
     private static TableEntity BuildSlotEntity(string leagueId, SlotCandidate slot, FieldMeta fieldMeta)
