@@ -472,6 +472,9 @@ public class ScheduleWizardFunctions
         var homeCounts = teams
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
+        var externalCounts = teams
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
         var weekCounts = BuildTeamWeekCounts(existingAssignments);
 
         foreach (var existing in existingAssignments)
@@ -479,6 +482,10 @@ public class ScheduleWizardFunctions
             IncrementTeamCount(totalCounts, existing.HomeTeamId);
             IncrementTeamCount(totalCounts, existing.AwayTeamId);
             IncrementTeamCount(homeCounts, existing.HomeTeamId);
+            if (existing.IsExternalOffer)
+            {
+                IncrementTeamCount(externalCounts, existing.HomeTeamId);
+            }
         }
 
         var anchoredAssignments = new List<ScheduleAssignment>();
@@ -489,7 +496,7 @@ public class ScheduleWizardFunctions
             .ThenBy(s => s.fieldKey))
         {
             var weekKey = WeekKey(slot.gameDate);
-            var home = PickExternalHomeTeam(teams, totalCounts, homeCounts, weekCounts, weekKey, maxGamesPerWeek);
+            var home = PickExternalHomeTeam(teams, totalCounts, homeCounts, externalCounts, weekCounts, weekKey, maxGamesPerWeek);
             if (string.IsNullOrWhiteSpace(home))
             {
                 anchoredUnassigned.Add(new ScheduleAssignment(slot.slotId, slot.gameDate, slot.startTime, slot.endTime, slot.fieldKey, "", "", false));
@@ -498,6 +505,7 @@ public class ScheduleWizardFunctions
 
             IncrementTeamCount(totalCounts, home);
             IncrementTeamCount(homeCounts, home);
+            IncrementTeamCount(externalCounts, home);
             IncrementTeamWeekCount(weekCounts, home, weekKey);
             anchoredAssignments.Add(new ScheduleAssignment(
                 SlotId: slot.slotId,
@@ -562,6 +570,9 @@ public class ScheduleWizardFunctions
         var homeCounts = teams
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
+        var externalCounts = teams
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
         var weekCounts = BuildTeamWeekCounts(assignments);
 
         foreach (var existing in assignments)
@@ -569,6 +580,10 @@ public class ScheduleWizardFunctions
             IncrementTeamCount(totalCounts, existing.HomeTeamId);
             IncrementTeamCount(totalCounts, existing.AwayTeamId);
             IncrementTeamCount(homeCounts, existing.HomeTeamId);
+            if (existing.IsExternalOffer)
+            {
+                IncrementTeamCount(externalCounts, existing.HomeTeamId);
+            }
         }
 
         var byWeek = unassignedSlots
@@ -606,7 +621,7 @@ public class ScheduleWizardFunctions
                     continue;
                 }
 
-                var home = PickExternalHomeTeam(teams, totalCounts, homeCounts, weekCounts, weekGroup.Key, maxGamesPerWeek);
+                var home = PickExternalHomeTeam(teams, totalCounts, homeCounts, externalCounts, weekCounts, weekGroup.Key, maxGamesPerWeek);
                 if (string.IsNullOrWhiteSpace(home))
                 {
                     remainingSlots.Add(slot);
@@ -615,6 +630,7 @@ public class ScheduleWizardFunctions
 
                 IncrementTeamCount(totalCounts, home);
                 IncrementTeamCount(homeCounts, home);
+                IncrementTeamCount(externalCounts, home);
                 IncrementTeamWeekCount(weekCounts, home, weekGroup.Key);
                 nextAssignments.Add(slot with
                 {
@@ -688,6 +704,7 @@ public class ScheduleWizardFunctions
         IReadOnlyList<string> teams,
         Dictionary<string, int> totalCounts,
         Dictionary<string, int> homeCounts,
+        Dictionary<string, int> externalCounts,
         Dictionary<string, int> weekCounts,
         string weekKey,
         int? maxGamesPerWeek)
@@ -695,7 +712,8 @@ public class ScheduleWizardFunctions
         return teams
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Where(t => CanAssignExternalInWeek(t, weekCounts, weekKey, maxGamesPerWeek))
-            .OrderBy(t => totalCounts.TryGetValue(t, out var total) ? total : int.MaxValue)
+            .OrderBy(t => externalCounts.TryGetValue(t, out var external) ? external : int.MaxValue)
+            .ThenBy(t => totalCounts.TryGetValue(t, out var total) ? total : int.MaxValue)
             .ThenBy(t => homeCounts.TryGetValue(t, out var home) ? home : int.MaxValue)
             .ThenBy(t => t, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault() ?? "";

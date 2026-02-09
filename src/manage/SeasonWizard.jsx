@@ -832,6 +832,17 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     return phase || "Regular Season";
   }
 
+  function buildGuestRotationDetail(guestCounts, totalGuestAssignments) {
+    const ordered = [...guestCounts.entries()]
+      .sort((a, b) => {
+        const diff = (b[1] || 0) - (a[1] || 0);
+        if (diff !== 0) return diff;
+        return String(a[0] || "").localeCompare(String(b[0] || ""));
+      })
+      .map(([teamId, count]) => `${teamId}:${count}`);
+    return `Guest assignments ${totalGuestAssignments}. Distribution: ${ordered.join(", ")}`;
+  }
+
   function buildIssueHint(issue, summary) {
     if (!issue) return "";
     const base = ISSUE_HINTS[issue.ruleId] || "";
@@ -960,6 +971,137 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     if ((preview.totalIssues || 0) > 0) return `${preview.totalIssues} validation issue(s) in preview.`;
     return "";
   }, [preview]);
+
+  const planningChecksReport = useMemo(() => {
+    if (!preview) return [];
+
+    const checks = [];
+    const issues = Array.isArray(preview.issues) ? preview.issues : [];
+    const regularIssues = issues.filter((issue) => getIssuePhase(issue) === "Regular Season");
+
+    const maxGamesLimit = Number(maxGamesPerWeek) || 0;
+    if (maxGamesLimit > 0) {
+      const hardCapCount = regularIssues.filter((issue) => issue?.ruleId === "max-games-per-week").length;
+      checks.push({
+        check: "Max games/week hard cap",
+        scope: "Regular Season",
+        result: hardCapCount > 0 ? "WARN" : "PASS",
+        details:
+          hardCapCount > 0
+            ? `${hardCapCount} violation(s) found. Cap is ${maxGamesLimit}.`
+            : `No team exceeds ${maxGamesLimit} games per week.`,
+      });
+    } else {
+      checks.push({
+        check: "Max games/week hard cap",
+        scope: "Regular Season",
+        result: "INFO",
+        details: "Cap disabled (0). No hard weekly cap enforcement applied.",
+      });
+    }
+
+    if (noDoubleHeaders) {
+      checks.push({
+        check: "Doubleheader fairness",
+        scope: "Regular Season",
+        result: "INFO",
+        details: "No-doubleheaders is ON, so fairness balancing for doubleheaders is not needed.",
+      });
+    } else {
+      const balanceIssue = regularIssues.find((issue) => issue?.ruleId === "double-header-balance");
+      if (balanceIssue) {
+        const max = Number(balanceIssue?.details?.maxDoubleHeaders ?? 0);
+        const min = Number(balanceIssue?.details?.minDoubleHeaders ?? 0);
+        checks.push({
+          check: "Doubleheader fairness",
+          scope: "Regular Season",
+          result: "WARN",
+          details: `Uneven distribution detected (max ${max}, min ${min}).`,
+        });
+      } else {
+        checks.push({
+          check: "Doubleheader fairness",
+          scope: "Regular Season",
+          result: "PASS",
+          details: "Doubleheaders are evenly distributed within allowed tolerance.",
+        });
+      }
+    }
+
+    const guestWeeklyTarget = Number(guestGamesPerWeek) || 0;
+    if (guestWeeklyTarget <= 0) {
+      checks.push({
+        check: "Guest-game rotation",
+        scope: "Regular Season",
+        result: "INFO",
+        details: "Guest games are disabled.",
+      });
+    } else {
+      const assignments = Array.isArray(preview.assignments) ? preview.assignments : [];
+      const regularAssignments = assignments.filter((a) => a?.phase === "Regular Season");
+      const guestAssignments = regularAssignments.filter((a) => a?.isExternalOffer && a?.homeTeamId);
+      const unassignedMatchups = Array.isArray(preview.unassignedMatchups) ? preview.unassignedMatchups : [];
+
+      const teamIds = new Set();
+      regularAssignments.forEach((a) => {
+        if (a?.homeTeamId) teamIds.add(a.homeTeamId);
+        if (a?.awayTeamId) teamIds.add(a.awayTeamId);
+      });
+      unassignedMatchups
+        .filter((m) => m?.phase === "Regular Season")
+        .forEach((m) => {
+          if (m?.homeTeamId) teamIds.add(m.homeTeamId);
+          if (m?.awayTeamId) teamIds.add(m.awayTeamId);
+        });
+      guestAssignments.forEach((a) => {
+        if (a?.homeTeamId) teamIds.add(a.homeTeamId);
+      });
+
+      if (!teamIds.size) {
+        checks.push({
+          check: "Guest-game rotation",
+          scope: "Regular Season",
+          result: "INFO",
+          details: "Could not derive team list for rotation check.",
+        });
+      } else if (!guestAssignments.length) {
+        checks.push({
+          check: "Guest-game rotation",
+          scope: "Regular Season",
+          result: "WARN",
+          details: "No guest assignments were produced.",
+        });
+      } else {
+        const guestCounts = new Map();
+        [...teamIds].forEach((teamId) => guestCounts.set(teamId, 0));
+        guestAssignments.forEach((a) => {
+          const teamId = a.homeTeamId;
+          guestCounts.set(teamId, (guestCounts.get(teamId) || 0) + 1);
+        });
+        const counts = [...guestCounts.values()];
+        const max = Math.max(...counts);
+        const min = Math.min(...counts);
+        const gap = max - min;
+        const expectedMin = Math.floor(guestAssignments.length / guestCounts.size);
+        const expectedMax = Math.ceil(guestAssignments.length / guestCounts.size);
+        const allowedGap = expectedMax - expectedMin;
+        const pass = gap <= allowedGap;
+
+        checks.push({
+          check: "Guest-game rotation",
+          scope: "Regular Season",
+          result: pass ? "PASS" : "WARN",
+          details: `${buildGuestRotationDetail(guestCounts, guestAssignments.length)} ${
+            pass
+              ? `(gap ${gap}, expected <= ${allowedGap}).`
+              : `(gap ${gap} exceeds expected <= ${allowedGap}).`
+          }`,
+        });
+      }
+    }
+
+    return checks;
+  }, [preview, maxGamesPerWeek, noDoubleHeaders, guestGamesPerWeek]);
 
   const stepStatuses = useMemo(() => {
     const errors = [basicsError, postseasonError, slotPlanError, rulesError, previewError];
@@ -1541,6 +1683,33 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                   {preview.warnings.map((w, idx) => (
                     <div key={idx} className="subtle">{w.message}</div>
                   ))}
+                </div>
+              ) : null}
+              {planningChecksReport.length ? (
+                <div className="callout">
+                  <div className="font-bold mb-2">Planning checks report</div>
+                  <div className="tableWrap">
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>Check</th>
+                          <th>Scope</th>
+                          <th>Result</th>
+                          <th>Details</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {planningChecksReport.map((row, idx) => (
+                          <tr key={`${row.check}-${idx}`}>
+                            <td>{row.check}</td>
+                            <td>{row.scope}</td>
+                            <td>{row.result}</td>
+                            <td>{row.details}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               ) : null}
               {preview.issues?.length ? (
