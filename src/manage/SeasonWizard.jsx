@@ -1110,6 +1110,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                 </select>
               </label>
             </div>
+            <div className="subtle">
+              Guest anchors now reserve matching weekly slots first for external/guest games (when matches exist), so regular matchups are scheduled around them.
+            </div>
 
             {availabilityLoading ? <div className="muted">Loading availability slots...</div> : null}
             {!availabilityLoading && !slotPlan.length ? (
