@@ -106,6 +106,23 @@ function buildHeaderIndex(header) {
   return index;
 }
 
+function extractSlotItems(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== "object") return [];
+  if (Array.isArray(payload.items)) return payload.items;
+  if (payload.data && typeof payload.data === "object" && Array.isArray(payload.data.items)) {
+    return payload.data.items;
+  }
+  if (Array.isArray(payload.data)) return payload.data;
+  return [];
+}
+
+function extractContinuationToken(payload) {
+  if (!payload || typeof payload !== "object") return "";
+  const token = payload.continuationToken || payload.nextContinuationToken || payload.nextToken || "";
+  return String(token || "").trim();
+}
+
 const DEFAULT_DAYS = {
   Mon: false,
   Tue: false,
@@ -230,12 +247,26 @@ export default function SlotGeneratorManager({ leagueId }) {
       return setAvailListErr(dateError);
     }
     try {
-      const qs = new URLSearchParams();
-      if (availDivision) qs.set("division", availDivision);
-      if (availDateFrom) qs.set("dateFrom", availDateFrom);
-      if (availDateTo) qs.set("dateTo", availDateTo);
-      const data = await apiFetch(`/api/slots?${qs.toString()}`);
-      const list = Array.isArray(data) ? data : [];
+      const list = [];
+      let continuationToken = "";
+      for (let page = 0; page < 50; page += 1) {
+        const qs = new URLSearchParams();
+        if (availDivision) qs.set("division", availDivision);
+        if (availDateFrom) qs.set("dateFrom", availDateFrom);
+        if (availDateTo) qs.set("dateTo", availDateTo);
+        qs.set("pageSize", "200");
+        if (continuationToken) qs.set("continuationToken", continuationToken);
+
+        const data = await apiFetch(`/api/slots?${qs.toString()}`);
+        const pageItems = extractSlotItems(data);
+        if (pageItems.length === 0) break;
+        list.push(...pageItems);
+
+        const nextToken = extractContinuationToken(data);
+        if (!nextToken) break;
+        continuationToken = nextToken;
+      }
+
       const filtered = list.filter((s) => s.isAvailability && (!availFieldKey || s.fieldKey === availFieldKey));
       setAvailSlots(filtered);
       setAvailListMsg(filtered.length === 0
