@@ -163,7 +163,7 @@ public class ScheduleWizardFunctions
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Bracket must start on or after the season start.");
 
             var minGamesPerTeam = Math.Max(0, body.minGamesPerTeam ?? 0);
-            var poolGamesPerTeam = Math.Max(0, body.poolGamesPerTeam ?? 1);
+            var poolGamesPerTeam = Math.Max(2, body.poolGamesPerTeam ?? 2);
             var externalOfferPerWeek = Math.Max(0, body.externalOfferPerWeek ?? 0);
             var maxGamesPerWeek = (body.maxGamesPerWeek ?? 0) <= 0 ? (int?)null : body.maxGamesPerWeek;
             var noDoubleHeaders = body.noDoubleHeaders ?? true;

@@ -57,6 +57,28 @@ function maxIsoDate(a, b) {
   return left || right || "";
 }
 
+function isIsoDateInRange(value, from, to) {
+  if (!isIsoDate(value) || !isIsoDate(from) || !isIsoDate(to)) return false;
+  return value >= from && value <= to;
+}
+
+function addIsoDays(value, days) {
+  if (!isIsoDate(value)) return "";
+  const [y, m, d] = value.split("-").map((part) => Number(part));
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (Number.isNaN(dt.getTime())) return "";
+  dt.setUTCDate(dt.getUTCDate() + Number(days || 0));
+  const yy = dt.getUTCFullYear();
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getUTCDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+}
+
+function estimateRoundRobinMatchups(teamCount) {
+  if (!Number.isFinite(teamCount) || teamCount < 2) return 0;
+  return Math.floor((teamCount * (teamCount - 1)) / 2);
+}
+
 function buildSpringBreakRange(seasonStart, seasonEnd) {
   if (!isIsoDate(seasonStart) || !isIsoDate(seasonEnd)) return null;
   const from = seasonStart;
@@ -171,7 +193,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [bracketEnd, setBracketEnd] = useState("");
 
   const [minGamesPerTeam, setMinGamesPerTeam] = useState(0);
-  const [poolGamesPerTeam, setPoolGamesPerTeam] = useState(1);
+  const [poolGamesPerTeam, setPoolGamesPerTeam] = useState(2);
   const [preferredWeeknights, setPreferredWeeknights] = useState([]);
   const [strictPreferredWeeknights, setStrictPreferredWeeknights] = useState(false);
   const [guestGamesPerWeek, setGuestGamesPerWeek] = useState(0);
@@ -179,6 +201,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [maxGamesPerWeek, setMaxGamesPerWeek] = useState(2);
   const [noDoubleHeaders, setNoDoubleHeaders] = useState(true);
   const [balanceHomeAway, setBalanceHomeAway] = useState(true);
+  const [teamCount, setTeamCount] = useState(0);
 
   const [step, setStep] = useState(0);
   const [preview, setPreview] = useState(null);
@@ -225,6 +248,11 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const springBreakRange = useMemo(
     () => buildSpringBreakRange(seasonStart, seasonEnd),
     [seasonStart, seasonEnd]
+  );
+
+  const activeBlockedRanges = useMemo(
+    () => (blockSpringBreak && springBreakRange ? [springBreakRange] : []),
+    [blockSpringBreak, springBreakRange]
   );
 
   const slotPlanSummary = useMemo(() => {
@@ -281,6 +309,93 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         return (a.fieldKey || "").localeCompare(b.fieldKey || "");
       });
   }, [slotPlan]);
+
+  const planningIntel = useMemo(() => {
+    const teams = Number.isFinite(teamCount) ? teamCount : 0;
+    const minRegularGames = Math.max(0, Number(minGamesPerTeam) || 0);
+    const poolGamesTarget = Math.max(2, Number(poolGamesPerTeam) || 2);
+
+    const hasSeasonRange = isIsoDate(seasonStart) && isIsoDate(seasonEnd) && seasonStart <= seasonEnd;
+    const hasPoolRange = isIsoDate(poolStart) && isIsoDate(poolEnd) && poolStart <= poolEnd;
+    const hasBracketRange = isIsoDate(bracketStart) && isIsoDate(bracketEnd) && bracketStart <= bracketEnd;
+    const regularRangeEnd = hasPoolRange ? addIsoDays(poolStart, -1) : seasonEnd;
+
+    const isBlocked = (gameDate) =>
+      activeBlockedRanges.some((range) => isIsoDateInRange(gameDate, range.startDate, range.endDate));
+
+    const gameCapableSlots = (slotPlan || [])
+      .filter((slot) => slot?.slotType === "game" || slot?.slotType === "both")
+      .filter((slot) => isIsoDate(slot?.gameDate));
+    const availableSlots = gameCapableSlots.filter((slot) => !isBlocked(slot.gameDate));
+    const blockedOutSlots = Math.max(0, gameCapableSlots.length - availableSlots.length);
+
+    const regularSlotsAvailable = hasSeasonRange
+      ? availableSlots.filter((slot) => isIsoDateInRange(slot.gameDate, seasonStart, regularRangeEnd)).length
+      : 0;
+    const poolSlotsAvailable = hasPoolRange
+      ? availableSlots.filter((slot) => isIsoDateInRange(slot.gameDate, poolStart, poolEnd)).length
+      : 0;
+    const bracketSlotsAvailable = hasBracketRange
+      ? availableSlots.filter((slot) => isIsoDateInRange(slot.gameDate, bracketStart, bracketEnd)).length
+      : 0;
+
+    const preferredSet = new Set(preferredWeeknights);
+    const preferredRegularSlotsAvailable = regularSlotsAvailable
+      ? availableSlots
+          .filter((slot) => isIsoDateInRange(slot.gameDate, seasonStart, regularRangeEnd))
+          .filter((slot) => preferredSet.size === 0 || preferredSet.has(isoDayShort(slot.gameDate)))
+          .length
+      : 0;
+
+    const roundRobinMatchups = estimateRoundRobinMatchups(teams);
+    const gamesPerTeamRound = Math.max(1, teams - 1);
+    const roundRobinRounds = roundRobinMatchups > 0 ? Math.ceil(minRegularGames / gamesPerTeamRound) : 0;
+    const regularRequiredSlots = roundRobinMatchups * roundRobinRounds;
+    const regularRequiredMinimum = teams >= 2 ? Math.ceil((teams * minRegularGames) / 2) : 0;
+    const poolRequiredSlots = hasPoolRange && teams >= 2 ? Math.ceil((teams * poolGamesTarget) / 2) : 0;
+    const bracketRequiredSlots = hasBracketRange ? 3 : 0;
+
+    const totalAvailableSlots = availableSlots.length;
+    const totalRequiredSlots = regularRequiredSlots + poolRequiredSlots + bracketRequiredSlots;
+
+    return {
+      teams,
+      minRegularGames,
+      poolGamesTarget,
+      totalAvailableSlots,
+      blockedOutSlots,
+      regularSlotsAvailable,
+      poolSlotsAvailable,
+      bracketSlotsAvailable,
+      preferredRegularSlotsAvailable,
+      regularRequiredSlots,
+      regularRequiredMinimum,
+      poolRequiredSlots,
+      bracketRequiredSlots,
+      totalRequiredSlots,
+      regularShortfall: Math.max(0, regularRequiredSlots - regularSlotsAvailable),
+      poolShortfall: Math.max(0, poolRequiredSlots - poolSlotsAvailable),
+      bracketShortfall: Math.max(0, bracketRequiredSlots - bracketSlotsAvailable),
+      totalShortfall: Math.max(0, totalRequiredSlots - totalAvailableSlots),
+      strictCapacityShortfall: strictPreferredWeeknights
+        ? Math.max(0, regularRequiredSlots - preferredRegularSlotsAvailable)
+        : 0,
+    };
+  }, [
+    activeBlockedRanges,
+    bracketEnd,
+    bracketStart,
+    minGamesPerTeam,
+    poolEnd,
+    poolGamesPerTeam,
+    poolStart,
+    preferredWeeknights,
+    seasonEnd,
+    seasonStart,
+    slotPlan,
+    strictPreferredWeeknights,
+    teamCount,
+  ]);
 
   const guestAnchorOptions = useMemo(
     () =>
@@ -365,6 +480,24 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     setGuestAnchorPrimarySlotId("");
     setGuestAnchorSecondarySlotId("");
   }, [division]);
+
+  useEffect(() => {
+    if (!leagueId || !division) {
+      setTeamCount(0);
+      return;
+    }
+    (async () => {
+      try {
+        const qs = new URLSearchParams();
+        qs.set("division", division);
+        const data = await apiFetch(`/api/teams?${qs.toString()}`);
+        const list = Array.isArray(data) ? data : [];
+        setTeamCount(list.length);
+      } catch {
+        setTeamCount(0);
+      }
+    })();
+  }, [leagueId, division]);
 
   useEffect(() => {
     if (!leagueId || !division) return;
@@ -505,9 +638,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         endTime: slot.endTime || undefined,
       };
     });
-    const blockedDateRanges = blockSpringBreak && springBreakRange
-      ? [{ ...springBreakRange }]
-      : [];
+    const blockedDateRanges = activeBlockedRanges;
 
     const payload = {
       division,
@@ -518,7 +649,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       bracketStart: bracketStart || undefined,
       bracketEnd: bracketEnd || undefined,
       minGamesPerTeam: Number(minGamesPerTeam) || 0,
-      poolGamesPerTeam: Number(poolGamesPerTeam) || 1,
+      poolGamesPerTeam: Math.max(2, Number(poolGamesPerTeam) || 2),
       preferredWeeknights: preferredWeeknights.slice(0, MAX_PREFERRED_WEEKNIGHTS),
       strictPreferredWeeknights,
       externalOfferPerWeek: Number(guestGamesPerWeek) || 0,
@@ -707,7 +838,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     const guestGames = Number(guestGamesPerWeek);
     if (!Number.isFinite(maxGames) || maxGames < 0) return "Max games/week must be 0 or greater.";
     if (!Number.isFinite(minGames) || minGames < 0) return "Min games/team must be 0 or greater.";
-    if (!Number.isFinite(poolGames) || poolGames < 0) return "Pool games/team must be 0 or greater.";
+    if (!Number.isFinite(poolGames) || poolGames < 2) return "Pool games/team must be 2 or greater.";
     if (!Number.isFinite(guestGames) || guestGames < 0) return "Guest games/week must be 0 or greater.";
     return "";
   }, [maxGamesPerWeek, minGamesPerTeam, poolGamesPerTeam, guestGamesPerWeek]);
@@ -1035,10 +1166,10 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
               />
             </label>
             <label>
-              Pool games per team (pool week)
+              Pool games per team (pool week, min 2)
               <input
                 type="number"
-                min="0"
+                min="2"
                 value={poolGamesPerTeam}
                 onChange={(e) => setPoolGamesPerTeam(e.target.value)}
               />
@@ -1122,6 +1253,64 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                 />
                 Only use preferred nights (ignore other days)
               </label>
+            </div>
+            <div className={`callout ${planningIntel.totalShortfall > 0 ? "callout--error" : "callout--ok"}`}>
+              <div className="font-bold mb-2">Capacity planner</div>
+              <div className="subtle mb-2">
+                Live estimate using current slot plan and team count ({planningIntel.teams}). Pool play assumes at least <b>2 games/team</b>.
+              </div>
+              <div className="tableWrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Phase</th>
+                      <th>Available slots</th>
+                      <th>Target slots</th>
+                      <th>Gap</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>Regular season</td>
+                      <td>{planningIntel.regularSlotsAvailable}</td>
+                      <td>{planningIntel.regularRequiredSlots}</td>
+                      <td>{planningIntel.regularShortfall > 0 ? `-${planningIntel.regularShortfall}` : "OK"}</td>
+                    </tr>
+                    <tr>
+                      <td>Pool play</td>
+                      <td>{planningIntel.poolSlotsAvailable}</td>
+                      <td>{planningIntel.poolRequiredSlots}</td>
+                      <td>{planningIntel.poolShortfall > 0 ? `-${planningIntel.poolShortfall}` : "OK"}</td>
+                    </tr>
+                    <tr>
+                      <td>Bracket</td>
+                      <td>{planningIntel.bracketSlotsAvailable}</td>
+                      <td>{planningIntel.bracketRequiredSlots}</td>
+                      <td>{planningIntel.bracketShortfall > 0 ? `-${planningIntel.bracketShortfall}` : "OK"}</td>
+                    </tr>
+                    <tr>
+                      <td><b>Total</b></td>
+                      <td><b>{planningIntel.totalAvailableSlots}</b></td>
+                      <td><b>{planningIntel.totalRequiredSlots}</b></td>
+                      <td><b>{planningIntel.totalShortfall > 0 ? `-${planningIntel.totalShortfall}` : "OK"}</b></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div className="subtle mt-2">
+                Regular season target uses round-robin cycle planning ({planningIntel.regularRequiredMinimum} is the raw minimum for {planningIntel.minRegularGames} game(s)/team).
+              </div>
+              {planningIntel.blockedOutSlots > 0 ? (
+                <div className="subtle">
+                  {planningIntel.blockedOutSlots} slot(s) excluded by blocked date ranges.
+                </div>
+              ) : null}
+              {strictPreferredWeeknights ? (
+                <div className="subtle">
+                  Preferred-night capacity: {planningIntel.preferredRegularSlotsAvailable} regular-season slot(s) on selected nights.
+                  {planningIntel.strictCapacityShortfall > 0 ? ` Short by ${planningIntel.strictCapacityShortfall}.` : ""}
+                </div>
+              ) : null}
             </div>
             {Number(guestGamesPerWeek) > 0 ? (
               <div className="callout">
