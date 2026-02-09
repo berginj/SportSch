@@ -233,7 +233,7 @@ public class SlotService : ISlotService
         // Apply multi-status filtering and default behavior in memory
         var filteredItems = result.Items.Where(e =>
         {
-            var status = (e.GetString("Status") ?? Constants.Status.SlotOpen).Trim();
+            var status = ReadString(e, "Status", Constants.Status.SlotOpen).Trim();
 
             if (statusList.Count > 1)
             {
@@ -252,9 +252,9 @@ public class SlotService : ISlotService
 
         // Sort by date, time, then field
         var sortedItems = filteredItems
-            .OrderBy(e => e.GetString("GameDate") ?? "")
-            .ThenBy(e => e.GetString("StartTime") ?? "")
-            .ThenBy(e => e.GetString("DisplayName") ?? "")
+            .OrderBy(e => ReadString(e, "GameDate"))
+            .ThenBy(e => ReadString(e, "StartTime"))
+            .ThenBy(e => ReadString(e, "DisplayName"))
             .ToList();
 
         return new
@@ -274,6 +274,13 @@ public class SlotService : ISlotService
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private static string ReadString(TableEntity entity, string key, string defaultValue = "")
+    {
+        if (!entity.TryGetValue(key, out var value) || value is null) return defaultValue;
+        var text = value.ToString();
+        return string.IsNullOrWhiteSpace(text) ? defaultValue : text.Trim();
     }
 
     public async Task CancelSlotAsync(string leagueId, string division, string slotId, string userId)
