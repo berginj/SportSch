@@ -4,6 +4,7 @@ import { validateIsoDates } from "../lib/date";
 import { buildAvailabilityInsights } from "../lib/availabilityInsights";
 import { getDefaultRangeFallback, getSeasonRange } from "../lib/season";
 import Toast from "../components/Toast";
+import CollapsibleSection from "../components/CollapsibleSection";
 
 const EMPTY_SEASON = {
   springStart: "",
@@ -445,12 +446,15 @@ export default function LeagueSettings({ leagueId }) {
       {toast ? <Toast {...toast} onClose={() => setToast(null)} /> : null}
       {err ? <div className="callout callout--error">{err}</div> : null}
 
-      <div className="card">
-        <div className="card__header">
-          <div className="h3">League backup</div>
-          <div className="subtle">Save a snapshot of fields, divisions, and season dates for quick recovery.</div>
-        </div>
-        <div className="card__body stack gap-3">
+      <CollapsibleSection
+        title="League backup"
+        subtitle="Save a snapshot of fields, divisions, and season dates for quick recovery"
+        badge="Rare"
+        badgeColor="gray"
+        defaultExpanded={false}
+        icon="💾"
+      >
+        <div className="stack gap-3">
           <div className="callout callout--warning">
             Backups store a full snapshot in a single row. If your league has a very large number of fields or divisions, the snapshot may exceed storage limits.
           </div>
@@ -500,14 +504,17 @@ export default function LeagueSettings({ leagueId }) {
             </button>
           </div>
         </div>
-      </div>
+      </CollapsibleSection>
 
-      <details className="card">
-        <summary className="card__header cursor-pointer">
-          <div className="h3">Season reset (test cleanup)</div>
-          <div className="subtle">Danger zone: clear fields, games/practices, requests, and availability setup.</div>
-        </summary>
-        <div className="card__body stack gap-3">
+      <CollapsibleSection
+        title="Season reset (test cleanup)"
+        subtitle="Danger zone: clear fields, games/practices, requests, and availability setup"
+        badge="Danger"
+        badgeColor="red"
+        defaultExpanded={false}
+        icon="⚠️"
+      >
+        <div className="stack gap-3">
           <div className="callout callout--warning">
             This permanently deletes field rows, slots, slot requests, events, availability allocations/rules/exceptions, and scheduler runs for the selected league.
           </div>
@@ -554,7 +561,7 @@ export default function LeagueSettings({ leagueId }) {
             </div>
           ) : null}
         </div>
-      </details>
+      </CollapsibleSection>
 
       <div className="card">
         <div className="card__header">
@@ -614,12 +621,15 @@ export default function LeagueSettings({ leagueId }) {
         </div>
       </div>
 
-      <details className="card">
-        <summary className="card__header cursor-pointer">
-          <div className="h3">Division season overrides</div>
-          <div className="subtle">Override season dates, game length, and blackout windows for a division.</div>
-        </summary>
-        <div className="card__body stack gap-3">
+      <CollapsibleSection
+        title="Division season overrides"
+        subtitle="Override season dates, game length, and blackout windows for a division"
+        badge="Occasional"
+        badgeColor="yellow"
+        defaultExpanded={false}
+        icon="🔧"
+      >
+        <div className="stack gap-3">
           <div className="row row--wrap gap-3 items-end">
             <label className="stack gap-1">
               <span className="muted">Division</span>
@@ -689,14 +699,17 @@ export default function LeagueSettings({ leagueId }) {
             </button>
           </div>
         </div>
-      </details>
+      </CollapsibleSection>
 
-      <details className="card">
-        <summary className="card__header cursor-pointer">
-          <div className="h3">Field blackouts</div>
-          <div className="subtle">Block specific fields during school breaks, tournaments, or facility conflicts.</div>
-        </summary>
-        <div className="card__body stack gap-3">
+      <CollapsibleSection
+        title="Field blackouts"
+        subtitle="Block specific fields during school breaks, tournaments, or facility conflicts"
+        badge="Occasional"
+        badgeColor="yellow"
+        defaultExpanded={false}
+        icon="🚫"
+      >
+        <div className="stack gap-3">
           <label className="stack gap-1 max-w-md">
             <span className="muted">Field</span>
             <select value={fieldKey} onChange={(e) => setFieldKey(e.target.value)}>
@@ -714,14 +727,17 @@ export default function LeagueSettings({ leagueId }) {
             </button>
           </div>
         </div>
-      </details>
+      </CollapsibleSection>
 
-      <details className="card">
-        <summary className="card__header cursor-pointer">
-          <div className="h3">Availability insights</div>
-          <div className="subtle">Analyze open availability slots to suggest the best game nights.</div>
-        </summary>
-        <div className="card__body">
+      <CollapsibleSection
+        title="Availability insights"
+        subtitle="Analyze open availability slots to suggest the best game nights"
+        badge="Advanced"
+        badgeColor="purple"
+        defaultExpanded={false}
+        icon="📊"
+      >
+        <div className="stack gap-4">
           {availabilityErr ? <div className="callout callout--error">{availabilityErr}</div> : null}
           <div className="row gap-2">
             <button className="btn" onClick={loadAvailabilityInsights} disabled={availabilityLoading || (!availabilityAllDivisions && !availabilityDivision)}>
@@ -736,34 +752,32 @@ export default function LeagueSettings({ leagueId }) {
               All divisions
             </label>
           </div>
-        </div>
-        <div className="card__body grid2">
-          {!availabilityAllDivisions ? (
+          <div className="grid2">
+            {!availabilityAllDivisions ? (
+              <label>
+                Division
+                <select value={availabilityDivision} onChange={(e) => setAvailabilityDivision(e.target.value)}>
+                  <option value="">Select division</option>
+                  {divisionOptions.map((d) => (
+                    <option key={d.code} value={d.code}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <div />
+            )}
             <label>
-              Division
-              <select value={availabilityDivision} onChange={(e) => setAvailabilityDivision(e.target.value)}>
-                <option value="">Select division</option>
-                {divisionOptions.map((d) => (
-                  <option key={d.code} value={d.code}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
+              Date from
+              <input value={availabilityDateFrom} onChange={(e) => setAvailabilityDateFrom(e.target.value)} placeholder="YYYY-MM-DD" />
             </label>
-          ) : (
-            <div />
-          )}
-          <label>
-            Date from
-            <input value={availabilityDateFrom} onChange={(e) => setAvailabilityDateFrom(e.target.value)} placeholder="YYYY-MM-DD" />
-          </label>
-          <label>
-            Date to
-            <input value={availabilityDateTo} onChange={(e) => setAvailabilityDateTo(e.target.value)} placeholder="YYYY-MM-DD" />
-          </label>
-        </div>
-        {availabilityInsights ? (
-          <div className="card__body">
+            <label>
+              Date to
+              <input value={availabilityDateTo} onChange={(e) => setAvailabilityDateTo(e.target.value)} placeholder="YYYY-MM-DD" />
+            </label>
+          </div>
+          {availabilityInsights ? (
             <div className="row row--wrap gap-4">
               <div className="layoutStat">
                 <div className="layoutStat__value">{availabilityInsights.totalSlots}</div>
@@ -780,58 +794,60 @@ export default function LeagueSettings({ leagueId }) {
                 <div className="layoutStat__label">Suggested nights</div>
               </div>
             </div>
-          </div>
-        ) : null}
-        {availabilityInsights?.dayStats?.length ? (
-          <div className="card__body tableWrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Day</th>
-                  <th>Slots</th>
-                  <th>Hours</th>
-                </tr>
-              </thead>
-              <tbody>
-                {availabilityInsights.dayStats.map((d) => (
-                  <tr key={d.day}>
-                    <td>{d.day}</td>
-                    <td>{d.slots}</td>
-                    <td>{(d.minutes / 60).toFixed(1)}</td>
+          ) : null}
+          {availabilityInsights?.dayStats?.length ? (
+            <div className="tableWrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Day</th>
+                    <th>Slots</th>
+                    <th>Hours</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
-        {availabilitySlots.length ? (
-          <div className="card__body tableWrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Time</th>
-                  <th>Field</th>
-                  <th>Division</th>
-                </tr>
-              </thead>
-              <tbody>
-                {availabilitySlots.slice(0, 200).map((s) => (
-                  <tr key={s.slotId}>
-                    <td>{s.gameDate}</td>
-                    <td>{s.startTime}-{s.endTime}</td>
-                    <td>{s.displayName || s.fieldKey}</td>
-                    <td>{s.division}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {availabilitySlots.length > 200 ? <div className="subtle">Showing first 200.</div> : null}
-          </div>
-        ) : availabilityInsights ? (
-          <div className="card__body muted">No availability slots found for this range.</div>
-        ) : null}
-      </details>
+                </thead>
+                <tbody>
+                  {availabilityInsights.dayStats.map((d) => (
+                    <tr key={d.day}>
+                      <td>{d.day}</td>
+                      <td>{d.slots}</td>
+                      <td>{(d.minutes / 60).toFixed(1)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+          {availabilitySlots.length ? (
+            <>
+              <div className="tableWrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Time</th>
+                      <th>Field</th>
+                      <th>Division</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {availabilitySlots.slice(0, 200).map((s) => (
+                      <tr key={s.slotId}>
+                        <td>{s.gameDate}</td>
+                        <td>{s.startTime}-{s.endTime}</td>
+                        <td>{s.displayName || s.fieldKey}</td>
+                        <td>{s.division}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {availabilitySlots.length > 200 ? <div className="subtle">Showing first 200.</div> : null}
+            </>
+          ) : availabilityInsights ? (
+            <div className="muted">No availability slots found for this range.</div>
+          ) : null}
+        </div>
+      </CollapsibleSection>
     </div>
   );
 }

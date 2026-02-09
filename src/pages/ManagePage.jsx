@@ -1,5 +1,6 @@
 import { Suspense, lazy, useMemo, useState, useEffect } from "react";
 import LeaguePicker from "../components/LeaguePicker";
+import CollapsibleSection from "../components/CollapsibleSection";
 
 const FieldsImport = lazy(() => import("../manage/FieldsImport"));
 const InvitesManager = lazy(() => import("../manage/InvitesManager"));
@@ -121,90 +122,98 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
 
       {activeTabId === "fields" && (
         <div className="stack gap-4">
+          <CollapsibleSection
+            title="Fields"
+            subtitle="Import fields via CSV (setup phase, then occasional updates)"
+            badge="Setup Phase"
+            badgeColor="blue"
+            defaultExpanded={true}
+            icon="🏟️"
+          >
+            <div className="callout mb-3">
+              <div className="font-bold mb-2">CSV rules</div>
+              <div className="subtle leading-relaxed">
+                CSV must include <b>fieldKey</b> + <b>parkName</b> + <b>fieldName</b> (and optionally displayName, address, notes, status). DisplayName should be what you want coaches to see.
+                Keep it consistent (example: <code>Tuckahoe Park &gt; Field 2</code>). fieldKey is stable and is how slots reference a field.
+              </div>
+            </div>
+            <Suspense fallback={sectionFallback}>
+              <FieldsImport leagueId={leagueId} me={me} tableView={tableView} />
+            </Suspense>
+          </CollapsibleSection>
+
           {canSchedule && (
             <>
-              <div className="card">
-                <div className="card__header">
-                  <div className="h2">Availability setup</div>
-                  <div className="subtle">Import allocations, define recurring rules, and review generated availability.</div>
-                </div>
-                <div className="card__body">
-                  <Suspense fallback={sectionFallback}>
-                    <AvailabilityManager leagueId={leagueId} />
-                  </Suspense>
-                </div>
-              </div>
-              <div className="card">
-                <div className="card__header">
-                  <div className="h2">Availability slots</div>
-                  <div className="subtle">Generate and manage slot-level availability for scheduling.</div>
-                </div>
-                <div className="card__body">
-                  <Suspense fallback={sectionFallback}>
-                    <SlotGeneratorManager leagueId={leagueId} />
-                  </Suspense>
-                </div>
-              </div>
+              <CollapsibleSection
+                title="Availability Setup"
+                subtitle="Import allocations, define recurring rules, and review generated availability"
+                badge="Setup Phase"
+                badgeColor="blue"
+                defaultExpanded={false}
+                icon="📅"
+              >
+                <Suspense fallback={sectionFallback}>
+                  <AvailabilityManager leagueId={leagueId} />
+                </Suspense>
+              </CollapsibleSection>
+
+              <CollapsibleSection
+                title="Availability Slots"
+                subtitle="Generate and manage slot-level availability for scheduling (run after rules defined)"
+                badge="Advanced"
+                badgeColor="purple"
+                defaultExpanded={false}
+                icon="🎯"
+              >
+                <Suspense fallback={sectionFallback}>
+                  <SlotGeneratorManager leagueId={leagueId} />
+                </Suspense>
+              </CollapsibleSection>
             </>
           )}
-          <div className="card">
-            <div className="card__header">
-              <div className="h2">Fields</div>
-              <div className="subtle">Import fields via CSV (the only supported fields workflow).</div>
-            </div>
-            <div className="card__body">
-              <div className="callout">
-                <div className="font-bold mb-2">CSV rules</div>
-                <div className="subtle leading-relaxed">
-                  CSV must include <b>fieldKey</b> + <b>parkName</b> + <b>fieldName</b> (and optionally displayName, address, notes, status). DisplayName should be what you want coaches to see.
-                  Keep it consistent (example: <code>Tuckahoe Park &gt; Field 2</code>). fieldKey is stable and is how slots reference a field.
-                </div>
-              </div>
-              <div className="mt-3">
-                <Suspense fallback={sectionFallback}>
-                  <FieldsImport leagueId={leagueId} me={me} tableView={tableView} />
-                </Suspense>
-              </div>
-            </div>
-          </div>
         </div>
       )}
 
       {activeTabId === "settings" && canSchedule && (
         <div className="stack gap-4">
-          <div className="card">
-            <div className="card__header">
-              <div className="h2">League Settings</div>
-              <div className="subtle">Backups, season configuration, and shared league configuration.</div>
-            </div>
-            <div className="card__body">
-              <Suspense fallback={sectionFallback}>
-                <LeagueSettings leagueId={leagueId} />
-              </Suspense>
-            </div>
-          </div>
-          <div className="card">
-            <div className="card__header">
-              <div className="h2">Teams & Coaches</div>
-              <div className="subtle">Upload teams and manage coach assignments.</div>
-            </div>
-            <div className="card__body">
-              <Suspense fallback={sectionFallback}>
-                <TeamsManager leagueId={leagueId} tableView={tableView} />
-              </Suspense>
-            </div>
-          </div>
-          <div className="card">
-            <div className="card__header">
-              <div className="h2">Divisions</div>
-              <div className="subtle">Divisions group teams, slots, and requests.</div>
-            </div>
-            <div className="card__body">
-              <Suspense fallback={sectionFallback}>
-                <DivisionsManager leagueId={leagueId} />
-              </Suspense>
-            </div>
-          </div>
+          <CollapsibleSection
+            title="League Settings"
+            subtitle="Backups, season configuration, and shared league configuration"
+            badge="Setup Phase"
+            badgeColor="blue"
+            defaultExpanded={false}
+            icon="⚙️"
+          >
+            <Suspense fallback={sectionFallback}>
+              <LeagueSettings leagueId={leagueId} />
+            </Suspense>
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            title="Teams & Coaches"
+            subtitle="Upload teams and manage coach assignments (used during setup and roster changes)"
+            badge="Setup Phase"
+            badgeColor="blue"
+            defaultExpanded={true}
+            icon="👥"
+          >
+            <Suspense fallback={sectionFallback}>
+              <TeamsManager leagueId={leagueId} tableView={tableView} />
+            </Suspense>
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            title="Divisions"
+            subtitle="Divisions group teams, slots, and requests (rarely modified after setup)"
+            badge="Setup Only"
+            badgeColor="blue"
+            defaultExpanded={false}
+            icon="📂"
+          >
+            <Suspense fallback={sectionFallback}>
+              <DivisionsManager leagueId={leagueId} />
+            </Suspense>
+          </CollapsibleSection>
         </div>
       )}
 
