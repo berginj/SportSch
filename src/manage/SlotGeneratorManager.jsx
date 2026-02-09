@@ -5,6 +5,8 @@ import Toast from "../components/Toast";
 import { getDefaultRangeFallback, getSeasonRange, getSlotsDefaultRange } from "../lib/season";
 import { trackEvent } from "../lib/telemetry";
 
+const ALL_FIELDS_VALUE = "__ALL_FIELDS__";
+
 function csvEscape(value) {
   const raw = String(value ?? "");
   if (!/[",\n]/.test(raw)) return raw;
@@ -147,7 +149,7 @@ export default function SlotGeneratorManager({ leagueId }) {
   const [fields, setFields] = useState([]);
   const [leagueSeason, setLeagueSeason] = useState(null);
   const [slotGenDivision, setSlotGenDivision] = useState("");
-  const [slotGenFieldKey, setSlotGenFieldKey] = useState("");
+  const [slotGenFieldKey, setSlotGenFieldKey] = useState(ALL_FIELDS_VALUE);
   const [slotGenStartTime, setSlotGenStartTime] = useState("");
   const [slotGenEndTime, setSlotGenEndTime] = useState("");
   const [slotGenDays, setSlotGenDays] = useState(DEFAULT_DAYS);
@@ -193,7 +195,9 @@ export default function SlotGeneratorManager({ leagueId }) {
           setSlotGenDivision((prev) => prev || list[0].code || list[0].division || "");
         }
         if (Array.isArray(flds) && flds.length) {
-          setSlotGenFieldKey((prev) => prev || flds[0].fieldKey || "");
+          setSlotGenFieldKey((prev) => prev || ALL_FIELDS_VALUE);
+        } else {
+          setSlotGenFieldKey("");
         }
       } catch (e) {
         setErr(e?.message || "Failed to load divisions/fields.");
@@ -233,7 +237,7 @@ export default function SlotGeneratorManager({ leagueId }) {
 
   useEffect(() => {
     if (!slotGenFieldKey && fields.length) {
-      setSlotGenFieldKey(fields[0].fieldKey || "");
+      setSlotGenFieldKey(ALL_FIELDS_VALUE);
     }
   }, [fields, slotGenFieldKey]);
 
@@ -242,6 +246,15 @@ export default function SlotGeneratorManager({ leagueId }) {
       setAvailFieldKey("");
     }
   }, [fields, availFieldKey]);
+
+  const selectedSlotGenFieldKeys = useMemo(() => {
+    if (slotGenFieldKey === ALL_FIELDS_VALUE) {
+      return (fields || [])
+        .map((f) => f?.fieldKey || "")
+        .filter(Boolean);
+    }
+    return slotGenFieldKey ? [slotGenFieldKey] : [];
+  }, [fields, slotGenFieldKey]);
 
   const loadAvailabilitySlots = useCallback(async () => {
     setAvailListLoading(true);
@@ -291,28 +304,47 @@ export default function SlotGeneratorManager({ leagueId }) {
       { label: "Season end", value: dateTo, required: true },
     ]);
     if (dateError) return setErr(dateError);
+    if (!selectedSlotGenFieldKeys.length) {
+      return setErr("No fields available. Add fields before generating slots.");
+    }
     setLoading(true);
     try {
       const days = Object.entries(slotGenDays)
         .filter(([, on]) => on)
         .map(([k]) => k);
-      const data = await apiFetch("/api/schedule/slots/preview", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          division: slotGenDivision,
-          fieldKey: slotGenFieldKey,
-          dateFrom,
-          dateTo,
-          daysOfWeek: days,
-          startTime: slotGenStartTime,
-          endTime: slotGenEndTime,
-        }),
-      });
-      setSlotGenPreview(data || null);
+      const combined = { slots: [], conflicts: [] };
+      const failures = [];
+      for (const fieldKey of selectedSlotGenFieldKeys) {
+        try {
+          const data = await apiFetch("/api/schedule/slots/preview", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              division: slotGenDivision,
+              fieldKey,
+              dateFrom,
+              dateTo,
+              daysOfWeek: days,
+              startTime: slotGenStartTime,
+              endTime: slotGenEndTime,
+            }),
+          });
+          combined.slots.push(...(Array.isArray(data?.slots) ? data.slots : []));
+          combined.conflicts.push(...(Array.isArray(data?.conflicts) ? data.conflicts : []));
+        } catch (e) {
+          failures.push({ fieldKey, message: e?.message || "Preview failed." });
+        }
+      }
+      setSlotGenPreview(combined);
+      if (failures.length) {
+        const first = failures[0];
+        setErr(`Preview completed with ${failures.length} field error(s). First: ${first.fieldKey} (${first.message})`);
+      }
       trackEvent("ui_availability_slots_preview", {
         leagueId,
         division: slotGenDivision,
+        fieldScope: slotGenFieldKey === ALL_FIELDS_VALUE ? "all" : "single",
+        fieldCount: selectedSlotGenFieldKeys.length,
       });
     } catch (e) {
       setErr(e?.message || "Failed to preview slots");
@@ -329,31 +361,67 @@ export default function SlotGeneratorManager({ leagueId }) {
       { label: "Season end", value: dateTo, required: true },
     ]);
     if (dateError) return setErr(dateError);
+    if (!selectedSlotGenFieldKeys.length) {
+      return setErr("No fields available. Add fields before generating slots.");
+    }
     setLoading(true);
     try {
       const days = Object.entries(slotGenDays)
         .filter(([, on]) => on)
         .map(([k]) => k);
-      const data = await apiFetch(`/api/schedule/slots/apply?mode=${encodeURIComponent(mode)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          division: slotGenDivision,
-          fieldKey: slotGenFieldKey,
-          dateFrom,
-          dateTo,
-          daysOfWeek: days,
-          startTime: slotGenStartTime,
-          endTime: slotGenEndTime,
-        }),
-      });
+      const summary = {
+        created: [],
+        overwritten: [],
+        skipped: [],
+        cleared: 0,
+      };
+      const failures = [];
+      for (const fieldKey of selectedSlotGenFieldKeys) {
+        try {
+          const data = await apiFetch(`/api/schedule/slots/apply?mode=${encodeURIComponent(mode)}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              division: slotGenDivision,
+              fieldKey,
+              dateFrom,
+              dateTo,
+              daysOfWeek: days,
+              startTime: slotGenStartTime,
+              endTime: slotGenEndTime,
+            }),
+          });
+          summary.created.push(...(Array.isArray(data?.created) ? data.created : []));
+          summary.overwritten.push(...(Array.isArray(data?.overwritten) ? data.overwritten : []));
+          summary.skipped.push(...(Array.isArray(data?.skipped) ? data.skipped : []));
+          summary.cleared += Number(data?.cleared || 0);
+        } catch (e) {
+          failures.push({ fieldKey, message: e?.message || "Generate failed." });
+        }
+      }
       setSlotGenPreview(null);
-      setToast({ tone: "success", message: `Generated slots (${data?.created?.length || 0} created).` });
+      const createdCount = summary.created.length;
+      const overwrittenCount = summary.overwritten.length;
+      const skippedCount = summary.skipped.length;
+      const clearedCount = summary.cleared;
+      const baseMessage = `Generated slots (${createdCount} created, ${overwrittenCount} overwritten, ${skippedCount} skipped, ${clearedCount} cleared).`;
+      if (failures.length) {
+        const first = failures[0];
+        setErr(`Generation completed with ${failures.length} field error(s). First: ${first.fieldKey} (${first.message})`);
+        setToast({ tone: "warning", message: baseMessage });
+      } else {
+        setToast({ tone: "success", message: baseMessage });
+      }
       trackEvent("ui_availability_slots_generate", {
         leagueId,
         division: slotGenDivision,
         mode,
-        created: data?.created?.length || 0,
+        created: createdCount,
+        overwritten: overwrittenCount,
+        skipped: skippedCount,
+        cleared: clearedCount,
+        fieldScope: slotGenFieldKey === ALL_FIELDS_VALUE ? "all" : "single",
+        fieldCount: selectedSlotGenFieldKeys.length,
       });
     } catch (e) {
       setErr(e?.message || "Failed to generate slots");
@@ -768,7 +836,7 @@ export default function SlotGeneratorManager({ leagueId }) {
         <div className="card__header">
           <div className="h2">Field slot generator</div>
           <div className="subtle">
-            Generate open availability slots for a division and field. Uses season game length (no buffers).
+            Generate open availability slots for a division across one field or all fields. Uses season game length (no buffers).
           </div>
         </div>
         {leagueSeason && !leagueSeason.gameLengthMinutes ? (
@@ -792,7 +860,7 @@ export default function SlotGeneratorManager({ leagueId }) {
           <label>
             Field
             <select value={slotGenFieldKey} onChange={(e) => setSlotGenFieldKey(e.target.value)}>
-              <option value="">Select a field</option>
+              <option value={ALL_FIELDS_VALUE}>All fields</option>
               {fields.map((f) => (
                 <option key={f.fieldKey} value={f.fieldKey}>
                   {f.displayName}
@@ -832,16 +900,16 @@ export default function SlotGeneratorManager({ leagueId }) {
           </div>
         </div>
         <div className="card__body row gap-2">
-          <button className="btn" onClick={previewSlotGeneration} disabled={loading || !slotGenDivision || !slotGenFieldKey}>
+          <button className="btn" onClick={previewSlotGeneration} disabled={loading || !slotGenDivision || selectedSlotGenFieldKeys.length === 0}>
             Preview slots
           </button>
-          <button className="btn btn--primary" onClick={() => applySlotGeneration("skip")} disabled={loading || !slotGenDivision || !slotGenFieldKey}>
+          <button className="btn btn--primary" onClick={() => applySlotGeneration("skip")} disabled={loading || !slotGenDivision || selectedSlotGenFieldKeys.length === 0}>
             Generate (skip conflicts)
           </button>
-          <button className="btn" onClick={() => applySlotGeneration("overwrite")} disabled={loading || !slotGenDivision || !slotGenFieldKey}>
+          <button className="btn" onClick={() => applySlotGeneration("overwrite")} disabled={loading || !slotGenDivision || selectedSlotGenFieldKeys.length === 0}>
             Generate (overwrite availability)
           </button>
-          <button className="btn" onClick={() => applySlotGeneration("regenerate")} disabled={loading || !slotGenDivision || !slotGenFieldKey}>
+          <button className="btn" onClick={() => applySlotGeneration("regenerate")} disabled={loading || !slotGenDivision || selectedSlotGenFieldKeys.length === 0}>
             Regenerate
           </button>
         </div>
