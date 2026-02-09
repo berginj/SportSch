@@ -501,6 +501,14 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     setPreview(null);
   }
 
+  function updatePatternSlotType(patternKey, currentPriorityRank, nextTypeRaw) {
+    const nextType = normalizeSlotType(nextTypeRaw);
+    updatePatternPlan(patternKey, {
+      slotType: nextType,
+      priorityRank: nextType === "practice" ? "" : normalizePriorityRank(currentPriorityRank),
+    });
+  }
+
   function updatePatternStartTime(patternKey, nextStart) {
     const representative = slotPatterns.find((p) => p.key === patternKey);
     if (!representative) return;
@@ -1129,9 +1137,42 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                             ) : (
                               dayPatterns.map((p) => (
                                 <div key={p.key} className="callout" style={{ marginBottom: 0 }}>
-                                  <div><b>{p.startTime}-{p.endTime}</b></div>
+                                  <div className="row row--between gap-2">
+                                    <div><b>{p.startTime}-{p.endTime}</b></div>
+                                    <span className="pill">Openings: {p.count}</span>
+                                  </div>
                                   <div className="subtle">{p.fieldKey}</div>
-                                  <div className="subtle">Type: {p.slotType} | Rank: {p.priorityRank || "-"} | Openings: {p.count}</div>
+                                  <div className="row row--wrap gap-2 mt-1">
+                                    <label>
+                                      Type
+                                      <select
+                                        value={p.slotType}
+                                        onChange={(e) => updatePatternSlotType(p.key, p.priorityRank, e.target.value)}
+                                      >
+                                        {SLOT_TYPE_OPTIONS.map((opt) => (
+                                          <option key={opt.value} value={opt.value}>
+                                            {opt.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </label>
+                                    <label>
+                                      Rank
+                                      <input
+                                        type="number"
+                                        min="1"
+                                        value={p.priorityRank}
+                                        disabled={p.slotType === "practice"}
+                                        onChange={(e) =>
+                                          updatePatternPlan(p.key, {
+                                            priorityRank:
+                                              p.slotType === "practice" ? "" : normalizePriorityRank(e.target.value),
+                                          })
+                                        }
+                                        placeholder={p.slotType === "practice" ? "-" : "1"}
+                                      />
+                                    </label>
+                                  </div>
                                 </div>
                               ))
                             )}
@@ -1177,14 +1218,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                           <td>
                             <select
                               value={pattern.slotType}
-                              onChange={(e) => {
-                                const nextType = normalizeSlotType(e.target.value);
-                                updatePatternPlan(pattern.key, {
-                                  slotType: nextType,
-                                  priorityRank:
-                                    nextType === "practice" ? "" : normalizePriorityRank(pattern.priorityRank),
-                                });
-                              }}
+                              onChange={(e) => updatePatternSlotType(pattern.key, pattern.priorityRank, e.target.value)}
                             >
                               {SLOT_TYPE_OPTIONS.map((opt) => (
                                 <option key={opt.value} value={opt.value}>
