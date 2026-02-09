@@ -132,12 +132,6 @@ function extractSlotItems(payload) {
   return [];
 }
 
-function extractContinuationToken(payload) {
-  if (!payload || typeof payload !== "object") return "";
-  const token = payload.continuationToken || payload.nextContinuationToken || payload.nextToken || "";
-  return String(token || "").trim();
-}
-
 const DEFAULT_DAYS = {
   Mon: false,
   Tue: false,
@@ -262,26 +256,13 @@ export default function SlotGeneratorManager({ leagueId }) {
       return setAvailListErr(dateError);
     }
     try {
-      const list = [];
-      let continuationToken = "";
-      for (let page = 0; page < 50; page += 1) {
-        const qs = new URLSearchParams();
-        if (availDivision) qs.set("division", availDivision);
-        if (availDateFrom) qs.set("dateFrom", availDateFrom);
-        if (availDateTo) qs.set("dateTo", availDateTo);
-        qs.set("pageSize", "200");
-        if (continuationToken) qs.set("continuationToken", continuationToken);
-
-        const data = await apiFetch(`/api/slots?${qs.toString()}`);
-        const pageItems = extractSlotItems(data);
-        list.push(...pageItems);
-
-        const nextToken = extractContinuationToken(data);
-        if (!nextToken) break;
-        continuationToken = nextToken;
-      }
-
-      const filtered = list.filter((s) => s.isAvailability && (!availFieldKey || s.fieldKey === availFieldKey));
+      const qs = new URLSearchParams();
+      if (availDivision) qs.set("division", availDivision);
+      if (availDateFrom) qs.set("dateFrom", availDateFrom);
+      if (availDateTo) qs.set("dateTo", availDateTo);
+      if (availFieldKey) qs.set("fieldKey", availFieldKey);
+      const data = await apiFetch(`/api/availability-slots?${qs.toString()}`);
+      const filtered = extractSlotItems(data).filter((s) => s?.isAvailability);
       setAvailSlots(filtered);
       setAvailListMsg(filtered.length === 0
         ? "No availability slots found for this filter."
