@@ -182,22 +182,27 @@ public class ScheduleWizardFunctions
             var slotPlanLookup = BuildSlotPlanLookup(body.slotPlan);
             var hasSlotPlan = body.slotPlan is not null && body.slotPlan.Count > 0;
             var allSlots = ApplySlotPlan(rawSlots, slotPlanLookup, hasSlotPlan);
-            var gameCapableSlots = allSlots.Where(IsGameCapableSlotType).ToList();
+            var totalGameCapableSlots = allSlots.Count(IsGameCapableSlotType);
+            var filteredAllSlots = ApplyDateBlackouts(allSlots, blockedRanges);
+            var blockedOutSlots = Math.Max(0, allSlots.Count - filteredAllSlots.Count);
+            if (filteredAllSlots.Count == 0)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "No slots remain after applying blocked date ranges.");
+            var gameCapableSlots = filteredAllSlots.Where(IsGameCapableSlotType).ToList();
             if (gameCapableSlots.Count == 0)
+            {
+                if (totalGameCapableSlots > 0)
+                    return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "No game-capable slots remain after applying blocked date ranges.");
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "No game-capable slots selected. Mark at least one slot as game or both.");
-            var filteredGameSlots = ApplyDateBlackouts(gameCapableSlots, blockedRanges);
-            var blockedOutSlots = gameCapableSlots.Count - filteredGameSlots.Count;
-            if (filteredGameSlots.Count == 0)
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "No game-capable slots remain after applying blocked date ranges.");
+            }
             var guestAnchors = NormalizeGuestAnchors(body.guestAnchorPrimary, body.guestAnchorSecondary);
 
             var regularRangeEnd = poolStart.HasValue ? poolStart.Value.AddDays(-1) : seasonEnd;
-            var regularSlots = FilterSlots(filteredGameSlots, seasonStart, regularRangeEnd);
+            var regularSlots = FilterSlots(gameCapableSlots, seasonStart, regularRangeEnd);
             var poolSlots = poolStart.HasValue && poolEnd.HasValue
-                ? FilterSlots(filteredGameSlots, poolStart.Value, poolEnd.Value)
+                ? FilterSlots(filteredAllSlots, poolStart.Value, poolEnd.Value)
                 : new List<SlotInfo>();
             var bracketSlots = bracketStart.HasValue && bracketEnd.HasValue
-                ? FilterSlots(filteredGameSlots, bracketStart.Value, bracketEnd.Value)
+                ? FilterSlots(filteredAllSlots, bracketStart.Value, bracketEnd.Value)
                 : new List<SlotInfo>();
 
             var regularMatchups = BuildRepeatedMatchups(teams, minGamesPerTeam);
@@ -207,12 +212,18 @@ public class ScheduleWizardFunctions
             var regularAssignments = AssignPhaseSlots("Regular Season", regularSlots, regularMatchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek, preferredDays, strictPreferredWeeknights, guestAnchors);
             var poolAssignments = AssignPhaseSlots("Pool Play", poolSlots, poolMatchups, teams, null, noDoubleHeaders, balanceHomeAway, 0, preferredDays: new List<DayOfWeek>(), strictPreferredWeeknights: false, guestAnchors: null);
             var bracketAssignments = AssignBracketSlots(bracketSlots, bracketMatchups);
+            var totalPhaseSlots = regularSlots
+                .Select(s => s.slotId)
+                .Concat(poolSlots.Select(s => s.slotId))
+                .Concat(bracketSlots.Select(s => s.slotId))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count();
 
             var summary = new WizardSummary(
                 regularSeason: BuildPhaseSummary("Regular Season", regularSlots.Count, regularAssignments.Assignments.Count, regularMatchups.Count, regularAssignments.UnassignedMatchups.Count),
                 poolPlay: BuildPhaseSummary("Pool Play", poolSlots.Count, poolAssignments.Assignments.Count, poolMatchups.Count, poolAssignments.UnassignedMatchups.Count),
                 bracket: BuildPhaseSummary("Bracket", bracketSlots.Count, bracketAssignments.Assignments.Count, bracketMatchups.Count, bracketAssignments.UnassignedMatchups.Count),
-                totalSlots: filteredGameSlots.Count,
+                totalSlots: totalPhaseSlots,
                 totalAssigned: regularAssignments.Assignments.Count + poolAssignments.Assignments.Count + bracketAssignments.Assignments.Count,
                 teamCount: teams.Count
             );
@@ -236,7 +247,7 @@ public class ScheduleWizardFunctions
             if (regularSlots.Count == 0) warnings.Add(new { code = "NO_REGULAR_SLOTS", message = "No regular season slots available." });
             if (poolStart.HasValue && poolSlots.Count == 0) warnings.Add(new { code = "NO_POOL_SLOTS", message = "No pool play slots available." });
             if (bracketStart.HasValue && bracketSlots.Count == 0) warnings.Add(new { code = "NO_BRACKET_SLOTS", message = "No bracket slots available." });
-            if (blockedOutSlots > 0) warnings.Add(new { code = "SLOTS_BLOCKED_BY_DATES", message = $"{blockedOutSlots} game-capable slot(s) were excluded by blocked date ranges." });
+            if (blockedOutSlots > 0) warnings.Add(new { code = "SLOTS_BLOCKED_BY_DATES", message = $"{blockedOutSlots} slot(s) were excluded by blocked date ranges." });
             if (externalOfferPerWeek > 0)
             {
                 var externalAssignments = regularAssignments.Assignments.Where(a => a.IsExternalOffer).ToList();
@@ -377,7 +388,13 @@ public class ScheduleWizardFunctions
         var unassignedSlots = new List<ScheduleAssignment>();
         var remaining = new Queue<MatchupPair>(matchups);
 
-        foreach (var slot in slots.OrderBy(s => s.gameDate).ThenBy(s => s.startTime))
+        foreach (var slot in slots
+            .OrderBy(s => SlotTypeSchedulingPriority(s))
+            .ThenBy(s => s.priorityRank.HasValue ? 0 : 1)
+            .ThenBy(s => s.priorityRank ?? int.MaxValue)
+            .ThenBy(s => s.gameDate)
+            .ThenBy(s => s.startTime)
+            .ThenBy(s => s.fieldKey))
         {
             if (remaining.Count == 0)
             {
@@ -611,7 +628,8 @@ public class ScheduleWizardFunctions
     private static List<ScheduleSlot> OrderSlotsByPreference(List<SlotInfo> slots, List<DayOfWeek> preferredDays)
     {
         return slots
-            .OrderBy(s => s.priorityRank.HasValue ? 0 : 1)
+            .OrderBy(s => SlotTypeSchedulingPriority(s))
+            .ThenBy(s => s.priorityRank.HasValue ? 0 : 1)
             .ThenBy(s => s.priorityRank ?? int.MaxValue)
             .ThenBy(s => PreferredDayRank(s.gameDate, preferredDays))
             .ThenBy(s => s.gameDate)
@@ -734,6 +752,12 @@ public class ScheduleWizardFunctions
     private static bool IsGameCapableSlotType(SlotInfo slot)
     {
         return slot.slotType == "game" || slot.slotType == "both";
+    }
+
+    private static int SlotTypeSchedulingPriority(SlotInfo slot)
+    {
+        if (slot.slotType == "practice") return 1;
+        return 0;
     }
 
     private static GuestAnchorSet? NormalizeGuestAnchors(GuestAnchorOption? primary, GuestAnchorOption? secondary)
