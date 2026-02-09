@@ -6,6 +6,7 @@ import { trackEvent } from "../lib/telemetry";
 import Toast from "../components/Toast";
 
 const WEEKDAY_OPTIONS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const MAX_PREFERRED_WEEKNIGHTS = 3;
 const SLOT_TYPE_OPTIONS = [
   { value: "practice", label: "Practice" },
   { value: "game", label: "Game" },
@@ -54,6 +55,24 @@ function maxIsoDate(a, b) {
   const right = isIsoDate(b) ? b : "";
   if (left && right) return left > right ? left : right;
   return left || right || "";
+}
+
+function buildSpringBreakRange(seasonStart, seasonEnd) {
+  if (!isIsoDate(seasonStart) || !isIsoDate(seasonEnd)) return null;
+  const from = seasonStart;
+  const to = seasonEnd;
+  const startYear = Number(seasonStart.slice(0, 4));
+  const endYear = Number(seasonEnd.slice(0, 4));
+  const years = [startYear, endYear].filter((value, idx, all) => Number.isFinite(value) && all.indexOf(value) === idx);
+  if (!years.length) return null;
+
+  const candidates = years.map((year) => ({
+    startDate: `${year}-03-28`,
+    endDate: `${year}-04-04`,
+    label: "Spring Break",
+  }));
+  const intersectsSeason = (range) => !(range.endDate < from || range.startDate > to);
+  return candidates.find(intersectsSeason) || candidates[0];
 }
 
 function extractSlotItems(payload) {
@@ -156,6 +175,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [preferredWeeknights, setPreferredWeeknights] = useState([]);
   const [strictPreferredWeeknights, setStrictPreferredWeeknights] = useState(false);
   const [guestGamesPerWeek, setGuestGamesPerWeek] = useState(0);
+  const [blockSpringBreak, setBlockSpringBreak] = useState(false);
   const [maxGamesPerWeek, setMaxGamesPerWeek] = useState(2);
   const [noDoubleHeaders, setNoDoubleHeaders] = useState(true);
   const [balanceHomeAway, setBalanceHomeAway] = useState(true);
@@ -200,6 +220,11 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const steps = useMemo(
     () => ["Basics", "Postseason", "Slot plan (all phases)", "Rules", "Preview"],
     []
+  );
+
+  const springBreakRange = useMemo(
+    () => buildSpringBreakRange(seasonStart, seasonEnd),
+    [seasonStart, seasonEnd]
   );
 
   const slotPlanSummary = useMemo(() => {
@@ -272,7 +297,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     setPreferredTouched(true);
     setPreferredWeeknights((prev) => {
       if (prev.includes(day)) return prev.filter((d) => d !== day);
-      return [...prev, day].slice(0, 2);
+      return [...prev, day].slice(0, MAX_PREFERRED_WEEKNIGHTS);
     });
   }
 
@@ -480,6 +505,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         endTime: slot.endTime || undefined,
       };
     });
+    const blockedDateRanges = blockSpringBreak && springBreakRange
+      ? [{ ...springBreakRange }]
+      : [];
 
     const payload = {
       division,
@@ -491,7 +519,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       bracketEnd: bracketEnd || undefined,
       minGamesPerTeam: Number(minGamesPerTeam) || 0,
       poolGamesPerTeam: Number(poolGamesPerTeam) || 1,
-      preferredWeeknights,
+      preferredWeeknights: preferredWeeknights.slice(0, MAX_PREFERRED_WEEKNIGHTS),
       strictPreferredWeeknights,
       externalOfferPerWeek: Number(guestGamesPerWeek) || 0,
       maxGamesPerWeek: Number(maxGamesPerWeek) || 0,
@@ -499,6 +527,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       balanceHomeAway,
       slotPlan: slotPlanPayload,
     };
+    if (blockedDateRanges.length) payload.blockedDateRanges = blockedDateRanges;
 
     const primaryAnchor = guestAnchorPayloadFromSlotId(guestAnchorPrimarySlotId);
     const secondaryAnchor = guestAnchorPayloadFromSlotId(guestAnchorSecondarySlotId);
@@ -1040,8 +1069,24 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
               <input type="checkbox" checked={balanceHomeAway} onChange={(e) => setBalanceHomeAway(e.target.checked)} />
               Balance home/away
             </label>
+            <div className="stack gap-1">
+              <label className="inlineCheck">
+                <input
+                  type="checkbox"
+                  checked={blockSpringBreak}
+                  onChange={(e) => setBlockSpringBreak(e.target.checked)}
+                  disabled={!springBreakRange}
+                />
+                Block Spring Break games {springBreakRange ? `(${springBreakRange.startDate} to ${springBreakRange.endDate})` : "(set season dates first)"}
+              </label>
+              {blockSpringBreak && springBreakRange ? (
+                <div className="subtle text-sm">
+                  Slots in this range will be excluded from schedule preview and apply.
+                </div>
+              ) : null}
+            </div>
             <div className="stack gap-2">
-              <div className="muted text-sm">Preferred weeknights (pick two; other nights can still be used)</div>
+              <div className="muted text-sm">Preferred weeknights (pick up to three; other nights can still be used)</div>
               {availabilityLoading ? (
                 <div className="muted text-sm">Analyzing availability for recommended nights...</div>
               ) : availabilityInsights?.suggested?.length ? (
@@ -1065,6 +1110,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                     {day}
                   </button>
                 ))}
+              </div>
+              <div className="muted text-sm">
+                Selected: {preferredWeeknights.length}/{MAX_PREFERRED_WEEKNIGHTS}
               </div>
               <label className="inlineCheck">
                 <input

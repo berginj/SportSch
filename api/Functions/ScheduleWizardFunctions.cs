@@ -30,6 +30,7 @@ public class ScheduleWizardFunctions
         string? poolEnd,
         string? bracketStart,
         string? bracketEnd,
+        List<DateRangeOption>? blockedDateRanges,
         int? minGamesPerTeam,
         int? poolGamesPerTeam,
         List<string>? preferredWeeknights,
@@ -41,6 +42,12 @@ public class ScheduleWizardFunctions
         List<SlotPlanItem>? slotPlan,
         GuestAnchorOption? guestAnchorPrimary,
         GuestAnchorOption? guestAnchorSecondary
+    );
+
+    public record DateRangeOption(
+        string? startDate,
+        string? endDate,
+        string? label
     );
 
     public record SlotPlanItem(
@@ -163,6 +170,7 @@ public class ScheduleWizardFunctions
             var balanceHomeAway = body.balanceHomeAway ?? true;
             var preferredDays = NormalizePreferredDays(body.preferredWeeknights);
             var strictPreferredWeeknights = body.strictPreferredWeeknights ?? false;
+            var blockedRanges = NormalizeBlockedDateRanges(body.blockedDateRanges);
 
             var teams = await LoadTeamsAsync(leagueId, division);
             if (teams.Count < 2)
@@ -177,15 +185,19 @@ public class ScheduleWizardFunctions
             var gameCapableSlots = allSlots.Where(IsGameCapableSlotType).ToList();
             if (gameCapableSlots.Count == 0)
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "No game-capable slots selected. Mark at least one slot as game or both.");
+            var filteredGameSlots = ApplyDateBlackouts(gameCapableSlots, blockedRanges);
+            var blockedOutSlots = gameCapableSlots.Count - filteredGameSlots.Count;
+            if (filteredGameSlots.Count == 0)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "No game-capable slots remain after applying blocked date ranges.");
             var guestAnchors = NormalizeGuestAnchors(body.guestAnchorPrimary, body.guestAnchorSecondary);
 
             var regularRangeEnd = poolStart.HasValue ? poolStart.Value.AddDays(-1) : seasonEnd;
-            var regularSlots = FilterSlots(gameCapableSlots, seasonStart, regularRangeEnd);
+            var regularSlots = FilterSlots(filteredGameSlots, seasonStart, regularRangeEnd);
             var poolSlots = poolStart.HasValue && poolEnd.HasValue
-                ? FilterSlots(gameCapableSlots, poolStart.Value, poolEnd.Value)
+                ? FilterSlots(filteredGameSlots, poolStart.Value, poolEnd.Value)
                 : new List<SlotInfo>();
             var bracketSlots = bracketStart.HasValue && bracketEnd.HasValue
-                ? FilterSlots(gameCapableSlots, bracketStart.Value, bracketEnd.Value)
+                ? FilterSlots(filteredGameSlots, bracketStart.Value, bracketEnd.Value)
                 : new List<SlotInfo>();
 
             var regularMatchups = BuildRepeatedMatchups(teams, minGamesPerTeam);
@@ -200,7 +212,7 @@ public class ScheduleWizardFunctions
                 regularSeason: BuildPhaseSummary("Regular Season", regularSlots.Count, regularAssignments.Assignments.Count, regularMatchups.Count, regularAssignments.UnassignedMatchups.Count),
                 poolPlay: BuildPhaseSummary("Pool Play", poolSlots.Count, poolAssignments.Assignments.Count, poolMatchups.Count, poolAssignments.UnassignedMatchups.Count),
                 bracket: BuildPhaseSummary("Bracket", bracketSlots.Count, bracketAssignments.Assignments.Count, bracketMatchups.Count, bracketAssignments.UnassignedMatchups.Count),
-                totalSlots: gameCapableSlots.Count,
+                totalSlots: filteredGameSlots.Count,
                 totalAssigned: regularAssignments.Assignments.Count + poolAssignments.Assignments.Count + bracketAssignments.Assignments.Count,
                 teamCount: teams.Count
             );
@@ -224,6 +236,7 @@ public class ScheduleWizardFunctions
             if (regularSlots.Count == 0) warnings.Add(new { code = "NO_REGULAR_SLOTS", message = "No regular season slots available." });
             if (poolStart.HasValue && poolSlots.Count == 0) warnings.Add(new { code = "NO_POOL_SLOTS", message = "No pool play slots available." });
             if (bracketStart.HasValue && bracketSlots.Count == 0) warnings.Add(new { code = "NO_BRACKET_SLOTS", message = "No bracket slots available." });
+            if (blockedOutSlots > 0) warnings.Add(new { code = "SLOTS_BLOCKED_BY_DATES", message = $"{blockedOutSlots} game-capable slot(s) were excluded by blocked date ranges." });
             if (externalOfferPerWeek > 0)
             {
                 var externalAssignments = regularAssignments.Assignments.Where(a => a.IsExternalOffer).ToList();
@@ -310,6 +323,7 @@ public class ScheduleWizardFunctions
     );
 
     private record SlotPlanConfig(string SlotType, int? PriorityRank, string? StartTime, string? EndTime);
+    private record BlockedDateRange(DateOnly StartDate, DateOnly EndDate, string Label);
 
     private record GuestAnchor(
         DayOfWeek DayOfWeek,
@@ -543,6 +557,57 @@ public class ScheduleWizardFunctions
         return date >= from && date <= to;
     }
 
+    private static List<BlockedDateRange> NormalizeBlockedDateRanges(List<DateRangeOption>? ranges)
+    {
+        var normalized = new List<BlockedDateRange>();
+        if (ranges is null) return normalized;
+
+        var index = 0;
+        foreach (var raw in ranges)
+        {
+            var startRaw = (raw.startDate ?? "").Trim();
+            var endRaw = (raw.endDate ?? "").Trim();
+            var label = (raw.label ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(startRaw) || string.IsNullOrWhiteSpace(endRaw))
+            {
+                index++;
+                continue;
+            }
+
+            if (!DateOnly.TryParseExact(startRaw, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var start))
+                throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, $"blockedDateRanges[{index}].startDate must be YYYY-MM-DD.");
+            if (!DateOnly.TryParseExact(endRaw, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var end))
+                throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, $"blockedDateRanges[{index}].endDate must be YYYY-MM-DD.");
+            if (end < start)
+                throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, $"blockedDateRanges[{index}] endDate must be on or after startDate.");
+
+            normalized.Add(new BlockedDateRange(start, end, label));
+            index++;
+        }
+
+        return normalized;
+    }
+
+    private static List<SlotInfo> ApplyDateBlackouts(List<SlotInfo> slots, List<BlockedDateRange> blockedRanges)
+    {
+        if (blockedRanges.Count == 0) return slots;
+        return slots.Where(slot => !IsInBlockedRange(slot.gameDate, blockedRanges)).ToList();
+    }
+
+    private static bool IsInBlockedRange(string gameDate, List<BlockedDateRange> blockedRanges)
+    {
+        if (!DateOnly.TryParseExact(gameDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+            return false;
+
+        foreach (var range in blockedRanges)
+        {
+            if (date >= range.StartDate && date <= range.EndDate)
+                return true;
+        }
+
+        return false;
+    }
+
     private static List<ScheduleSlot> OrderSlotsByPreference(List<SlotInfo> slots, List<DayOfWeek> preferredDays)
     {
         return slots
@@ -589,7 +654,7 @@ public class ScheduleWizardFunctions
             else if (key.StartsWith("sat")) ordered.Add(DayOfWeek.Saturday);
         }
 
-        return ordered.Distinct().ToList();
+        return ordered.Distinct().Take(3).ToList();
     }
 
     private static Dictionary<string, SlotPlanConfig> BuildSlotPlanLookup(List<SlotPlanItem>? slotPlan)
@@ -900,6 +965,7 @@ public class ScheduleWizardFunctions
             ["NoDoubleHeaders"] = request.noDoubleHeaders ?? true,
             ["BalanceHomeAway"] = request.balanceHomeAway ?? true,
             ["ExternalOfferPerWeek"] = request.externalOfferPerWeek ?? 0,
+            ["BlockedDateRanges"] = System.Text.Json.JsonSerializer.Serialize(request.blockedDateRanges ?? new List<DateRangeOption>()),
             ["Summary"] = System.Text.Json.JsonSerializer.Serialize(summary)
         };
 

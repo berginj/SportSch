@@ -37,6 +37,6 @@ export function buildAvailabilityInsights(slots) {
   const ranked = [...dayStats]
     .filter((d) => d.slots > 0)
     .sort((a, b) => (b.slots - a.slots) || (b.minutes - a.minutes));
-  const suggested = ranked.slice(0, 2).map((d) => d.day);
+  const suggested = ranked.slice(0, 3).map((d) => d.day);
   return { dayStats, totalSlots, totalMinutes, suggested };
 }
