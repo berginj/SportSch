@@ -211,11 +211,12 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
 
   useEffect(() => {
     if (!canPickTeam) return;
-    if (!offeringTeamId) return;
-    if (!teamsForDivision.some((t) => t.teamId === offeringTeamId)) {
-      setOfferingTeamId("");
-    }
-  }, [offeringTeamId, teamsForDivision, canPickTeam]);
+    setOfferingTeamId((prev) => {
+      if (!prev) return prev;
+      if (teamsForDivision.some((t) => t.teamId === prev)) return prev;
+      return "";
+    });
+  }, [teamsForDivision, canPickTeam]);
 
   // --- Create slot ---
   const [entryType, setEntryType] = useState("Offer");
