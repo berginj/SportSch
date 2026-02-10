@@ -1131,10 +1131,19 @@ public class ScheduleWizardFunctions
         if (gamesPerTeam <= 0) return new List<MatchupPair>();
 
         var roundGames = Math.Max(1, teams.Count - 1);
-        var rounds = (int)Math.Ceiling(gamesPerTeam / (double)roundGames);
+        var fullRounds = gamesPerTeam / roundGames;
+        var remainderGames = gamesPerTeam % roundGames;
+
+        // If games/team is not an exact multiple of full round-robin cycles,
+        // use target-based generation so we do not round up and over-schedule.
+        if (remainderGames > 0)
+        {
+            return BuildTargetMatchups(teams, gamesPerTeam);
+        }
+
         var result = new List<MatchupPair>();
 
-        for (var round = 0; round < rounds; round++)
+        for (var round = 0; round < fullRounds; round++)
         {
             var matchups = ScheduleEngine.BuildRoundRobin(teams);
             if (round % 2 == 1)
