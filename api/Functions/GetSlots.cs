@@ -65,6 +65,7 @@ public class GetSlots
             var continuationToken = ApiGuards.GetQueryParam(req, "continuationToken");
             var pageSizeStr = ApiGuards.GetQueryParam(req, "pageSize");
             var pageSize = int.TryParse(pageSizeStr, out var ps) ? ps : 50;
+            var returnEnvelope = !string.IsNullOrWhiteSpace(continuationToken) || !string.IsNullOrWhiteSpace(pageSizeStr);
 
             // Build service request
             var serviceRequest = new SlotQueryRequest
@@ -75,7 +76,8 @@ public class GetSlots
                 FromDate = dateFrom,
                 ToDate = dateTo,
                 ContinuationToken = continuationToken,
-                PageSize = pageSize
+                PageSize = pageSize,
+                ReturnEnvelope = returnEnvelope
             };
 
             var context = CorrelationContext.FromRequest(req, leagueId);

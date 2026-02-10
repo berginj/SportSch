@@ -270,9 +270,15 @@ public class SlotService : ISlotService
             .ThenBy(e => ReadString(e, "DisplayName"))
             .ToList();
 
+        var mapped = sortedItems.Select(EntityMappers.MapSlot).ToList();
+        if (!request.ReturnEnvelope)
+        {
+            return mapped;
+        }
+
         return new
         {
-            items = sortedItems.Select(EntityMappers.MapSlot).ToList(),
+            items = mapped,
             continuationToken = result.ContinuationToken,
             pageSize = result.PageSize,
             hasMore = result.HasMore

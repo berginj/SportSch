@@ -64,4 +64,5 @@ public class SlotQueryRequest
     public string? FieldKey { get; set; }
     public string? ContinuationToken { get; set; }
     public int PageSize { get; set; } = 50;
+    public bool ReturnEnvelope { get; set; }
 }
