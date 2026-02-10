@@ -718,6 +718,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     }, 500);
 
     return () => clearTimeout(timer);
+    // fetchFeasibility intentionally omitted to debounce on concrete rule inputs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     step,
     division,
@@ -1033,6 +1035,96 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     return "";
   }, [preview]);
 
+  const unassignedRegularReport = useMemo(() => {
+    if (!preview) {
+      return {
+        rows: [],
+        matchupRows: [],
+        totalMatchups: 0,
+        openSlots: 0,
+      };
+    }
+
+    const assignments = Array.isArray(preview.assignments) ? preview.assignments : [];
+    const unassignedMatchups = Array.isArray(preview.unassignedMatchups) ? preview.unassignedMatchups : [];
+    const unassignedSlots = Array.isArray(preview.unassignedSlots) ? preview.unassignedSlots : [];
+    const regularAssignments = assignments.filter((a) => a?.phase === "Regular Season" && !a?.isExternalOffer);
+    const regularUnassignedMatchups = unassignedMatchups.filter((m) => getIssuePhase(m) === "Regular Season");
+    const regularOpenSlots = unassignedSlots.filter((s) => s?.phase === "Regular Season");
+
+    const assignedByTeam = new Map();
+    const unassignedByTeam = new Map();
+    const ensureTeam = (teamId) => {
+      const normalized = String(teamId || "").trim();
+      if (!normalized) return;
+      if (!assignedByTeam.has(normalized)) assignedByTeam.set(normalized, 0);
+      if (!unassignedByTeam.has(normalized)) unassignedByTeam.set(normalized, 0);
+    };
+    const addAssigned = (teamId) => {
+      ensureTeam(teamId);
+      const normalized = String(teamId || "").trim();
+      if (!normalized) return;
+      assignedByTeam.set(normalized, (assignedByTeam.get(normalized) || 0) + 1);
+    };
+    const addUnassigned = (teamId) => {
+      ensureTeam(teamId);
+      const normalized = String(teamId || "").trim();
+      if (!normalized) return;
+      unassignedByTeam.set(normalized, (unassignedByTeam.get(normalized) || 0) + 1);
+    };
+
+    regularAssignments.forEach((assignment) => {
+      addAssigned(assignment?.homeTeamId);
+      addAssigned(assignment?.awayTeamId);
+    });
+    regularUnassignedMatchups.forEach((matchup) => {
+      addUnassigned(matchup?.homeTeamId);
+      addUnassigned(matchup?.awayTeamId);
+    });
+
+    const teamIds = new Set([...assignedByTeam.keys(), ...unassignedByTeam.keys()]);
+    const rows = [...teamIds]
+      .map((teamId) => {
+        const assigned = assignedByTeam.get(teamId) || 0;
+        const unassigned = unassignedByTeam.get(teamId) || 0;
+        const target = assigned + unassigned;
+        const coveragePct = target > 0 ? Math.round((assigned / target) * 100) : 100;
+        return { teamId, assigned, unassigned, target, coveragePct };
+      })
+      .sort((left, right) => {
+        const missingDiff = right.unassigned - left.unassigned;
+        if (missingDiff !== 0) return missingDiff;
+        return left.teamId.localeCompare(right.teamId);
+      });
+
+    const matchupCounts = new Map();
+    regularUnassignedMatchups.forEach((matchup) => {
+      const home = String(matchup?.homeTeamId || "").trim();
+      const away = String(matchup?.awayTeamId || "").trim();
+      if (!home || !away) return;
+      const orderedTeams = [home, away].sort((a, b) => a.localeCompare(b));
+      const key = `${orderedTeams[0]}|${orderedTeams[1]}`;
+      const existing = matchupCounts.get(key) || { homeTeamId: orderedTeams[0], awayTeamId: orderedTeams[1], count: 0 };
+      existing.count += 1;
+      matchupCounts.set(key, existing);
+    });
+
+    const matchupRows = [...matchupCounts.values()].sort((left, right) => {
+      const countDiff = right.count - left.count;
+      if (countDiff !== 0) return countDiff;
+      const homeDiff = left.homeTeamId.localeCompare(right.homeTeamId);
+      if (homeDiff !== 0) return homeDiff;
+      return left.awayTeamId.localeCompare(right.awayTeamId);
+    });
+
+    return {
+      rows,
+      matchupRows,
+      totalMatchups: regularUnassignedMatchups.length,
+      openSlots: regularOpenSlots.length,
+    };
+  }, [preview]);
+
   const planningChecksReport = useMemo(() => {
     if (!preview) return [];
 
@@ -1161,8 +1253,44 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       }
     }
 
+    if (unassignedRegularReport.totalMatchups <= 0) {
+      checks.push({
+        check: "Unassigned matchup balance",
+        scope: "Regular Season",
+        result: "PASS",
+        details: "All regular-season matchups were assigned.",
+      });
+    } else if (!unassignedRegularReport.rows.length) {
+      checks.push({
+        check: "Unassigned matchup balance",
+        scope: "Regular Season",
+        result: "WARN",
+        details: `${unassignedRegularReport.totalMatchups} regular-season matchup(s) remain unassigned.`,
+      });
+    } else {
+      const counts = unassignedRegularReport.rows.map((row) => row.unassigned);
+      const max = Math.max(...counts);
+      const min = Math.min(...counts);
+      const gap = max - min;
+      const teamsAtMax = unassignedRegularReport.rows
+        .filter((row) => row.unassigned === max)
+        .slice(0, 4)
+        .map((row) => row.teamId)
+        .join(", ");
+      const fitHint =
+        unassignedRegularReport.openSlots > 0
+          ? `${unassignedRegularReport.openSlots} open regular slot(s) remain; relaxing strict rules may fit more matchups.`
+          : "No open regular slots remain; add or reclassify game-capable slots.";
+      checks.push({
+        check: "Unassigned matchup balance",
+        scope: "Regular Season",
+        result: gap <= 1 ? "PASS" : "WARN",
+        details: `${unassignedRegularReport.totalMatchups} unassigned matchup(s). Highest team shortfall: ${teamsAtMax || "n/a"} (${max}). Gap ${gap}. ${fitHint}`,
+      });
+    }
+
     return checks;
-  }, [preview, maxGamesPerWeek, noDoubleHeaders, guestGamesPerWeek]);
+  }, [preview, maxGamesPerWeek, noDoubleHeaders, guestGamesPerWeek, unassignedRegularReport]);
 
   const stepStatuses = useMemo(() => {
     const errors = [basicsError, postseasonError, slotPlanError, rulesError, previewError];
@@ -1896,6 +2024,70 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                   </div>
                 </div>
               ) : null}
+              <div className={unassignedRegularReport.totalMatchups > 0 ? "callout callout--error" : "callout"}>
+                <div className="font-bold mb-2">Unassigned matchup impact (Regular Season)</div>
+                {unassignedRegularReport.totalMatchups > 0 ? (
+                  <>
+                    <div className="subtle">
+                      {unassignedRegularReport.totalMatchups} matchup(s) are still unassigned. Teams with higher unassigned counts are most at risk of missing games.
+                    </div>
+                    <div className="subtle">
+                      {unassignedRegularReport.openSlots > 0
+                        ? `${unassignedRegularReport.openSlots} open regular slot(s) remain. Try relaxing rules (max games/week, no-doubleheaders, preferred nights) to fit more games.`
+                        : "No open regular slots remain; add or reclassify game-capable slots to place the remaining matchups."}
+                    </div>
+                    <div className="tableWrap mt-2">
+                      <table className="table">
+                        <thead>
+                          <tr>
+                            <th>Team</th>
+                            <th>Assigned</th>
+                            <th>Unassigned</th>
+                            <th>Target</th>
+                            <th>Coverage</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {unassignedRegularReport.rows.map((row) => (
+                            <tr key={`team-impact-${row.teamId}`}>
+                              <td>{row.teamId}</td>
+                              <td>{row.assigned}</td>
+                              <td>{row.unassigned}</td>
+                              <td>{row.target}</td>
+                              <td>{row.coveragePct}%</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {unassignedRegularReport.matchupRows.length ? (
+                      <div className="tableWrap mt-2">
+                        <table className="table">
+                          <thead>
+                            <tr>
+                              <th>Unassigned matchup</th>
+                              <th>Count</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {unassignedRegularReport.matchupRows.slice(0, 120).map((row) => (
+                              <tr key={`unassigned-pair-${row.homeTeamId}-${row.awayTeamId}`}>
+                                <td>{row.homeTeamId} vs {row.awayTeamId}</td>
+                                <td>{row.count}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        {unassignedRegularReport.matchupRows.length > 120 ? (
+                          <div className="subtle mt-2">Showing first 120 unassigned matchup pairs.</div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </>
+                ) : (
+                  <div className="subtle">All regular-season matchups were assigned.</div>
+                )}
+              </div>
 
                 <div className={`tableWrap ${tableView === "B" ? "tableWrap--sticky" : ""}`}>
                   <table className={`table ${tableView === "B" ? "table--compact table--sticky" : ""}`}>

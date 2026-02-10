@@ -90,7 +90,7 @@ public static class ScheduleEngine
         foreach (var slot in slots)
         {
             var fixedHome = teamSet.Contains(slot.OfferingTeamId) ? slot.OfferingTeamId : "";
-            var pick = PickMatchup(slot.GameDate, fixedHome, remainingMatchups, homeCounts, awayCounts, gamesByDate, gamesByWeek, constraints.MaxGamesPerWeek, constraints.NoDoubleHeaders, constraints.BalanceHomeAway);
+            var pick = PickMatchup(slot.GameDate, fixedHome, remainingMatchups, teams, homeCounts, awayCounts, gamesByDate, gamesByWeek, constraints.MaxGamesPerWeek, constraints.NoDoubleHeaders, constraints.BalanceHomeAway);
             if (pick is null)
             {
                 unassignedSlots.Add(new ScheduleAssignment(slot.SlotId, slot.GameDate, slot.StartTime, slot.EndTime, slot.FieldKey, "", "", false));
@@ -152,6 +152,7 @@ public static class ScheduleEngine
         string gameDate,
         string fixedHome,
         List<MatchupPair> matchups,
+        IReadOnlyList<string> teams,
         Dictionary<string, int> homeCounts,
         Dictionary<string, int> awayCounts,
         Dictionary<string, HashSet<string>> gamesByDate,
@@ -183,13 +184,7 @@ public static class ScheduleEngine
 
             if (!CanAssign(home, away, gameDate, gamesByDate, gamesByWeek, maxGamesPerWeek, noDoubleHeaders)) continue;
 
-            var score = 0;
-            if (balanceHomeAway)
-            {
-                var homeDiff = Math.Abs((homeCounts[home] + 1) - awayCounts[home]);
-                var awayDiff = Math.Abs((awayCounts[away] + 1) - homeCounts[away]);
-                score = homeDiff + awayDiff;
-            }
+            var score = ScoreCandidate(home, away, teams, homeCounts, awayCounts, balanceHomeAway);
 
             if (score < bestScore)
             {
@@ -200,6 +195,57 @@ public static class ScheduleEngine
         }
 
         return best;
+    }
+
+    private static int ScoreCandidate(
+        string home,
+        string away,
+        IReadOnlyList<string> teams,
+        Dictionary<string, int> homeCounts,
+        Dictionary<string, int> awayCounts,
+        bool balanceHomeAway)
+    {
+        var homeGames = homeCounts[home] + awayCounts[home];
+        var awayGames = homeCounts[away] + awayCounts[away];
+
+        // Prioritize teams that are behind in total assigned games to reduce concentrated shortfalls.
+        var score = (homeGames + awayGames) * 20;
+        score += Math.Abs(homeGames - awayGames) * 5;
+        score += TeamLoadSpreadAfterAssignment(home, away, teams, homeCounts, awayCounts) * 100;
+
+        if (balanceHomeAway)
+        {
+            var homeDiff = Math.Abs((homeCounts[home] + 1) - awayCounts[home]);
+            var awayDiff = Math.Abs((awayCounts[away] + 1) - homeCounts[away]);
+            score += homeDiff + awayDiff;
+        }
+
+        return score;
+    }
+
+    private static int TeamLoadSpreadAfterAssignment(
+        string home,
+        string away,
+        IReadOnlyList<string> teams,
+        Dictionary<string, int> homeCounts,
+        Dictionary<string, int> awayCounts)
+    {
+        if (teams.Count == 0) return 0;
+
+        var min = int.MaxValue;
+        var max = int.MinValue;
+
+        foreach (var team in teams)
+        {
+            var total = homeCounts[team] + awayCounts[team];
+            if (string.Equals(team, home, StringComparison.OrdinalIgnoreCase)) total += 1;
+            if (string.Equals(team, away, StringComparison.OrdinalIgnoreCase)) total += 1;
+            if (total < min) min = total;
+            if (total > max) max = total;
+        }
+
+        if (min == int.MaxValue || max == int.MinValue) return 0;
+        return max - min;
     }
 
     private static bool CanAssign(
