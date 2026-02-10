@@ -627,29 +627,131 @@ public class ScheduleWizardFunctions
 
     private static PhaseAssignments AssignBracketSlots(List<SlotInfo> slots, List<MatchupPair> matchups)
     {
-        var assignments = new List<ScheduleAssignment>();
-        var unassignedSlots = new List<ScheduleAssignment>();
-        var remaining = new Queue<MatchupPair>(matchups);
-
-        foreach (var slot in slots
+        var orderedSlots = slots
             .OrderBy(s => SlotTypeSchedulingPriority(s))
             .ThenBy(s => s.priorityRank.HasValue ? 0 : 1)
             .ThenBy(s => s.priorityRank ?? int.MaxValue)
             .ThenBy(s => s.gameDate)
             .ThenBy(s => s.startTime)
-            .ThenBy(s => s.fieldKey))
+            .ThenBy(s => s.fieldKey)
+            .ToList();
+
+        var assignments = new List<ScheduleAssignment>();
+        var unassignedSlots = new List<ScheduleAssignment>();
+        if (orderedSlots.Count == 0)
+            return new PhaseAssignments(assignments, unassignedSlots, new List<MatchupPair>(matchups));
+
+        var remainingMatchups = new List<MatchupPair>(matchups);
+        var championshipIndex = remainingMatchups.FindIndex(IsChampionshipMatchup);
+        if (championshipIndex < 0)
         {
-            if (remaining.Count == 0)
+            var queue = new Queue<MatchupPair>(remainingMatchups);
+            foreach (var slot in orderedSlots)
             {
-                unassignedSlots.Add(new ScheduleAssignment(slot.slotId, slot.gameDate, slot.startTime, slot.endTime, slot.fieldKey, "", "", false));
-                continue;
+                if (queue.Count == 0)
+                {
+                    unassignedSlots.Add(new ScheduleAssignment(slot.slotId, slot.gameDate, slot.startTime, slot.endTime, slot.fieldKey, "", "", false));
+                    continue;
+                }
+
+                var matchup = queue.Dequeue();
+                assignments.Add(new ScheduleAssignment(slot.slotId, slot.gameDate, slot.startTime, slot.endTime, slot.fieldKey, matchup.HomeTeamId, matchup.AwayTeamId, false));
             }
 
-            var matchup = remaining.Dequeue();
-            assignments.Add(new ScheduleAssignment(slot.slotId, slot.gameDate, slot.startTime, slot.endTime, slot.fieldKey, matchup.HomeTeamId, matchup.AwayTeamId, false));
+            return new PhaseAssignments(assignments, unassignedSlots, queue.ToList());
         }
 
-        return new PhaseAssignments(assignments, unassignedSlots, remaining.ToList());
+        var championship = remainingMatchups[championshipIndex];
+        remainingMatchups.RemoveAt(championshipIndex);
+
+        // Assign non-championship bracket games first (e.g., semifinals).
+        var usedSlotIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var semifinalEndTimes = new List<DateTime>();
+        var semiQueue = new Queue<MatchupPair>(remainingMatchups);
+
+        foreach (var slot in orderedSlots)
+        {
+            if (semiQueue.Count == 0) break;
+            var matchup = semiQueue.Dequeue();
+            assignments.Add(new ScheduleAssignment(slot.slotId, slot.gameDate, slot.startTime, slot.endTime, slot.fieldKey, matchup.HomeTeamId, matchup.AwayTeamId, false));
+            usedSlotIds.Add(slot.slotId);
+            if (TryGetSlotDateTime(slot.gameDate, slot.endTime, out var endAt))
+            {
+                semifinalEndTimes.Add(endAt);
+            }
+            else if (TryGetSlotDateTime(slot.gameDate, slot.startTime, out var startAt))
+            {
+                semifinalEndTimes.Add(startAt);
+            }
+        }
+
+        var leftoverSemis = semiQueue.ToList();
+        if (leftoverSemis.Count > 0)
+        {
+            // If semifinal games are still unassigned, championship cannot be scheduled.
+            var pending = new List<MatchupPair>(leftoverSemis) { championship };
+            foreach (var slot in orderedSlots.Where(s => !usedSlotIds.Contains(s.slotId)))
+            {
+                unassignedSlots.Add(new ScheduleAssignment(slot.slotId, slot.gameDate, slot.startTime, slot.endTime, slot.fieldKey, "", "", false));
+            }
+            return new PhaseAssignments(assignments, unassignedSlots, pending);
+        }
+
+        var earliestChampionshipStart = semifinalEndTimes.Count > 0 ? semifinalEndTimes.Max() : DateTime.MinValue;
+        SlotInfo? championshipSlot = null;
+        foreach (var slot in orderedSlots.Where(s => !usedSlotIds.Contains(s.slotId)))
+        {
+            if (!TryGetSlotDateTime(slot.gameDate, slot.startTime, out var slotStart)) continue;
+            if (slotStart < earliestChampionshipStart) continue;
+            championshipSlot = slot;
+            break;
+        }
+
+        if (championshipSlot is not null)
+        {
+            assignments.Add(new ScheduleAssignment(
+                championshipSlot.slotId,
+                championshipSlot.gameDate,
+                championshipSlot.startTime,
+                championshipSlot.endTime,
+                championshipSlot.fieldKey,
+                championship.HomeTeamId,
+                championship.AwayTeamId,
+                false));
+            usedSlotIds.Add(championshipSlot.slotId);
+        }
+
+        foreach (var slot in orderedSlots.Where(s => !usedSlotIds.Contains(s.slotId)))
+        {
+            unassignedSlots.Add(new ScheduleAssignment(slot.slotId, slot.gameDate, slot.startTime, slot.endTime, slot.fieldKey, "", "", false));
+        }
+
+        var unassignedMatchups = new List<MatchupPair>();
+        if (championshipSlot is null)
+        {
+            unassignedMatchups.Add(championship);
+        }
+
+        return new PhaseAssignments(assignments, unassignedSlots, unassignedMatchups);
+    }
+
+    private static bool IsChampionshipMatchup(MatchupPair matchup)
+    {
+        var home = matchup.HomeTeamId ?? "";
+        var away = matchup.AwayTeamId ?? "";
+        return home.StartsWith("Winner", StringComparison.OrdinalIgnoreCase) ||
+               away.StartsWith("Winner", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool TryGetSlotDateTime(string gameDate, string hhmm, out DateTime value)
+    {
+        value = default;
+        if (!DateOnly.TryParseExact(gameDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+            return false;
+        if (!TimeUtil.TryParseMinutes(hhmm, out var minutes))
+            return false;
+        value = date.ToDateTime(TimeOnly.MinValue).AddMinutes(minutes);
+        return true;
     }
 
     private static PhaseAssignments AddExternalOffers(

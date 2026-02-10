@@ -36,6 +36,7 @@ public class GetSlots
     [OpenApiParameter(name: "status", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Filter by status ('Open', 'Confirmed', 'Cancelled')")]
     [OpenApiParameter(name: "dateFrom", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Filter by start date (YYYY-MM-DD)")]
     [OpenApiParameter(name: "dateTo", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Filter by end date (YYYY-MM-DD)")]
+    [OpenApiParameter(name: "fieldKey", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Filter by field key (parkCode/fieldCode)")]
     [OpenApiParameter(name: "continuationToken", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Pagination continuation token")]
     [OpenApiParameter(name: "pageSize", In = ParameterLocation.Query, Required = false, Type = typeof(int), Description = "Number of results per page (default: 50)")]
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(object), Description = "Slots retrieved successfully with pagination info")]
@@ -62,6 +63,7 @@ public class GetSlots
             var status = (ApiGuards.GetQueryParam(req, "status") ?? "").Trim();
             var dateFrom = (ApiGuards.GetQueryParam(req, "dateFrom") ?? "").Trim();
             var dateTo = (ApiGuards.GetQueryParam(req, "dateTo") ?? "").Trim();
+            var fieldKey = (ApiGuards.GetQueryParam(req, "fieldKey") ?? "").Trim();
             var continuationToken = ApiGuards.GetQueryParam(req, "continuationToken");
             var pageSizeStr = ApiGuards.GetQueryParam(req, "pageSize");
             var pageSize = int.TryParse(pageSizeStr, out var ps) ? ps : 50;
@@ -75,6 +77,7 @@ public class GetSlots
                 Status = status,
                 FromDate = dateFrom,
                 ToDate = dateTo,
+                FieldKey = fieldKey,
                 ContinuationToken = continuationToken,
                 PageSize = pageSize,
                 ReturnEnvelope = returnEnvelope

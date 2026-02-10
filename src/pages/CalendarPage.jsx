@@ -60,6 +60,16 @@ function canAcceptSlot(slot) {
   return true;
 }
 
+function parseMinutes(hhmm) {
+  const parts = String(hhmm || "").split(":");
+  if (parts.length !== 2) return null;
+  const h = Number(parts[0]);
+  const m = Number(parts[1]);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+  return h * 60 + m;
+}
+
 function slotMatchupLabel(slot) {
   if (isPracticeSlot(slot)) {
     const team = (slot?.confirmedTeamId || slot?.offeringTeamId || "").trim();
@@ -109,6 +119,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
 
   const [events, setEvents] = useState([]);
   const [slots, setSlots] = useState([]);
+  const [fields, setFields] = useState([]);
   const [teams, setTeams] = useState([]);
   const [acceptTeamBySlot, setAcceptTeamBySlot] = useState({});
   const [loading, setLoading] = useState(true);
@@ -120,12 +131,21 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
   const { promptState, promptValue, setPromptValue, requestPrompt, handleConfirm, handleCancel } = usePromptDialog();
   const [exportFormat, setExportFormat] = useState("internal");
   const [exporting, setExporting] = useState(false);
+  const [editingSlot, setEditingSlot] = useState(null);
+  const [editGameDate, setEditGameDate] = useState("");
+  const [editStartTime, setEditStartTime] = useState("");
+  const [editEndTime, setEditEndTime] = useState("");
+  const [editFieldKey, setEditFieldKey] = useState("");
+  const [editConflicts, setEditConflicts] = useState([]);
+  const [editCheckingConflicts, setEditCheckingConflicts] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const canPickTeam = isGlobalAdmin || role === "LeagueAdmin";
 
   async function loadMeta() {
-    const divs = await apiFetch("/api/divisions");
+    const [divs, flds] = await Promise.all([apiFetch("/api/divisions"), apiFetch("/api/fields")]);
     setDivisions(Array.isArray(divs) ? divs : []);
+    setFields(Array.isArray(flds) ? flds : []);
 
     if (canPickTeam) {
       const t = await apiFetch("/api/teams");
@@ -460,6 +480,124 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     return false;
   }
 
+  function canEditSlot(slot) {
+    if (!slot) return false;
+    if (slot.isAvailability) return false;
+    if ((slot.status || "") === SLOT_STATUS.CANCELLED) return false;
+    return isGlobalAdmin || role === "LeagueAdmin";
+  }
+
+  function openEditSlot(slot) {
+    if (!slot) return;
+    setErr("");
+    setEditingSlot(slot);
+    setEditGameDate(slot.gameDate || "");
+    setEditStartTime(slot.startTime || "");
+    setEditEndTime(slot.endTime || "");
+    setEditFieldKey(slot.fieldKey || "");
+    setEditConflicts([]);
+  }
+
+  function closeEditSlot() {
+    if (savingEdit) return;
+    setEditingSlot(null);
+    setEditGameDate("");
+    setEditStartTime("");
+    setEditEndTime("");
+    setEditFieldKey("");
+    setEditConflicts([]);
+  }
+
+  async function checkEditConflicts(next) {
+    if (!editingSlot?.division || !editingSlot?.slotId) {
+      setEditConflicts([]);
+      return;
+    }
+    if (!next?.gameDate || !next?.fieldKey) {
+      setEditConflicts([]);
+      return;
+    }
+    const nextStartMin = parseMinutes(next.startTime);
+    const nextEndMin = parseMinutes(next.endTime);
+    if (nextStartMin == null || nextEndMin == null || nextStartMin >= nextEndMin) {
+      setEditConflicts([]);
+      return;
+    }
+
+    setEditCheckingConflicts(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("division", editingSlot.division);
+      params.set("dateFrom", next.gameDate);
+      params.set("dateTo", next.gameDate);
+      params.set("fieldKey", next.fieldKey);
+      params.set("status", `${SLOT_STATUS.OPEN},${SLOT_STATUS.CONFIRMED}`);
+      const result = await apiFetch(`/api/slots?${params.toString()}`);
+      const candidates = Array.isArray(result) ? result : [];
+      const overlaps = candidates.filter((candidate) => {
+        if (!candidate || candidate.slotId === editingSlot.slotId) return false;
+        if ((candidate.status || "") === SLOT_STATUS.CANCELLED) return false;
+        const candidateStart = parseMinutes(candidate.startTime);
+        const candidateEnd = parseMinutes(candidate.endTime);
+        if (candidateStart == null || candidateEnd == null) return false;
+        return nextStartMin < candidateEnd && nextEndMin > candidateStart;
+      });
+      setEditConflicts(overlaps);
+    } catch {
+      setEditConflicts([]);
+    } finally {
+      setEditCheckingConflicts(false);
+    }
+  }
+
+  async function saveSlotEdit() {
+    if (!editingSlot?.slotId || !editingSlot?.division) return;
+    if (!editGameDate.trim()) return setErr("GameDate is required.");
+    if (!editStartTime.trim() || !editEndTime.trim()) return setErr("StartTime and EndTime are required.");
+    if (!editFieldKey.trim()) return setErr("Field is required.");
+
+    const startMin = parseMinutes(editStartTime);
+    const endMin = parseMinutes(editEndTime);
+    if (startMin == null || endMin == null || startMin >= endMin) {
+      return setErr("StartTime must be before EndTime in HH:MM format.");
+    }
+
+    if (editConflicts.length > 0) {
+      return setErr("Selected field/time overlaps an existing slot. Choose another field or time.");
+    }
+
+    setErr("");
+    setSavingEdit(true);
+    try {
+      await apiFetch(`/api/slots/${encodeURIComponent(editingSlot.division)}/${encodeURIComponent(editingSlot.slotId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          gameDate: editGameDate.trim(),
+          startTime: editStartTime.trim(),
+          endTime: editEndTime.trim(),
+          fieldKey: editFieldKey.trim(),
+        }),
+      });
+      closeEditSlot();
+      await loadData();
+      setToast({ tone: "success", message: "Game updated." });
+      trackEvent("ui_calendar_slot_edit", {
+        leagueId,
+        division: editingSlot.division,
+        slotId: editingSlot.slotId,
+      });
+    } catch (e) {
+      setErr(e?.message || String(e));
+      const apiConflicts = Array.isArray(e?.details?.conflicts) ? e.details.conflicts : [];
+      if (apiConflicts.length) {
+        setEditConflicts(apiConflicts);
+      }
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
   function toggleSlotStatus(status) {
     setSlotStatusFilter((prev) => ({ ...prev, [status]: !prev[status] }));
   }
@@ -476,6 +614,20 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
   function setAcceptTeam(slotId, teamId) {
     setAcceptTeamBySlot((prev) => ({ ...prev, [slotId]: teamId }));
   }
+
+  useEffect(() => {
+    if (!editingSlot) return;
+    const timer = setTimeout(() => {
+      checkEditConflicts({
+        gameDate: editGameDate,
+        startTime: editStartTime,
+        endTime: editEndTime,
+        fieldKey: editFieldKey,
+      });
+    }, 250);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingSlot, editGameDate, editStartTime, editEndTime, editFieldKey]);
 
   const activeSlotStatuses = useMemo(
     () => Object.entries(slotStatusFilter).filter(([, on]) => on).map(([k]) => k),
@@ -616,6 +768,73 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
         onConfirm={handleConfirm}
         onCancel={handleCancel}
       />
+      {editingSlot ? (
+        <div className="modalOverlay" role="presentation" onClick={closeEditSlot}>
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Edit scheduled game"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal__header">Edit scheduled game</div>
+            <div className="modal__body">
+              Update date, time, or field. Conflicts are shown before saving.
+            </div>
+            <div className="grid2">
+              <label>
+                GameDate (YYYY-MM-DD)
+                <input value={editGameDate} onChange={(e) => setEditGameDate(e.target.value)} placeholder="YYYY-MM-DD" />
+              </label>
+              <label>
+                Field
+                <select value={editFieldKey} onChange={(e) => setEditFieldKey(e.target.value)}>
+                  <option value="">Select field</option>
+                  {fields.map((f) => (
+                    <option key={f.fieldKey} value={f.fieldKey}>
+                      {f.displayName || f.fieldKey}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                StartTime (HH:MM)
+                <input value={editStartTime} onChange={(e) => setEditStartTime(e.target.value)} placeholder="HH:MM" />
+              </label>
+              <label>
+                EndTime (HH:MM)
+                <input value={editEndTime} onChange={(e) => setEditEndTime(e.target.value)} placeholder="HH:MM" />
+              </label>
+            </div>
+            <div className="mt-2">
+              {editCheckingConflicts ? <div className="subtle">Checking field conflicts...</div> : null}
+              {!editCheckingConflicts && editConflicts.length > 0 ? (
+                <div className="callout callout--error">
+                  <div className="font-bold mb-1">Potential conflicts on this field</div>
+                  <div className="stack gap-1">
+                    {editConflicts.slice(0, 10).map((conflict, idx) => (
+                      <div key={`${conflict.slotId || idx}-${idx}`} className="subtle">
+                        {(conflict.startTime || "")}-{(conflict.endTime || "")} {conflict.division ? `(${conflict.division})` : ""}{" "}
+                        {conflict.homeTeamId || conflict.offeringTeamId || "TBD"}{conflict.awayTeamId ? ` vs ${conflict.awayTeamId}` : ""}{" "}
+                        [{conflict.status || "Open"}]
+                      </div>
+                    ))}
+                    {editConflicts.length > 10 ? <div className="subtle">Showing first 10 conflicts.</div> : null}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+            <div className="modal__actions">
+              <button className="btn btn--ghost" type="button" onClick={closeEditSlot} disabled={savingEdit}>
+                Cancel
+              </button>
+              <button className="btn btn--primary" type="button" onClick={saveSlotEdit} disabled={savingEdit || editCheckingConflicts}>
+                {savingEdit ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="calendarSplit">
         <div className="card">
@@ -822,6 +1041,11 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
                         {!canPickTeam && role !== "Viewer" && canAcceptSlot(slot) && (slot?.offeringTeamId || "") !== myCoachTeamId ? (
                           <button className="btn btn--primary" onClick={() => requestSlot(slot)} title="Accept this open slot and confirm the game.">
                             Accept
+                          </button>
+                        ) : null}
+                        {canEditSlot(slot) ? (
+                          <button className="btn" onClick={() => openEditSlot(slot)} title="Edit date, time, or field for this game.">
+                            Edit
                           </button>
                         ) : null}
                         {canCancelSlot(slot) && (slot?.status || "") !== "Cancelled" ? (

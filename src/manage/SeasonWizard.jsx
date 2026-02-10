@@ -921,6 +921,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       if (phase.matchupsTotal > phase.slotsTotal) {
         return `${base} ${issuePhase} has fewer slots (${phase.slotsTotal}) than matchups (${phase.matchupsTotal}).`;
       }
+      if (issuePhase === "Bracket") {
+        return `${base} Bracket finals must be placed after semifinal end times, so add a later championship slot if needed.`;
+      }
     }
     if (issue.ruleId === "double-header" && summary.teamCount && summary.teamCount % 2 === 1) {
       return `${base} With an odd team count (${summary.teamCount}), some byes help reduce doubleheaders.`;
