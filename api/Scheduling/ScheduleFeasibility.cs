@@ -60,8 +60,8 @@ public static class ScheduleFeasibility
         );
 
         // Calculate capacity breakdown
-        int guestSlotsReserved = regularWeeksCount * guestGamesPerWeek;
-        int effectiveSlotsRemaining = availableRegularSlots - guestSlotsReserved;
+        int guestSlotsReserved = Math.Max(0, Math.Min(availableRegularSlots, regularWeeksCount * guestGamesPerWeek));
+        int effectiveSlotsRemaining = Math.Max(0, availableRegularSlots - guestSlotsReserved);
         int surplusOrShortfall = availableRegularSlots - regularRequiredSlots;
 
         var capacity = new CapacityBreakdown(
@@ -137,7 +137,8 @@ public static class ScheduleFeasibility
         double utilization = 0;
         if (currentMinGamesPerTeam > 0 && availableSlots > 0)
         {
-            int totalCurrentRequired = currentRequiredSlots + (weeksCount * currentGuestGamesPerWeek);
+            int guestSlotsReservedForUtilization = Math.Max(0, Math.Min(availableSlots, weeksCount * currentGuestGamesPerWeek));
+            int totalCurrentRequired = currentRequiredSlots + guestSlotsReservedForUtilization;
             utilization = (double)totalCurrentRequired / availableSlots;
         }
 
@@ -257,7 +258,7 @@ public static class ScheduleFeasibility
         // Conflict: Guest games consuming too much capacity
         if (guestGamesPerWeek > 0)
         {
-            int guestSlotsConsumed = weeksCount * guestGamesPerWeek;
+            int guestSlotsConsumed = Math.Max(0, Math.Min(availableSlots, weeksCount * guestGamesPerWeek));
             int effectiveSlots = availableSlots - guestSlotsConsumed;
 
             if (effectiveSlots < requiredSlots)

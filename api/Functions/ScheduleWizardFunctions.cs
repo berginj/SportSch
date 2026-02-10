@@ -152,7 +152,8 @@ public class ScheduleWizardFunctions
             var minGamesPerTeam = Math.Max(0, body.minGamesPerTeam ?? 0);
             var poolGamesPerTeam = Math.Max(2, body.poolGamesPerTeam ?? 2);
             var externalOfferPerWeek = Math.Max(0, body.externalOfferPerWeek ?? 0);
-            var maxGamesPerWeek = (body.maxGamesPerWeek ?? 0) <= 0 ? 0 : body.maxGamesPerWeek.Value;
+            var maxGamesPerWeek = body.maxGamesPerWeek.GetValueOrDefault();
+            if (maxGamesPerWeek < 0) maxGamesPerWeek = 0;
             var noDoubleHeaders = body.noDoubleHeaders ?? true;
             var blockedRanges = NormalizeBlockedDateRanges(body.blockedDateRanges);
 
@@ -187,18 +188,22 @@ public class ScheduleWizardFunctions
                 ? FilterSlots(filteredAllSlots, bracketStart.Value, bracketEnd.Value)
                 : new List<SlotInfo>();
 
-            // Calculate weeks in regular season
-            var regularWeeksCount = (regularRangeEnd.DayNumber - seasonStart.DayNumber) / 7 + 1;
-
-            // Account for guest anchor slot reservation (same logic as AssignPhaseSlots)
-            var guestAnchors = NormalizeGuestAnchors(body.guestAnchorPrimary, body.guestAnchorSecondary);
-            var anchoredGuestSlots = SelectAnchoredExternalSlots(regularSlots, externalOfferPerWeek, guestAnchors);
-            var regularSlotsAfterGuestReservation = regularSlots.Count - anchoredGuestSlots.Count;
+            // Calculate active weeks in regular season from usable slots after blackouts.
+            // This avoids over-counting blocked windows (e.g., Spring Break) in guest-slot reservation math.
+            var regularWeeksCount = regularSlots
+                .Select(s => WeekKey(s.gameDate))
+                .Where(k => !string.IsNullOrWhiteSpace(k))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count();
+            if (regularWeeksCount <= 0)
+            {
+                regularWeeksCount = Math.Max(0, (regularRangeEnd.DayNumber - seasonStart.DayNumber) / 7 + 1);
+            }
 
             // Run feasibility analysis
             var feasibilityResult = GameSwap.Scheduling.ScheduleFeasibility.Analyze(
                 teamCount: teams.Count,
-                availableRegularSlots: regularSlotsAfterGuestReservation,
+                availableRegularSlots: regularSlots.Count,
                 availablePoolSlots: poolSlots.Count,
                 availableBracketSlots: bracketSlots.Count,
                 minGamesPerTeam: minGamesPerTeam,
