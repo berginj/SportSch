@@ -100,12 +100,6 @@ function extractSlotItems(payload) {
   return [];
 }
 
-function extractContinuationToken(payload) {
-  if (!payload || typeof payload !== "object") return "";
-  const token = payload.continuationToken || payload.nextContinuationToken || payload.nextToken || "";
-  return String(token || "").trim();
-}
-
 export default function LeagueSettings({ leagueId }) {
   const [divisions, setDivisions] = useState([]);
   const [fields, setFields] = useState([]);
@@ -363,25 +357,13 @@ export default function LeagueSettings({ leagueId }) {
     if (dateError) return setAvailabilityErr(dateError);
     setAvailabilityLoading(true);
     try {
-      const list = [];
-      let continuationToken = "";
-      for (let page = 0; page < 50; page += 1) {
-        const qs = new URLSearchParams();
-        if (!availabilityAllDivisions && availabilityDivision) qs.set("division", availabilityDivision);
-        if (availabilityDateFrom) qs.set("dateFrom", availabilityDateFrom);
-        if (availabilityDateTo) qs.set("dateTo", availabilityDateTo);
-        qs.set("status", "Open");
-        qs.set("pageSize", "200");
-        if (continuationToken) qs.set("continuationToken", continuationToken);
+      const qs = new URLSearchParams();
+      if (!availabilityAllDivisions && availabilityDivision) qs.set("division", availabilityDivision);
+      if (availabilityDateFrom) qs.set("dateFrom", availabilityDateFrom);
+      if (availabilityDateTo) qs.set("dateTo", availabilityDateTo);
 
-        const data = await apiFetch(`/api/slots?${qs.toString()}`);
-        const pageItems = extractSlotItems(data);
-        list.push(...pageItems);
-        const nextToken = extractContinuationToken(data);
-        if (!nextToken) break;
-        continuationToken = nextToken;
-      }
-      const availability = list.filter((s) => s.isAvailability);
+      const data = await apiFetch(`/api/availability-slots?${qs.toString()}`);
+      const availability = extractSlotItems(data);
       setAvailabilitySlots(availability);
       const insights = buildAvailabilityInsights(availability);
       setAvailabilityInsights(insights);
