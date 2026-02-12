@@ -54,6 +54,15 @@ export default function TeamsManager({ leagueId, tableView = "A" }) {
   const [teamEdits, setTeamEdits] = useState({});
   const [savingKey, setSavingKey] = useState("");
   const [deletingKey, setDeletingKey] = useState("");
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createDraft, setCreateDraft] = useState({
+    division: "",
+    teamId: "",
+    name: "",
+    contactName: "",
+    contactEmail: "",
+    contactPhone: "",
+  });
 
   async function load() {
     if (!leagueId) return;
@@ -121,6 +130,26 @@ export default function TeamsManager({ leagueId, tableView = "A" }) {
       .sort((a, b) => a.localeCompare(b));
   }, [divisions]);
 
+  const divisionLabels = useMemo(() => {
+    const map = new Map();
+    for (const d of divisions || []) {
+      const code = typeof d === "string" ? d : d?.code || d?.division || "";
+      if (!code) continue;
+      const name = typeof d === "string" ? d : d?.name || "";
+      map.set(code, name && name !== code ? `${name} (${code})` : code);
+    }
+    return map;
+  }, [divisions]);
+
+  const teamsByDivisionSorted = useMemo(() => {
+    return Array.from(teamsByDivision.keys()).sort((a, b) => a.localeCompare(b));
+  }, [teamsByDivision]);
+
+  useEffect(() => {
+    if (!divisionOptions.length) return;
+    setCreateDraft((prev) => (prev.division ? prev : { ...prev, division: divisionOptions[0] }));
+  }, [divisionOptions]);
+
   function setDraftForCoach(userId, patch) {
     setCoachDraft((prev) => {
       const cur = prev[userId] || { division: "", teamId: "" };
@@ -137,6 +166,56 @@ export default function TeamsManager({ leagueId, tableView = "A" }) {
       ...prev,
       [key]: { ...(prev[key] || {}), ...patch },
     }));
+  }
+
+  function updateCreateDraft(patch) {
+    setCreateDraft((prev) => ({ ...prev, ...patch }));
+  }
+
+  async function createTeam() {
+    const division = (createDraft.division || "").trim();
+    const teamId = (createDraft.teamId || "").trim();
+    const name = (createDraft.name || "").trim();
+    if (!division || !teamId || !name) {
+      setErr("Division, Team ID, and Team name are required.");
+      return;
+    }
+
+    setCreateBusy(true);
+    setErr("");
+    setOk("");
+    try {
+      await apiFetch("/api/teams", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          division,
+          teamId,
+          name,
+          primaryContact: {
+            name: (createDraft.contactName || "").trim(),
+            email: (createDraft.contactEmail || "").trim(),
+            phone: (createDraft.contactPhone || "").trim(),
+          },
+        }),
+      });
+      setOk(`Created ${teamId}.`);
+      setToast({ tone: "success", message: `Created ${teamId}.` });
+      trackEvent("ui_teams_create_success", { leagueId, division, teamId });
+      setCreateDraft((prev) => ({
+        ...prev,
+        teamId: "",
+        name: "",
+        contactName: "",
+        contactEmail: "",
+        contactPhone: "",
+      }));
+      await load();
+    } catch (e) {
+      setErr(e?.message || "Failed to create team.");
+    } finally {
+      setCreateBusy(false);
+    }
   }
 
   async function saveTeam(team) {
@@ -370,155 +449,248 @@ export default function TeamsManager({ leagueId, tableView = "A" }) {
 
       <div className="card">
         <div className="font-bold mb-2">Teams</div>
+        <div className="subtle mb-2">Add teams manually and manage them by division.</div>
+        <div className="stack gap-2 mb-3">
+          <div className="font-semibold">Add team (manual)</div>
+          <div className="row row--wrap gap-2">
+            <label>
+              Division
+              <select
+                value={createDraft.division}
+                onChange={(e) => updateCreateDraft({ division: e.target.value })}
+                disabled={createBusy || !divisionOptions.length}
+              >
+                <option value="">Select division</option>
+                {divisionOptions.map((code) => (
+                  <option key={code} value={code}>{divisionLabels.get(code) || code}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Team ID
+              <input
+                value={createDraft.teamId}
+                onChange={(e) => updateCreateDraft({ teamId: e.target.value })}
+                placeholder="e.g. Titans"
+                disabled={createBusy}
+              />
+            </label>
+            <label>
+              Name
+              <input
+                value={createDraft.name}
+                onChange={(e) => updateCreateDraft({ name: e.target.value })}
+                placeholder="Team name"
+                disabled={createBusy}
+              />
+            </label>
+            <label>
+              Coach name
+              <input
+                value={createDraft.contactName}
+                onChange={(e) => updateCreateDraft({ contactName: e.target.value })}
+                placeholder="Optional"
+                disabled={createBusy}
+              />
+            </label>
+            <label>
+              Coach email
+              <input
+                value={createDraft.contactEmail}
+                onChange={(e) => updateCreateDraft({ contactEmail: e.target.value })}
+                placeholder="Optional"
+                disabled={createBusy}
+              />
+            </label>
+            <label>
+              Coach phone
+              <input
+                value={createDraft.contactPhone}
+                onChange={(e) => updateCreateDraft({ contactPhone: e.target.value })}
+                placeholder="Optional"
+                disabled={createBusy}
+              />
+            </label>
+            <div className="row items-end">
+              <button
+                className="btn btn--primary"
+                onClick={createTeam}
+                disabled={createBusy || !divisionOptions.length}
+              >
+                {createBusy ? "Adding..." : "Add team"}
+              </button>
+            </div>
+          </div>
+          {!divisionOptions.length ? (
+            <div className="callout callout--warning">
+              No active divisions found. Create a division first, then add teams.
+            </div>
+          ) : null}
+        </div>
         {loading ? (
           <div className="subtle">Loading...</div>
-        ) : teams.length === 0 ? (
+        ) : teamsByDivisionSorted.length === 0 ? (
           <div className="subtle">No teams yet.</div>
-        ) : tableView === "C" ? (
-          <div className="dataCards">
-            {teams.map((t) => {
-              const key = teamKey(t);
-              const edit = teamEdits[key] || {};
+        ) : (
+          <div className="stack gap-4">
+            {teamsByDivisionSorted.map((divisionCode) => {
+              const groupedTeams = teamsByDivision.get(divisionCode) || [];
+              const divisionLabel = divisionLabels.get(divisionCode) || divisionCode;
               return (
-                <div key={`${t.division}-${t.teamId}`} className="dataCard">
-                  <div className="dataCard__title">{t.name || t.teamId}</div>
-                  <div className="dataCard__meta">{t.division} / {t.teamId}</div>
-                  <div className="dataCard__grid">
-                    <label>
-                      Division
-                      <select
-                        value={edit.division ?? ""}
-                        onChange={(e) => updateTeamEdit(key, { division: e.target.value })}
-                      >
-                        <option value="">Select division</option>
-                        {divisionOptions.map((code) => (
-                          <option key={code} value={code}>{code}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      Team ID
-                      <input
-                        value={edit.teamId ?? ""}
-                        onChange={(e) => updateTeamEdit(key, { teamId: e.target.value })}
-                      />
-                    </label>
-                    <label>
-                      Name
-                      <input
-                        value={edit.name ?? ""}
-                        onChange={(e) => updateTeamEdit(key, { name: e.target.value })}
-                      />
-                    </label>
-                    <label>
-                      Coach name
-                      <input
-                        value={edit.contactName ?? ""}
-                        onChange={(e) => updateTeamEdit(key, { contactName: e.target.value })}
-                      />
-                    </label>
-                    <label>
-                      Coach email
-                      <input
-                        value={edit.contactEmail ?? ""}
-                        onChange={(e) => updateTeamEdit(key, { contactEmail: e.target.value })}
-                      />
-                    </label>
-                    <label>
-                      Coach phone
-                      <input
-                        value={edit.contactPhone ?? ""}
-                        onChange={(e) => updateTeamEdit(key, { contactPhone: e.target.value })}
-                      />
-                    </label>
+                <div key={divisionCode} className="stack gap-2">
+                  <div className="font-semibold">
+                    {divisionLabel} <span className="subtle">({groupedTeams.length})</span>
                   </div>
-                  <div className="row row--end gap-2">
-                    <button className="btn" onClick={() => saveTeam(t)} disabled={savingKey === key || deletingKey === key}>
-                      {savingKey === key ? "Saving..." : "Save"}
-                    </button>
-                    <button className="btn btn--ghost" onClick={() => deleteTeam(t)} disabled={savingKey === key || deletingKey === key}>
-                      {deletingKey === key ? "Deleting..." : "Delete"}
-                    </button>
-                  </div>
+                  {tableView === "C" ? (
+                    <div className="dataCards">
+                      {groupedTeams.map((t) => {
+                        const key = teamKey(t);
+                        const edit = teamEdits[key] || {};
+                        return (
+                          <div key={`${t.division}-${t.teamId}`} className="dataCard">
+                            <div className="dataCard__title">{t.name || t.teamId}</div>
+                            <div className="dataCard__meta">{t.division} / {t.teamId}</div>
+                            <div className="dataCard__grid">
+                              <label>
+                                Division
+                                <select
+                                  value={edit.division ?? ""}
+                                  onChange={(e) => updateTeamEdit(key, { division: e.target.value })}
+                                >
+                                  <option value="">Select division</option>
+                                  {divisionOptions.map((code) => (
+                                    <option key={code} value={code}>{divisionLabels.get(code) || code}</option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label>
+                                Team ID
+                                <input
+                                  value={edit.teamId ?? ""}
+                                  onChange={(e) => updateTeamEdit(key, { teamId: e.target.value })}
+                                />
+                              </label>
+                              <label>
+                                Name
+                                <input
+                                  value={edit.name ?? ""}
+                                  onChange={(e) => updateTeamEdit(key, { name: e.target.value })}
+                                />
+                              </label>
+                              <label>
+                                Coach name
+                                <input
+                                  value={edit.contactName ?? ""}
+                                  onChange={(e) => updateTeamEdit(key, { contactName: e.target.value })}
+                                />
+                              </label>
+                              <label>
+                                Coach email
+                                <input
+                                  value={edit.contactEmail ?? ""}
+                                  onChange={(e) => updateTeamEdit(key, { contactEmail: e.target.value })}
+                                />
+                              </label>
+                              <label>
+                                Coach phone
+                                <input
+                                  value={edit.contactPhone ?? ""}
+                                  onChange={(e) => updateTeamEdit(key, { contactPhone: e.target.value })}
+                                />
+                              </label>
+                            </div>
+                            <div className="row row--end gap-2">
+                              <button className="btn" onClick={() => saveTeam(t)} disabled={savingKey === key || deletingKey === key}>
+                                {savingKey === key ? "Saving..." : "Save"}
+                              </button>
+                              <button className="btn btn--ghost" onClick={() => deleteTeam(t)} disabled={savingKey === key || deletingKey === key}>
+                                {deletingKey === key ? "Deleting..." : "Delete"}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className={`tableWrap ${tableView === "B" ? "tableWrap--sticky" : ""}`}>
+                      <table className={`table ${tableView === "B" ? "table--compact table--sticky" : ""}`}>
+                        <thead>
+                          <tr>
+                            <th>Division</th>
+                            <th>Team</th>
+                            <th>Name</th>
+                            <th>Coach contact</th>
+                            <th>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {groupedTeams.map((t) => {
+                            const key = teamKey(t);
+                            const edit = teamEdits[key] || {};
+                            return (
+                              <tr key={`${t.division}-${t.teamId}`}>
+                                <td>
+                                  <select
+                                    value={edit.division ?? ""}
+                                    onChange={(e) => updateTeamEdit(key, { division: e.target.value })}
+                                  >
+                                    <option value="">Select division</option>
+                                    {divisionOptions.map((code) => (
+                                      <option key={code} value={code}>{divisionLabels.get(code) || code}</option>
+                                    ))}
+                                  </select>
+                                </td>
+                                <td>
+                                  <input
+                                    value={edit.teamId ?? ""}
+                                    onChange={(e) => updateTeamEdit(key, { teamId: e.target.value })}
+                                  />
+                                </td>
+                                <td>
+                                  <input
+                                    value={edit.name ?? ""}
+                                    onChange={(e) => updateTeamEdit(key, { name: e.target.value })}
+                                  />
+                                </td>
+                                <td>
+                                  <div className="row row--wrap gap-2">
+                                    <input
+                                      value={edit.contactName ?? ""}
+                                      onChange={(e) => updateTeamEdit(key, { contactName: e.target.value })}
+                                      placeholder="Name"
+                                    />
+                                    <input
+                                      value={edit.contactEmail ?? ""}
+                                      onChange={(e) => updateTeamEdit(key, { contactEmail: e.target.value })}
+                                      placeholder="Email"
+                                    />
+                                    <input
+                                      value={edit.contactPhone ?? ""}
+                                      onChange={(e) => updateTeamEdit(key, { contactPhone: e.target.value })}
+                                      placeholder="Phone"
+                                    />
+                                  </div>
+                                </td>
+                                <td className="text-right">
+                                  <div className="row row--wrap gap-2">
+                                    <button className="btn" onClick={() => saveTeam(t)} disabled={savingKey === key || deletingKey === key}>
+                                      {savingKey === key ? "Saving..." : "Save"}
+                                    </button>
+                                    <button className="btn btn--ghost" onClick={() => deleteTeam(t)} disabled={savingKey === key || deletingKey === key}>
+                                      {deletingKey === key ? "Deleting..." : "Delete"}
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               );
             })}
-          </div>
-        ) : (
-          <div className={`tableWrap ${tableView === "B" ? "tableWrap--sticky" : ""}`}>
-            <table className={`table ${tableView === "B" ? "table--compact table--sticky" : ""}`}>
-              <thead>
-                <tr>
-                  <th>Division</th>
-                  <th>Team</th>
-                  <th>Name</th>
-                  <th>Coach contact</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {teams.map((t) => {
-                  const key = teamKey(t);
-                  const edit = teamEdits[key] || {};
-                  return (
-                    <tr key={`${t.division}-${t.teamId}`}>
-                      <td>
-                        <select
-                          value={edit.division ?? ""}
-                          onChange={(e) => updateTeamEdit(key, { division: e.target.value })}
-                        >
-                          <option value="">Select division</option>
-                          {divisionOptions.map((code) => (
-                            <option key={code} value={code}>{code}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td>
-                        <input
-                          value={edit.teamId ?? ""}
-                          onChange={(e) => updateTeamEdit(key, { teamId: e.target.value })}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          value={edit.name ?? ""}
-                          onChange={(e) => updateTeamEdit(key, { name: e.target.value })}
-                        />
-                      </td>
-                      <td>
-                        <div className="row row--wrap gap-2">
-                          <input
-                            value={edit.contactName ?? ""}
-                            onChange={(e) => updateTeamEdit(key, { contactName: e.target.value })}
-                            placeholder="Name"
-                          />
-                          <input
-                            value={edit.contactEmail ?? ""}
-                            onChange={(e) => updateTeamEdit(key, { contactEmail: e.target.value })}
-                            placeholder="Email"
-                          />
-                          <input
-                            value={edit.contactPhone ?? ""}
-                            onChange={(e) => updateTeamEdit(key, { contactPhone: e.target.value })}
-                            placeholder="Phone"
-                          />
-                        </div>
-                      </td>
-                      <td className="text-right">
-                        <div className="row row--wrap gap-2">
-                          <button className="btn" onClick={() => saveTeam(t)} disabled={savingKey === key || deletingKey === key}>
-                            {savingKey === key ? "Saving..." : "Save"}
-                          </button>
-                          <button className="btn btn--ghost" onClick={() => deleteTeam(t)} disabled={savingKey === key || deletingKey === key}>
-                            {deletingKey === key ? "Deleting..." : "Delete"}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
           </div>
         )}
       </div>
