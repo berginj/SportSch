@@ -124,6 +124,14 @@ export default function LeagueSettings({ leagueId }) {
   const [seasonRange, setSeasonRange] = useState(getDefaultRangeFallback());
   const [seasonResetBusy, setSeasonResetBusy] = useState(false);
   const [seasonResetResult, setSeasonResetResult] = useState(null);
+  const [slotCleanupDivision, setSlotCleanupDivision] = useState("");
+  const [slotCleanupFieldKey, setSlotCleanupFieldKey] = useState("");
+  const [slotCleanupDateFrom, setSlotCleanupDateFrom] = useState("");
+  const [slotCleanupDateTo, setSlotCleanupDateTo] = useState("");
+  const [slotCleanupIncludeAvailability, setSlotCleanupIncludeAvailability] = useState(false);
+  const [slotCleanupBusy, setSlotCleanupBusy] = useState(false);
+  const [slotCleanupErr, setSlotCleanupErr] = useState("");
+  const [slotCleanupResult, setSlotCleanupResult] = useState(null);
 
   async function loadSettings() {
     if (!leagueId) return;
@@ -191,6 +199,15 @@ export default function LeagueSettings({ leagueId }) {
     if (!availabilityDateFrom && seasonRange?.from) setAvailabilityDateFrom(seasonRange.from);
     if (!availabilityDateTo && seasonRange?.to) setAvailabilityDateTo(seasonRange.to);
   }, [availabilityDateFrom, availabilityDateTo, seasonRange]);
+
+  useEffect(() => {
+    if (!slotCleanupDivision && division) setSlotCleanupDivision(division);
+  }, [slotCleanupDivision, division]);
+
+  useEffect(() => {
+    if (!slotCleanupDateFrom && seasonRange?.from) setSlotCleanupDateFrom(seasonRange.from);
+    if (!slotCleanupDateTo && seasonRange?.to) setSlotCleanupDateTo(seasonRange.to);
+  }, [slotCleanupDateFrom, slotCleanupDateTo, seasonRange]);
 
   const divisionOptions = useMemo(
     () => (divisions || []).map((d) => ({
@@ -420,6 +437,67 @@ export default function LeagueSettings({ leagueId }) {
       setToast({ tone: "error", message: msg });
     } finally {
       setSeasonResetBusy(false);
+    }
+  }
+
+  async function runSlotCleanup(dryRun) {
+    setSlotCleanupErr("");
+    const dateError = validateIsoDates([
+      { label: "Date from", value: slotCleanupDateFrom, required: false },
+      { label: "Date to", value: slotCleanupDateTo, required: false },
+    ]);
+    if (dateError) {
+      setSlotCleanupErr(dateError);
+      return;
+    }
+
+    const divisionCode = (slotCleanupDivision || "").trim();
+    if (!divisionCode) {
+      setSlotCleanupErr("Select a division.");
+      return;
+    }
+
+    if (!dryRun) {
+      const phrase = "DELETE DIVISION SLOTS";
+      const confirm = window.prompt(
+        `Type ${phrase} to delete slots in ${divisionCode} for the selected filters.`
+      );
+      if (confirm !== phrase) return;
+    }
+
+    setSlotCleanupBusy(true);
+    try {
+      const result = await apiFetch("/api/slots/clear", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          division: divisionCode,
+          dateFrom: slotCleanupDateFrom || undefined,
+          dateTo: slotCleanupDateTo || undefined,
+          fieldKey: slotCleanupFieldKey || undefined,
+          includeAvailability: slotCleanupIncludeAvailability,
+          dryRun,
+        }),
+      });
+      setSlotCleanupResult(result || null);
+      const matched = Number(result?.matched || 0);
+      const deleted = Number(result?.deleted || 0);
+      if (dryRun) {
+        setToast({
+          tone: "success",
+          message: `Preview complete. ${matched} slot(s) match your filters.`,
+        });
+      } else {
+        setToast({
+          tone: "success",
+          message: `Deleted ${deleted} slot(s) and ${Number(result?.slotRequestsDeleted || 0)} slot request(s).`,
+        });
+      }
+    } catch (e) {
+      setSlotCleanupErr(e?.message || "Failed to clear division slots.");
+      setSlotCleanupResult(null);
+    } finally {
+      setSlotCleanupBusy(false);
     }
   }
 
@@ -712,6 +790,88 @@ export default function LeagueSettings({ leagueId }) {
               Save field blackouts
             </button>
           </div>
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title="Division slot cleanup"
+        subtitle="Preview/delete game and practice slots for one division (optionally include availability)"
+        badge="Danger"
+        badgeColor="red"
+        defaultExpanded={false}
+        storageKey="division-slot-cleanup"
+        icon="🧹"
+      >
+        <div className="stack gap-3">
+          {slotCleanupErr ? <div className="callout callout--error">{slotCleanupErr}</div> : null}
+          <div className="grid2">
+            <label>
+              Division
+              <select value={slotCleanupDivision} onChange={(e) => setSlotCleanupDivision(e.target.value)}>
+                <option value="">Select division</option>
+                {divisionOptions.map((d) => (
+                  <option key={d.code} value={d.code}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Field (optional)
+              <select value={slotCleanupFieldKey} onChange={(e) => setSlotCleanupFieldKey(e.target.value)}>
+                <option value="">All fields</option>
+                {fields.map((f) => (
+                  <option key={f.fieldKey} value={f.fieldKey}>
+                    {f.displayName || f.fieldKey}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Date from
+              <input value={slotCleanupDateFrom} onChange={(e) => setSlotCleanupDateFrom(e.target.value)} placeholder="YYYY-MM-DD" />
+            </label>
+            <label>
+              Date to
+              <input value={slotCleanupDateTo} onChange={(e) => setSlotCleanupDateTo(e.target.value)} placeholder="YYYY-MM-DD" />
+            </label>
+          </div>
+          <label className="inlineCheck">
+            <input
+              type="checkbox"
+              checked={slotCleanupIncludeAvailability}
+              onChange={(e) => setSlotCleanupIncludeAvailability(e.target.checked)}
+            />
+            Include availability slots (unchecked = only games/practices/offers)
+          </label>
+          <div className="row gap-2">
+            <button className="btn" type="button" onClick={() => runSlotCleanup(true)} disabled={slotCleanupBusy}>
+              {slotCleanupBusy ? "Working..." : "Preview impact"}
+            </button>
+            <button className="btn btn--danger" type="button" onClick={() => runSlotCleanup(false)} disabled={slotCleanupBusy}>
+              {slotCleanupBusy ? "Deleting..." : "Delete filtered slots"}
+            </button>
+          </div>
+          {slotCleanupResult ? (
+            <div className="tableWrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Metric</th>
+                    <th>Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td>Scanned</td><td>{slotCleanupResult.scanned ?? 0}</td></tr>
+                  <tr><td>Matched filters</td><td>{slotCleanupResult.matched ?? 0}</td></tr>
+                  <tr><td>Deleted</td><td>{slotCleanupResult.deleted ?? 0}</td></tr>
+                  <tr><td>Slot requests deleted</td><td>{slotCleanupResult.slotRequestsDeleted ?? 0}</td></tr>
+                  <tr><td>Delete errors</td><td>{slotCleanupResult.deleteErrors ?? 0}</td></tr>
+                  <tr><td>Dry run</td><td>{slotCleanupResult.dryRun ? "Yes" : "No"}</td></tr>
+                </tbody>
+              </table>
+            </div>
+          ) : null}
         </div>
       </CollapsibleSection>
 
