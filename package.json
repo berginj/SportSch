@@ -21,7 +21,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",
-    "test:e2e:report": "playwright show-report"
+    "test:e2e:report": "playwright show-report",
+    "test:practice-requests": "node scripts/validate-practice-requests.mjs"
   },
   "dependencies": {
     "@microsoft/applicationinsights-web": "^3.1.2",

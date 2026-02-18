@@ -2,6 +2,35 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 
 const ROLE_OPTIONS = ["", "LeagueAdmin", "Coach", "Viewer"];
+const PRACTICE_REQUEST_LIMIT = 3;
+
+function normalizeText(value) {
+  return (value || "").trim();
+}
+
+function slotSortKey(slot) {
+  return `${normalizeText(slot?.gameDate)} ${normalizeText(slot?.startTime)}`.trim();
+}
+
+function sortSlotsBySchedule(slots) {
+  return [...slots].sort((a, b) => slotSortKey(a).localeCompare(slotSortKey(b)));
+}
+
+function formatSlotLocation(slot) {
+  return normalizeText(slot?.displayName) || normalizeText(slot?.fieldName) || normalizeText(slot?.fieldKey);
+}
+
+function buildCoachSetupLink(leagueId, teamId) {
+  const cleanLeagueId = normalizeText(leagueId);
+  const cleanTeamId = normalizeText(teamId);
+  if (!cleanLeagueId || !cleanTeamId) return "";
+  const params = new URLSearchParams();
+  params.set("leagueId", cleanLeagueId);
+  params.set("teamId", cleanTeamId);
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const prefix = origin ? `${origin}/` : "/";
+  return `${prefix}?${params.toString()}#coach-setup`;
+}
 
 export default function DebugPage({ leagueId, me }) {
   const isGlobalAdmin = !!me?.isGlobalAdmin;
@@ -31,6 +60,18 @@ export default function DebugPage({ leagueId, me }) {
   const [memberDraft, setMemberDraft] = useState({ userId: "", email: "", leagueId: "", role: "" });
   const [memberErr, setMemberErr] = useState("");
   const [memberOk, setMemberOk] = useState("");
+  const [previewContextLoading, setPreviewContextLoading] = useState(false);
+  const [previewContextErr, setPreviewContextErr] = useState("");
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewErr, setPreviewErr] = useState("");
+  const [previewOk, setPreviewOk] = useState("");
+  const [previewDivision, setPreviewDivision] = useState("");
+  const [previewTeamId, setPreviewTeamId] = useState("");
+  const [previewDivisions, setPreviewDivisions] = useState([]);
+  const [previewTeams, setPreviewTeams] = useState([]);
+  const [previewRequests, setPreviewRequests] = useState([]);
+  const [previewSlots, setPreviewSlots] = useState([]);
+  const [previewRefreshedAt, setPreviewRefreshedAt] = useState("");
 
   const usersById = useMemo(() => {
     const map = new Map();
@@ -39,6 +80,82 @@ export default function DebugPage({ leagueId, me }) {
     }
     return map;
   }, [users]);
+
+  const coachMemberships = useMemo(() => {
+    return memberships
+      .filter((m) => normalizeText(m?.role) === "Coach")
+      .filter((m) => normalizeText(m?.team?.division) && normalizeText(m?.team?.teamId))
+      .sort((a, b) => {
+        const aKey = `${normalizeText(a?.team?.division)}|${normalizeText(a?.team?.teamId)}|${normalizeText(a?.email) || normalizeText(a?.userId)}`;
+        const bKey = `${normalizeText(b?.team?.division)}|${normalizeText(b?.team?.teamId)}|${normalizeText(b?.email) || normalizeText(b?.userId)}`;
+        return aKey.localeCompare(bKey);
+      });
+  }, [memberships]);
+
+  const previewDivisionOptions = useMemo(() => {
+    const fromDivisions = previewDivisions
+      .map((d) => normalizeText(d?.code))
+      .filter(Boolean);
+    const fromTeams = previewTeams
+      .map((t) => normalizeText(t?.division))
+      .filter(Boolean);
+    return Array.from(new Set([...fromDivisions, ...fromTeams])).sort((a, b) => a.localeCompare(b));
+  }, [previewDivisions, previewTeams]);
+
+  const previewTeamOptions = useMemo(() => {
+    const division = normalizeText(previewDivision);
+    if (!division) return [];
+    return previewTeams
+      .filter((t) => normalizeText(t?.division) === division)
+      .sort((a, b) => {
+        const aLabel = normalizeText(a?.name) || normalizeText(a?.teamId);
+        const bLabel = normalizeText(b?.name) || normalizeText(b?.teamId);
+        return aLabel.localeCompare(bLabel);
+      });
+  }, [previewTeams, previewDivision]);
+
+  const selectedPreviewTeam = useMemo(() => {
+    const teamId = normalizeText(previewTeamId);
+    if (!teamId) return null;
+    return previewTeamOptions.find((t) => normalizeText(t?.teamId) === teamId) || null;
+  }, [previewTeamId, previewTeamOptions]);
+
+  const coachesForPreviewTeam = useMemo(() => {
+    const division = normalizeText(previewDivision);
+    const teamId = normalizeText(previewTeamId);
+    if (!division || !teamId) return [];
+    return coachMemberships.filter(
+      (m) =>
+        normalizeText(m?.team?.division) === division &&
+        normalizeText(m?.team?.teamId) === teamId
+    );
+  }, [coachMemberships, previewDivision, previewTeamId]);
+
+  const activePracticeRequests = useMemo(() => {
+    return previewRequests.filter((r) => {
+      const status = normalizeText(r?.status);
+      return status === "Pending" || status === "Approved";
+    });
+  }, [previewRequests]);
+
+  const activeRequestSlotIds = useMemo(() => {
+    return new Set(activePracticeRequests.map((r) => normalizeText(r?.slotId)).filter(Boolean));
+  }, [activePracticeRequests]);
+
+  const previewStatusCounts = useMemo(() => {
+    const counts = { pending: 0, approved: 0, rejected: 0 };
+    for (const request of previewRequests) {
+      const status = normalizeText(request?.status).toLowerCase();
+      if (status === "pending") counts.pending += 1;
+      else if (status === "approved") counts.approved += 1;
+      else if (status === "rejected") counts.rejected += 1;
+    }
+    return counts;
+  }, [previewRequests]);
+
+  const coachSetupLink = useMemo(() => {
+    return buildCoachSetupLink(leagueId, previewTeamId);
+  }, [leagueId, previewTeamId]);
 
   async function loadMemberships() {
     if (!leagueId) {
@@ -281,11 +398,185 @@ export default function DebugPage({ leagueId, me }) {
     }
   }
 
+  async function loadPracticePreviewData(nextDivision = previewDivision, nextTeamId = previewTeamId) {
+    const division = normalizeText(nextDivision);
+    const teamId = normalizeText(nextTeamId);
+    if (!leagueId) {
+      setPreviewErr("Select a league to load coach practice preview.");
+      setPreviewRequests([]);
+      setPreviewSlots([]);
+      return;
+    }
+    if (!division || !teamId) {
+      setPreviewErr("Select both division and team.");
+      setPreviewRequests([]);
+      setPreviewSlots([]);
+      return;
+    }
+
+    setPreviewLoading(true);
+    setPreviewErr("");
+    setPreviewOk("");
+    try {
+      const [requestsRaw, slotsRaw] = await Promise.all([
+        apiFetch(`/api/practice-requests?teamId=${encodeURIComponent(teamId)}`),
+        apiFetch(`/api/slots?division=${encodeURIComponent(division)}&status=Open`)
+      ]);
+
+      const requests = Array.isArray(requestsRaw)
+        ? [...requestsRaw].sort((a, b) => String(b?.requestedUtc || "").localeCompare(String(a?.requestedUtc || "")))
+        : [];
+      const allOpenSlots = Array.isArray(slotsRaw) ? slotsRaw : [];
+      const availabilitySlots = allOpenSlots.filter(
+        (slot) => slot?.isAvailability === true && normalizeText(slot?.status) === "Open"
+      );
+
+      setPreviewRequests(requests);
+      setPreviewSlots(sortSlotsBySchedule(availabilitySlots).slice(0, 20));
+      setPreviewRefreshedAt(new Date().toISOString());
+    } catch (e) {
+      setPreviewErr(e?.message || "Failed to load coach practice preview.");
+      setPreviewRequests([]);
+      setPreviewSlots([]);
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  async function loadPracticePreviewContext() {
+    if (!isGlobalAdmin) return;
+    if (!leagueId) {
+      setPreviewContextErr("Select a league to load coach practice preview.");
+      setPreviewDivisions([]);
+      setPreviewTeams([]);
+      setPreviewDivision("");
+      setPreviewTeamId("");
+      setPreviewRequests([]);
+      setPreviewSlots([]);
+      return;
+    }
+
+    setPreviewContextLoading(true);
+    setPreviewContextErr("");
+    try {
+      const [divisionsRaw, teamsRaw] = await Promise.all([
+        apiFetch("/api/divisions"),
+        apiFetch("/api/teams")
+      ]);
+
+      const divisions = Array.isArray(divisionsRaw) ? divisionsRaw : [];
+      const teams = Array.isArray(teamsRaw)
+        ? teamsRaw.filter((t) => normalizeText(t?.division) && normalizeText(t?.teamId))
+        : [];
+
+      teams.sort((a, b) => {
+        const aKey = `${normalizeText(a?.division)}|${normalizeText(a?.name) || normalizeText(a?.teamId)}`;
+        const bKey = `${normalizeText(b?.division)}|${normalizeText(b?.name) || normalizeText(b?.teamId)}`;
+        return aKey.localeCompare(bKey);
+      });
+
+      setPreviewDivisions(divisions);
+      setPreviewTeams(teams);
+
+      let nextDivision = normalizeText(previewDivision);
+      if (!nextDivision || !teams.some((t) => normalizeText(t?.division) === nextDivision)) {
+        nextDivision = normalizeText(teams[0]?.division) || normalizeText(divisions[0]?.code);
+      }
+
+      let nextTeamId = normalizeText(previewTeamId);
+      if (
+        !nextTeamId ||
+        !teams.some(
+          (t) =>
+            normalizeText(t?.division) === nextDivision &&
+            normalizeText(t?.teamId) === nextTeamId
+        )
+      ) {
+        nextTeamId =
+          normalizeText(teams.find((t) => normalizeText(t?.division) === nextDivision)?.teamId);
+      }
+
+      setPreviewDivision(nextDivision);
+      setPreviewTeamId(nextTeamId);
+
+      if (nextDivision && nextTeamId) {
+        await loadPracticePreviewData(nextDivision, nextTeamId);
+      } else {
+        setPreviewRequests([]);
+        setPreviewSlots([]);
+      }
+    } catch (e) {
+      setPreviewContextErr(e?.message || "Failed to load preview context.");
+      setPreviewDivisions([]);
+      setPreviewTeams([]);
+      setPreviewRequests([]);
+      setPreviewSlots([]);
+    } finally {
+      setPreviewContextLoading(false);
+    }
+  }
+
+  function onPreviewDivisionChange(value) {
+    const nextDivision = normalizeText(value);
+    setPreviewDivision(nextDivision);
+    setPreviewErr("");
+    setPreviewOk("");
+
+    const teamsInDivision = previewTeams.filter(
+      (t) => normalizeText(t?.division) === nextDivision
+    );
+    const nextTeamId = normalizeText(teamsInDivision[0]?.teamId);
+    setPreviewTeamId(nextTeamId);
+
+    if (nextDivision && nextTeamId) {
+      loadPracticePreviewData(nextDivision, nextTeamId);
+      return;
+    }
+
+    setPreviewRequests([]);
+    setPreviewSlots([]);
+    if (nextDivision) {
+      setPreviewErr("No teams found in this division.");
+    }
+  }
+
+  function onPreviewTeamChange(value) {
+    const nextTeamId = normalizeText(value);
+    setPreviewTeamId(nextTeamId);
+    setPreviewErr("");
+    setPreviewOk("");
+    if (normalizeText(previewDivision) && nextTeamId) {
+      loadPracticePreviewData(previewDivision, nextTeamId);
+      return;
+    }
+    setPreviewRequests([]);
+    setPreviewSlots([]);
+  }
+
+  async function copyCoachSetupPreviewLink() {
+    if (!coachSetupLink || typeof navigator === "undefined" || !navigator.clipboard) {
+      setPreviewErr("Unable to copy link in this browser.");
+      return;
+    }
+
+    setPreviewErr("");
+    setPreviewOk("");
+    try {
+      await navigator.clipboard.writeText(coachSetupLink);
+      setPreviewOk("Coach onboarding link copied.");
+    } catch {
+      setPreviewErr("Failed to copy coach onboarding link.");
+    }
+  }
+
   useEffect(() => {
     loadMemberships();
     loadGlobalAdmins();
+    if (isGlobalAdmin) {
+      loadPracticePreviewContext();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leagueId]);
+  }, [leagueId, isGlobalAdmin]);
 
   useEffect(() => {
     if (!isGlobalAdmin) return;
@@ -530,6 +821,212 @@ export default function DebugPage({ leagueId, me }) {
                 </tbody>
               </table>
             </div>
+          )}
+        </div>
+      ) : null}
+
+      {isGlobalAdmin ? (
+        <div className="card">
+          <h2>Debug: coach practice request preview</h2>
+          <p className="muted">
+            Preview exactly what a coach sees in onboarding practice requests using <code>/api/practice-requests</code> and open
+            availability slots from <code>/api/slots</code>.
+          </p>
+
+          <div className="row gap-3 row--wrap mb-2">
+            <label>
+              Division
+              <select
+                value={previewDivision}
+                onChange={(e) => onPreviewDivisionChange(e.target.value)}
+                disabled={previewContextLoading}
+              >
+                <option value="">Select division</option>
+                {previewDivisionOptions.map((code) => (
+                  <option key={code} value={code}>
+                    {code}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Team
+              <select
+                value={previewTeamId}
+                onChange={(e) => onPreviewTeamChange(e.target.value)}
+                disabled={previewContextLoading || !normalizeText(previewDivision)}
+              >
+                <option value="">Select team</option>
+                {previewTeamOptions.map((team) => (
+                  <option key={`${team.division}-${team.teamId}`} value={team.teamId}>
+                    {normalizeText(team?.name) || team.teamId} ({team.teamId})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="btn"
+              onClick={() => loadPracticePreviewData()}
+              disabled={previewLoading || !normalizeText(previewDivision) || !normalizeText(previewTeamId)}
+            >
+              {previewLoading ? "Loading..." : "Refresh preview"}
+            </button>
+            <button
+              className="btn btn--ghost"
+              onClick={copyCoachSetupPreviewLink}
+              disabled={!coachSetupLink}
+            >
+              Copy coach link
+            </button>
+            {coachSetupLink ? (
+              <a className="btn btn--ghost" href={coachSetupLink} target="_blank" rel="noreferrer">
+                Open link
+              </a>
+            ) : null}
+          </div>
+
+          {coachSetupLink ? (
+            <div className="mb-2">
+              <label>
+                Coach onboarding link
+                <input value={coachSetupLink} readOnly onClick={(e) => e.target.select()} />
+              </label>
+            </div>
+          ) : null}
+
+          {previewContextErr && <div className="error">{previewContextErr}</div>}
+          {previewErr && <div className="error">{previewErr}</div>}
+          {previewOk && <div className="ok">{previewOk}</div>}
+
+          {selectedPreviewTeam ? (
+            <div className="mb-3">
+              <div className="font-semibold">
+                Team: {normalizeText(selectedPreviewTeam?.name) || selectedPreviewTeam.teamId} ({selectedPreviewTeam.teamId})
+              </div>
+              <div className="muted">
+                Division: {selectedPreviewTeam.division}
+                {previewRefreshedAt ? ` | Last refreshed: ${new Date(previewRefreshedAt).toLocaleString()}` : ""}
+              </div>
+            </div>
+          ) : null}
+
+          {normalizeText(previewDivision) && normalizeText(previewTeamId) && !previewLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+              <div className="p-3 bg-yellow-50 rounded border border-yellow-200">
+                <div className="font-semibold text-yellow-900">{previewStatusCounts.pending}</div>
+                <div className="text-sm text-yellow-700">Pending requests</div>
+              </div>
+              <div className="p-3 bg-green-50 rounded border border-green-200">
+                <div className="font-semibold text-green-900">{previewStatusCounts.approved}</div>
+                <div className="text-sm text-green-700">Approved requests</div>
+              </div>
+              <div className="p-3 bg-red-50 rounded border border-red-200">
+                <div className="font-semibold text-red-900">{previewStatusCounts.rejected}</div>
+                <div className="text-sm text-red-700">Rejected requests</div>
+              </div>
+              <div className="p-3 bg-blue-50 rounded border border-blue-200">
+                <div className="font-semibold text-blue-900">{previewSlots.length}</div>
+                <div className="text-sm text-blue-700">Open practice slots</div>
+              </div>
+            </div>
+          ) : null}
+
+          {normalizeText(previewDivision) && normalizeText(previewTeamId) ? (
+            <>
+              {coachesForPreviewTeam.length === 0 ? (
+                <div className="callout callout--error mb-3">
+                  No coach membership is assigned to this team in <code>GameSwapMemberships</code>. The coach link will not show
+                  team-specific onboarding data until assignment is set.
+                </div>
+              ) : (
+                <div className="tableWrap mb-3">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Assigned coaches</th>
+                        <th>User ID</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {coachesForPreviewTeam.map((coach) => (
+                        <tr key={`${coach.userId}-${coach.team?.teamId}`}>
+                          <td>{coach.email || "(no email)"}</td>
+                          <td>{coach.userId}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div className={activePracticeRequests.length >= PRACTICE_REQUEST_LIMIT ? "callout callout--error mb-3" : "callout callout--ok mb-3"}>
+                Active request count (Pending + Approved): <b>{activePracticeRequests.length}</b> / {PRACTICE_REQUEST_LIMIT}
+              </div>
+
+              <h3>Practice requests for this team</h3>
+              {previewRequests.length === 0 ? (
+                <div className="muted mb-3">No practice requests found.</div>
+              ) : (
+                <div className="tableWrap mb-3">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Status</th>
+                        <th>Date</th>
+                        <th>Time</th>
+                        <th>Location</th>
+                        <th>Requested</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previewRequests.map((request) => (
+                        <tr key={request.requestId}>
+                          <td>{request.status || ""}</td>
+                          <td>{request.slot?.gameDate || ""}</td>
+                          <td>{request.slot?.startTime && request.slot?.endTime ? `${request.slot.startTime} - ${request.slot.endTime}` : ""}</td>
+                          <td>{formatSlotLocation(request.slot)}</td>
+                          <td>{request.requestedUtc ? new Date(request.requestedUtc).toLocaleString() : ""}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <h3>Open availability slots visible to coaches (top 20)</h3>
+              {previewSlots.length === 0 ? (
+                <div className="muted">No open availability slots found for this division.</div>
+              ) : (
+                <div className="tableWrap">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Time</th>
+                        <th>Location</th>
+                        <th>Requestable?</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previewSlots.map((slot) => {
+                        const slotId = normalizeText(slot?.slotId);
+                        const alreadyRequested = activeRequestSlotIds.has(slotId);
+                        return (
+                          <tr key={slotId || `${slot.gameDate}-${slot.startTime}`}>
+                            <td>{slot.gameDate || ""}</td>
+                            <td>{slot.startTime && slot.endTime ? `${slot.startTime} - ${slot.endTime}` : ""}</td>
+                            <td>{formatSlotLocation(slot)}</td>
+                            <td>{alreadyRequested ? "Already requested" : "Yes"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="muted">Select division and team to preview coach practice requests.</div>
           )}
         </div>
       ) : null}
