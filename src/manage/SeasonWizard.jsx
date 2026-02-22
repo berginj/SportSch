@@ -615,11 +615,26 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       return;
     }
     const nextType = normalizeSlotType(nextTypeRaw);
+    const priorType = normalizeSlotType(representative.slotType);
+    const priorEndTime = representative.endTime || "";
+    const priorPriority = representative.priorityRank || "";
+    const nextPriority = nextType === "practice" ? "" : normalizePriorityRank(representative.priorityRank);
     setErr("");
     updatePatternPlan(patternKey, {
       slotType: nextType,
-      priorityRank: nextType === "practice" ? "" : normalizePriorityRank(representative.priorityRank),
+      priorityRank: nextPriority,
       endTime,
+    });
+    const changed =
+      priorType !== nextType ||
+      priorEndTime !== endTime ||
+      String(priorPriority || "") !== String(nextPriority || "");
+    setToast({
+      tone: changed ? "success" : "info",
+      duration: 2800,
+      message: changed
+        ? `${representative.weekday} ${representative.fieldKey}: set to ${nextType.toUpperCase()} (${Number(durationMinutes || 0)}m). Updated ${representative.count || 1} opening(s).`
+        : `${representative.weekday} ${representative.fieldKey} is already ${nextType.toUpperCase()} at ${Number(durationMinutes || 0)}m.`,
     });
   }
 
@@ -638,20 +653,37 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     }
 
     let invalidCount = 0;
+    let changedCount = 0;
+    const changedPatterns = new Set();
     setSlotPlan((prev) => {
       let localInvalidCount = 0;
+      let localChangedCount = 0;
+      const localChangedPatterns = new Set();
       const next = prev.map((item) => {
         const startMin = parseMinutes(item.startTime);
         const refactoredEnd = startMin == null ? "" : formatMinutesAsTime(startMin + duration);
         if (!refactoredEnd) localInvalidCount += 1;
+        const nextPriority = nextType === "practice" ? "" : normalizePriorityRank(item.priorityRank);
+        const nextEndTime = refactoredEnd || item.endTime;
+        const didChange =
+          normalizeSlotType(item.slotType) !== nextType ||
+          String(item.endTime || "") !== String(nextEndTime || "") ||
+          String(item.priorityRank || "") !== String(nextPriority || "");
+        if (didChange) {
+          localChangedCount += 1;
+          if (item.basePatternKey) localChangedPatterns.add(item.basePatternKey);
+        }
         return {
           ...item,
           slotType: nextType,
-          priorityRank: nextType === "practice" ? "" : normalizePriorityRank(item.priorityRank),
-          endTime: refactoredEnd || item.endTime,
+          priorityRank: nextPriority,
+          endTime: nextEndTime,
         };
       });
       invalidCount = localInvalidCount;
+      changedCount = localChangedCount;
+      changedPatterns.clear();
+      localChangedPatterns.forEach((key) => changedPatterns.add(key));
       return next;
     });
     setPreview(null);
@@ -660,6 +692,14 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         ? `Refactored ${nextType} slots, but ${invalidCount} slot(s) kept their prior end time because the new duration would exceed midnight.`
         : ""
     );
+    setToast({
+      tone: changedCount > 0 ? "success" : "info",
+      duration: 3200,
+      message:
+        changedCount > 0
+          ? `Set all slots to ${nextType.toUpperCase()} + refactor (${duration}m). Updated ${changedCount} opening(s) across ${changedPatterns.size} pattern(s).`
+          : `No changes: slots were already ${nextType.toUpperCase()} with ${duration}m timing.`,
+    });
   }
 
   function autoRankGameSlots() {
@@ -1892,6 +1932,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                 Use <b>Both + Refactor</b> when a slot should remain dual-use but needs game-length timing ({effectiveGameSlotMinutes} min).
               </div>
               <div className="subtle">
+                These actions immediately update the slot plan <b>Type</b> and <b>End / Dur</b> values (you will also see a confirmation toast).
+              </div>
+              <div className="subtle">
                 Score is based on how consistently the same weekday/time/field pattern appears in the queried window.
               </div>
             </div>
@@ -1909,7 +1952,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                 onClick={() => setAllSlotTypesWithRefactor("both", effectiveGameSlotMinutes)}
                 title={`Set all slot types to Both and refactor to ${effectiveGameSlotMinutes} minutes`}
               >
-                Set all Both + Refactor
+                Set all Both + Refactor ({effectiveGameSlotMinutes}m)
               </button>
               <button className="btn btn--ghost" type="button" onClick={autoRankGameSlots}>
                 Auto-rank Game/Both
@@ -2026,7 +2069,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                                       onClick={() => quickConvertPattern(p.key, "both", effectiveGameSlotMinutes)}
                                       title={`Set to Both and refactor to ${effectiveGameSlotMinutes} minutes`}
                                     >
-                                      Both + Refactor
+                                      Both + {effectiveGameSlotMinutes}m
                                     </button>
                                   </div>
                                       </>
@@ -2118,7 +2161,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                                 style={{ padding: "0.2rem 0.45rem", fontSize: "0.75rem", lineHeight: 1.2 }}
                                 title={`Set to Both and refactor to ${effectiveGameSlotMinutes} minutes`}
                               >
-                                Both + Refactor
+                                Both + {effectiveGameSlotMinutes}m
                               </button>
                             </div>
                           </td>
