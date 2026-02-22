@@ -59,11 +59,14 @@ export default function PracticePortalPage({ me, leagueId }) {
 
   const [divisions, setDivisions] = useState([]);
   const [division, setDivision] = useState("");
+  const [divisionTeams, setDivisionTeams] = useState([]);
   const [slots, setSlots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [notice, setNotice] = useState("");
   const [toast, setToast] = useState(null);
+  const [openToShareField, setOpenToShareField] = useState(false);
+  const [shareWithTeamId, setShareWithTeamId] = useState("");
   const initializedRef = useRef(false);
   const loadedDivisionRef = useRef("");
   const { confirmState, requestConfirm, handleConfirm, handleCancel } = useConfirmDialog();
@@ -95,11 +98,16 @@ export default function PracticePortalPage({ me, leagueId }) {
 
       if (preferred) {
         const params = new URLSearchParams({ division: preferred, status: "Open,Confirmed" });
-        const s = await apiFetch(`/api/slots?${params.toString()}`);
+        const [s, teams] = await Promise.all([
+          apiFetch(`/api/slots?${params.toString()}`),
+          apiFetch(`/api/teams?division=${encodeURIComponent(preferred)}`).catch(() => []),
+        ]);
         setSlots(Array.isArray(s) ? s : []);
+        setDivisionTeams(Array.isArray(teams) ? teams : []);
         loadedDivisionRef.current = preferred;
       } else {
         setSlots([]);
+        setDivisionTeams([]);
         loadedDivisionRef.current = "";
       }
     } catch (e) {
@@ -125,8 +133,12 @@ export default function PracticePortalPage({ me, leagueId }) {
       setLoading(true);
       try {
         const params = new URLSearchParams({ division, status: "Open,Confirmed" });
-        const s = await apiFetch(`/api/slots?${params.toString()}`);
+        const [s, teams] = await Promise.all([
+          apiFetch(`/api/slots?${params.toString()}`),
+          apiFetch(`/api/teams?division=${encodeURIComponent(division)}`).catch(() => []),
+        ]);
         setSlots(Array.isArray(s) ? s : []);
+        setDivisionTeams(Array.isArray(teams) ? teams : []);
         loadedDivisionRef.current = division;
       } catch (e) {
         setErr(e?.message || String(e));
@@ -168,6 +180,28 @@ export default function PracticePortalPage({ me, leagueId }) {
     return map;
   }, [practiceSelections]);
 
+  const shareableTeams = useMemo(() => {
+    return (Array.isArray(divisionTeams) ? divisionTeams : [])
+      .filter((t) => (t?.teamId || "").trim())
+      .filter((t) => (t?.teamId || "").trim() !== (coachTeam.teamId || "").trim())
+      .sort((a, b) => {
+        const aLabel = (a?.name || a?.teamId || "").trim();
+        const bLabel = (b?.name || b?.teamId || "").trim();
+        return aLabel.localeCompare(bLabel);
+      });
+  }, [divisionTeams, coachTeam.teamId]);
+
+  useEffect(() => {
+    if (!openToShareField && shareWithTeamId) {
+      setShareWithTeamId("");
+      return;
+    }
+    if (!openToShareField || !shareWithTeamId) return;
+    if (!shareableTeams.some((t) => (t?.teamId || "").trim() === shareWithTeamId)) {
+      setShareWithTeamId("");
+    }
+  }, [openToShareField, shareWithTeamId, shareableTeams]);
+
   const availableSlots = useMemo(() => {
     return (slots || [])
       .filter((s) => s?.isAvailability)
@@ -190,10 +224,19 @@ export default function PracticePortalPage({ me, leagueId }) {
       setErr("Your coach profile needs a team assignment before selecting a practice slot.");
       return;
     }
+    if (openToShareField && !shareWithTeamId) {
+      setErr('Select a team to propose sharing with, or uncheck "Open to sharing a field".');
+      return;
+    }
+
+    const proposedShareTeam = shareableTeams.find((t) => (t?.teamId || "").trim() === shareWithTeamId);
+    const shareMsg = openToShareField
+      ? ` Open to share with: ${proposedShareTeam?.name || shareWithTeamId}.`
+      : "";
 
     const ok = await requestConfirm({
       title: "Select practice slot",
-      message: `Claim ${slot.gameDate} ${formatSlotTime(slot)} at ${formatSlotLocation(slot)}?`,
+      message: `Claim ${slot.gameDate} ${formatSlotTime(slot)} at ${formatSlotLocation(slot)}?${shareMsg}`,
       confirmLabel: "Select",
     });
     if (!ok) return;
@@ -203,10 +246,18 @@ export default function PracticePortalPage({ me, leagueId }) {
       await apiFetch(`/api/slots/${encodeURIComponent(division)}/${encodeURIComponent(slot.slotId)}/practice`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({
+          openToShareField,
+          shareWithTeamId: openToShareField ? shareWithTeamId : "",
+        }),
       });
       await loadAll(division);
-      setToast({ tone: "success", message: "Practice slot confirmed." });
+      setToast({
+        tone: "success",
+        message: openToShareField
+          ? "Practice slot confirmed. Sharing preference saved."
+          : "Practice slot confirmed.",
+      });
     } catch (e) {
       setErr(e?.message || String(e));
     }
@@ -291,6 +342,45 @@ export default function PracticePortalPage({ me, leagueId }) {
 
       <div className="card">
         <h3>Available practice slots</h3>
+        <div className="callout mb-3">
+          <div className="row row--wrap gap-3">
+            <label className="row row--wrap gap-2" style={{ alignItems: "center" }}>
+              <input
+                type="checkbox"
+                checked={openToShareField}
+                onChange={(e) => setOpenToShareField(e.target.checked)}
+                disabled={!coachTeam.teamId}
+              />
+              <span>Open to sharing a field</span>
+            </label>
+            <label style={{ minWidth: 260 }}>
+              Propose sharing with team
+              <select
+                value={shareWithTeamId}
+                onChange={(e) => setShareWithTeamId(e.target.value)}
+                disabled={!openToShareField || !coachTeam.teamId || shareableTeams.length === 0}
+              >
+                <option value="">
+                  {!coachTeam.teamId
+                    ? "Coach team assignment required"
+                    : !openToShareField
+                      ? "Enable sharing first"
+                      : shareableTeams.length
+                        ? "Select a team"
+                        : "No other teams in division"}
+                </option>
+                {shareableTeams.map((t) => (
+                  <option key={t.teamId} value={t.teamId}>
+                    {t.name ? `${t.name} (${t.teamId})` : t.teamId}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="muted mt-2">
+            This preference is attached to your practice slot selection and can help commissioners coordinate shared fields.
+          </div>
+        </div>
         {availableSlots.length ? (
           <div className="tableWrap">
             <table className="table">

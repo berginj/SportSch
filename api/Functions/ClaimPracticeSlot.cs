@@ -20,7 +20,7 @@ public class ClaimPracticeSlot
         _svc = svc;
     }
 
-    public record ClaimPracticeReq(string? notes, string? teamId);
+    public record ClaimPracticeReq(string? notes, string? teamId, bool? openToShareField, string? shareWithTeamId);
 
     [Function("ClaimPracticeSlot")]
     public async Task<HttpResponseData> Run(
@@ -57,6 +57,8 @@ public class ClaimPracticeSlot
             var body = await HttpUtil.ReadJsonAsync<ClaimPracticeReq>(req);
             var notes = (body?.notes ?? "").Trim();
             var overrideTeamId = (body?.teamId ?? "").Trim();
+            var openToShareField = body?.openToShareField ?? false;
+            var shareWithTeamId = (body?.shareWithTeamId ?? "").Trim();
 
             var canOverrideTeam = isGlobalAdmin || isLeagueAdmin;
             if (string.IsNullOrWhiteSpace(myTeamId))
@@ -94,6 +96,37 @@ public class ClaimPracticeSlot
             {
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "DIVISION_MISMATCH",
                     "You can only select practice slots in your exact division.");
+            }
+
+            if (!openToShareField)
+            {
+                shareWithTeamId = "";
+            }
+            else
+            {
+                if (string.IsNullOrWhiteSpace(shareWithTeamId))
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST",
+                        "shareWithTeamId is required when openToShareField is true.");
+                }
+                ApiGuards.EnsureValidTableKeyPart("shareWithTeamId", shareWithTeamId);
+
+                if (string.Equals(shareWithTeamId, myTeamId, StringComparison.OrdinalIgnoreCase))
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST",
+                        "shareWithTeamId must be a different team in the same division.");
+                }
+
+                var teams = await TableClients.GetTableAsync(_svc, Constants.Tables.Teams);
+                try
+                {
+                    _ = (await teams.GetEntityAsync<TableEntity>(Constants.Pk.Teams(leagueId, divisionNorm), shareWithTeamId)).Value;
+                }
+                catch (RequestFailedException ex) when (ex.Status == 404)
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.BadRequest, "NOT_FOUND",
+                        "Proposed sharing team was not found in this division.");
+                }
             }
 
             var slots = _svc.GetTableClient(Constants.Tables.Slots);
@@ -172,6 +205,8 @@ public class ClaimPracticeSlot
                 ["RequestingTeamId"] = myTeamId,
                 ["RequestingEmail"] = me.Email ?? "",
                 ["Notes"] = notes,
+                ["OpenToShareField"] = openToShareField,
+                ["ShareWithTeamId"] = shareWithTeamId,
                 ["Status"] = Constants.Status.SlotRequestApproved,
                 ["ApprovedBy"] = me.Email ?? "",
                 ["ApprovedUtc"] = now,
@@ -190,6 +225,8 @@ public class ClaimPracticeSlot
             slot["OfferingEmail"] = me.Email ?? "";
             slot["IsAvailability"] = false;
             slot["GameType"] = "Practice";
+            slot["OpenToShareField"] = openToShareField;
+            slot["ShareWithTeamId"] = shareWithTeamId;
             slot["UpdatedUtc"] = now;
 
             await slots.UpdateEntityAsync(slot, slot.ETag, TableUpdateMode.Replace);
@@ -201,6 +238,8 @@ public class ClaimPracticeSlot
                 status = Constants.Status.SlotConfirmed,
                 confirmedTeamId = myTeamId,
                 gameType = "Practice",
+                openToShareField,
+                shareWithTeamId,
                 weekKey,
                 requestedUtc = now
             }, HttpStatusCode.Created);

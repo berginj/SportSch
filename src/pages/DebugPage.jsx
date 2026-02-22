@@ -16,6 +16,28 @@ function sortSlotsBySchedule(slots) {
   return [...slots].sort((a, b) => slotSortKey(a).localeCompare(slotSortKey(b)));
 }
 
+function weekKeyFromDate(isoDate) {
+  const parts = (isoDate || "").split("-");
+  if (parts.length !== 3) return "";
+  const year = Number(parts[0]);
+  const month = Number(parts[1]);
+  const day = Number(parts[2]);
+  if (!year || !month || !day) return "";
+  const date = new Date(Date.UTC(year, month - 1, day));
+  const dayNum = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+  return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
+}
+
+function formatSlotTime(slot) {
+  const start = normalizeText(slot?.startTime);
+  const end = normalizeText(slot?.endTime);
+  if (!start || !end) return "";
+  return `${start} - ${end}`;
+}
+
 function formatSlotLocation(slot) {
   return normalizeText(slot?.displayName) || normalizeText(slot?.fieldName) || normalizeText(slot?.fieldKey);
 }
@@ -71,6 +93,9 @@ export default function DebugPage({ leagueId, me }) {
   const [previewTeams, setPreviewTeams] = useState([]);
   const [previewRequests, setPreviewRequests] = useState([]);
   const [previewSlots, setPreviewSlots] = useState([]);
+  const [previewPortalSlotsAll, setPreviewPortalSlotsAll] = useState([]);
+  const [previewPortalOpenToShareField, setPreviewPortalOpenToShareField] = useState(false);
+  const [previewPortalShareWithTeamId, setPreviewPortalShareWithTeamId] = useState("");
   const [previewRefreshedAt, setPreviewRefreshedAt] = useState("");
   const previewLoadSeqRef = useRef(0);
 
@@ -157,6 +182,60 @@ export default function DebugPage({ leagueId, me }) {
   const coachSetupLink = useMemo(() => {
     return buildCoachSetupLink(leagueId, previewTeamId);
   }, [leagueId, previewTeamId]);
+
+  const previewPortalShareableTeams = useMemo(() => {
+    const teamId = normalizeText(previewTeamId);
+    return previewTeamOptions
+      .filter((t) => normalizeText(t?.teamId) && normalizeText(t?.teamId) !== teamId)
+      .map((t) => ({
+        teamId: normalizeText(t?.teamId),
+        name: normalizeText(t?.name),
+      }));
+  }, [previewTeamId, previewTeamOptions]);
+
+  const previewPortalSelections = useMemo(() => {
+    const teamId = normalizeText(previewTeamId);
+    if (!teamId) return [];
+    return sortSlotsBySchedule(
+      (previewPortalSlotsAll || [])
+        .filter((s) => normalizeText(s?.status) === "Confirmed")
+        .filter((s) => normalizeText(s?.gameType).toLowerCase() === "practice")
+        .filter((s) => {
+          const confirmed = normalizeText(s?.confirmedTeamId);
+          const offering = normalizeText(s?.offeringTeamId);
+          return confirmed === teamId || offering === teamId;
+        })
+    );
+  }, [previewPortalSlotsAll, previewTeamId]);
+
+  const previewPortalSelectionsByWeek = useMemo(() => {
+    const map = new Map();
+    for (const slot of previewPortalSelections) {
+      const key = weekKeyFromDate(normalizeText(slot?.gameDate));
+      if (!key) continue;
+      if (!map.has(key)) map.set(key, slot);
+    }
+    return map;
+  }, [previewPortalSelections]);
+
+  const previewPortalAvailableSlots = useMemo(() => {
+    return sortSlotsBySchedule(
+      (previewPortalSlotsAll || [])
+        .filter((s) => s?.isAvailability === true)
+        .filter((s) => normalizeText(s?.status) === "Open")
+    ).slice(0, 20);
+  }, [previewPortalSlotsAll]);
+
+  useEffect(() => {
+    if (!previewPortalOpenToShareField && previewPortalShareWithTeamId) {
+      setPreviewPortalShareWithTeamId("");
+      return;
+    }
+    if (!previewPortalOpenToShareField || !previewPortalShareWithTeamId) return;
+    if (!previewPortalShareableTeams.some((t) => t.teamId === previewPortalShareWithTeamId)) {
+      setPreviewPortalShareWithTeamId("");
+    }
+  }, [previewPortalOpenToShareField, previewPortalShareWithTeamId, previewPortalShareableTeams]);
 
   async function loadMemberships() {
     if (!leagueId) {
@@ -407,12 +486,14 @@ export default function DebugPage({ leagueId, me }) {
       setPreviewErr("Select a league to load coach practice preview.");
       setPreviewRequests([]);
       setPreviewSlots([]);
+      setPreviewPortalSlotsAll([]);
       return;
     }
     if (!division || !teamId) {
       setPreviewErr("Select both division and team.");
       setPreviewRequests([]);
       setPreviewSlots([]);
+      setPreviewPortalSlotsAll([]);
       return;
     }
 
@@ -422,7 +503,7 @@ export default function DebugPage({ leagueId, me }) {
     try {
       const [requestsRaw, slotsRaw] = await Promise.all([
         apiFetch(`/api/practice-requests?teamId=${encodeURIComponent(teamId)}`),
-        apiFetch(`/api/slots?division=${encodeURIComponent(division)}&status=Open`)
+        apiFetch(`/api/slots?division=${encodeURIComponent(division)}&status=Open,Confirmed`)
       ]);
 
       const requests = Array.isArray(requestsRaw)
@@ -436,12 +517,14 @@ export default function DebugPage({ leagueId, me }) {
       if (requestSeq !== previewLoadSeqRef.current) return;
       setPreviewRequests(requests);
       setPreviewSlots(sortSlotsBySchedule(availabilitySlots).slice(0, 20));
+      setPreviewPortalSlotsAll(allOpenSlots);
       setPreviewRefreshedAt(new Date().toISOString());
     } catch (e) {
       if (requestSeq !== previewLoadSeqRef.current) return;
       setPreviewErr(e?.message || "Failed to load coach practice preview.");
       setPreviewRequests([]);
       setPreviewSlots([]);
+      setPreviewPortalSlotsAll([]);
     } finally {
       if (requestSeq === previewLoadSeqRef.current) {
         setPreviewLoading(false);
@@ -459,6 +542,7 @@ export default function DebugPage({ leagueId, me }) {
       setPreviewTeamId("");
       setPreviewRequests([]);
       setPreviewSlots([]);
+      setPreviewPortalSlotsAll([]);
       return;
     }
 
@@ -510,6 +594,7 @@ export default function DebugPage({ leagueId, me }) {
       } else {
         setPreviewRequests([]);
         setPreviewSlots([]);
+        setPreviewPortalSlotsAll([]);
       }
     } catch (e) {
       setPreviewContextErr(e?.message || "Failed to load preview context.");
@@ -517,6 +602,7 @@ export default function DebugPage({ leagueId, me }) {
       setPreviewTeams([]);
       setPreviewRequests([]);
       setPreviewSlots([]);
+      setPreviewPortalSlotsAll([]);
     } finally {
       setPreviewContextLoading(false);
     }
@@ -541,6 +627,7 @@ export default function DebugPage({ leagueId, me }) {
 
     setPreviewRequests([]);
     setPreviewSlots([]);
+    setPreviewPortalSlotsAll([]);
     if (nextDivision) {
       setPreviewErr("No teams found in this division.");
     }
@@ -557,6 +644,7 @@ export default function DebugPage({ leagueId, me }) {
     }
     setPreviewRequests([]);
     setPreviewSlots([]);
+    setPreviewPortalSlotsAll([]);
   }
 
   async function copyCoachSetupPreviewLink() {
@@ -1030,6 +1118,136 @@ export default function DebugPage({ leagueId, me }) {
                   </table>
                 </div>
               )}
+
+              <h3 className="mt-4">Practice selection portal preview (view only)</h3>
+              <p className="muted">
+                Mirrors the coach practice selection portal layout for this team. Buttons are disabled in debug preview.
+              </p>
+
+              <div className="card" style={{ marginTop: "0.5rem" }}>
+                <h4>Practice selection portal</h4>
+                <p className="muted">
+                  Choose one practice slot per week. These are the remaining availability slots after games are scheduled.
+                </p>
+                <div className="formGrid">
+                  <label>
+                    Division
+                    <input value={normalizeText(previewDivision)} readOnly />
+                  </label>
+                  <label>
+                    Team
+                    <input value={normalizeText(previewTeamId) || "Unassigned"} readOnly />
+                  </label>
+                </div>
+              </div>
+
+              <div className="card">
+                <h4>Your selected practices (preview)</h4>
+                {previewPortalSelections.length ? (
+                  <div className="tableWrap">
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>Week</th>
+                          <th>Date</th>
+                          <th>Time</th>
+                          <th>Location</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {previewPortalSelections.map((slot) => (
+                          <tr key={normalizeText(slot?.slotId) || `${slot?.gameDate}-${slot?.startTime}`}>
+                            <td>{weekKeyFromDate(normalizeText(slot?.gameDate))}</td>
+                            <td>{normalizeText(slot?.gameDate)}</td>
+                            <td>{formatSlotTime(slot)}</td>
+                            <td>{formatSlotLocation(slot)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="muted">No confirmed practice selections for this team.</div>
+                )}
+              </div>
+
+              <div className="card">
+                <h4>Available practice slots (preview)</h4>
+                <div className="callout mb-3">
+                  <div className="row row--wrap gap-3">
+                    <label className="row row--wrap gap-2" style={{ alignItems: "center" }}>
+                      <input
+                        type="checkbox"
+                        checked={previewPortalOpenToShareField}
+                        onChange={(e) => setPreviewPortalOpenToShareField(e.target.checked)}
+                      />
+                      <span>Open to sharing a field</span>
+                    </label>
+                    <label style={{ minWidth: 260 }}>
+                      Propose sharing with team
+                      <select
+                        value={previewPortalShareWithTeamId}
+                        onChange={(e) => setPreviewPortalShareWithTeamId(normalizeText(e.target.value))}
+                        disabled={!previewPortalOpenToShareField || previewPortalShareableTeams.length === 0}
+                      >
+                        <option value="">
+                          {!previewPortalOpenToShareField
+                            ? "Enable sharing first"
+                            : (previewPortalShareableTeams.length ? "Select a team" : "No other teams in division")}
+                        </option>
+                        {previewPortalShareableTeams.map((team) => (
+                          <option key={team.teamId} value={team.teamId}>
+                            {team.name ? `${team.name} (${team.teamId})` : team.teamId}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <div className="muted mt-2">Preview only: select buttons are disabled in Debug.</div>
+                </div>
+
+                {previewPortalAvailableSlots.length === 0 ? (
+                  <div className="muted">No open practice slots available for this division.</div>
+                ) : (
+                  <div className="tableWrap">
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>Week</th>
+                          <th>Date</th>
+                          <th>Time</th>
+                          <th>Location</th>
+                          <th />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {previewPortalAvailableSlots.map((slot) => {
+                          const weekKey = weekKeyFromDate(normalizeText(slot?.gameDate));
+                          const disabled = !!(weekKey && previewPortalSelectionsByWeek.has(weekKey));
+                          return (
+                            <tr key={normalizeText(slot?.slotId) || `${slot?.gameDate}-${slot?.startTime}`}>
+                              <td>{weekKey}</td>
+                              <td>{normalizeText(slot?.gameDate)}</td>
+                              <td>{formatSlotTime(slot)}</td>
+                              <td>{formatSlotLocation(slot)}</td>
+                              <td>
+                                <button
+                                  className="btn btn--primary"
+                                  type="button"
+                                  disabled
+                                  title={disabled ? "Preview: team already has a practice selected this week" : "Preview only (disabled)"}
+                                >
+                                  Select
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </>
           ) : (
             <div className="muted">Select division and team to preview coach practice requests.</div>
