@@ -221,6 +221,7 @@ function StepButton({ active, status = "neutral", onClick, children }) {
 export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [division, setDivision] = useState("");
   const [divisions, setDivisions] = useState([]);
+  const [leagueSeasonConfig, setLeagueSeasonConfig] = useState({});
   const [seasonStart, setSeasonStart] = useState("");
   const [seasonEnd, setSeasonEnd] = useState("");
   const [poolStart, setPoolStart] = useState("");
@@ -273,6 +274,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
           setDivision((prev) => prev || list[0].code || list[0].division || "");
         }
         const season = league?.season || {};
+        setLeagueSeasonConfig(season);
         setSeasonStart(season.springStart || "");
         setSeasonEnd(season.springEnd || "");
       } catch (e) {
@@ -350,6 +352,22 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         return (a.fieldKey || "").localeCompare(b.fieldKey || "");
       });
   }, [slotPlan]);
+
+  const effectiveGameSlotMinutes = useMemo(() => {
+    const selectedDivision = divisions.find(
+      (item) => (item?.code || item?.division || "") === division
+    );
+    const divisionMinutes = Number(
+      selectedDivision?.season?.gameLengthMinutes ??
+        selectedDivision?.gameLengthMinutes ??
+        selectedDivision?.seasonGameLengthMinutes ??
+        0
+    );
+    if (Number.isFinite(divisionMinutes) && divisionMinutes > 0) return Math.trunc(divisionMinutes);
+    const leagueMinutes = Number(leagueSeasonConfig?.gameLengthMinutes ?? 0);
+    if (Number.isFinite(leagueMinutes) && leagueMinutes > 0) return Math.trunc(leagueMinutes);
+    return 120;
+  }, [division, divisions, leagueSeasonConfig]);
 
   const planningIntel = useMemo(() => {
     const teams = Number.isFinite(teamCount) ? teamCount : 0;
@@ -609,6 +627,39 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     const normalized = normalizeSlotType(nextType);
     setSlotPlan((prev) => prev.map((item) => ({ ...item, slotType: normalized })));
     setPreview(null);
+  }
+
+  function setAllSlotTypesWithRefactor(nextTypeRaw, durationMinutes) {
+    const nextType = normalizeSlotType(nextTypeRaw);
+    const duration = Math.trunc(Number(durationMinutes));
+    if (!Number.isFinite(duration) || duration <= 0) {
+      setErr("Refactor duration must be a positive number of minutes.");
+      return;
+    }
+
+    let invalidCount = 0;
+    setSlotPlan((prev) => {
+      let localInvalidCount = 0;
+      const next = prev.map((item) => {
+        const startMin = parseMinutes(item.startTime);
+        const refactoredEnd = startMin == null ? "" : formatMinutesAsTime(startMin + duration);
+        if (!refactoredEnd) localInvalidCount += 1;
+        return {
+          ...item,
+          slotType: nextType,
+          priorityRank: nextType === "practice" ? "" : normalizePriorityRank(item.priorityRank),
+          endTime: refactoredEnd || item.endTime,
+        };
+      });
+      invalidCount = localInvalidCount;
+      return next;
+    });
+    setPreview(null);
+    setErr(
+      invalidCount
+        ? `Refactored ${nextType} slots, but ${invalidCount} slot(s) kept their prior end time because the new duration would exceed midnight.`
+        : ""
+    );
   }
 
   function autoRankGameSlots() {
@@ -1838,6 +1889,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                 Regular season uses <b>Game</b> and <b>Both</b>. Pool play and bracket prioritize <b>Game</b>/<b>Both</b> first, then can consume remaining <b>Practice</b> slots as fallback game space.
               </div>
               <div className="subtle">
+                Use <b>Both + Refactor</b> when a slot should remain dual-use but needs game-length timing ({effectiveGameSlotMinutes} min).
+              </div>
+              <div className="subtle">
                 Score is based on how consistently the same weekday/time/field pattern appears in the queried window.
               </div>
             </div>
@@ -1848,6 +1902,14 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
               </button>
               <button className="btn btn--ghost" type="button" onClick={() => setAllSlotTypes("both")}>
                 Set all Both
+              </button>
+              <button
+                className="btn btn--ghost"
+                type="button"
+                onClick={() => setAllSlotTypesWithRefactor("both", effectiveGameSlotMinutes)}
+                title={`Set all slot types to Both and refactor to ${effectiveGameSlotMinutes} minutes`}
+              >
+                Set all Both + Refactor
               </button>
               <button className="btn btn--ghost" type="button" onClick={autoRankGameSlots}>
                 Auto-rank Game/Both
@@ -1958,6 +2020,14 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                                     <button className="btn btn--ghost" type="button" onClick={() => quickConvertPattern(p.key, "game", 120)}>
                                       Game 120m
                                     </button>
+                                    <button
+                                      className="btn btn--ghost"
+                                      type="button"
+                                      onClick={() => quickConvertPattern(p.key, "both", effectiveGameSlotMinutes)}
+                                      title={`Set to Both and refactor to ${effectiveGameSlotMinutes} minutes`}
+                                    >
+                                      Both + Refactor
+                                    </button>
                                   </div>
                                       </>
                                     );
@@ -2040,6 +2110,17 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                                 </option>
                               ))}
                             </select>
+                            <div className="mt-1">
+                              <button
+                                className="btn btn--ghost"
+                                type="button"
+                                onClick={() => quickConvertPattern(pattern.key, "both", effectiveGameSlotMinutes)}
+                                style={{ padding: "0.2rem 0.45rem", fontSize: "0.75rem", lineHeight: 1.2 }}
+                                title={`Set to Both and refactor to ${effectiveGameSlotMinutes} minutes`}
+                              >
+                                Both + Refactor
+                              </button>
+                            </div>
                           </td>
                           <td>
                             <input
