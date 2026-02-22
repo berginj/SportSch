@@ -592,6 +592,46 @@ export default function SlotGeneratorManager({ leagueId }) {
     }
   }
 
+  async function deleteConflictingAvailabilitySlots() {
+    const dateError = validateIsoDates([
+      { label: "Date from", value: availDateFrom, required: true },
+      { label: "Date to", value: availDateTo, required: true },
+    ]);
+    if (dateError) return setAvailListErr(dateError);
+
+    const confirmText = window.prompt(
+      "Type DELETE CONFLICTING AVAILABILITY to remove only availability slots that conflict with assigned slots or overlapping availability."
+    );
+    if (confirmText !== "DELETE CONFLICTING AVAILABILITY") return;
+
+    setAvailListLoading(true);
+    setAvailListErr("");
+    setAvailListMsg("");
+    try {
+      const res = await apiFetch("/api/availability-slots/clear", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          division: availDivision || undefined,
+          dateFrom: availDateFrom,
+          dateTo: availDateTo,
+          fieldKey: availFieldKey || undefined,
+          conflictsOnly: true,
+        }),
+      });
+
+      setAvailListMsg(
+        `Deleted ${res?.deleted ?? 0} conflicting availability slot(s)` +
+        ` (conflicts found: ${res?.conflictsFound ?? 0}, vs assigned: ${res?.conflictWithAssigned ?? 0}, vs availability: ${res?.conflictWithAvailability ?? 0}).`
+      );
+      await loadAvailabilitySlots();
+    } catch (e) {
+      setAvailListErr(formatApiError(e, "Conflict cleanup failed."));
+    } finally {
+      setAvailListLoading(false);
+    }
+  }
+
   return (
     <div className="stack">
       <Toast
@@ -800,6 +840,9 @@ export default function SlotGeneratorManager({ leagueId }) {
         <div className="card__body row gap-2">
           <button className="btn" onClick={loadAvailabilitySlots} disabled={availListLoading}>
             {availListLoading ? "Loading..." : "Load availability slots"}
+          </button>
+          <button className="btn" onClick={deleteConflictingAvailabilitySlots} disabled={availListLoading}>
+            Delete conflicting availability
           </button>
           <button className="btn btn--danger" onClick={deleteAvailabilitySlots} disabled={availListLoading}>
             Delete filtered availability
