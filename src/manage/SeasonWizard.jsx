@@ -151,6 +151,14 @@ function parseMinutes(raw) {
   return h * 60 + m;
 }
 
+function formatMinutesAsTime(totalMinutes) {
+  const value = Math.trunc(Number(totalMinutes));
+  if (!Number.isFinite(value) || value < 0 || value >= 24 * 60) return "";
+  const h = String(Math.floor(value / 60)).padStart(2, "0");
+  const m = String(value % 60).padStart(2, "0");
+  return `${h}:${m}`;
+}
+
 function computeSlotScore(slot, weekday, patternCounts, dayCounts) {
   const patternKey = `${weekday}|${slot.startTime || ""}|${slot.endTime || ""}|${slot.fieldKey || ""}`;
   const patternCount = patternCounts.get(patternKey) || 1;
@@ -532,6 +540,69 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     }
     setErr("");
     updatePatternPlan(patternKey, { startTime: start });
+  }
+
+  function updatePatternEndTime(patternKey, nextEnd) {
+    const representative = slotPatterns.find((p) => p.key === patternKey);
+    if (!representative) return;
+    const end = String(nextEnd || "").trim();
+    if (!end) return;
+    const startMin = parseMinutes(representative.startTime);
+    const endMin = parseMinutes(end);
+    if (startMin == null || endMin == null) {
+      setErr("End time must be in HH:mm format.");
+      return;
+    }
+    if (endMin <= startMin) {
+      setErr(`End time must be later than ${representative.startTime} for ${representative.weekday} ${representative.fieldKey}.`);
+      return;
+    }
+    setErr("");
+    updatePatternPlan(patternKey, { endTime: end });
+  }
+
+  function updatePatternDurationMinutes(patternKey, nextDurationRaw) {
+    const representative = slotPatterns.find((p) => p.key === patternKey);
+    if (!representative) return;
+    const duration = Math.trunc(Number(nextDurationRaw));
+    if (!Number.isFinite(duration) || duration <= 0) {
+      setErr("Duration must be a positive number of minutes.");
+      return;
+    }
+    const startMin = parseMinutes(representative.startTime);
+    if (startMin == null) {
+      setErr("Start time must be valid before changing duration.");
+      return;
+    }
+    const end = formatMinutesAsTime(startMin + duration);
+    if (!end) {
+      setErr(`Duration pushes end time past midnight for ${representative.weekday} ${representative.fieldKey}.`);
+      return;
+    }
+    setErr("");
+    updatePatternPlan(patternKey, { endTime: end });
+  }
+
+  function quickConvertPattern(patternKey, nextTypeRaw, durationMinutes) {
+    const representative = slotPatterns.find((p) => p.key === patternKey);
+    if (!representative) return;
+    const startMin = parseMinutes(representative.startTime);
+    if (startMin == null) {
+      setErr("Start time must be valid before converting slot pattern.");
+      return;
+    }
+    const endTime = formatMinutesAsTime(startMin + Number(durationMinutes || 0));
+    if (!endTime) {
+      setErr(`Could not convert ${representative.weekday} ${representative.fieldKey}: invalid duration.`);
+      return;
+    }
+    const nextType = normalizeSlotType(nextTypeRaw);
+    setErr("");
+    updatePatternPlan(patternKey, {
+      slotType: nextType,
+      priorityRank: nextType === "practice" ? "" : normalizePriorityRank(representative.priorityRank),
+      endTime,
+    });
   }
 
   function setAllSlotTypes(nextType) {
@@ -1128,6 +1199,343 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     };
   }, [preview]);
 
+  const regularBalanceReport = useMemo(() => {
+    if (!preview) {
+      return {
+        teams: [],
+        teamRows: [],
+        matrixRows: [],
+        pairRows: [],
+        totalRegularGames: 0,
+        totalGuestGames: 0,
+        weekCount: 0,
+        weekKeys: [],
+      };
+    }
+
+    const assignments = Array.isArray(preview.assignments) ? preview.assignments : [];
+    const unassignedSlots = Array.isArray(preview.unassignedSlots) ? preview.unassignedSlots : [];
+    const unassignedMatchups = Array.isArray(preview.unassignedMatchups) ? preview.unassignedMatchups : [];
+
+    const regularAssignments = assignments.filter((a) => a?.phase === "Regular Season");
+    const regularGames = regularAssignments.filter((a) => !a?.isExternalOffer && a?.homeTeamId && a?.awayTeamId);
+    const regularGuestGames = regularAssignments.filter((a) => a?.isExternalOffer && a?.homeTeamId);
+    const regularUnassignedSlots = unassignedSlots.filter((s) => s?.phase === "Regular Season");
+    const regularUnassignedMatchups = unassignedMatchups.filter((m) => getIssuePhase(m) === "Regular Season");
+
+    const teamIds = new Set();
+    regularGames.forEach((a) => {
+      if (a?.homeTeamId) teamIds.add(String(a.homeTeamId).trim());
+      if (a?.awayTeamId) teamIds.add(String(a.awayTeamId).trim());
+    });
+    regularGuestGames.forEach((a) => {
+      if (a?.homeTeamId) teamIds.add(String(a.homeTeamId).trim());
+    });
+    regularUnassignedMatchups.forEach((m) => {
+      if (m?.homeTeamId) teamIds.add(String(m.homeTeamId).trim());
+      if (m?.awayTeamId) teamIds.add(String(m.awayTeamId).trim());
+    });
+
+    const teams = [...teamIds].filter(Boolean).sort((a, b) => a.localeCompare(b));
+    const teamStats = new Map(teams.map((teamId) => [teamId, {
+      teamId,
+      games: 0,
+      home: 0,
+      away: 0,
+      guest: 0,
+      activity: 0,
+      unassigned: 0,
+      target: 0,
+      coveragePct: 100,
+      homeAwayGap: 0,
+      byeWeeks: 0,
+    }]));
+    const ensureTeamStat = (teamId) => {
+      const normalized = String(teamId || "").trim();
+      if (!normalized) return null;
+      if (!teamStats.has(normalized)) {
+        teamStats.set(normalized, {
+          teamId: normalized,
+          games: 0,
+          home: 0,
+          away: 0,
+          guest: 0,
+          activity: 0,
+          unassigned: 0,
+          target: 0,
+          coveragePct: 100,
+          homeAwayGap: 0,
+          byeWeeks: 0,
+        });
+      }
+      return teamStats.get(normalized);
+    };
+
+    const pairMap = new Map();
+    const pairKey = (teamA, teamB) => [teamA, teamB].sort((a, b) => a.localeCompare(b)).join("|");
+    const ensurePair = (leftRaw, rightRaw) => {
+      const left = String(leftRaw || "").trim();
+      const right = String(rightRaw || "").trim();
+      if (!left || !right) return null;
+      const [teamA, teamB] = [left, right].sort((a, b) => a.localeCompare(b));
+      const key = `${teamA}|${teamB}`;
+      if (!pairMap.has(key)) {
+        pairMap.set(key, {
+          key,
+          teamA,
+          teamB,
+          assigned: 0,
+          unassigned: 0,
+          homeForA: 0,
+          homeForB: 0,
+        });
+      }
+      return pairMap.get(key);
+    };
+
+    const weeklyActivityByTeam = new Map();
+    const addActivity = (teamId, gameDate) => {
+      const normalized = String(teamId || "").trim();
+      const weekKey = weekStartIso(gameDate);
+      if (!normalized || !weekKey) return;
+      let teamWeeks = weeklyActivityByTeam.get(normalized);
+      if (!teamWeeks) {
+        teamWeeks = new Map();
+        weeklyActivityByTeam.set(normalized, teamWeeks);
+      }
+      teamWeeks.set(weekKey, (teamWeeks.get(weekKey) || 0) + 1);
+    };
+
+    regularGames.forEach((a) => {
+      const home = String(a?.homeTeamId || "").trim();
+      const away = String(a?.awayTeamId || "").trim();
+      if (!home || !away) return;
+
+      const pair = ensurePair(home, away);
+      if (pair) {
+        pair.assigned += 1;
+        if (home === pair.teamA) pair.homeForA += 1;
+        else pair.homeForB += 1;
+      }
+
+      const homeStat = ensureTeamStat(home);
+      const awayStat = ensureTeamStat(away);
+      if (homeStat) {
+        homeStat.games += 1;
+        homeStat.home += 1;
+        homeStat.activity += 1;
+      }
+      if (awayStat) {
+        awayStat.games += 1;
+        awayStat.away += 1;
+        awayStat.activity += 1;
+      }
+      addActivity(home, a?.gameDate);
+      addActivity(away, a?.gameDate);
+    });
+
+    regularGuestGames.forEach((a) => {
+      const teamId = String(a?.homeTeamId || "").trim();
+      if (!teamId) return;
+      const stat = ensureTeamStat(teamId);
+      if (stat) {
+        stat.guest += 1;
+        stat.activity += 1;
+      }
+      addActivity(teamId, a?.gameDate);
+    });
+
+    regularUnassignedMatchups.forEach((m) => {
+      const home = String(m?.homeTeamId || "").trim();
+      const away = String(m?.awayTeamId || "").trim();
+      if (!home || !away) return;
+      const pair = ensurePair(home, away);
+      if (pair) pair.unassigned += 1;
+      const homeStat = ensureTeamStat(home);
+      const awayStat = ensureTeamStat(away);
+      if (homeStat) homeStat.unassigned += 1;
+      if (awayStat) awayStat.unassigned += 1;
+    });
+
+    const regularWeekKeysFromSlots = new Set();
+    [...regularAssignments, ...regularUnassignedSlots].forEach((slot) => {
+      const key = weekStartIso(slot?.gameDate);
+      if (key) regularWeekKeysFromSlots.add(key);
+    });
+
+    let regularWeekKeys = [...regularWeekKeysFromSlots].sort((a, b) => a.localeCompare(b));
+    if (!regularWeekKeys.length) {
+      const regularRangeEnd = poolStart ? addIsoDays(poolStart, -1) : seasonEnd;
+      regularWeekKeys = buildIsoWeekKeys(seasonStart, regularRangeEnd);
+    }
+
+    const minGamesTarget = Math.max(0, Number(minGamesPerTeam) || 0);
+    const teamRows = [...teamStats.values()]
+      .map((row) => {
+        const target = Math.max(minGamesTarget, row.games + row.unassigned);
+        const coveragePct = target > 0 ? Math.round((row.games / target) * 100) : 100;
+        const homeAwayGap = Math.abs(row.home - row.away);
+        const teamWeeks = weeklyActivityByTeam.get(row.teamId) || new Map();
+        const byeWeeks = regularWeekKeys.reduce((count, weekKey) => count + ((teamWeeks.get(weekKey) || 0) > 0 ? 0 : 1), 0);
+        return {
+          ...row,
+          target,
+          coveragePct,
+          homeAwayGap,
+          byeWeeks,
+        };
+      })
+      .sort((a, b) => {
+        const gameDiff = b.games - a.games;
+        if (gameDiff !== 0) return gameDiff;
+        return a.teamId.localeCompare(b.teamId);
+      });
+
+    const matrixRows = teams.map((rowTeamId) => ({
+      teamId: rowTeamId,
+      cells: teams.map((colTeamId) => {
+        if (rowTeamId === colTeamId) return null;
+        const record = pairMap.get(pairKey(rowTeamId, colTeamId));
+        if (!record) {
+          return { assigned: 0, target: 0, unassigned: 0, homeForRow: 0, awayForRow: 0 };
+        }
+        const rowIsA = rowTeamId === record.teamA;
+        const homeForRow = rowIsA ? record.homeForA : record.homeForB;
+        const awayForRow = record.assigned - homeForRow;
+        return {
+          assigned: record.assigned,
+          target: record.assigned + record.unassigned,
+          unassigned: record.unassigned,
+          homeForRow,
+          awayForRow,
+        };
+      }),
+    }));
+
+    const pairRows = [...pairMap.values()]
+      .map((record) => ({
+        ...record,
+        target: record.assigned + record.unassigned,
+        homeAwayGap: Math.abs(record.homeForA - record.homeForB),
+      }))
+      .sort((a, b) => {
+        const targetDiff = b.target - a.target;
+        if (targetDiff !== 0) return targetDiff;
+        const assignedDiff = b.assigned - a.assigned;
+        if (assignedDiff !== 0) return assignedDiff;
+        const gapDiff = b.homeAwayGap - a.homeAwayGap;
+        if (gapDiff !== 0) return gapDiff;
+        return a.key.localeCompare(b.key);
+      });
+
+    return {
+      teams,
+      teamRows,
+      matrixRows,
+      pairRows,
+      totalRegularGames: regularGames.length,
+      totalGuestGames: regularGuestGames.length,
+      weekCount: regularWeekKeys.length,
+      weekKeys: regularWeekKeys,
+    };
+  }, [preview, seasonStart, seasonEnd, poolStart, minGamesPerTeam]);
+
+  const previewRecommendations = useMemo(() => {
+    if (!preview) return [];
+
+    const summary = preview.summary || {};
+    const regularSummary = summary.regularSeason || {};
+    const teamCountValue = Number(summary.teamCount) || 0;
+    const oddTeamCount = teamCountValue > 0 && teamCountValue % 2 === 1;
+    const guestGamesValue = Math.max(0, Number(guestGamesPerWeek) || 0);
+    const recommendedGuestGames = Math.max(
+      1,
+      Number(feasibility?.recommendations?.optimalGuestGamesPerWeek) || 0
+    );
+
+    const rows = [];
+
+    if (oddTeamCount) {
+      const byeCounts = regularBalanceReport.teamRows.map((row) => row.byeWeeks);
+      if (byeCounts.length && regularBalanceReport.weekCount > 0) {
+        const maxBye = Math.max(...byeCounts);
+        const minBye = Math.min(...byeCounts);
+        const heavyByeTeams = regularBalanceReport.teamRows
+          .filter((row) => row.byeWeeks === maxBye)
+          .slice(0, 4)
+          .map((row) => row.teamId);
+        rows.push({
+          code: "ODD_TEAM_BYE_CONTEXT",
+          tone: maxBye - minBye > 1 ? "warning" : "info",
+          message:
+            `Odd team count (${teamCountValue}) means BYEs are unavoidable. ` +
+            `Estimated BYE weeks across ${regularBalanceReport.weekCount} regular-season week(s): min ${minBye}, max ${maxBye}` +
+            (heavyByeTeams.length ? ` (highest: ${heavyByeTeams.join(", ")}).` : "."),
+        });
+      } else {
+        rows.push({
+          code: "ODD_TEAM_BYE_CONTEXT",
+          tone: "info",
+          message: `Odd team count (${teamCountValue}) means BYEs are unavoidable. Use guest games and slot priorities to spread BYEs evenly.`,
+        });
+      }
+
+      if (
+        guestGamesValue <= 0 &&
+        ((regularSummary.unassignedSlots || 0) > 0 || unassignedRegularReport.openSlots > 0)
+      ) {
+        rows.push({
+          code: "GUEST_GAME_RECOMMENDATION",
+          tone: "warning",
+          suggestedGuestGamesPerWeek: recommendedGuestGames,
+          message:
+            `This division has an odd team count and open regular slots (${unassignedRegularReport.openSlots || regularSummary.unassignedSlots || 0}). ` +
+            `Try Guest games/week = ${recommendedGuestGames} to reduce idle weeks and use spare capacity.`,
+        });
+      } else if (guestGamesValue > 0 && regularBalanceReport.totalGuestGames === 0 && (regularSummary.unassignedSlots || 0) > 0) {
+        rows.push({
+          code: "GUEST_GAME_NOT_PLACED",
+          tone: "warning",
+          message:
+            `Guest games are enabled (${guestGamesValue}/week) but none were placed. Check Slot plan game/both tags, priorities, and guest anchor options.`,
+        });
+      }
+    }
+
+    if (regularBalanceReport.pairRows.length > 0) {
+      const scheduledPairs = regularBalanceReport.pairRows.filter((row) => row.assigned > 0);
+      if (scheduledPairs.length > 1) {
+        const counts = scheduledPairs.map((row) => row.assigned);
+        const maxAssigned = Math.max(...counts);
+        const minAssigned = Math.min(...counts);
+        if (maxAssigned - minAssigned > 1) {
+          rows.push({
+            code: "PAIR_BALANCE_REVIEW",
+            tone: "warning",
+            message:
+              `Matchup distribution is uneven: some pairs are scheduled ${maxAssigned} time(s) while others are at ${minAssigned}. ` +
+              `Use the matrix below to confirm the intended round-robin balance.`,
+          });
+        }
+      }
+
+      const unfilledPairs = regularBalanceReport.pairRows.filter((row) => row.unassigned > 0);
+      if (unfilledPairs.length > 0) {
+        const sample = unfilledPairs
+          .slice(0, 3)
+          .map((row) => `${row.teamA} vs ${row.teamB} (${row.unassigned})`)
+          .join(", ");
+        rows.push({
+          code: "UNFILLED_PAIRINGS",
+          tone: "info",
+          message: `Unfilled regular-season pairings remain: ${sample}${unfilledPairs.length > 3 ? " ..." : ""}`,
+        });
+      }
+    }
+
+    return rows;
+  }, [preview, guestGamesPerWeek, feasibility, regularBalanceReport, unassignedRegularReport.openSlots]);
+
   const planningChecksReport = useMemo(() => {
     if (!preview) return [];
 
@@ -1500,11 +1908,18 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                             ) : (
                               dayPatterns.map((p) => (
                                 <div key={p.key} className="callout" style={{ marginBottom: 0 }}>
+                                  {(() => {
+                                    const startMin = parseMinutes(p.startTime);
+                                    const endMin = parseMinutes(p.endTime);
+                                    const duration = startMin != null && endMin != null && endMin > startMin ? endMin - startMin : null;
+                                    return (
+                                      <>
                                   <div className="row row--between gap-2">
                                     <div><b>{p.startTime}-{p.endTime}</b></div>
                                     <span className="pill">Openings: {p.count}</span>
                                   </div>
                                   <div className="subtle">{p.fieldKey}</div>
+                                  <div className="subtle">Duration: {duration ?? "?"} min</div>
                                   <div className="row row--wrap gap-2 mt-1">
                                     <label>
                                       Type
@@ -1536,6 +1951,17 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                                       />
                                     </label>
                                   </div>
+                                  <div className="row row--wrap gap-1 mt-1">
+                                    <button className="btn btn--ghost" type="button" onClick={() => quickConvertPattern(p.key, "practice", 90)}>
+                                      Practice 90m
+                                    </button>
+                                    <button className="btn btn--ghost" type="button" onClick={() => quickConvertPattern(p.key, "game", 120)}>
+                                      Game 120m
+                                    </button>
+                                  </div>
+                                      </>
+                                    );
+                                  })()}
                                 </div>
                               ))
                             )}
@@ -1553,6 +1979,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                         <th>Day</th>
                         <th>Start</th>
                         <th>End</th>
+                        <th>Dur (min)</th>
                         <th>Field</th>
                         <th>Openings</th>
                         <th>Score</th>
@@ -1563,6 +1990,12 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                     <tbody>
                       {slotPatterns.map((pattern) => (
                         <tr key={pattern.key}>
+                          {(() => {
+                            const startMin = parseMinutes(pattern.startTime);
+                            const endMin = parseMinutes(pattern.endTime);
+                            const duration = startMin != null && endMin != null && endMin > startMin ? endMin - startMin : "";
+                            return (
+                              <>
                           <td>{pattern.weekday}</td>
                           <td>
                             <input
@@ -1572,7 +2005,25 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                               title={`Applies to all ${pattern.count} opening(s) in this pattern.`}
                             />
                           </td>
-                          <td>{pattern.endTime}</td>
+                          <td>
+                            <input
+                              type="time"
+                              value={pattern.endTime || ""}
+                              onChange={(e) => updatePatternEndTime(pattern.key, e.target.value)}
+                              title={`Applies to all ${pattern.count} opening(s) in this pattern.`}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              min="15"
+                              step="15"
+                              value={duration}
+                              onChange={(e) => updatePatternDurationMinutes(pattern.key, e.target.value)}
+                              title={`Changes end time for all ${pattern.count} opening(s) in this pattern.`}
+                              style={{ width: 90 }}
+                            />
+                          </td>
                           <td>{pattern.fieldKey}</td>
                           <td>{pattern.count}</td>
                           <td title="Higher score means this pattern appears more consistently in the season window.">
@@ -1605,6 +2056,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                               placeholder={pattern.slotType === "practice" ? "-" : "1"}
                             />
                           </td>
+                              </>
+                            );
+                          })()}
                         </tr>
                       ))}
                     </tbody>
@@ -1927,6 +2381,33 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                   ))}
                 </div>
               ) : null}
+              {previewRecommendations.length ? (
+                <div className="callout callout--warning">
+                  <div className="font-bold mb-2">Preview recommendations</div>
+                  <div className="stack gap-2">
+                    {previewRecommendations.map((rec, idx) => (
+                      <div key={`${rec.code || "rec"}-${idx}`}>
+                        <div className="subtle">{rec.message}</div>
+                        {Number(rec.suggestedGuestGamesPerWeek) > 0 ? (
+                          <div className="row gap-2 mt-1">
+                            <button
+                              className="btn btn--ghost"
+                              type="button"
+                              onClick={() => {
+                                setGuestGamesPerWeek(String(rec.suggestedGuestGamesPerWeek));
+                                setPreview(null);
+                                setStep(3);
+                              }}
+                            >
+                              Set Guest games/week = {rec.suggestedGuestGamesPerWeek}
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               {planningChecksReport.length ? (
                 <div className="callout">
                   <div className="font-bold mb-2">Planning checks report</div>
@@ -2025,6 +2506,119 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                       </tbody>
                     </table>
                   </div>
+                </div>
+              ) : null}
+              {regularBalanceReport.teams.length ? (
+                <div className="callout">
+                  <div className="font-bold mb-2">Regular-season balance matrix</div>
+                  <div className="subtle mb-2">
+                    Cell format: <b>assigned/target</b> with row-team home/away in parentheses. Example: <code>2/3 (1H/1A)</code>.
+                  </div>
+                  <div className="subtle mb-2">
+                    Guest games are tracked separately and are not counted in the matchup matrix.
+                  </div>
+
+                  <div className="tableWrap mt-2">
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>Team</th>
+                          <th>Games</th>
+                          <th>Home</th>
+                          <th>Away</th>
+                          <th>Guest</th>
+                          <th>Unassigned</th>
+                          <th>Target</th>
+                          <th>Coverage</th>
+                          <th>H/A gap</th>
+                          <th>BYE weeks*</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {regularBalanceReport.teamRows.map((row) => (
+                          <tr key={`regular-balance-team-${row.teamId}`}>
+                            <td>{row.teamId}</td>
+                            <td>{row.games}</td>
+                            <td>{row.home}</td>
+                            <td>{row.away}</td>
+                            <td>{row.guest}</td>
+                            <td>{row.unassigned}</td>
+                            <td>{row.target}</td>
+                            <td>{row.coveragePct}%</td>
+                            <td>{row.homeAwayGap}</td>
+                            <td>{row.byeWeeks}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {regularBalanceReport.weekCount > 0 ? (
+                    <div className="subtle mt-2">
+                      *BYE weeks estimate is based on regular-season weeks with at least one regular slot in the preview ({regularBalanceReport.weekCount} week{regularBalanceReport.weekCount === 1 ? "" : "s"}).
+                    </div>
+                  ) : null}
+
+                  <div className={`tableWrap mt-3 ${tableView === "B" ? "tableWrap--sticky" : ""}`}>
+                    <table className={`table ${tableView === "B" ? "table--compact table--sticky" : ""}`}>
+                      <thead>
+                        <tr>
+                          <th>Team</th>
+                          {regularBalanceReport.teams.map((teamId) => (
+                            <th key={`matrix-col-${teamId}`}>{teamId}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {regularBalanceReport.matrixRows.map((row) => (
+                          <tr key={`matrix-row-${row.teamId}`}>
+                            <th>{row.teamId}</th>
+                            {row.cells.map((cell, idx) => {
+                              const colTeamId = regularBalanceReport.teams[idx];
+                              if (!cell) return <td key={`matrix-cell-${row.teamId}-${colTeamId}`}>-</td>;
+                              return (
+                                <td key={`matrix-cell-${row.teamId}-${colTeamId}`} title={`${row.teamId} vs ${colTeamId}`}>
+                                  {cell.assigned}/{cell.target}
+                                  <div className="subtle" style={{ whiteSpace: "nowrap" }}>
+                                    ({cell.homeForRow}H/{cell.awayForRow}A)
+                                  </div>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {regularBalanceReport.pairRows.length ? (
+                    <div className="tableWrap mt-3">
+                      <table className="table">
+                        <thead>
+                          <tr>
+                            <th>Pair</th>
+                            <th>Assigned</th>
+                            <th>Target</th>
+                            <th>Unassigned</th>
+                            <th>Home split</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {regularBalanceReport.pairRows.slice(0, 40).map((pair) => (
+                            <tr key={`pair-row-${pair.key}`}>
+                              <td>{pair.teamA} vs {pair.teamB}</td>
+                              <td>{pair.assigned}</td>
+                              <td>{pair.target}</td>
+                              <td>{pair.unassigned}</td>
+                              <td>{pair.teamA}:{pair.homeForA} / {pair.teamB}:{pair.homeForB}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {regularBalanceReport.pairRows.length > 40 ? (
+                        <div className="subtle mt-2">Showing first 40 pair rows.</div>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
               <div className={unassignedRegularReport.totalMatchups > 0 ? "callout callout--error" : "callout"}>
