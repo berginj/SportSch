@@ -57,6 +57,20 @@ function formatSlotLocation(slot) {
   return slot?.displayName || `${slot?.parkName || ""} ${slot?.fieldName || ""}`.trim() || slot?.fieldKey || "";
 }
 
+function practicePatternKey(slot) {
+  const weekday = weekdayKeyFromDate(slot?.gameDate);
+  const fieldKey = (slot?.fieldKey || "").trim();
+  const start = (slot?.startTime || "").trim();
+  const end = (slot?.endTime || "").trim();
+  if (!weekday || !fieldKey || !start || !end) return "";
+  return `${weekday}|${fieldKey}|${start}|${end}`;
+}
+
+function weekdayLabelFromDate(isoDate) {
+  const key = weekdayKeyFromDate(isoDate);
+  return WEEKDAY_FILTER_OPTIONS.find((opt) => opt.key === key)?.label || "";
+}
+
 export default function PracticePortalPage({ me, leagueId }) {
   const isGlobalAdmin = !!me?.isGlobalAdmin;
   const memberships = useMemo(
@@ -242,6 +256,78 @@ export default function PracticePortalPage({ me, leagueId }) {
     if (!dayKey) return availableSlots;
     return availableSlots.filter((slot) => weekdayKeyFromDate(slot?.gameDate) === dayKey);
   }, [availableSlots, availableDayFilter]);
+
+  const selectedPracticePatternKeys = useMemo(() => {
+    const keys = new Set();
+    for (const slot of practiceSelections) {
+      const key = practicePatternKey(slot);
+      if (key) keys.add(key);
+    }
+    return keys;
+  }, [practiceSelections]);
+
+  const availablePatternChoices = useMemo(() => {
+    const byPattern = new Map();
+    const selectedWeeks = new Set(Array.from(practiceByWeek.keys()));
+
+    for (const slot of filteredAvailableSlots) {
+      const key = practicePatternKey(slot);
+      if (!key) continue;
+      if (!byPattern.has(key)) {
+        byPattern.set(key, {
+          key,
+          slots: [],
+          claimableSlots: [],
+          blockedSlots: [],
+        });
+      }
+      const group = byPattern.get(key);
+      group.slots.push(slot);
+      const weekKey = weekKeyFromDate(slot?.gameDate);
+      if (weekKey && selectedWeeks.has(weekKey)) group.blockedSlots.push(slot);
+      else group.claimableSlots.push(slot);
+    }
+
+    const sortByDateTime = (a, b) => {
+      const aKey = `${a?.gameDate || ""} ${a?.startTime || ""}`.trim();
+      const bKey = `${b?.gameDate || ""} ${b?.startTime || ""}`.trim();
+      return aKey.localeCompare(bKey);
+    };
+
+    return Array.from(byPattern.values())
+      .map((group) => {
+        const slotsSorted = [...group.slots].sort(sortByDateTime);
+        const claimableSorted = [...group.claimableSlots].sort(sortByDateTime);
+        const representativeSlot = claimableSorted[0] || slotsSorted[0] || null;
+        const firstDate = slotsSorted[0]?.gameDate || "";
+        const lastDate = slotsSorted[slotsSorted.length - 1]?.gameDate || "";
+        return {
+          key: group.key,
+          representativeSlot,
+          slots: slotsSorted,
+          claimableSlots: claimableSorted,
+          openWeeks: slotsSorted.length,
+          claimableWeeks: claimableSorted.length,
+          blockedWeeks: group.blockedSlots.length,
+          firstDate,
+          lastDate,
+          weekdayLabel: representativeSlot ? weekdayLabelFromDate(representativeSlot.gameDate) : "",
+          matchesSelectedPattern: selectedPracticePatternKeys.has(group.key),
+        };
+      })
+      .filter((choice) => choice.representativeSlot)
+      .sort((a, b) => {
+        if (a.matchesSelectedPattern !== b.matchesSelectedPattern) {
+          return a.matchesSelectedPattern ? -1 : 1;
+        }
+        if (a.claimableWeeks !== b.claimableWeeks) return b.claimableWeeks - a.claimableWeeks;
+        const aDate = `${a.representativeSlot?.gameDate || ""} ${a.representativeSlot?.startTime || ""}`.trim();
+        const bDate = `${b.representativeSlot?.gameDate || ""} ${b.representativeSlot?.startTime || ""}`.trim();
+        const dateCmp = aDate.localeCompare(bDate);
+        if (dateCmp !== 0) return dateCmp;
+        return formatSlotLocation(a.representativeSlot).localeCompare(formatSlotLocation(b.representativeSlot));
+      });
+  }, [filteredAvailableSlots, practiceByWeek, selectedPracticePatternKeys]);
 
   async function claimPractice(slot) {
     if (!slot?.slotId || !division) return;
@@ -437,7 +523,7 @@ export default function PracticePortalPage({ me, leagueId }) {
       </div>
 
       <div className="card">
-        <h3>Available practice slots</h3>
+        <h3>Available practice choices</h3>
         <div className="callout mb-3">
           <div className="row row--wrap gap-3">
             <label className="row row--wrap gap-2" style={{ alignItems: "center" }}>
@@ -492,29 +578,43 @@ export default function PracticePortalPage({ me, leagueId }) {
           <div className="muted">
             Filter to a day (for example, Saturdays) and select one slot to claim that recurring field/time pattern for matching open regular-season weeks.
           </div>
+          <div className="muted">
+            Choices that match your already-selected practice pattern appear first.
+          </div>
         </div>
-        {filteredAvailableSlots.length ? (
+        {availablePatternChoices.length ? (
           <div className="tableWrap">
             <table className="table">
               <thead>
                 <tr>
-                  <th>Week</th>
-                  <th>Date</th>
+                  <th>Day</th>
                   <th>Time</th>
                   <th>Location</th>
+                  <th>Open Weeks</th>
+                  <th>Claimable</th>
+                  <th>Season Span</th>
+                  <th>Status</th>
+                  <th>First Claim</th>
                   <th />
                 </tr>
               </thead>
               <tbody>
-                {filteredAvailableSlots.map((s) => {
-                  const weekKey = weekKeyFromDate(s.gameDate);
-                  const disabled = weekKey && practiceByWeek.has(weekKey);
+                {availablePatternChoices.map((choice) => {
+                  const s = choice.representativeSlot;
+                  const disabled = choice.claimableWeeks <= 0;
+                  const statusLabel = choice.matchesSelectedPattern
+                    ? "Matches your current pattern"
+                    : (choice.blockedWeeks > 0 ? `${choice.blockedWeeks} week(s) blocked by existing selections` : "");
                   return (
-                    <tr key={s.slotId}>
-                      <td>{weekKey}</td>
-                      <td>{s.gameDate}</td>
+                    <tr key={choice.key}>
+                      <td>{choice.weekdayLabel || weekdayLabelFromDate(s?.gameDate)}</td>
                       <td>{formatSlotTime(s)}</td>
                       <td>{formatSlotLocation(s)}</td>
+                      <td>{choice.openWeeks}</td>
+                      <td>{choice.claimableWeeks}</td>
+                      <td>{choice.firstDate && choice.lastDate ? `${choice.firstDate} - ${choice.lastDate}` : (choice.firstDate || "")}</td>
+                      <td>{statusLabel || "-"}</td>
+                      <td>{s?.gameDate || ""}</td>
                       <td className="tableActions">
                         <button
                           className="btn btn--primary"
@@ -523,7 +623,7 @@ export default function PracticePortalPage({ me, leagueId }) {
                           onClick={() => claimPractice(s)}
                           title={
                             disabled
-                              ? "Already selected a practice this week"
+                              ? "No claimable weeks remain in this pattern"
                               : requestingSlot
                                 ? "Processing practice selection..."
                                 : "Select this weekly pattern"
@@ -541,8 +641,8 @@ export default function PracticePortalPage({ me, leagueId }) {
         ) : (
           <div className="muted">
             {availableDayFilter
-              ? "No open practice slots match the selected day."
-              : "No open practice slots available for this division."}
+              ? "No recurring practice choices match the selected day."
+              : "No open practice choices available for this division."}
           </div>
         )}
       </div>
