@@ -1127,7 +1127,7 @@ export default function DebugPage({ leagueId, me }) {
               <div className="card" style={{ marginTop: "0.5rem" }}>
                 <h4>Practice selection portal</h4>
                 <p className="muted">
-                  Choose one practice slot per week. These are the remaining availability slots after games are scheduled.
+                  Selecting a slot claims the same field/day/time pattern for matching open weeks in the season.
                 </p>
                 <div className="formGrid">
                   <label>
@@ -1235,7 +1235,7 @@ export default function DebugPage({ leagueId, me }) {
                                   className="btn btn--primary"
                                   type="button"
                                   disabled
-                                  title={disabled ? "Preview: team already has a practice selected this week" : "Preview only (disabled)"}
+                                  title={disabled ? "Preview: team already has a practice selected this week" : "Preview only (disabled recurring selection)"}
                                 >
                                   Select
                                 </button>

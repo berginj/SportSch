@@ -24,6 +24,17 @@ function weekKeyFromDate(isoDate) {
   return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
 }
 
+function weekdayKeyFromDate(isoDate) {
+  const parts = (isoDate || "").split("-");
+  if (parts.length !== 3) return "";
+  const year = Number(parts[0]);
+  const month = Number(parts[1]);
+  const day = Number(parts[2]);
+  if (!year || !month || !day) return "";
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return String(date.getUTCDay());
+}
+
 function formatSlotTime(slot) {
   const start = (slot?.startTime || "").trim();
   const end = (slot?.endTime || "").trim();
@@ -67,6 +78,7 @@ export default function PracticePortalPage({ me, leagueId }) {
   const [toast, setToast] = useState(null);
   const [openToShareField, setOpenToShareField] = useState(false);
   const [shareWithTeamId, setShareWithTeamId] = useState("");
+  const [requestingSlot, setRequestingSlot] = useState("");
   const initializedRef = useRef(false);
   const loadedDivisionRef = useRef("");
   const { confirmState, requestConfirm, handleConfirm, handleCancel } = useConfirmDialog();
@@ -233,33 +245,99 @@ export default function PracticePortalPage({ me, leagueId }) {
     const shareMsg = openToShareField
       ? ` Open to share with: ${proposedShareTeam?.name || shareWithTeamId}.`
       : "";
+    const selectedDate = String(slot.gameDate || "").trim();
+    const selectedWeekday = weekdayKeyFromDate(selectedDate);
+    const selectedFieldKey = String(slot.fieldKey || "").trim();
+    const selectedStart = String(slot.startTime || "").trim();
+    const selectedEnd = String(slot.endTime || "").trim();
+    const existingPracticeWeeks = new Set(Array.from(practiceByWeek.keys()));
+    const recurringCandidates = [...availableSlots]
+      .filter((candidate) => {
+        const candidateDate = String(candidate?.gameDate || "").trim();
+        if (!candidateDate) return false;
+        if (selectedDate && candidateDate < selectedDate) return false;
+        if (selectedWeekday && weekdayKeyFromDate(candidateDate) !== selectedWeekday) return false;
+        if (String(candidate?.fieldKey || "").trim() !== selectedFieldKey) return false;
+        if (String(candidate?.startTime || "").trim() !== selectedStart) return false;
+        if (String(candidate?.endTime || "").trim() !== selectedEnd) return false;
+        const candidateWeek = weekKeyFromDate(candidateDate);
+        if (!candidateWeek) return false;
+        if (existingPracticeWeeks.has(candidateWeek)) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        const aKey = `${a?.gameDate || ""} ${a?.startTime || ""}`.trim();
+        const bKey = `${b?.gameDate || ""} ${b?.startTime || ""}`.trim();
+        return aKey.localeCompare(bKey);
+      });
+
+    const seriesCount = recurringCandidates.length || 1;
+    const recurringMsg =
+      seriesCount > 1
+        ? ` This will claim the matching weekly slot pattern for ${seriesCount} weeks (same field and time) starting ${selectedDate}.`
+        : "";
 
     const ok = await requestConfirm({
       title: "Select practice slot",
-      message: `Claim ${slot.gameDate} ${formatSlotTime(slot)} at ${formatSlotLocation(slot)}?${shareMsg}`,
+      message: `Claim ${slot.gameDate} ${formatSlotTime(slot)} at ${formatSlotLocation(slot)}?${recurringMsg}${shareMsg}`,
       confirmLabel: "Select",
     });
     if (!ok) return;
 
     setErr("");
+    setRequestingSlot(String(slot.slotId || ""));
     try {
-      await apiFetch(`/api/slots/${encodeURIComponent(division)}/${encodeURIComponent(slot.slotId)}/practice`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          openToShareField,
-          shareWithTeamId: openToShareField ? shareWithTeamId : "",
-        }),
-      });
+      const payload = {
+        openToShareField,
+        shareWithTeamId: openToShareField ? shareWithTeamId : "",
+      };
+      const targets = recurringCandidates.length ? recurringCandidates : [slot];
+      let successCount = 0;
+      const failures = [];
+
+      for (const candidate of targets) {
+        try {
+          await apiFetch(`/api/slots/${encodeURIComponent(division)}/${encodeURIComponent(candidate.slotId)}/practice`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          successCount += 1;
+        } catch (e) {
+          failures.push({
+            slot: candidate,
+            message: e?.message || String(e),
+          });
+        }
+      }
+
       await loadAll(division);
-      setToast({
-        tone: "success",
-        message: openToShareField
-          ? "Practice slot confirmed. Sharing preference saved."
-          : "Practice slot confirmed.",
-      });
+      if (successCount > 0) {
+        const baseMessage = successCount === 1
+          ? "Practice slot confirmed."
+          : `Practice slot pattern confirmed for ${successCount} weeks.`;
+        const sharingSuffix = openToShareField ? " Sharing preference saved." : "";
+        const partialSuffix = failures.length ? ` ${failures.length} week(s) could not be claimed.` : "";
+        setToast({
+          tone: failures.length ? "warning" : "success",
+          message: `${baseMessage}${sharingSuffix}${partialSuffix}`.trim(),
+          duration: failures.length ? 4200 : 3000,
+        });
+      } else {
+        setErr(failures[0]?.message || "No matching weekly practice slots could be claimed.");
+      }
+
+      if (failures.length) {
+        const firstFew = failures
+          .slice(0, 3)
+          .map((f) => `${f.slot?.gameDate || "?"}: ${f.message}`)
+          .join(" | ");
+        setErr(`Some weeks were not claimed. ${firstFew}${failures.length > 3 ? " ..." : ""}`);
+      }
     } catch (e) {
       setErr(e?.message || String(e));
+    } finally {
+      setRequestingSlot("");
     }
   }
 
@@ -287,7 +365,7 @@ export default function PracticePortalPage({ me, leagueId }) {
       <div className="card">
         <h2>Practice selection portal</h2>
         <p className="muted">
-          Choose one practice slot per week. These are the remaining availability slots after games are scheduled.
+          Choose a practice slot pattern. Selecting a slot will claim the same field/day/time for matching open weeks in the season.
         </p>
         <div className="formGrid">
           <label>
@@ -378,7 +456,7 @@ export default function PracticePortalPage({ me, leagueId }) {
             </label>
           </div>
           <div className="muted mt-2">
-            This preference is attached to your practice slot selection and can help commissioners coordinate shared fields.
+            This preference is attached to your practice slot selection(s) and can help commissioners coordinate shared fields.
           </div>
         </div>
         {availableSlots.length ? (
@@ -407,11 +485,17 @@ export default function PracticePortalPage({ me, leagueId }) {
                         <button
                           className="btn btn--primary"
                           type="button"
-                          disabled={disabled}
+                          disabled={disabled || !!requestingSlot}
                           onClick={() => claimPractice(s)}
-                          title={disabled ? "Already selected a practice this week" : "Select this practice slot"}
+                          title={
+                            disabled
+                              ? "Already selected a practice this week"
+                              : requestingSlot
+                                ? "Processing practice selection..."
+                                : "Select this weekly pattern"
+                          }
                         >
-                          Select
+                          {requestingSlot ? "Selecting..." : "Select"}
                         </button>
                       </td>
                     </tr>
