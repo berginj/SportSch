@@ -273,6 +273,7 @@ export default function SchedulerManager({ leagueId }) {
   const [overlayAutoKey, setOverlayAutoKey] = useState("");
   const [validation, setValidation] = useState(null);
   const [validationLoading, setValidationLoading] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
 
   useEffect(() => {
     if (!leagueId) return;
@@ -472,6 +473,48 @@ export default function SchedulerManager({ leagueId }) {
     }
   }
 
+  async function resetSlotUsage() {
+    setErr("");
+    const dateError = validateIsoDates([
+      { label: "Date from", value: dateFrom, required: false },
+      { label: "Date to", value: dateTo, required: false },
+    ]);
+    if (dateError) return setErr(dateError);
+
+    const rangeLabel = `${dateFrom || "start"} to ${dateTo || "end"}`;
+    const confirmed = window.confirm(
+      `Reset slot usage for ${division || "this division"} (${rangeLabel})?\n\n` +
+      "This keeps slot rows but clears game/practice assignments and deletes related requests in the range."
+    );
+    if (!confirmed) return;
+
+    setResetLoading(true);
+    try {
+      const data = await apiFetch("/api/schedule/reset-usage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          division,
+          dateFrom: dateFrom || undefined,
+          dateTo: dateTo || undefined,
+        }),
+      });
+
+      setPreview(null);
+      setValidation(null);
+      setToast({
+        tone: "success",
+        message:
+          `Reset ${data?.resetSlots ?? 0} slot(s); ` +
+          `deleted ${data?.slotRequestsDeleted ?? 0} slot request(s) and ${data?.practiceRequestsDeleted ?? 0} practice request(s).`,
+      });
+    } catch (e) {
+      setErr(formatErrorWithRequestId(e, "Failed to reset slot usage"));
+    } finally {
+      setResetLoading(false);
+    }
+  }
+
   function exportCsv() {
     if (!preview?.assignments?.length) return;
     const csv = buildCsv(preview.assignments, division);
@@ -643,10 +686,12 @@ export default function SchedulerManager({ leagueId }) {
         effectiveSeason={effectiveSeason}
         loading={loading}
         validationLoading={validationLoading}
+        resetLoading={resetLoading}
         preview={preview}
         runPreview={runPreview}
         applySchedule={applySchedule}
         runValidation={runValidation}
+        resetSlotUsage={resetSlotUsage}
         exportCsv={exportCsv}
         exportSportsEngineCsv={exportSportsEngineCsv}
         exportGameChangerCsv={exportGameChangerCsv}

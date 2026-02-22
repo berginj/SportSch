@@ -18,6 +18,7 @@ namespace GameSwap.Functions.Functions;
 
 public class ScheduleFunctions
 {
+    private readonly TableServiceClient _svc;
     private readonly ITeamRepository _teamRepo;
     private readonly ISlotRepository _slotRepo;
     private readonly IScheduleRunRepository _scheduleRunRepo;
@@ -25,12 +26,14 @@ public class ScheduleFunctions
     private readonly ILogger _log;
 
     public ScheduleFunctions(
+        TableServiceClient svc,
         ITeamRepository teamRepo,
         ISlotRepository slotRepo,
         IScheduleRunRepository scheduleRunRepo,
         IMembershipRepository membershipRepo,
         ILoggerFactory lf)
     {
+        _svc = svc;
         _teamRepo = teamRepo;
         _slotRepo = slotRepo;
         _scheduleRunRepo = scheduleRunRepo;
@@ -144,6 +147,216 @@ public class ScheduleFunctions
         catch (Exception ex)
         {
             _log.LogError(ex, "Schedule validate failed");
+            var requestId = req.FunctionContext.InvocationId.ToString();
+            return ApiResponses.Error(
+                req,
+                HttpStatusCode.InternalServerError,
+                ErrorCodes.INTERNAL_ERROR,
+                "An unexpected error occurred",
+                new { requestId, exception = ex.GetType().Name, detail = ex.Message });
+        }
+    }
+
+    [Function("ScheduleResetUsage")]
+    public async Task<HttpResponseData> ResetUsage(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "schedule/reset-usage")] HttpRequestData req)
+    {
+        try
+        {
+            var leagueId = ApiGuards.RequireLeagueId(req);
+            var me = IdentityUtil.GetMe(req);
+            if (string.IsNullOrWhiteSpace(me.UserId) || me.UserId == "UNKNOWN")
+            {
+                return ApiResponses.Error(req, HttpStatusCode.Unauthorized,
+                    ErrorCodes.UNAUTHENTICATED, "You must be signed in.");
+            }
+
+            if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
+            {
+                var membership = await _membershipRepo.GetMembershipAsync(me.UserId, leagueId);
+                var myRole = (membership?.GetString("Role") ?? Constants.Roles.Viewer).Trim();
+                if (!string.Equals(myRole, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                        "Only league admins can reset slot usage");
+                }
+            }
+
+            var body = await HttpUtil.ReadJsonAsync<ScheduleRequest>(req);
+            if (body is null)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST, "Invalid JSON body");
+
+            var division = (body.division ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(division))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST, "division is required");
+            ApiGuards.EnsureValidTableKeyPart("division", division);
+
+            var dateFrom = (body.dateFrom ?? "").Trim();
+            var dateTo = (body.dateTo ?? "").Trim();
+            if (!string.IsNullOrWhiteSpace(dateFrom) && !DateOnly.TryParseExact(dateFrom, "yyyy-MM-dd", out _))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST, "dateFrom must be YYYY-MM-DD.");
+            if (!string.IsNullOrWhiteSpace(dateTo) && !DateOnly.TryParseExact(dateTo, "yyyy-MM-dd", out _))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST, "dateTo must be YYYY-MM-DD.");
+            if (!string.IsNullOrWhiteSpace(dateFrom) && !string.IsNullOrWhiteSpace(dateTo) && string.CompareOrdinal(dateTo, dateFrom) < 0)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST, "dateTo must be on or after dateFrom.");
+
+            var scanned = 0;
+            var matched = 0;
+            var cancelledSkipped = 0;
+            var resetSlots = 0;
+            var unchangedSlots = 0;
+            var slotUpdateErrors = 0;
+            var requestDeleteErrors = 0;
+            var cleanupSlotIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            var filter = new SlotQueryFilter
+            {
+                LeagueId = leagueId,
+                Division = division,
+                FromDate = dateFrom,
+                ToDate = dateTo,
+                PageSize = 500
+            };
+
+            string? continuationToken = null;
+            do
+            {
+                var page = await _slotRepo.QuerySlotsAsync(filter, continuationToken);
+                continuationToken = page.ContinuationToken;
+
+                foreach (var slot in page.Items)
+                {
+                    scanned++;
+                    if (!MatchesSlotDateRange(slot, dateFrom, dateTo)) continue;
+                    matched++;
+
+                    var status = SlotEntityUtil.ReadString(slot, "Status", Constants.Status.SlotOpen);
+                    if (string.Equals(status, Constants.Status.SlotCancelled, StringComparison.OrdinalIgnoreCase))
+                    {
+                        cancelledSkipped++;
+                        continue;
+                    }
+
+                    var slotId = (slot.RowKey ?? "").Trim();
+                    if (string.IsNullOrWhiteSpace(slotId)) continue;
+
+                    if (SlotHasUsageToClear(slot))
+                    {
+                        try
+                        {
+                            SlotEntityUtil.ResetSchedulerSlotToAvailability(slot, DateTimeOffset.UtcNow);
+                            await _slotRepo.UpdateSlotAsync(slot, slot.ETag);
+                            resetSlots++;
+                        }
+                        catch (RequestFailedException ex)
+                        {
+                            slotUpdateErrors++;
+                            _log.LogWarning(ex, "Schedule reset usage failed updating slot {LeagueId}/{Division}/{SlotId}",
+                                leagueId, division, slotId);
+                            continue;
+                        }
+                    }
+                    else
+                    {
+                        unchangedSlots++;
+                    }
+
+                    cleanupSlotIds.Add(slotId);
+                }
+            } while (!string.IsNullOrWhiteSpace(continuationToken));
+
+            var slotRequestsDeleted = 0;
+            var practiceRequestsDeleted = 0;
+
+            if (cleanupSlotIds.Count > 0)
+            {
+                var slotRequestsTable = await TableClients.GetTableAsync(_svc, Constants.Tables.SlotRequests);
+                var slotRequestPkPrefix = Constants.Pk.SlotRequests(leagueId, division, "");
+                var slotRequestFilter = ODataFilterBuilder.PartitionKeyPrefix(slotRequestPkPrefix);
+                await foreach (var requestEntity in slotRequestsTable.QueryAsync<TableEntity>(filter: slotRequestFilter))
+                {
+                    var pk = (requestEntity.PartitionKey ?? "").Trim();
+                    if (!pk.StartsWith(slotRequestPkPrefix, StringComparison.OrdinalIgnoreCase)) continue;
+
+                    var slotId = pk.Substring(slotRequestPkPrefix.Length);
+                    if (!cleanupSlotIds.Contains(slotId)) continue;
+
+                    try
+                    {
+                        await slotRequestsTable.DeleteEntityAsync(requestEntity.PartitionKey, requestEntity.RowKey, ETag.All);
+                        slotRequestsDeleted++;
+                    }
+                    catch (RequestFailedException ex)
+                    {
+                        requestDeleteErrors++;
+                        _log.LogWarning(ex, "Schedule reset usage failed deleting slot request {PartitionKey}/{RowKey}",
+                            requestEntity.PartitionKey, requestEntity.RowKey);
+                    }
+                }
+
+                var practiceRequestsTable = await TableClients.GetTableAsync(_svc, Constants.Tables.PracticeRequests);
+                var practiceRequestPk = PracticeRequestPk(leagueId);
+                var practiceRequestFilter = ODataFilterBuilder.And(
+                    ODataFilterBuilder.PartitionKeyExact(practiceRequestPk),
+                    ODataFilterBuilder.PropertyEquals("Division", division));
+
+                await foreach (var practiceRequest in practiceRequestsTable.QueryAsync<TableEntity>(filter: practiceRequestFilter))
+                {
+                    var slotId = SlotEntityUtil.ReadString(practiceRequest, "SlotId");
+                    if (!cleanupSlotIds.Contains(slotId)) continue;
+
+                    try
+                    {
+                        await practiceRequestsTable.DeleteEntityAsync(practiceRequest.PartitionKey, practiceRequest.RowKey, ETag.All);
+                        practiceRequestsDeleted++;
+                    }
+                    catch (RequestFailedException ex)
+                    {
+                        requestDeleteErrors++;
+                        _log.LogWarning(ex, "Schedule reset usage failed deleting practice request {PartitionKey}/{RowKey}",
+                            practiceRequest.PartitionKey, practiceRequest.RowKey);
+                    }
+                }
+            }
+
+            UsageTelemetry.Track(_log, "api_schedule_reset_usage", leagueId, me.UserId, new
+            {
+                division,
+                dateFrom,
+                dateTo,
+                resetSlots,
+                unchangedSlots,
+                slotRequestsDeleted,
+                practiceRequestsDeleted,
+                slotUpdateErrors,
+                requestDeleteErrors
+            });
+
+            return ApiResponses.Ok(req, new
+            {
+                leagueId,
+                division,
+                dateFrom,
+                dateTo,
+                scanned,
+                matched,
+                cancelledSkipped,
+                resetSlots,
+                unchangedSlots,
+                slotRequestsDeleted,
+                practiceRequestsDeleted,
+                slotUpdateErrors,
+                requestDeleteErrors,
+                cleanedSlotCount = cleanupSlotIds.Count
+            });
+        }
+        catch (ApiGuards.HttpError ex)
+        {
+            return ApiResponses.FromHttpError(req, ex);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Schedule reset usage failed");
             var requestId = req.FunctionContext.InvocationId.ToString();
             return ApiResponses.Error(
                 req,
@@ -630,6 +843,56 @@ public class ScheduleFunctions
             .ThenBy(a => a.FieldKey)
             .ToList();
     }
+
+    private static bool SlotHasUsageToClear(TableEntity slot)
+    {
+        var status = SlotEntityUtil.ReadString(slot, "Status", Constants.Status.SlotOpen);
+        if (!string.Equals(status, Constants.Status.SlotOpen, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (SlotEntityUtil.ReadBool(slot, "IsExternalOffer", false))
+            return true;
+
+        if (!string.IsNullOrWhiteSpace(SlotEntityUtil.ReadString(slot, "HomeTeamId")))
+            return true;
+        if (!string.IsNullOrWhiteSpace(SlotEntityUtil.ReadString(slot, "AwayTeamId")))
+            return true;
+        if (!string.IsNullOrWhiteSpace(SlotEntityUtil.ReadString(slot, "ConfirmedTeamId")))
+            return true;
+        if (!string.IsNullOrWhiteSpace(SlotEntityUtil.ReadString(slot, "ConfirmedRequestId")))
+            return true;
+        if (!string.IsNullOrWhiteSpace(SlotEntityUtil.ReadString(slot, "PendingTeamId")))
+            return true;
+        if (!string.IsNullOrWhiteSpace(SlotEntityUtil.ReadString(slot, "PendingRequestId")))
+            return true;
+        if (!string.IsNullOrWhiteSpace(SlotEntityUtil.ReadString(slot, "ScheduleRunId")))
+            return true;
+
+        return false;
+    }
+
+    private static bool MatchesSlotDateRange(TableEntity slot, string dateFrom, string dateTo)
+    {
+        if (string.IsNullOrWhiteSpace(dateFrom) && string.IsNullOrWhiteSpace(dateTo)) return true;
+
+        var gameDate = SlotEntityUtil.ReadString(slot, "GameDate");
+        if (!DateOnly.TryParseExact(gameDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
+            return false;
+
+        if (!string.IsNullOrWhiteSpace(dateFrom) &&
+            DateOnly.TryParseExact(dateFrom, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var fromDate) &&
+            parsed < fromDate)
+            return false;
+
+        if (!string.IsNullOrWhiteSpace(dateTo) &&
+            DateOnly.TryParseExact(dateTo, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var toDate) &&
+            parsed > toDate)
+            return false;
+
+        return true;
+    }
+
+    private static string PracticeRequestPk(string leagueId) => $"PRACTICEREQ|{leagueId}";
 
     private static ScheduleSlotDto ToSlotDto(ScheduleAssignment assignment)
         => new(

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Globalization;
 using Azure;
 using Azure.Data.Tables;
 using GameSwap.Functions.Storage;
@@ -67,40 +68,46 @@ public class GetEvents
 
             var table = await TableClients.GetTableAsync(_svc, EventsTableName);
             var pk = Constants.Pk.Events(leagueId);
+            // Query by partition only and apply filters in-memory. Legacy events can contain
+            // mixed property types (e.g., DateTime vs string), which can break OData filters.
             var filter = $"PartitionKey eq '{ApiGuards.EscapeOData(pk)}'";
-
-            if (!string.IsNullOrWhiteSpace(division))
-            {
-                // When division is provided, include league-wide events where Division is empty.
-                filter += $" and (Division eq '{ApiGuards.EscapeOData(division)}' or Division eq '')";
-            }
-
-            if (!string.IsNullOrWhiteSpace(dateFrom))
-                filter += $" and EventDate ge '{ApiGuards.EscapeOData(dateFrom)}'";
-            if (!string.IsNullOrWhiteSpace(dateTo))
-                filter += $" and EventDate le '{ApiGuards.EscapeOData(dateTo)}'";
 
             var list = new List<EventDto>();
             await foreach (var e in table.QueryAsync<TableEntity>(filter: filter))
             {
+                var eventDivision = ReadString(e, "Division");
+                if (!string.IsNullOrWhiteSpace(division) &&
+                    !string.Equals(eventDivision, division, StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrWhiteSpace(eventDivision))
+                {
+                    continue;
+                }
+
+                var eventDate = ReadIsoDate(e, "EventDate");
+                if (!PassesDateRange(eventDate, dateFrom, dateTo))
+                {
+                    continue;
+                }
+
                 var createdUtc = e.TryGetValue("CreatedUtc", out var cu) ? (cu?.ToString() ?? "") : "";
                 var updatedUtc = e.TryGetValue("UpdatedUtc", out var uu) ? (uu?.ToString() ?? "") : "";
-                var createdBy = (e.GetString("CreatedByUserId") ?? e.GetString("CreatedBy") ?? "").Trim();
+                var createdBy = ReadString(e, "CreatedByUserId");
+                if (string.IsNullOrWhiteSpace(createdBy)) createdBy = ReadString(e, "CreatedBy");
                 list.Add(new EventDto(
                     eventId: e.RowKey,
-                    type: (e.GetString("Type") ?? "").Trim(),
-                    status: (e.GetString("Status") ?? "").Trim(),
-                    division: (e.GetString("Division") ?? "").Trim(),
-                    teamId: (e.GetString("TeamId") ?? "").Trim(),
-                    opponentTeamId: (e.GetString("OpponentTeamId") ?? "").Trim(),
-                    title: (e.GetString("Title") ?? "").Trim(),
-                    eventDate: (e.GetString("EventDate") ?? "").Trim(),
-                    startTime: (e.GetString("StartTime") ?? "").Trim(),
-                    endTime: (e.GetString("EndTime") ?? "").Trim(),
-                    location: (e.GetString("Location") ?? "").Trim(),
-                    notes: (e.GetString("Notes") ?? "").Trim(),
-                    createdByUserId: createdBy,
-                    acceptedByUserId: ((e.GetString("AcceptedByUserId") ?? "").Trim()),
+                    type: ReadString(e, "Type"),
+                    status: ReadString(e, "Status"),
+                    division: eventDivision,
+                    teamId: ReadString(e, "TeamId"),
+                    opponentTeamId: ReadString(e, "OpponentTeamId"),
+                    title: ReadString(e, "Title"),
+                    eventDate: eventDate,
+                    startTime: ReadString(e, "StartTime"),
+                    endTime: ReadString(e, "EndTime"),
+                    location: ReadString(e, "Location"),
+                    notes: ReadString(e, "Notes"),
+                    createdByUserId: createdBy.Trim(),
+                    acceptedByUserId: ReadString(e, "AcceptedByUserId"),
                     createdUtc: createdUtc,
                     updatedUtc: updatedUtc
                 ));
@@ -124,5 +131,54 @@ public class GetEvents
                 "An unexpected error occurred",
                 new { requestId, exception = ex.GetType().Name, detail = ex.Message });
         }
+    }
+
+    private static string ReadString(TableEntity e, string propertyName)
+    {
+        if (!e.TryGetValue(propertyName, out var raw) || raw is null) return "";
+        return (raw?.ToString() ?? "").Trim();
+    }
+
+    private static string ReadIsoDate(TableEntity e, string propertyName)
+    {
+        if (!e.TryGetValue(propertyName, out var raw) || raw is null) return "";
+
+        return raw switch
+        {
+            DateTime dt => dt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            DateTimeOffset dto => dto.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            _ => NormalizeDateString(raw.ToString())
+        };
+    }
+
+    private static string NormalizeDateString(string? value)
+    {
+        var text = (value ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(text)) return "";
+
+        if (DateOnly.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dateOnly))
+            return dateOnly.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+        if (DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dateTime))
+            return dateTime.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+        return text;
+    }
+
+    private static bool PassesDateRange(string eventDate, string dateFrom, string dateTo)
+    {
+        if (!string.IsNullOrWhiteSpace(dateFrom))
+        {
+            if (string.IsNullOrWhiteSpace(eventDate)) return false;
+            if (string.CompareOrdinal(eventDate, dateFrom) < 0) return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(dateTo))
+        {
+            if (string.IsNullOrWhiteSpace(eventDate)) return false;
+            if (string.CompareOrdinal(eventDate, dateTo) > 0) return false;
+        }
+
+        return true;
     }
 }

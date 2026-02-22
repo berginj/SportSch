@@ -21,10 +21,12 @@ export default function ConstraintsForm({
   effectiveSeason,
   loading,
   validationLoading,
+  resetLoading,
   preview,
   runPreview,
   applySchedule,
   runValidation,
+  resetSlotUsage,
   exportCsv,
   exportSportsEngineCsv,
   exportGameChangerCsv,
@@ -121,6 +123,15 @@ export default function ConstraintsForm({
         </div>
         <button className="btn" onClick={runValidation} disabled={validationLoading || !division}>
           {validationLoading ? "Validating saved schedule..." : "Validate saved schedule"}
+        </button>
+      </div>
+
+      <div className="card__body">
+        <div className="callout callout--warning mb-2">
+          Reset slot usage keeps the slot rows (dates/times/fields) but clears assigned games/practices and deletes related requests in this division/date range.
+        </div>
+        <button className="btn btn--danger" onClick={resetSlotUsage} disabled={resetLoading || !division}>
+          {resetLoading ? "Resetting slot usage..." : "Reset slot usage (keep slots)"}
         </button>
       </div>
     </div>
