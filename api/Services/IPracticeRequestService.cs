@@ -13,7 +13,9 @@ public interface IPracticeRequestService
         string division,
         string teamId,
         string slotId,
-        string? reason);
+        string? reason,
+        bool openToShareField,
+        string? shareWithTeamId);
 
     Task<List<TableEntity>> QueryRequestsAsync(
         string leagueId,

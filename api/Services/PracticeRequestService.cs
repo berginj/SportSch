@@ -41,12 +41,15 @@ public class PracticeRequestService : IPracticeRequestService
         string division,
         string teamId,
         string slotId,
-        string? reason)
+        string? reason,
+        bool openToShareField,
+        string? shareWithTeamId)
     {
         division = (division ?? "").Trim();
         teamId = (teamId ?? "").Trim();
         slotId = (slotId ?? "").Trim();
         reason = (reason ?? "").Trim();
+        shareWithTeamId = (shareWithTeamId ?? "").Trim();
 
         if (string.IsNullOrWhiteSpace(division) || string.IsNullOrWhiteSpace(teamId) || string.IsNullOrWhiteSpace(slotId))
         {
@@ -57,6 +60,28 @@ public class PracticeRequestService : IPracticeRequestService
         ApiGuards.EnsureValidTableKeyPart("division", division);
         ApiGuards.EnsureValidTableKeyPart("teamId", teamId);
         ApiGuards.EnsureValidTableKeyPart("slotId", slotId);
+        if (!string.IsNullOrWhiteSpace(shareWithTeamId))
+        {
+            ApiGuards.EnsureValidTableKeyPart("shareWithTeamId", shareWithTeamId);
+        }
+
+        if (!openToShareField)
+        {
+            shareWithTeamId = "";
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(shareWithTeamId))
+            {
+                throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST,
+                    "shareWithTeamId is required when openToShareField is true.");
+            }
+            if (string.Equals(shareWithTeamId, teamId, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST,
+                    "shareWithTeamId must be another team in the same division.");
+            }
+        }
 
         var membership = await _membershipRepo.GetMembershipAsync(userId, leagueId);
         var role = (membership?.GetString("Role") ?? Constants.Roles.Viewer).Trim();
@@ -93,6 +118,16 @@ public class PracticeRequestService : IPracticeRequestService
         {
             throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, ErrorCodes.TEAM_NOT_FOUND,
                 "Team not found in this division.");
+        }
+
+        if (openToShareField)
+        {
+            var shareTeam = await _teamRepo.GetTeamAsync(leagueId, division, shareWithTeamId!);
+            if (shareTeam is null)
+            {
+                throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, ErrorCodes.TEAM_NOT_FOUND,
+                    "Proposed shared team was not found in this division.");
+            }
         }
 
         var slot = await _slotRepo.GetSlotAsync(leagueId, division, slotId);
@@ -148,6 +183,8 @@ public class PracticeRequestService : IPracticeRequestService
             ["SlotId"] = slotId,
             ["Status"] = "Pending",
             ["Reason"] = reason,
+            ["OpenToShareField"] = openToShareField,
+            ["ShareWithTeamId"] = shareWithTeamId,
             ["RequestedUtc"] = now,
             ["RequestedBy"] = userId,
             ["UpdatedUtc"] = now

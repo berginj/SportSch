@@ -31,6 +31,7 @@ export default function CoachOnboardingPage({ me, leagueId }) {
   const [practiceRequests, setPracticeRequests] = useState([]);
   const [availableSlots, setAvailableSlots] = useState([]);
   const [upcomingGames, setUpcomingGames] = useState([]);
+  const [divisionTeams, setDivisionTeams] = useState([]);
 
   // Team editing state
   const [teamName, setTeamName] = useState('');
@@ -39,6 +40,8 @@ export default function CoachOnboardingPage({ me, leagueId }) {
   const [primaryContactPhone, setPrimaryContactPhone] = useState('');
   const [assistantCoaches, setAssistantCoaches] = useState([]);
   const [clinicPreference, setClinicPreference] = useState('');
+  const [openToShareField, setOpenToShareField] = useState(false);
+  const [shareWithTeamId, setShareWithTeamId] = useState('');
 
   // UI state
   const [savingTeam, setSavingTeam] = useState(false);
@@ -68,6 +71,7 @@ export default function CoachOnboardingPage({ me, leagueId }) {
       const myTeam = (Array.isArray(teamResp) ? teamResp : []).find(
         t => t.division === division && t.teamId === teamId
       );
+      setDivisionTeams(Array.isArray(teamResp) ? teamResp : []);
 
       if (myTeam) {
         setTeamData(myTeam);
@@ -105,6 +109,23 @@ export default function CoachOnboardingPage({ me, leagueId }) {
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  const shareableTeams = useMemo(() => {
+    return (Array.isArray(divisionTeams) ? divisionTeams : [])
+      .filter((t) => (t?.teamId || '') && t.teamId !== teamId)
+      .sort((a, b) => String(a?.name || a?.teamId || '').localeCompare(String(b?.name || b?.teamId || '')));
+  }, [divisionTeams, teamId]);
+
+  useEffect(() => {
+    if (!openToShareField && shareWithTeamId) {
+      setShareWithTeamId('');
+      return;
+    }
+    if (!openToShareField || !shareWithTeamId) return;
+    if (!shareableTeams.some((t) => t.teamId === shareWithTeamId)) {
+      setShareWithTeamId('');
+    }
+  }, [openToShareField, shareWithTeamId, shareableTeams]);
 
   // Calculate onboarding progress
   const progress = useMemo(() => {
@@ -164,10 +185,19 @@ export default function CoachOnboardingPage({ me, leagueId }) {
       setError('You can only request up to 3 practice slots. Please wait for commissioner approval or withdraw a request.');
       return;
     }
+    if (openToShareField && !shareWithTeamId) {
+      setError('Select a team to propose sharing with, or uncheck "Open to sharing a field".');
+      return;
+    }
+
+    const proposedShareTeam = shareableTeams.find((t) => t.teamId === shareWithTeamId);
+    const shareMessage = openToShareField
+      ? ` Proposed sharing team: ${proposedShareTeam?.name || shareWithTeamId}.`
+      : '';
 
     const confirmed = await requestConfirm({
       title: 'Request Practice Slot',
-      message: `Request ${slot.gameDate} at ${slot.startTime}-${slot.endTime} for practice? This requires commissioner approval.`,
+      message: `Request ${slot.gameDate} at ${slot.startTime}-${slot.endTime} for practice? This requires commissioner approval.${shareMessage}`,
       confirmLabel: 'Request'
     });
 
@@ -184,11 +214,18 @@ export default function CoachOnboardingPage({ me, leagueId }) {
           division: division,
           teamId: teamId,
           slotId: slot.slotId,
-          reason: 'Practice request from coach onboarding'
+          reason: 'Practice request from coach onboarding',
+          openToShareField,
+          shareWithTeamId: openToShareField ? shareWithTeamId : ''
         })
       });
 
-      setToast({ tone: 'success', message: 'Practice slot requested. Awaiting commissioner approval.' });
+      setToast({
+        tone: 'success',
+        message: openToShareField
+          ? 'Practice slot requested. Sharing preference sent to commissioner.'
+          : 'Practice slot requested. Awaiting commissioner approval.'
+      });
       await loadAll();
     } catch (err) {
       setError(err.message || 'Failed to request practice slot');
@@ -432,6 +469,11 @@ export default function CoachOnboardingPage({ me, leagueId }) {
                     <div className="text-sm text-gray-600 truncate">
                       {req.slot?.displayName || req.slot?.fieldKey || 'Field TBD'}
                     </div>
+                    {req.openToShareField ? (
+                      <div className="text-xs text-gray-600 mt-1">
+                        Open to share field{req.shareWithTeamId ? ` with ${req.shareWithTeamId}` : ''}.
+                      </div>
+                    ) : null}
                   </div>
                   <StatusBadge status={req.status} />
                 </div>
@@ -442,6 +484,39 @@ export default function CoachOnboardingPage({ me, leagueId }) {
 
         {/* Available Slots */}
         <div>
+          <div className="mb-4 p-3 bg-gray-50 rounded border border-gray-200">
+            <div className="font-semibold mb-2">Sharing preference (applies to new requests)</div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={openToShareField}
+                  onChange={(e) => setOpenToShareField(e.target.checked)}
+                />
+                <span>Open to sharing a field</span>
+              </label>
+              <label>
+                Propose sharing with team
+                <select
+                  value={shareWithTeamId}
+                  onChange={(e) => setShareWithTeamId(e.target.value)}
+                  disabled={!openToShareField || shareableTeams.length === 0}
+                >
+                  <option value="">
+                    {!openToShareField ? 'Enable sharing first' : (shareableTeams.length ? 'Select a team' : 'No other teams in division')}
+                  </option>
+                  {shareableTeams.map((t) => (
+                    <option key={t.teamId} value={t.teamId}>
+                      {t.name ? `${t.name} (${t.teamId})` : t.teamId}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="text-xs text-gray-600 mt-2">
+              Request up to 3 practice slots. If selected, your sharing preference is attached to each new request.
+            </div>
+          </div>
           <h3 className="font-semibold mb-3">Available Practice Slots</h3>
           {availableSlots.length === 0 ? (
             <div className="text-sm text-gray-600">No available practice slots at this time</div>

@@ -51,7 +51,7 @@ public class PracticeRequestServiceTests
 
         // Act + Assert
         var ex = await Assert.ThrowsAsync<ApiGuards.HttpError>(() =>
-            _service.CreateRequestAsync("league-1", "coach-1", "10U", "Tigers", "slot-1", "reason"));
+            _service.CreateRequestAsync("league-1", "coach-1", "10U", "Tigers", "slot-1", "reason", false, null));
 
         Assert.Equal(403, ex.Status);
         Assert.Equal(ErrorCodes.UNAUTHORIZED, ex.Code);
@@ -110,7 +110,9 @@ public class PracticeRequestServiceTests
             division: "10U",
             teamId: "Panthers",
             slotId: "slot-1",
-            reason: "Practice request");
+            reason: "Practice request",
+            openToShareField: false,
+            shareWithTeamId: null);
 
         // Assert
         Assert.Equal("Pending", result.GetString("Status"));

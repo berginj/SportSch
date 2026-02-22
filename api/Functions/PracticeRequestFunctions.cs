@@ -46,6 +46,8 @@ public class PracticeRequestFunctions
         string slotId,
         string status,
         string? reason,
+        bool openToShareField,
+        string? shareWithTeamId,
         DateTimeOffset requestedUtc,
         DateTimeOffset? reviewedUtc,
         string? reviewedBy,
@@ -65,7 +67,9 @@ public class PracticeRequestFunctions
         string division,
         string teamId,
         string slotId,
-        string? reason
+        string? reason,
+        bool openToShareField,
+        string? shareWithTeamId
     );
 
     public record ReviewPracticeRequestReq(string? reason);
@@ -79,6 +83,8 @@ public class PracticeRequestFunctions
             slotId: (e.GetString("SlotId") ?? "").Trim(),
             status: (e.GetString("Status") ?? "Pending").Trim(),
             reason: (e.GetString("Reason") ?? "").Trim(),
+            openToShareField: e.GetBoolean("OpenToShareField") ?? false,
+            shareWithTeamId: (e.GetString("ShareWithTeamId") ?? "").Trim(),
             requestedUtc: e.GetDateTimeOffset("RequestedUtc") ?? DateTimeOffset.MinValue,
             reviewedUtc: e.GetDateTimeOffset("ReviewedUtc"),
             reviewedBy: (e.GetString("ReviewedBy") ?? "").Trim(),
@@ -116,7 +122,9 @@ public class PracticeRequestFunctions
                 division: body.division,
                 teamId: body.teamId,
                 slotId: body.slotId,
-                reason: body.reason);
+                reason: body.reason,
+                openToShareField: body.openToShareField,
+                shareWithTeamId: body.shareWithTeamId);
 
             SlotSummary? slotSummary = null;
             var division = (requestEntity.GetString("Division") ?? "").Trim();

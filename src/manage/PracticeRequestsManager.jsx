@@ -250,6 +250,13 @@ export default function PracticeRequestsManager({ leagueId }) {
                     </div>
                   )}
 
+                  {request.openToShareField && (
+                    <div className="mt-2 text-sm text-gray-600">
+                      <span className="font-semibold">Sharing:</span> Open to share field
+                      {request.shareWithTeamId ? ` (proposed team: ${request.shareWithTeamId})` : ''}
+                    </div>
+                  )}
+
                   <div className="mt-2 text-xs text-gray-500">
                     Requested: {new Date(request.requestedUtc).toLocaleDateString()} at {new Date(request.requestedUtc).toLocaleTimeString()}
                   </div>
