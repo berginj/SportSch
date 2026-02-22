@@ -118,6 +118,7 @@ export default function DebugPage({ leagueId, me }) {
   const [previewPortalOpenToShareField, setPreviewPortalOpenToShareField] = useState(false);
   const [previewPortalShareWithTeamId, setPreviewPortalShareWithTeamId] = useState("");
   const [previewPortalDayFilter, setPreviewPortalDayFilter] = useState("");
+  const [previewPortalClaimingSlotId, setPreviewPortalClaimingSlotId] = useState("");
   const [previewRefreshedAt, setPreviewRefreshedAt] = useState("");
   const previewLoadSeqRef = useRef(0);
 
@@ -693,6 +694,102 @@ export default function DebugPage({ leagueId, me }) {
     }
   }
 
+  async function claimPracticePortalPreviewOverride(slot) {
+    const division = normalizeText(previewDivision);
+    const teamId = normalizeText(previewTeamId);
+    const slotId = normalizeText(slot?.slotId);
+    if (!division || !teamId || !slotId) {
+      setPreviewErr("Select division/team and a valid slot before using override.");
+      return;
+    }
+    if (previewPortalOpenToShareField && !normalizeText(previewPortalShareWithTeamId)) {
+      setPreviewErr('Select a team to propose sharing with, or uncheck "Open to sharing a field".');
+      return;
+    }
+
+    const selectedDate = normalizeText(slot?.gameDate);
+    const selectedWeekday = weekdayKeyFromDate(selectedDate);
+    const selectedFieldKey = normalizeText(slot?.fieldKey);
+    const selectedStart = normalizeText(slot?.startTime);
+    const selectedEnd = normalizeText(slot?.endTime);
+    const existingPracticeWeeks = new Set(Array.from(previewPortalSelectionsByWeek.keys()));
+
+    const recurringCandidates = sortSlotsBySchedule(
+      (previewPortalSlotsAll || [])
+        .filter((s) => s?.isAvailability === true)
+        .filter((s) => normalizeText(s?.status) === "Open")
+        .filter((s) => normalizeText(s?.fieldKey) === selectedFieldKey)
+        .filter((s) => normalizeText(s?.startTime) === selectedStart)
+        .filter((s) => normalizeText(s?.endTime) === selectedEnd)
+        .filter((s) => {
+          const gameDate = normalizeText(s?.gameDate);
+          if (!gameDate) return false;
+          if (selectedDate && gameDate < selectedDate) return false;
+          if (selectedWeekday && weekdayKeyFromDate(gameDate) !== selectedWeekday) return false;
+          const weekKey = weekKeyFromDate(gameDate);
+          if (!weekKey) return false;
+          if (existingPracticeWeeks.has(weekKey)) return false;
+          return true;
+        })
+    );
+
+    const payload = {
+      teamId,
+      openToShareField: previewPortalOpenToShareField,
+      shareWithTeamId: previewPortalOpenToShareField ? normalizeText(previewPortalShareWithTeamId) : "",
+    };
+
+    setPreviewErr("");
+    setPreviewOk("");
+    setPreviewPortalClaimingSlotId(slotId);
+    try {
+      const targets = recurringCandidates.length ? recurringCandidates : [slot];
+      let successCount = 0;
+      const failures = [];
+
+      for (const candidate of targets) {
+        try {
+          await apiFetch(`/api/slots/${encodeURIComponent(division)}/${encodeURIComponent(candidate.slotId)}/practice`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          successCount += 1;
+        } catch (e) {
+          failures.push({
+            slot: candidate,
+            message: e?.message || String(e),
+          });
+        }
+      }
+
+      await loadPracticePreviewData(division, teamId);
+
+      if (successCount > 0) {
+        const base = successCount === 1
+          ? `Override claimed 1 practice slot for ${teamId}.`
+          : `Override claimed recurring practice pattern for ${teamId} across ${successCount} weeks.`;
+        const sharing = previewPortalOpenToShareField ? " Sharing preference saved." : "";
+        const partial = failures.length ? ` ${failures.length} week(s) failed.` : "";
+        setPreviewOk(`${base}${sharing}${partial}`.trim());
+      } else {
+        setPreviewErr(failures[0]?.message || "No matching practice slots could be claimed.");
+      }
+
+      if (failures.length) {
+        const sample = failures
+          .slice(0, 3)
+          .map((f) => `${normalizeText(f.slot?.gameDate) || "?"}: ${f.message}`)
+          .join(" | ");
+        setPreviewErr(`Some weeks were not claimed. ${sample}${failures.length > 3 ? " ..." : ""}`);
+      }
+    } catch (e) {
+      setPreviewErr(e?.message || "Failed to apply practice override.");
+    } finally {
+      setPreviewPortalClaimingSlotId("");
+    }
+  }
+
   useEffect(() => {
     loadMemberships();
     loadGlobalAdmins();
@@ -1149,9 +1246,9 @@ export default function DebugPage({ leagueId, me }) {
                 </div>
               )}
 
-              <h3 className="mt-4">Practice selection portal preview (view only)</h3>
+              <h3 className="mt-4">Practice selection portal preview (admin override)</h3>
               <p className="muted">
-                Mirrors the coach practice selection portal layout for this team. Buttons are disabled in debug preview.
+                Mirrors the coach practice selection portal layout for this team. Use Select here to apply an admin override for the selected team.
               </p>
 
               <div className="card" style={{ marginTop: "0.5rem" }}>
@@ -1247,7 +1344,7 @@ export default function DebugPage({ leagueId, me }) {
                     </label>
                   </div>
                   <div className="muted mt-2">
-                    Preview only: filter by weekday to inspect recurring options; select buttons are disabled in Debug.
+                    Admin override: filter by weekday, then Select to claim the recurring field/day/time pattern for the selected team.
                   </div>
                 </div>
 
@@ -1283,10 +1380,19 @@ export default function DebugPage({ leagueId, me }) {
                                 <button
                                   className="btn btn--primary"
                                   type="button"
-                                  disabled
-                                  title={disabled ? "Preview: team already has a practice selected this week" : "Preview only (disabled recurring selection)"}
+                                  disabled={disabled || !!previewPortalClaimingSlotId || previewLoading}
+                                  onClick={() => claimPracticePortalPreviewOverride(slot)}
+                                  title={
+                                    disabled
+                                      ? "No claimable weeks remain in this pattern for the selected team"
+                                      : previewPortalClaimingSlotId
+                                        ? "Processing admin override..."
+                                        : "Admin override: claim this recurring pattern for the selected team"
+                                  }
                                 >
-                                  Select
+                                  {previewPortalClaimingSlotId
+                                    ? (previewPortalClaimingSlotId === normalizeText(slot?.slotId) ? "Selecting..." : "Working...")
+                                    : "Select"}
                                 </button>
                               </td>
                             </tr>
