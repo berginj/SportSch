@@ -120,7 +120,7 @@ public class LeagueInvitesFunctions
             await table.AddEntityAsync(entity);
 
             var res = req.CreateResponse(HttpStatusCode.Created);
-            await res.WriteAsJsonAsync(ToDto(entity, BuildAcceptUrl(req, leagueId, inviteId)));
+            await res.WriteAsJsonAsync(ToDto(entity, BuildAcceptUrl(req, leagueId, inviteId, entity)));
             return res;
         }
         catch (UnauthorizedAccessException ua)
@@ -224,7 +224,7 @@ public class LeagueInvitesFunctions
             }
 
             var res = req.CreateResponse(HttpStatusCode.OK);
-            await res.WriteAsJsonAsync(ToDto(e, BuildAcceptUrl(req, leagueId, inviteId)));
+            await res.WriteAsJsonAsync(ToDto(e, BuildAcceptUrl(req, leagueId, inviteId, e)));
             return res;
         }
         catch (Exception ex)
@@ -254,12 +254,17 @@ public class LeagueInvitesFunctions
         return new InviteTeam(division, teamId);
     }
 
-    private static string BuildAcceptUrl(HttpRequestData req, string leagueId, string inviteId)
+    private static string BuildAcceptUrl(HttpRequestData req, string leagueId, string inviteId, TableEntity? invite = null)
     {
+        var role = (invite?.GetString("Role") ?? "").Trim();
+        var fragment = string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase)
+            ? "coach-setup"
+            : "";
         var baseUri = new UriBuilder(req.Url)
         {
             Path = "/",
-            Query = $"inviteId={Uri.EscapeDataString(inviteId)}&leagueId={Uri.EscapeDataString(leagueId)}"
+            Query = $"inviteId={Uri.EscapeDataString(inviteId)}&leagueId={Uri.EscapeDataString(leagueId)}",
+            Fragment = fragment
         };
         return baseUri.Uri.ToString();
     }
