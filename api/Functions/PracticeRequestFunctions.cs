@@ -1,5 +1,4 @@
 using System.Net;
-using Azure;
 using Azure.Data.Tables;
 using GameSwap.Functions.Repositories;
 using GameSwap.Functions.Services;
@@ -9,33 +8,33 @@ using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Azure.Functions.Worker.Extensions.OpenApi.Extensions;
 using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
 using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Enums;
-using Microsoft.OpenApi.Models;
 using Microsoft.Extensions.Logging;
+using Microsoft.OpenApi.Models;
 
 namespace GameSwap.Functions.Functions;
 
 /// <summary>
 /// Practice slot request/approval workflow.
-/// Coaches REQUEST practice slots (1-3), commissioners APPROVE/REJECT.
+/// Coaches request slots (1-3) and commissioners approve/reject.
 /// </summary>
 public class PracticeRequestFunctions
 {
-    private readonly TableServiceClient _tableService;
-    private readonly IMembershipRepository _membershipRepo;
+    private readonly IPracticeRequestService _practiceRequestService;
     private readonly ISlotRepository _slotRepo;
+    private readonly ITeamRepository _teamRepo;
     private readonly IEmailService _emailService;
     private readonly ILogger _log;
 
     public PracticeRequestFunctions(
-        TableServiceClient tableService,
-        IMembershipRepository membershipRepo,
+        IPracticeRequestService practiceRequestService,
         ISlotRepository slotRepo,
+        ITeamRepository teamRepo,
         IEmailService emailService,
         ILoggerFactory lf)
     {
-        _tableService = tableService;
-        _membershipRepo = membershipRepo;
+        _practiceRequestService = practiceRequestService;
         _slotRepo = slotRepo;
+        _teamRepo = teamRepo;
         _emailService = emailService;
         _log = lf.CreateLogger<PracticeRequestFunctions>();
     }
@@ -70,8 +69,6 @@ public class PracticeRequestFunctions
     );
 
     public record ReviewPracticeRequestReq(string? reason);
-
-    private static string PracticeRequestPk(string leagueId) => $"PRACTICEREQ|{leagueId}";
 
     private static PracticeRequestDto ToDto(TableEntity e, SlotSummary? slot = null)
     {
@@ -109,102 +106,34 @@ public class PracticeRequestFunctions
         {
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
-
-            // Authorization - coach or admin
-            var membership = await _membershipRepo.GetMembershipAsync(me.UserId, leagueId);
-            var role = (membership?.GetString("Role") ?? Constants.Roles.Viewer).Trim();
-            var isAdmin = await _membershipRepo.IsGlobalAdminAsync(me.UserId) ||
-                          string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase);
-            var isCoach = string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase);
-
-            if (!isCoach && !isAdmin)
-            {
-                return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
-                    "Only coaches can request practice slots");
-            }
-
             var body = await HttpUtil.ReadJsonAsync<CreatePracticeRequestReq>(req);
             if (body is null)
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Invalid JSON body");
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST, "Invalid JSON body");
 
-            var division = (body.division ?? "").Trim();
-            var teamId = (body.teamId ?? "").Trim();
-            var slotId = (body.slotId ?? "").Trim();
+            var requestEntity = await _practiceRequestService.CreateRequestAsync(
+                leagueId: leagueId,
+                userId: me.UserId,
+                division: body.division,
+                teamId: body.teamId,
+                slotId: body.slotId,
+                reason: body.reason);
 
-            if (string.IsNullOrWhiteSpace(division) || string.IsNullOrWhiteSpace(teamId) || string.IsNullOrWhiteSpace(slotId))
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST",
-                    "division, teamId, and slotId are required");
-
-            // Check if slot exists and is available
-            var slot = await _slotRepo.GetSlotAsync(leagueId, division, slotId);
-            if (slot is null)
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Slot not found");
-
-            var slotStatus = (slot.GetString("Status") ?? "").Trim();
-            if (!string.Equals(slotStatus, "Open", StringComparison.OrdinalIgnoreCase))
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST",
-                    "Slot is not available (status must be Open)");
-
-            // Check team doesn't already have 3 pending/approved requests
-            var client = await TableClients.GetTableAsync(_tableService, Constants.Tables.PracticeRequests);
-            var pk = PracticeRequestPk(leagueId);
-            var existingRequests = client.QueryAsync<TableEntity>(
-                filter: $"PartitionKey eq '{pk}' and TeamId eq '{teamId}' and (Status eq 'Pending' or Status eq 'Approved')"
-            );
-
-            var count = 0;
-            await foreach (var r in existingRequests)
+            SlotSummary? slotSummary = null;
+            var division = (requestEntity.GetString("Division") ?? "").Trim();
+            var slotId = (requestEntity.GetString("SlotId") ?? "").Trim();
+            if (!string.IsNullOrWhiteSpace(division) && !string.IsNullOrWhiteSpace(slotId))
             {
-                count++;
-                if (count >= 3)
-                {
-                    return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST",
-                        "Team already has 3 pending/approved practice requests. Maximum is 3 slots per team.");
-                }
+                var slot = await _slotRepo.GetSlotAsync(leagueId, division, slotId);
+                slotSummary = ToSlotSummary(slot);
             }
 
-            // Check if team already requested this exact slot
-            var duplicateCheck = client.QueryAsync<TableEntity>(
-                filter: $"PartitionKey eq '{pk}' and TeamId eq '{teamId}' and SlotId eq '{slotId}' and (Status eq 'Pending' or Status eq 'Approved')"
-            );
-            await foreach (var _ in duplicateCheck)
-            {
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST",
-                    "Team already requested this practice slot");
-            }
-
-            // Create request
-            var requestId = Guid.NewGuid().ToString();
-            var entity = new TableEntity(pk, requestId)
-            {
-                ["LeagueId"] = leagueId,
-                ["Division"] = division,
-                ["TeamId"] = teamId,
-                ["SlotId"] = slotId,
-                ["Status"] = "Pending",
-                ["Reason"] = (body.reason ?? "").Trim(),
-                ["RequestedUtc"] = DateTimeOffset.UtcNow,
-                ["RequestedBy"] = me.UserId
-            };
-
-            await client.AddEntityAsync(entity);
-
-            var slotSummary = new SlotSummary(
-                slotId: slot.RowKey,
-                gameDate: (slot.GetString("GameDate") ?? "").Trim(),
-                startTime: (slot.GetString("StartTime") ?? "").Trim(),
-                endTime: (slot.GetString("EndTime") ?? "").Trim(),
-                displayName: (slot.GetString("DisplayName") ?? "").Trim(),
-                fieldKey: (slot.GetString("FieldKey") ?? "").Trim()
-            );
-
-            return ApiResponses.Ok(req, ToDto(entity, slotSummary), HttpStatusCode.Created);
+            return ApiResponses.Ok(req, ToDto(requestEntity, slotSummary), HttpStatusCode.Created);
         }
         catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
         catch (Exception ex)
         {
             _log.LogError(ex, "CreatePracticeRequest failed");
-            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, ErrorCodes.INTERNAL_ERROR, "Internal Server Error");
         }
     }
 
@@ -226,87 +155,43 @@ public class PracticeRequestFunctions
         {
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
-
-            // Authorization
-            var membership = await _membershipRepo.GetMembershipAsync(me.UserId, leagueId);
-            var role = (membership?.GetString("Role") ?? Constants.Roles.Viewer).Trim();
-            var isAdmin = await _membershipRepo.IsGlobalAdminAsync(me.UserId) ||
-                          string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase);
-            var isCoach = string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase);
-
-            if (!isCoach && !isAdmin)
-            {
-                return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
-                    "Only coaches and admins can view practice requests");
-            }
-
             var statusFilter = (ApiGuards.GetQueryParam(req, "status") ?? "").Trim();
             var teamIdFilter = (ApiGuards.GetQueryParam(req, "teamId") ?? "").Trim();
 
-            // Coaches can only see their own team's requests
-            if (isCoach && !isAdmin)
-            {
-                var coachTeamId = (membership?.GetString("TeamId") ?? "").Trim();
-                if (string.IsNullOrWhiteSpace(coachTeamId))
-                {
-                    return ApiResponses.Ok(req, new List<PracticeRequestDto>());
-                }
-                teamIdFilter = coachTeamId;
-            }
+            var entities = await _practiceRequestService.QueryRequestsAsync(
+                leagueId: leagueId,
+                userId: me.UserId,
+                statusFilter: statusFilter,
+                teamIdFilter: teamIdFilter);
 
-            var client = await TableClients.GetTableAsync(_tableService, Constants.Tables.PracticeRequests);
-            var pk = PracticeRequestPk(leagueId);
-
-            // Build filter
-            var filter = $"PartitionKey eq '{pk}'";
-            if (!string.IsNullOrWhiteSpace(statusFilter))
-                filter += $" and Status eq '{statusFilter}'";
-            if (!string.IsNullOrWhiteSpace(teamIdFilter))
-                filter += $" and TeamId eq '{teamIdFilter}'";
-
-            var entities = client.QueryAsync<TableEntity>(filter: filter);
             var list = new List<PracticeRequestDto>();
-
-            await foreach (var e in entities)
+            foreach (var e in entities)
             {
-                // Load slot details
                 var slotId = (e.GetString("SlotId") ?? "").Trim();
                 var division = (e.GetString("Division") ?? "").Trim();
                 SlotSummary? slotSummary = null;
-
                 if (!string.IsNullOrWhiteSpace(slotId) && !string.IsNullOrWhiteSpace(division))
                 {
                     try
                     {
                         var slot = await _slotRepo.GetSlotAsync(leagueId, division, slotId);
-                        if (slot is not null)
-                        {
-                            slotSummary = new SlotSummary(
-                                slotId: slot.RowKey,
-                                gameDate: (slot.GetString("GameDate") ?? "").Trim(),
-                                startTime: (slot.GetString("StartTime") ?? "").Trim(),
-                                endTime: (slot.GetString("EndTime") ?? "").Trim(),
-                                displayName: (slot.GetString("DisplayName") ?? "").Trim(),
-                                fieldKey: (slot.GetString("FieldKey") ?? "").Trim()
-                            );
-                        }
+                        slotSummary = ToSlotSummary(slot);
                     }
                     catch
                     {
-                        // Slot might have been deleted - continue without slot details
+                        // Slot may have been deleted; keep request row visible.
                     }
                 }
-
                 list.Add(ToDto(e, slotSummary));
             }
 
-            return ApiResponses.Ok(req, list.OrderByDescending(x => x.requestedUtc));
+            return ApiResponses.Ok(req, list);
         }
         catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
         catch (Exception ex)
         {
             _log.LogError(ex, "GetPracticeRequests failed");
-            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, ErrorCodes.INTERNAL_ERROR, "Internal Server Error");
         }
     }
 
@@ -334,83 +219,23 @@ public class PracticeRequestFunctions
         {
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
-
-            // Authorization - admin only
-            if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
-            {
-                var membership = await _membershipRepo.GetMembershipAsync(me.UserId, leagueId);
-                var role = (membership?.GetString("Role") ?? Constants.Roles.Viewer).Trim();
-                if (!string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
-                {
-                    return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
-                        "Only league admins can approve practice requests");
-                }
-            }
-
             var body = await HttpUtil.ReadJsonAsync<ReviewPracticeRequestReq>(req);
             var reason = (body?.reason ?? "").Trim();
 
-            var client = await TableClients.GetTableAsync(_tableService, Constants.Tables.PracticeRequests);
-            var pk = PracticeRequestPk(leagueId);
+            var entity = await _practiceRequestService.ApproveRequestAsync(
+                leagueId: leagueId,
+                userId: me.UserId,
+                requestId: (requestId ?? "").Trim(),
+                reason: reason);
 
-            var entity = await client.GetEntityAsync<TableEntity>(pk, requestId);
-            if (entity is null)
-                return ApiResponses.Error(req, HttpStatusCode.NotFound, "NOT_FOUND", "Request not found");
-
-            entity.Value["Status"] = "Approved";
-            entity.Value["ReviewedUtc"] = DateTimeOffset.UtcNow;
-            entity.Value["ReviewedBy"] = me.UserId;
-            if (!string.IsNullOrWhiteSpace(reason))
-                entity.Value["ReviewReason"] = reason;
-
-            await client.UpdateEntityAsync(entity.Value, ETag.All);
-
-            // Send email notification
-            try
-            {
-                var division = (entity.Value.GetString("Division") ?? "").Trim();
-                var teamId = (entity.Value.GetString("TeamId") ?? "").Trim();
-                var slotId = (entity.Value.GetString("SlotId") ?? "").Trim();
-
-                // Fetch team for contact email
-                var teamClient = await TableClients.GetTableAsync(_tableService, Constants.Tables.Teams);
-                var teamEntity = await teamClient.GetEntityAsync<TableEntity>(Constants.Pk.Teams(leagueId, division), teamId);
-                var teamName = (teamEntity.Value.GetString("Name") ?? teamId).Trim();
-                var teamEmail = (teamEntity.Value.GetString("PrimaryContactEmail") ?? "").Trim();
-
-                // Fetch slot for details
-                var slot = await _slotRepo.GetSlotAsync(leagueId, division, slotId);
-
-                if (!string.IsNullOrWhiteSpace(teamEmail) && slot != null)
-                {
-                    await _emailService.SendPracticeRequestApprovedEmailAsync(
-                        to: teamEmail,
-                        leagueId: leagueId,
-                        teamName: teamName,
-                        gameDate: (slot.GetString("GameDate") ?? "").Trim(),
-                        startTime: (slot.GetString("StartTime") ?? "").Trim(),
-                        endTime: (slot.GetString("EndTime") ?? "").Trim(),
-                        field: (slot.GetString("DisplayName") ?? slot.GetString("FieldKey") ?? "TBD").Trim()
-                    );
-                }
-            }
-            catch (Exception ex)
-            {
-                _log.LogWarning(ex, "Failed to send practice request approved email for requestId {RequestId}", requestId);
-                // Don't fail the request if email fails
-            }
-
-            return ApiResponses.Ok(req, ToDto(entity.Value));
-        }
-        catch (RequestFailedException ex) when (ex.Status == 404)
-        {
-            return ApiResponses.Error(req, HttpStatusCode.NotFound, "NOT_FOUND", "Request not found");
+            await TrySendApprovedEmailAsync(leagueId, entity);
+            return ApiResponses.Ok(req, ToDto(entity));
         }
         catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
         catch (Exception ex)
         {
             _log.LogError(ex, "ApprovePracticeRequest failed");
-            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, ErrorCodes.INTERNAL_ERROR, "Internal Server Error");
         }
     }
 
@@ -438,83 +263,111 @@ public class PracticeRequestFunctions
         {
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
-
-            // Authorization - admin only
-            if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
-            {
-                var membership = await _membershipRepo.GetMembershipAsync(me.UserId, leagueId);
-                var role = (membership?.GetString("Role") ?? Constants.Roles.Viewer).Trim();
-                if (!string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
-                {
-                    return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
-                        "Only league admins can reject practice requests");
-                }
-            }
-
             var body = await HttpUtil.ReadJsonAsync<ReviewPracticeRequestReq>(req);
             var reason = (body?.reason ?? "").Trim();
 
-            var client = await TableClients.GetTableAsync(_tableService, Constants.Tables.PracticeRequests);
-            var pk = PracticeRequestPk(leagueId);
+            var entity = await _practiceRequestService.RejectRequestAsync(
+                leagueId: leagueId,
+                userId: me.UserId,
+                requestId: (requestId ?? "").Trim(),
+                reason: reason);
 
-            var entity = await client.GetEntityAsync<TableEntity>(pk, requestId);
-            if (entity is null)
-                return ApiResponses.Error(req, HttpStatusCode.NotFound, "NOT_FOUND", "Request not found");
-
-            entity.Value["Status"] = "Rejected";
-            entity.Value["ReviewedUtc"] = DateTimeOffset.UtcNow;
-            entity.Value["ReviewedBy"] = me.UserId;
-            if (!string.IsNullOrWhiteSpace(reason))
-                entity.Value["ReviewReason"] = reason;
-
-            await client.UpdateEntityAsync(entity.Value, ETag.All);
-
-            // Send email notification
-            try
-            {
-                var division = (entity.Value.GetString("Division") ?? "").Trim();
-                var teamId = (entity.Value.GetString("TeamId") ?? "").Trim();
-                var slotId = (entity.Value.GetString("SlotId") ?? "").Trim();
-
-                // Fetch team for contact email
-                var teamClient = await TableClients.GetTableAsync(_tableService, Constants.Tables.Teams);
-                var teamEntity = await teamClient.GetEntityAsync<TableEntity>(Constants.Pk.Teams(leagueId, division), teamId);
-                var teamName = (teamEntity.Value.GetString("Name") ?? teamId).Trim();
-                var teamEmail = (teamEntity.Value.GetString("PrimaryContactEmail") ?? "").Trim();
-
-                // Fetch slot for details
-                var slot = await _slotRepo.GetSlotAsync(leagueId, division, slotId);
-
-                if (!string.IsNullOrWhiteSpace(teamEmail) && slot != null)
-                {
-                    await _emailService.SendPracticeRequestRejectedEmailAsync(
-                        to: teamEmail,
-                        leagueId: leagueId,
-                        teamName: teamName,
-                        gameDate: (slot.GetString("GameDate") ?? "").Trim(),
-                        startTime: (slot.GetString("StartTime") ?? "").Trim(),
-                        endTime: (slot.GetString("EndTime") ?? "").Trim(),
-                        reason: reason.Length > 0 ? reason : "Slot no longer available"
-                    );
-                }
-            }
-            catch (Exception ex)
-            {
-                _log.LogWarning(ex, "Failed to send practice request rejected email for requestId {RequestId}", requestId);
-                // Don't fail the request if email fails
-            }
-
-            return ApiResponses.Ok(req, ToDto(entity.Value));
-        }
-        catch (RequestFailedException ex) when (ex.Status == 404)
-        {
-            return ApiResponses.Error(req, HttpStatusCode.NotFound, "NOT_FOUND", "Request not found");
+            await TrySendRejectedEmailAsync(leagueId, entity, reason);
+            return ApiResponses.Ok(req, ToDto(entity));
         }
         catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
         catch (Exception ex)
         {
             _log.LogError(ex, "RejectPracticeRequest failed");
-            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, ErrorCodes.INTERNAL_ERROR, "Internal Server Error");
+        }
+    }
+
+    private static SlotSummary? ToSlotSummary(TableEntity? slot)
+    {
+        if (slot is null) return null;
+        return new SlotSummary(
+            slotId: slot.RowKey,
+            gameDate: (slot.GetString("GameDate") ?? "").Trim(),
+            startTime: (slot.GetString("StartTime") ?? "").Trim(),
+            endTime: (slot.GetString("EndTime") ?? "").Trim(),
+            displayName: (slot.GetString("DisplayName") ?? "").Trim(),
+            fieldKey: (slot.GetString("FieldKey") ?? "").Trim());
+    }
+
+    private async Task TrySendApprovedEmailAsync(string leagueId, TableEntity requestEntity)
+    {
+        try
+        {
+            var division = (requestEntity.GetString("Division") ?? "").Trim();
+            var teamId = (requestEntity.GetString("TeamId") ?? "").Trim();
+            var slotId = (requestEntity.GetString("SlotId") ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(division) || string.IsNullOrWhiteSpace(teamId) || string.IsNullOrWhiteSpace(slotId))
+                return;
+
+            var team = await _teamRepo.GetTeamAsync(leagueId, division, teamId);
+            var teamName = (team?.GetString("Name") ?? teamId).Trim();
+            var teamEmail = (team?.GetString("PrimaryContactEmail") ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(teamEmail))
+                return;
+
+            var slot = await _slotRepo.GetSlotAsync(leagueId, division, slotId);
+            if (slot is null)
+                return;
+
+            await _emailService.SendPracticeRequestApprovedEmailAsync(
+                to: teamEmail,
+                leagueId: leagueId,
+                teamName: teamName,
+                gameDate: (slot.GetString("GameDate") ?? "").Trim(),
+                startTime: (slot.GetString("StartTime") ?? "").Trim(),
+                endTime: (slot.GetString("EndTime") ?? "").Trim(),
+                field: (slot.GetString("DisplayName") ?? slot.GetString("FieldKey") ?? "TBD").Trim());
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed to send practice request approved email for requestId {RequestId}", requestEntity.RowKey);
+        }
+    }
+
+    private async Task TrySendRejectedEmailAsync(string leagueId, TableEntity requestEntity, string fallbackReason)
+    {
+        try
+        {
+            var division = (requestEntity.GetString("Division") ?? "").Trim();
+            var teamId = (requestEntity.GetString("TeamId") ?? "").Trim();
+            var slotId = (requestEntity.GetString("SlotId") ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(division) || string.IsNullOrWhiteSpace(teamId) || string.IsNullOrWhiteSpace(slotId))
+                return;
+
+            var team = await _teamRepo.GetTeamAsync(leagueId, division, teamId);
+            var teamName = (team?.GetString("Name") ?? teamId).Trim();
+            var teamEmail = (team?.GetString("PrimaryContactEmail") ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(teamEmail))
+                return;
+
+            var slot = await _slotRepo.GetSlotAsync(leagueId, division, slotId);
+            if (slot is null)
+                return;
+
+            var resolvedReason = !string.IsNullOrWhiteSpace(fallbackReason)
+                ? fallbackReason
+                : ((requestEntity.GetString("ReviewReason") ?? "").Trim());
+            if (string.IsNullOrWhiteSpace(resolvedReason))
+                resolvedReason = "Slot no longer available";
+
+            await _emailService.SendPracticeRequestRejectedEmailAsync(
+                to: teamEmail,
+                leagueId: leagueId,
+                teamName: teamName,
+                gameDate: (slot.GetString("GameDate") ?? "").Trim(),
+                startTime: (slot.GetString("StartTime") ?? "").Trim(),
+                endTime: (slot.GetString("EndTime") ?? "").Trim(),
+                reason: resolvedReason);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed to send practice request rejected email for requestId {RequestId}", requestEntity.RowKey);
         }
     }
 }

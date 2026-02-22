@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
 
 const ROLE_OPTIONS = ["", "LeagueAdmin", "Coach", "Viewer"];
@@ -72,6 +72,7 @@ export default function DebugPage({ leagueId, me }) {
   const [previewRequests, setPreviewRequests] = useState([]);
   const [previewSlots, setPreviewSlots] = useState([]);
   const [previewRefreshedAt, setPreviewRefreshedAt] = useState("");
+  const previewLoadSeqRef = useRef(0);
 
   const usersById = useMemo(() => {
     const map = new Map();
@@ -399,6 +400,7 @@ export default function DebugPage({ leagueId, me }) {
   }
 
   async function loadPracticePreviewData(nextDivision = previewDivision, nextTeamId = previewTeamId) {
+    const requestSeq = ++previewLoadSeqRef.current;
     const division = normalizeText(nextDivision);
     const teamId = normalizeText(nextTeamId);
     if (!leagueId) {
@@ -431,15 +433,19 @@ export default function DebugPage({ leagueId, me }) {
         (slot) => slot?.isAvailability === true && normalizeText(slot?.status) === "Open"
       );
 
+      if (requestSeq !== previewLoadSeqRef.current) return;
       setPreviewRequests(requests);
       setPreviewSlots(sortSlotsBySchedule(availabilitySlots).slice(0, 20));
       setPreviewRefreshedAt(new Date().toISOString());
     } catch (e) {
+      if (requestSeq !== previewLoadSeqRef.current) return;
       setPreviewErr(e?.message || "Failed to load coach practice preview.");
       setPreviewRequests([]);
       setPreviewSlots([]);
     } finally {
-      setPreviewLoading(false);
+      if (requestSeq === previewLoadSeqRef.current) {
+        setPreviewLoading(false);
+      }
     }
   }
 

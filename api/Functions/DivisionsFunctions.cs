@@ -95,7 +95,13 @@ public class DivisionsFunctions
         catch (Exception ex)
         {
             _log.LogError(ex, "GetDivisions failed");
-            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
+            var requestId = req.FunctionContext.InvocationId.ToString();
+            return ApiResponses.Error(
+                req,
+                HttpStatusCode.InternalServerError,
+                ErrorCodes.INTERNAL_ERROR,
+                "An unexpected error occurred",
+                new { requestId, exception = ex.GetType().Name, detail = ex.Message });
         }
     }
 

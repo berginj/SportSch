@@ -94,8 +94,7 @@ public class ClearDivisionSlots
             {
                 scanned++;
 
-                var isAvailability = ReadBool(slot, "IsAvailability", false) ||
-                                     string.Equals(ReadString(slot, "GameType"), "Availability", StringComparison.OrdinalIgnoreCase);
+                var isAvailability = SlotEntityUtil.IsAvailability(slot);
                 if (!includeAvailability && isAvailability) continue;
 
                 if (!MatchesField(slot, fieldKey)) continue;
@@ -109,7 +108,7 @@ public class ClearDivisionSlots
                     await slotsTable.DeleteEntityAsync(slot.PartitionKey, slot.RowKey, ETag.All);
                     deleted++;
 
-                    var slotId = (ReadString(slot, "SlotId", slot.RowKey) ?? "").Trim();
+                    var slotId = (SlotEntityUtil.ReadString(slot, "SlotId", slot.RowKey) ?? "").Trim();
                     if (string.IsNullOrWhiteSpace(slotId)) continue;
 
                     var slotRequestPk = Constants.Pk.SlotRequests(leagueId, division, slotId);
@@ -166,14 +165,14 @@ public class ClearDivisionSlots
     private static bool MatchesField(TableEntity slot, string requestedFieldKey)
     {
         if (string.IsNullOrWhiteSpace(requestedFieldKey)) return true;
-        var rowFieldKey = ReadString(slot, "FieldKey");
+        var rowFieldKey = SlotEntityUtil.ReadString(slot, "FieldKey");
         return string.Equals(rowFieldKey, requestedFieldKey, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool MatchesDateRange(TableEntity slot, DateOnly? fromDate, DateOnly? toDate)
     {
         if (!fromDate.HasValue && !toDate.HasValue) return true;
-        var gameDateRaw = ReadString(slot, "GameDate");
+        var gameDateRaw = SlotEntityUtil.ReadString(slot, "GameDate");
         if (!DateOnly.TryParseExact(gameDateRaw, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var gameDate))
             return false;
 
@@ -182,21 +181,4 @@ public class ClearDivisionSlots
         return true;
     }
 
-    private static string ReadString(TableEntity entity, string key, string defaultValue = "")
-    {
-        if (!entity.TryGetValue(key, out var value) || value is null) return defaultValue;
-        var text = value.ToString();
-        return string.IsNullOrWhiteSpace(text) ? defaultValue : text.Trim();
-    }
-
-    private static bool ReadBool(TableEntity entity, string key, bool defaultValue)
-    {
-        if (!entity.TryGetValue(key, out var value) || value is null) return defaultValue;
-        if (value is bool b) return b;
-        var text = value.ToString()?.Trim() ?? "";
-        if (bool.TryParse(text, out var parsed)) return parsed;
-        if (int.TryParse(text, out var parsedInt)) return parsedInt != 0;
-        return defaultValue;
-    }
 }
-

@@ -1,6 +1,6 @@
 /**
  * ConstraintsForm - Form for configuring schedule generation constraints
- * Allows setting division, date range, game constraints, and preferred days
+ * Allows setting division, date range, and game constraints
  */
 export default function ConstraintsForm({
   divisions,
@@ -18,8 +18,6 @@ export default function ConstraintsForm({
   setBalanceHomeAway,
   externalOfferPerWeek,
   setExternalOfferPerWeek,
-  preferredDays,
-  setPreferredDays,
   effectiveSeason,
   loading,
   validationLoading,
@@ -97,22 +95,6 @@ export default function ConstraintsForm({
             onChange={(e) => setExternalOfferPerWeek(e.target.value)}
           />
         </label>
-
-        <div className="stack gap-1">
-          <span className="muted">Preferred game days (optional)</span>
-          <div className="row row--wrap gap-2">
-            {Object.keys(preferredDays).map((day) => (
-              <label key={day} className="inlineCheck">
-                <input
-                  type="checkbox"
-                  checked={preferredDays[day]}
-                  onChange={(e) => setPreferredDays((prev) => ({ ...prev, [day]: e.target.checked }))}
-                />
-                {day}
-              </label>
-            ))}
-          </div>
-        </div>
       </div>
 
       <div className="card__body row gap-2">
@@ -122,9 +104,6 @@ export default function ConstraintsForm({
         <button className="btn btn--primary" onClick={applySchedule} disabled={loading || !division}>
           Apply schedule
         </button>
-        <button className="btn" onClick={runValidation} disabled={validationLoading || !division}>
-          {validationLoading ? "Validating..." : "Run validations"}
-        </button>
         <button className="btn" onClick={exportCsv} disabled={!preview?.assignments?.length}>
           Export CSV
         </button>
@@ -133,6 +112,15 @@ export default function ConstraintsForm({
         </button>
         <button className="btn" onClick={exportGameChangerCsv} disabled={!preview?.assignments?.length}>
           Export GameChanger CSV
+        </button>
+      </div>
+
+      <div className="card__body">
+        <div className="subtle mb-2">
+          Saved schedule validation checks the currently saved games in this date range (not the preview result).
+        </div>
+        <button className="btn" onClick={runValidation} disabled={validationLoading || !division}>
+          {validationLoading ? "Validating saved schedule..." : "Validate saved schedule"}
         </button>
       </div>
     </div>

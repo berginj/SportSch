@@ -144,7 +144,13 @@ public class ScheduleFunctions
         catch (Exception ex)
         {
             _log.LogError(ex, "Schedule validate failed");
-            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
+            var requestId = req.FunctionContext.InvocationId.ToString();
+            return ApiResponses.Error(
+                req,
+                HttpStatusCode.InternalServerError,
+                ErrorCodes.INTERNAL_ERROR,
+                "An unexpected error occurred",
+                new { requestId, exception = ex.GetType().Name, detail = ex.Message });
         }
     }
 
@@ -201,7 +207,13 @@ public class ScheduleFunctions
 
             var slots = await LoadAvailabilitySlotsAsync(leagueId, division, dateFrom, dateTo);
             if (slots.Count == 0)
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "No availability slots found for this division.");
+            {
+                // Rerun support: if all availability rows were already converted into game slots by a prior run,
+                // reuse those scheduler-managed game rows (while preserving practice/cancelled slots).
+                slots = await LoadReusableScheduledGameSlotsAsync(leagueId, division, dateFrom, dateTo);
+            }
+            if (slots.Count == 0)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "No availability or reusable scheduled game slots found for this division.");
 
             var matchups = ScheduleEngine.BuildRoundRobin(teams);
             var scheduleSlots = slots.Select(slot => new ScheduleSlot(slot.slotId, slot.gameDate, slot.startTime, slot.endTime, slot.fieldKey, slot.offeringTeamId)).ToList();
@@ -228,7 +240,7 @@ public class ScheduleFunctions
                 }
                 var runId = Guid.NewGuid().ToString("N");
                 await SaveScheduleRunAsync(leagueId, division, runId, me.Email ?? me.UserId, dateFrom, dateTo, scheduleConstraints, result);
-                await ApplyAssignmentsAsync(leagueId, division, runId, result.Assignments);
+                await ApplyAssignmentsAsync(leagueId, division, runId, result.Assignments, result.UnassignedSlots);
                 UsageTelemetry.Track(_log, "api_schedule_apply", leagueId, me.UserId, new
                 {
                     division,
@@ -254,7 +266,13 @@ public class ScheduleFunctions
         catch (Exception ex)
         {
             _log.LogError(ex, "Schedule run failed");
-            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
+            var requestId = req.FunctionContext.InvocationId.ToString();
+            return ApiResponses.Error(
+                req,
+                HttpStatusCode.InternalServerError,
+                ErrorCodes.INTERNAL_ERROR,
+                "An unexpected error occurred",
+                new { requestId, exception = ex.GetType().Name, detail = ex.Message });
         }
     }
 
@@ -274,7 +292,7 @@ public class ScheduleFunctions
     {
         var expanded = await TryLoadAvailabilityExpansionAsync(leagueId, division, dateFrom, dateTo);
         if (expanded is not null)
-            return expanded;
+            return await ExcludeBlockedExpandedSlotsAsync(leagueId, division, dateFrom, dateTo, expanded);
 
         return await LoadAvailabilitySlotsFromTableAsync(leagueId, division, dateFrom, dateTo);
     }
@@ -296,21 +314,103 @@ public class ScheduleFunctions
 
         foreach (var e in result.Items)
         {
-            var isAvailability = e.GetBoolean("IsAvailability") ?? false;
+            var isAvailability = SlotEntityUtil.IsAvailability(e);
             if (!isAvailability) continue;
 
-            var homeTeamId = (e.GetString("HomeTeamId") ?? "").Trim();
-            var awayTeamId = (e.GetString("AwayTeamId") ?? "").Trim();
-            var isExternalOffer = e.GetBoolean("IsExternalOffer") ?? false;
+            var homeTeamId = SlotEntityUtil.ReadString(e, "HomeTeamId");
+            var awayTeamId = SlotEntityUtil.ReadString(e, "AwayTeamId");
+            var isExternalOffer = SlotEntityUtil.ReadBool(e, "IsExternalOffer", false);
             if (!string.IsNullOrWhiteSpace(homeTeamId) || !string.IsNullOrWhiteSpace(awayTeamId) || isExternalOffer) continue;
 
             list.Add(new SlotInfo(
                 slotId: e.RowKey,
-                gameDate: (e.GetString("GameDate") ?? "").Trim(),
-                startTime: (e.GetString("StartTime") ?? "").Trim(),
-                endTime: (e.GetString("EndTime") ?? "").Trim(),
-                fieldKey: (e.GetString("FieldKey") ?? "").Trim(),
-                offeringTeamId: (e.GetString("OfferingTeamId") ?? "").Trim()
+                gameDate: SlotEntityUtil.ReadString(e, "GameDate"),
+                startTime: SlotEntityUtil.ReadString(e, "StartTime"),
+                endTime: SlotEntityUtil.ReadString(e, "EndTime"),
+                fieldKey: SlotEntityUtil.ReadString(e, "FieldKey"),
+                offeringTeamId: SlotEntityUtil.ReadString(e, "OfferingTeamId")
+            ));
+        }
+
+        return list
+            .Where(s => !string.IsNullOrWhiteSpace(s.gameDate))
+            .OrderBy(s => s.gameDate)
+            .ThenBy(s => s.startTime)
+            .ThenBy(s => s.fieldKey)
+            .ToList();
+    }
+
+    private async Task<List<SlotInfo>> ExcludeBlockedExpandedSlotsAsync(
+        string leagueId,
+        string division,
+        string dateFrom,
+        string dateTo,
+        List<SlotInfo> expanded)
+    {
+        if (expanded.Count == 0) return expanded;
+
+        var filter = new SlotQueryFilter
+        {
+            LeagueId = leagueId,
+            Division = division,
+            FromDate = dateFrom,
+            ToDate = dateTo,
+            PageSize = 1000
+        };
+
+        var result = await _slotRepo.QuerySlotsAsync(filter, null);
+        var excludedSlotIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var e in result.Items)
+        {
+            var slotId = (e.RowKey ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(slotId)) continue;
+
+            var status = SlotEntityUtil.ReadString(e, "Status", Constants.Status.SlotOpen);
+            if (string.Equals(status, Constants.Status.SlotCancelled, StringComparison.OrdinalIgnoreCase))
+            {
+                excludedSlotIds.Add(slotId);
+                continue;
+            }
+
+            if (SlotEntityUtil.IsPractice(e))
+            {
+                excludedSlotIds.Add(slotId);
+            }
+        }
+
+        if (excludedSlotIds.Count == 0) return expanded;
+
+        return expanded
+            .Where(s => !excludedSlotIds.Contains(s.slotId))
+            .ToList();
+    }
+
+    private async Task<List<SlotInfo>> LoadReusableScheduledGameSlotsAsync(string leagueId, string division, string dateFrom, string dateTo)
+    {
+        var filter = new SlotQueryFilter
+        {
+            LeagueId = leagueId,
+            Division = division,
+            FromDate = dateFrom,
+            ToDate = dateTo,
+            PageSize = 1000
+        };
+
+        var result = await _slotRepo.QuerySlotsAsync(filter, null);
+        var list = new List<SlotInfo>();
+
+        foreach (var e in result.Items)
+        {
+            if (!SlotEntityUtil.IsReusableSchedulerGameSlot(e)) continue;
+
+            list.Add(new SlotInfo(
+                slotId: e.RowKey,
+                gameDate: SlotEntityUtil.ReadString(e, "GameDate"),
+                startTime: SlotEntityUtil.ReadString(e, "StartTime"),
+                endTime: SlotEntityUtil.ReadString(e, "EndTime"),
+                fieldKey: SlotEntityUtil.ReadString(e, "FieldKey"),
+                offeringTeamId: SlotEntityUtil.ReadString(e, "OfferingTeamId")
             ));
         }
 
@@ -444,20 +544,40 @@ public class ScheduleFunctions
         await _scheduleRunRepo.CreateScheduleRunAsync(entity);
     }
 
-    private async Task ApplyAssignmentsAsync(string leagueId, string division, string runId, List<ScheduleAssignment> assignments)
+    private async Task ApplyAssignmentsAsync(
+        string leagueId,
+        string division,
+        string runId,
+        List<ScheduleAssignment> assignments,
+        List<ScheduleAssignment> unassignedSlots)
     {
         foreach (var a in assignments)
         {
             var slot = await _slotRepo.GetSlotAsync(leagueId, division, a.SlotId);
             if (slot is null) continue;
+            if (SlotEntityUtil.IsPractice(slot)) continue;
 
-            slot["OfferingTeamId"] = a.HomeTeamId;
-            slot["HomeTeamId"] = a.HomeTeamId;
-            slot["AwayTeamId"] = a.AwayTeamId ?? "";
-            slot["IsExternalOffer"] = a.IsExternalOffer;
-            slot["IsAvailability"] = false;
-            slot["ScheduleRunId"] = runId;
-            slot["UpdatedUtc"] = DateTimeOffset.UtcNow;
+            SlotEntityUtil.ApplySchedulerAssignment(
+                slot,
+                runId,
+                a.HomeTeamId,
+                a.AwayTeamId,
+                a.IsExternalOffer,
+                confirmedBy: "Scheduler",
+                nowUtc: DateTimeOffset.UtcNow);
+
+            await _slotRepo.UpdateSlotAsync(slot, slot.ETag);
+        }
+
+        foreach (var s in unassignedSlots)
+        {
+            var slot = await _slotRepo.GetSlotAsync(leagueId, division, s.SlotId);
+            if (slot is null) continue;
+            if (SlotEntityUtil.IsPractice(slot)) continue;
+
+            // When rerunning on existing scheduler-generated game rows, clear stale assignments
+            // so unused rows become availability again.
+            SlotEntityUtil.ResetSchedulerSlotToAvailability(slot, DateTimeOffset.UtcNow);
 
             await _slotRepo.UpdateSlotAsync(slot, slot.ETag);
         }
@@ -479,26 +599,27 @@ public class ScheduleFunctions
 
         foreach (var e in result.Items)
         {
-            var status = (e.GetString("Status") ?? Constants.Status.SlotOpen).Trim();
+            var status = SlotEntityUtil.ReadString(e, "Status", Constants.Status.SlotOpen);
             if (string.Equals(status, Constants.Status.SlotCancelled, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            var isAvailability = e.GetBoolean("IsAvailability") ?? false;
+            var isAvailability = SlotEntityUtil.ReadBool(e, "IsAvailability", false);
             if (isAvailability) continue;
+            if (SlotEntityUtil.IsPractice(e)) continue;
 
-            var home = (e.GetString("HomeTeamId") ?? "").Trim();
-            var away = (e.GetString("AwayTeamId") ?? "").Trim();
+            var home = SlotEntityUtil.ReadString(e, "HomeTeamId");
+            var away = SlotEntityUtil.ReadString(e, "AwayTeamId");
             if (string.IsNullOrWhiteSpace(home) && string.IsNullOrWhiteSpace(away)) continue;
 
             list.Add(new ScheduleAssignment(
                 SlotId: e.RowKey,
-                GameDate: (e.GetString("GameDate") ?? "").Trim(),
-                StartTime: (e.GetString("StartTime") ?? "").Trim(),
-                EndTime: (e.GetString("EndTime") ?? "").Trim(),
-                FieldKey: (e.GetString("FieldKey") ?? "").Trim(),
+                GameDate: SlotEntityUtil.ReadString(e, "GameDate"),
+                StartTime: SlotEntityUtil.ReadString(e, "StartTime"),
+                EndTime: SlotEntityUtil.ReadString(e, "EndTime"),
+                FieldKey: SlotEntityUtil.ReadString(e, "FieldKey"),
                 HomeTeamId: home,
                 AwayTeamId: away,
-                IsExternalOffer: e.GetBoolean("IsExternalOffer") ?? false
+                IsExternalOffer: SlotEntityUtil.ReadBool(e, "IsExternalOffer", false)
             ));
         }
 
@@ -527,4 +648,5 @@ public class ScheduleFunctions
     private record SlotInfo(string slotId, string gameDate, string startTime, string endTime, string fieldKey, string offeringTeamId);
 
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
+
 }

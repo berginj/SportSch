@@ -258,15 +258,6 @@ export default function SchedulerManager({ leagueId }) {
   const [noDoubleHeaders, setNoDoubleHeaders] = useState(true);
   const [balanceHomeAway, setBalanceHomeAway] = useState(true);
   const [externalOfferPerWeek, setExternalOfferPerWeek] = useState(1);
-  const [preferredDays, setPreferredDays] = useState({
-    Mon: false,
-    Tue: false,
-    Wed: false,
-    Thu: false,
-    Fri: false,
-    Sat: false,
-    Sun: false,
-  });
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -275,6 +266,7 @@ export default function SchedulerManager({ leagueId }) {
   const [overlayEvents, setOverlayEvents] = useState([]);
   const [overlayDivisions, setOverlayDivisions] = useState([]);
   const [overlayLoading, setOverlayLoading] = useState(false);
+  const [overlayErr, setOverlayErr] = useState("");
   const [overlayView, setOverlayView] = useState("grid");
   const [overlayWeekStart, setOverlayWeekStart] = useState("");
   const [overlayMonthStart, setOverlayMonthStart] = useState("");
@@ -299,7 +291,7 @@ export default function SchedulerManager({ leagueId }) {
           setDivision((prev) => prev || list[0].code || list[0].division || "");
         }
       } catch (e) {
-        setErr(e?.message || "Failed to load divisions");
+        setErr(formatErrorWithRequestId(e, "Failed to load scheduler setup data"));
         setDivisions([]);
         setFields([]);
         setLeagueSeason(null);
@@ -400,12 +392,16 @@ export default function SchedulerManager({ leagueId }) {
         noDoubleHeaders,
         balanceHomeAway,
         externalOfferPerWeek: Number(externalOfferPerWeek) || 0,
-        preferredDays: Object.entries(preferredDays)
-          .filter(([, enabled]) => enabled)
-          .map(([day]) => day),
       },
     };
-  }, [division, dateFrom, dateTo, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek, preferredDays]);
+  }, [division, dateFrom, dateTo, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek]);
+
+  function formatErrorWithRequestId(error, fallbackMessage) {
+    const message = error?.message || fallbackMessage;
+    const requestId = error?.details?.requestId;
+    if (!requestId) return message;
+    return `${message} (Request ID: ${requestId})`;
+  }
 
   async function runPreview() {
     setErr("");
@@ -423,7 +419,7 @@ export default function SchedulerManager({ leagueId }) {
       });
       setPreview(data || null);
     } catch (e) {
-      setErr(e?.message || "Failed to preview schedule");
+      setErr(formatErrorWithRequestId(e, "Failed to preview schedule"));
       setPreview(null);
     } finally {
       setLoading(false);
@@ -447,7 +443,7 @@ export default function SchedulerManager({ leagueId }) {
       setPreview(data || null);
       setToast({ tone: "success", message: `Schedule applied (run ${data?.runId || "saved"}).` });
     } catch (e) {
-      setErr(e?.message || "Failed to apply schedule");
+      setErr(formatErrorWithRequestId(e, "Failed to apply schedule"));
     } finally {
       setLoading(false);
     }
@@ -469,7 +465,7 @@ export default function SchedulerManager({ leagueId }) {
       });
       setValidation(data || null);
     } catch (e) {
-      setErr(e?.message || "Failed to run validations");
+      setErr(formatErrorWithRequestId(e, "Failed to run validations"));
       setValidation(null);
     } finally {
       setValidationLoading(false);
@@ -498,12 +494,12 @@ export default function SchedulerManager({ leagueId }) {
   }
 
   async function loadOverlay() {
-    setErr("");
+    setOverlayErr("");
     const dateError = validateIsoDates([
       { label: "Date from", value: dateFrom, required: false },
       { label: "Date to", value: dateTo, required: false },
     ]);
-    if (dateError) return setErr(dateError);
+    if (dateError) return setOverlayErr(dateError);
     setOverlayLoading(true);
     try {
       const baseQuery = new URLSearchParams();
@@ -528,7 +524,7 @@ export default function SchedulerManager({ leagueId }) {
       setOverlaySlots(slotList);
       setOverlayEvents(Array.isArray(eventList) ? eventList : []);
     } catch (e) {
-      setErr(e?.message || "Failed to load overlay data");
+      setOverlayErr(formatErrorWithRequestId(e, "Failed to load overlay data"));
       setOverlaySlots([]);
       setOverlayEvents([]);
     } finally {
@@ -644,8 +640,6 @@ export default function SchedulerManager({ leagueId }) {
         setBalanceHomeAway={setBalanceHomeAway}
         externalOfferPerWeek={externalOfferPerWeek}
         setExternalOfferPerWeek={setExternalOfferPerWeek}
-        preferredDays={preferredDays}
-        setPreferredDays={setPreferredDays}
         effectiveSeason={effectiveSeason}
         loading={loading}
         validationLoading={validationLoading}
@@ -668,6 +662,7 @@ export default function SchedulerManager({ leagueId }) {
           <div className="subtle">See events and scheduled games across divisions with color coding.</div>
         </div>
         <div className="card__body">
+          {overlayErr ? <div className="callout callout--error mb-3">{overlayErr}</div> : null}
           <div className="row row--wrap gap-2 mb-3">
             <button
               className={`btn btn--ghost ${overlayView === "list" ? "is-active" : ""}`}

@@ -219,7 +219,13 @@ public class ScheduleWizardFunctions
         catch (Exception ex)
         {
             _log.LogError(ex, "Error in ScheduleWizardFeasibility");
-            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL_ERROR", "An error occurred while analyzing feasibility.");
+            var requestId = req.FunctionContext.InvocationId.ToString();
+            return ApiResponses.Error(
+                req,
+                HttpStatusCode.InternalServerError,
+                ErrorCodes.INTERNAL_ERROR,
+                "An error occurred while analyzing feasibility.",
+                new { requestId, exception = ex.GetType().Name, detail = ex.Message });
         }
     }
 
@@ -423,7 +429,13 @@ public class ScheduleWizardFunctions
         catch (Exception ex)
         {
             _log.LogError(ex, "Schedule wizard failed");
-            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
+            var requestId = req.FunctionContext.InvocationId.ToString();
+            return ApiResponses.Error(
+                req,
+                HttpStatusCode.InternalServerError,
+                ErrorCodes.INTERNAL_ERROR,
+                "An unexpected error occurred",
+                new { requestId, exception = ex.GetType().Name, detail = ex.Message });
         }
     }
 
@@ -1320,25 +1332,27 @@ public class ScheduleWizardFunctions
     {
         var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Slots);
         var pk = Constants.Pk.Slots(leagueId, division);
-        var filter = $"PartitionKey eq '{ApiGuards.EscapeOData(pk)}' and Status eq '{ApiGuards.EscapeOData(Constants.Status.SlotOpen)}' and IsAvailability eq true";
+        var filter = $"PartitionKey eq '{ApiGuards.EscapeOData(pk)}' and Status eq '{ApiGuards.EscapeOData(Constants.Status.SlotOpen)}'";
         filter += $" and GameDate ge '{ApiGuards.EscapeOData(dateFrom.ToString("yyyy-MM-dd"))}'";
         filter += $" and GameDate le '{ApiGuards.EscapeOData(dateTo.ToString("yyyy-MM-dd"))}'";
 
         var list = new List<SlotInfo>();
         await foreach (var e in table.QueryAsync<TableEntity>(filter: filter))
         {
-            var homeTeamId = (e.GetString("HomeTeamId") ?? "").Trim();
-            var awayTeamId = (e.GetString("AwayTeamId") ?? "").Trim();
-            var isExternalOffer = e.GetBoolean("IsExternalOffer") ?? false;
+            if (!SlotEntityUtil.IsAvailability(e)) continue;
+
+            var homeTeamId = SlotEntityUtil.ReadString(e, "HomeTeamId");
+            var awayTeamId = SlotEntityUtil.ReadString(e, "AwayTeamId");
+            var isExternalOffer = SlotEntityUtil.ReadBool(e, "IsExternalOffer", false);
             if (!string.IsNullOrWhiteSpace(homeTeamId) || !string.IsNullOrWhiteSpace(awayTeamId) || isExternalOffer) continue;
 
             list.Add(new SlotInfo(
                 slotId: e.RowKey,
-                gameDate: (e.GetString("GameDate") ?? "").Trim(),
-                startTime: (e.GetString("StartTime") ?? "").Trim(),
-                endTime: (e.GetString("EndTime") ?? "").Trim(),
-                fieldKey: (e.GetString("FieldKey") ?? "").Trim(),
-                offeringTeamId: (e.GetString("OfferingTeamId") ?? "").Trim(),
+                gameDate: SlotEntityUtil.ReadString(e, "GameDate"),
+                startTime: SlotEntityUtil.ReadString(e, "StartTime"),
+                endTime: SlotEntityUtil.ReadString(e, "EndTime"),
+                fieldKey: SlotEntityUtil.ReadString(e, "FieldKey"),
+                offeringTeamId: SlotEntityUtil.ReadString(e, "OfferingTeamId"),
                 slotType: "game",
                 priorityRank: null
             ));
@@ -1369,11 +1383,17 @@ public class ScheduleWizardFunctions
                 continue;
             }
 
-            slot["OfferingTeamId"] = a.homeTeamId ?? "";
-            slot["HomeTeamId"] = a.homeTeamId ?? "";
-            slot["AwayTeamId"] = a.isExternalOffer ? "" : (a.awayTeamId ?? "");
-            slot["IsExternalOffer"] = a.isExternalOffer;
-            slot["IsAvailability"] = false;
+            var nowUtc = DateTimeOffset.UtcNow;
+
+            SlotEntityUtil.ApplySchedulerAssignment(
+                slot,
+                runId,
+                a.homeTeamId ?? "",
+                a.awayTeamId ?? "",
+                a.isExternalOffer,
+                confirmedBy: "Wizard",
+                nowUtc: nowUtc);
+
             slot["GameDate"] = a.gameDate ?? (slot.GetString("GameDate") ?? "");
             slot["StartTime"] = a.startTime ?? (slot.GetString("StartTime") ?? "");
             slot["EndTime"] = a.endTime ?? (slot.GetString("EndTime") ?? "");
@@ -1385,22 +1405,6 @@ public class ScheduleWizardFunctions
             {
                 slot["EndMin"] = endMin;
             }
-            if (a.isExternalOffer)
-            {
-                slot["Status"] = Constants.Status.SlotOpen;
-                slot["ConfirmedTeamId"] = "";
-                slot["ConfirmedRequestId"] = "";
-                slot["ConfirmedBy"] = "";
-                slot["ConfirmedUtc"] = "";
-            }
-            else
-            {
-                slot["Status"] = Constants.Status.SlotConfirmed;
-                slot["ConfirmedTeamId"] = a.awayTeamId ?? "";
-                slot["ConfirmedBy"] = "Wizard";
-                slot["ConfirmedUtc"] = DateTimeOffset.UtcNow;
-            }
-            slot["ScheduleRunId"] = runId;
 
             var notes = (slot.GetString("Notes") ?? "").Trim();
             var phaseNote = $"Wizard: {a.phase}";
@@ -1408,8 +1412,6 @@ public class ScheduleWizardFunctions
                 slot["Notes"] = phaseNote;
             else if (!notes.Contains(phaseNote, StringComparison.OrdinalIgnoreCase))
                 slot["Notes"] = $"{notes} | {phaseNote}";
-
-            slot["UpdatedUtc"] = DateTimeOffset.UtcNow;
             await table.UpdateEntityAsync(slot, slot.ETag, TableUpdateMode.Merge);
         }
     }
