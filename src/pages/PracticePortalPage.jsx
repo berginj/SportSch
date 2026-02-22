@@ -5,6 +5,17 @@ import Toast from "../components/Toast";
 import { ConfirmDialog } from "../components/Dialogs";
 import { useConfirmDialog } from "../lib/useDialogs";
 
+const WEEKDAY_FILTER_OPTIONS = [
+  { key: "", label: "All days" },
+  { key: "1", label: "Monday" },
+  { key: "2", label: "Tuesday" },
+  { key: "3", label: "Wednesday" },
+  { key: "4", label: "Thursday" },
+  { key: "5", label: "Friday" },
+  { key: "6", label: "Saturday" },
+  { key: "0", label: "Sunday" },
+];
+
 function normalizeRole(role) {
   return (role || "").trim();
 }
@@ -78,6 +89,7 @@ export default function PracticePortalPage({ me, leagueId }) {
   const [toast, setToast] = useState(null);
   const [openToShareField, setOpenToShareField] = useState(false);
   const [shareWithTeamId, setShareWithTeamId] = useState("");
+  const [availableDayFilter, setAvailableDayFilter] = useState("");
   const [requestingSlot, setRequestingSlot] = useState("");
   const initializedRef = useRef(false);
   const loadedDivisionRef = useRef("");
@@ -225,6 +237,12 @@ export default function PracticePortalPage({ me, leagueId }) {
       });
   }, [slots]);
 
+  const filteredAvailableSlots = useMemo(() => {
+    const dayKey = String(availableDayFilter || "").trim();
+    if (!dayKey) return availableSlots;
+    return availableSlots.filter((slot) => weekdayKeyFromDate(slot?.gameDate) === dayKey);
+  }, [availableSlots, availableDayFilter]);
+
   async function claimPractice(slot) {
     if (!slot?.slotId || !division) return;
     const weekKey = weekKeyFromDate(slot.gameDate);
@@ -274,7 +292,7 @@ export default function PracticePortalPage({ me, leagueId }) {
     const seriesCount = recurringCandidates.length || 1;
     const recurringMsg =
       seriesCount > 1
-        ? ` This will claim the matching weekly slot pattern for ${seriesCount} weeks (same field and time) starting ${selectedDate}.`
+        ? ` This will claim the matching weekly slot pattern for ${seriesCount} weeks (same field and time) starting ${selectedDate} across the regular-season availability set.`
         : "";
 
     const ok = await requestConfirm({
@@ -365,7 +383,7 @@ export default function PracticePortalPage({ me, leagueId }) {
       <div className="card">
         <h2>Practice selection portal</h2>
         <p className="muted">
-          Choose a practice slot pattern. Selecting a slot will claim the same field/day/time for matching open weeks in the season.
+          Choose a practice slot pattern. Selecting a slot will claim the same field/day/time for matching open weeks in the regular-season availability set.
         </p>
         <div className="formGrid">
           <label>
@@ -454,12 +472,28 @@ export default function PracticePortalPage({ me, leagueId }) {
                 ))}
               </select>
             </label>
+            <label style={{ minWidth: 220 }}>
+              Filter by day
+              <select
+                value={availableDayFilter}
+                onChange={(e) => setAvailableDayFilter(e.target.value)}
+              >
+                {WEEKDAY_FILTER_OPTIONS.map((opt) => (
+                  <option key={opt.key || "all"} value={opt.key}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
           <div className="muted mt-2">
             This preference is attached to your practice slot selection(s) and can help commissioners coordinate shared fields.
           </div>
+          <div className="muted">
+            Filter to a day (for example, Saturdays) and select one slot to claim that recurring field/time pattern for matching open regular-season weeks.
+          </div>
         </div>
-        {availableSlots.length ? (
+        {filteredAvailableSlots.length ? (
           <div className="tableWrap">
             <table className="table">
               <thead>
@@ -472,7 +506,7 @@ export default function PracticePortalPage({ me, leagueId }) {
                 </tr>
               </thead>
               <tbody>
-                {availableSlots.map((s) => {
+                {filteredAvailableSlots.map((s) => {
                   const weekKey = weekKeyFromDate(s.gameDate);
                   const disabled = weekKey && practiceByWeek.has(weekKey);
                   return (
@@ -505,7 +539,11 @@ export default function PracticePortalPage({ me, leagueId }) {
             </table>
           </div>
         ) : (
-          <div className="muted">No open practice slots available for this division.</div>
+          <div className="muted">
+            {availableDayFilter
+              ? "No open practice slots match the selected day."
+              : "No open practice slots available for this division."}
+          </div>
         )}
       </div>
 

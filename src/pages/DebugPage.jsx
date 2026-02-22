@@ -3,6 +3,16 @@ import { apiFetch } from "../lib/api";
 
 const ROLE_OPTIONS = ["", "LeagueAdmin", "Coach", "Viewer"];
 const PRACTICE_REQUEST_LIMIT = 3;
+const WEEKDAY_FILTER_OPTIONS = [
+  { key: "", label: "All days" },
+  { key: "1", label: "Monday" },
+  { key: "2", label: "Tuesday" },
+  { key: "3", label: "Wednesday" },
+  { key: "4", label: "Thursday" },
+  { key: "5", label: "Friday" },
+  { key: "6", label: "Saturday" },
+  { key: "0", label: "Sunday" },
+];
 
 function normalizeText(value) {
   return (value || "").trim();
@@ -29,6 +39,17 @@ function weekKeyFromDate(isoDate) {
   const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
   const weekNo = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
   return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
+}
+
+function weekdayKeyFromDate(isoDate) {
+  const parts = (isoDate || "").split("-");
+  if (parts.length !== 3) return "";
+  const year = Number(parts[0]);
+  const month = Number(parts[1]);
+  const day = Number(parts[2]);
+  if (!year || !month || !day) return "";
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return String(date.getUTCDay());
 }
 
 function formatSlotTime(slot) {
@@ -96,6 +117,7 @@ export default function DebugPage({ leagueId, me }) {
   const [previewPortalSlotsAll, setPreviewPortalSlotsAll] = useState([]);
   const [previewPortalOpenToShareField, setPreviewPortalOpenToShareField] = useState(false);
   const [previewPortalShareWithTeamId, setPreviewPortalShareWithTeamId] = useState("");
+  const [previewPortalDayFilter, setPreviewPortalDayFilter] = useState("");
   const [previewRefreshedAt, setPreviewRefreshedAt] = useState("");
   const previewLoadSeqRef = useRef(0);
 
@@ -225,6 +247,14 @@ export default function DebugPage({ leagueId, me }) {
         .filter((s) => normalizeText(s?.status) === "Open")
     ).slice(0, 20);
   }, [previewPortalSlotsAll]);
+
+  const previewPortalAvailableSlotsFiltered = useMemo(() => {
+    const dayKey = normalizeText(previewPortalDayFilter);
+    if (!dayKey) return previewPortalAvailableSlots;
+    return previewPortalAvailableSlots.filter(
+      (slot) => weekdayKeyFromDate(normalizeText(slot?.gameDate)) === dayKey
+    );
+  }, [previewPortalAvailableSlots, previewPortalDayFilter]);
 
   useEffect(() => {
     if (!previewPortalOpenToShareField && previewPortalShareWithTeamId) {
@@ -1127,7 +1157,7 @@ export default function DebugPage({ leagueId, me }) {
               <div className="card" style={{ marginTop: "0.5rem" }}>
                 <h4>Practice selection portal</h4>
                 <p className="muted">
-                  Selecting a slot claims the same field/day/time pattern for matching open weeks in the season.
+                  Selecting a slot claims the same field/day/time pattern for matching open weeks in the regular-season availability set.
                 </p>
                 <div className="formGrid">
                   <label>
@@ -1202,12 +1232,31 @@ export default function DebugPage({ leagueId, me }) {
                         ))}
                       </select>
                     </label>
+                    <label style={{ minWidth: 220 }}>
+                      Filter by day
+                      <select
+                        value={previewPortalDayFilter}
+                        onChange={(e) => setPreviewPortalDayFilter(normalizeText(e.target.value))}
+                      >
+                        {WEEKDAY_FILTER_OPTIONS.map((opt) => (
+                          <option key={opt.key || "all"} value={opt.key}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                   </div>
-                  <div className="muted mt-2">Preview only: select buttons are disabled in Debug.</div>
+                  <div className="muted mt-2">
+                    Preview only: filter by weekday to inspect recurring options; select buttons are disabled in Debug.
+                  </div>
                 </div>
 
-                {previewPortalAvailableSlots.length === 0 ? (
-                  <div className="muted">No open practice slots available for this division.</div>
+                {previewPortalAvailableSlotsFiltered.length === 0 ? (
+                  <div className="muted">
+                    {previewPortalDayFilter
+                      ? "No open practice slots match the selected day."
+                      : "No open practice slots available for this division."}
+                  </div>
                 ) : (
                   <div className="tableWrap">
                     <table className="table">
@@ -1221,7 +1270,7 @@ export default function DebugPage({ leagueId, me }) {
                         </tr>
                       </thead>
                       <tbody>
-                        {previewPortalAvailableSlots.map((slot) => {
+                        {previewPortalAvailableSlotsFiltered.map((slot) => {
                           const weekKey = weekKeyFromDate(normalizeText(slot?.gameDate));
                           const disabled = !!(weekKey && previewPortalSelectionsByWeek.has(weekKey));
                           return (
