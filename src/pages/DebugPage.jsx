@@ -352,26 +352,35 @@ export default function DebugPage({ leagueId, me }) {
   }, [previewPortalAvailableSlotsAllFiltered, previewPortalSeasonWeekOrdinalByKey, previewPortalActiveRequestPatternByKey]);
 
   const previewPortalGoogleFormOptionsText = useMemo(() => {
-    const seen = new Set();
-    const lines = [];
-    for (const slot of previewPortalAvailableSlotsAllFiltered) {
-      const gameDate = normalizeText(slot?.gameDate);
-      const startTime = normalizeText(slot?.startTime);
-      const endTime = normalizeText(slot?.endTime);
-      const fieldKey = normalizeText(slot?.fieldKey);
-      const dedupeKey = `${weekKeyFromDate(gameDate)}|${fieldKey}|${startTime}|${endTime}`;
-      if (!gameDate || !startTime || !endTime || !fieldKey || seen.has(dedupeKey)) continue;
-      seen.add(dedupeKey);
-
-      const weekKey = weekKeyFromDate(gameDate);
-      const weekOrdinal = previewPortalSeasonWeekOrdinalByKey.get(weekKey);
-      const weekLabel = weekOrdinal ? `W${weekOrdinal}` : weekKey || "W?";
-      const dayLabel = weekdayLabelFromDate(gameDate) || "";
-      const location = formatSlotLocation(slot);
-      lines.push(`${weekLabel} | ${dayLabel} ${gameDate} | ${startTime}-${endTime} | ${location}`);
+    const groups = new Map();
+    for (const slot of previewPortalAvailableSlotsAll) {
+      const key = practicePatternKey(slot);
+      if (!key) continue;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(slot);
     }
-    return lines.join("\n");
-  }, [previewPortalAvailableSlotsAllFiltered, previewPortalSeasonWeekOrdinalByKey]);
+
+    const lines = [];
+    for (const slots of groups.values()) {
+      const representativeSlot = sortSlotsBySchedule(slots)[0] || null;
+      if (!representativeSlot) continue;
+      const gameDate = normalizeText(representativeSlot?.gameDate);
+      const startTime = normalizeText(representativeSlot?.startTime);
+      const endTime = normalizeText(representativeSlot?.endTime);
+      if (!gameDate || !startTime || !endTime) continue;
+      const dayLabel = weekdayLabelFromDate(gameDate) || "";
+      const location = formatSlotLocation(representativeSlot);
+      lines.push({
+        sortKey: slotSortKey(representativeSlot),
+        text: `${dayLabel} ${gameDate} | ${startTime}-${endTime} | ${location}`,
+      });
+    }
+
+    return lines
+      .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+      .map((row) => row.text)
+      .join("\n");
+  }, [previewPortalAvailableSlotsAll]);
 
   const previewPortalGoogleFormPatternOptionsText = useMemo(() => {
     const lines = previewPortalRecurringChoices.map((choice) => {
@@ -1524,7 +1533,7 @@ export default function DebugPage({ leagueId, me }) {
                 <div className="mb-3">
                   <h5 className="m-0">Google Form option text (copy/paste)</h5>
                   <div className="muted mt-1">
-                    One line per week + field + time option{previewPortalDayFilter ? " (filtered by selected day)" : ""}.
+                    One line per recurring availability pattern using a single representative week date (all days shown).
                   </div>
                   <textarea
                     readOnly
