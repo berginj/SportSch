@@ -376,12 +376,12 @@ export default function DebugPage({ leagueId, me }) {
   const previewPortalGoogleFormPatternOptionsText = useMemo(() => {
     const lines = previewPortalRecurringChoices.map((choice) => {
       const slot = choice?.representativeSlot || null;
+      const dayLabel = weekdayLabelFromDate(normalizeText(slot?.gameDate)) || "Day";
       const location = formatSlotLocation(slot);
       const startTime = normalizeText(slot?.startTime);
       const endTime = normalizeText(slot?.endTime);
       const timeLabel = startTime && endTime ? `${startTime}-${endTime}` : (startTime || endTime || "-");
-      const weeksLabel = choice?.weekRangeLabel || "-";
-      return `${location} | ${timeLabel} | ${weeksLabel}`;
+      return `${dayLabel} | ${location} | ${timeLabel}`;
     });
     return lines.join("\n");
   }, [previewPortalRecurringChoices]);
@@ -1480,7 +1480,7 @@ export default function DebugPage({ leagueId, me }) {
                 <div className="mb-3">
                   <h5 className="m-0">Coach onboarding recurring choices (debug preview)</h5>
                   <div className="muted mt-1">
-                    Mirrors the new coach setup view: field + time + weeks (`W1-Wx`) reserved together on approval.
+                    Mirrors the coach setup recurring choices: day + field + time (the recurring season pattern is reserved together on approval).
                   </div>
                 </div>
 
@@ -1498,8 +1498,6 @@ export default function DebugPage({ leagueId, me }) {
                           <th>Field</th>
                           <th>Day</th>
                           <th>Time</th>
-                          <th>Weeks</th>
-                          <th>Count</th>
                           <th>Season Span</th>
                           <th>Status</th>
                         </tr>
@@ -1513,8 +1511,6 @@ export default function DebugPage({ leagueId, me }) {
                               <td>{formatSlotLocation(slot)}</td>
                               <td>{weekdayLabelFromDate(normalizeText(slot?.gameDate))}</td>
                               <td>{formatSlotTime(slot)}</td>
-                              <td>{choice.weekRangeLabel}</td>
-                              <td>{choice.weeksCount}</td>
                               <td>{choice.firstDate && choice.lastDate ? `${choice.firstDate} - ${choice.lastDate}` : (choice.firstDate || "-")}</td>
                               <td>{request ? `Requested (P${request.priority || "?"}, ${normalizeText(request.status) || "Pending"})` : "-"}</td>
                             </tr>
@@ -1539,9 +1535,9 @@ export default function DebugPage({ leagueId, me }) {
                 </div>
 
                 <div className="mb-3">
-                  <h5 className="m-0">Google Form option text (Field | Time | Weeks)</h5>
+                  <h5 className="m-0">Recurring option summary (Day | Field | Time)</h5>
                   <div className="muted mt-1">
-                    One line per recurring pattern (field + time + season week range){previewPortalDayFilter ? " (filtered by selected day)" : ""}.
+                    One line per recurring pattern for quick review{previewPortalDayFilter ? " (filtered by selected day)" : ""}.
                   </div>
                   <textarea
                     readOnly
