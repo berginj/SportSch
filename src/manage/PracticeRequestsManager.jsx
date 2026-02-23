@@ -4,6 +4,32 @@ import Toast from '../components/Toast';
 import { useConfirmDialog } from '../lib/useDialogs';
 import { ConfirmDialog } from '../components/Dialogs';
 
+const WEEKDAY_OPTIONS = [
+  { key: '', label: 'All days' },
+  { key: '0', label: 'Sunday' },
+  { key: '1', label: 'Monday' },
+  { key: '2', label: 'Tuesday' },
+  { key: '3', label: 'Wednesday' },
+  { key: '4', label: 'Thursday' },
+  { key: '5', label: 'Friday' },
+  { key: '6', label: 'Saturday' }
+];
+
+function weekdayKeyFromDate(isoDate) {
+  const parts = String(isoDate || '').split('-');
+  if (parts.length !== 3) return '';
+  const year = Number(parts[0]);
+  const month = Number(parts[1]);
+  const day = Number(parts[2]);
+  if (!year || !month || !day) return '';
+  return String(new Date(Date.UTC(year, month - 1, day)).getUTCDay());
+}
+
+function weekdayLabelFromDate(isoDate) {
+  const key = weekdayKeyFromDate(isoDate);
+  return WEEKDAY_OPTIONS.find((opt) => opt.key === key)?.label || '';
+}
+
 /**
  * Practice Requests Manager
  *
@@ -19,6 +45,7 @@ export default function PracticeRequestsManager({ leagueId }) {
   const [error, setError] = useState('');
   const [toast, setToast] = useState(null);
   const [statusFilter, setStatusFilter] = useState('Pending');
+  const [dayFilter, setDayFilter] = useState('');
   const [processingId, setProcessingId] = useState('');
 
   const { confirmState, requestConfirm, handleConfirm, handleCancel } = useConfirmDialog();
@@ -49,7 +76,7 @@ export default function PracticeRequestsManager({ leagueId }) {
   async function approveRequest(request) {
     const confirmed = await requestConfirm({
       title: 'Approve Practice Request',
-      message: `Approve practice request from ${request.teamId} for ${request.slot?.gameDate} at ${request.slot?.startTime}?`,
+      message: `Approve practice request from ${request.teamId} for ${request.slot?.gameDate} at ${request.slot?.startTime}? This locks the recurring field/day/time pattern where matching availability is open.`,
       confirmLabel: 'Approve'
     });
 
@@ -116,6 +143,20 @@ export default function PracticeRequestsManager({ leagueId }) {
   const approvedCount = requestsByStatus.Approved.length;
   const rejectedCount = requestsByStatus.Rejected.length;
 
+  const visibleRequests = requests
+    .filter((request) => {
+      if (!dayFilter) return true;
+      return weekdayKeyFromDate(request?.slot?.gameDate) === dayFilter;
+    })
+    .sort((a, b) => {
+      const pa = Number.isFinite(Number(a?.priority)) ? Number(a.priority) : 99;
+      const pb = Number.isFinite(Number(b?.priority)) ? Number(b.priority) : 99;
+      if (pa !== pb) return pa - pb;
+      const ad = `${a?.slot?.gameDate || ''} ${a?.slot?.startTime || ''}`.trim();
+      const bd = `${b?.slot?.gameDate || ''} ${b?.slot?.startTime || ''}`.trim();
+      return ad.localeCompare(bd);
+    });
+
   if (loading && requests.length === 0) {
     return (
       <div className="card">
@@ -141,6 +182,24 @@ export default function PracticeRequestsManager({ leagueId }) {
       {error && (
         <div className="callout callout--error mb-4">{error}</div>
       )}
+
+      <div className="callout mb-4">
+        <div className="row row--wrap gap-3" style={{ alignItems: 'center' }}>
+          <label style={{ minWidth: 220 }}>
+            Filter by day
+            <select value={dayFilter} onChange={(e) => setDayFilter(e.target.value)}>
+              {WEEKDAY_OPTIONS.map((opt) => (
+                <option key={opt.key || 'all'} value={opt.key}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="muted">
+            Approving a practice request locks the recurring field/day/time pattern where matching availability remains open.
+          </div>
+        </div>
+      </div>
 
       {/* Status Filter Tabs */}
       <div className="flex gap-2 mb-4 border-b border-gray-200 overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
@@ -205,13 +264,15 @@ export default function PracticeRequestsManager({ leagueId }) {
       )}
 
       {/* Request List */}
-      {requests.length === 0 ? (
+      {visibleRequests.length === 0 ? (
         <div className="text-center py-8 text-gray-600">
-          {statusFilter ? `No ${statusFilter.toLowerCase()} requests` : 'No practice requests yet'}
+          {dayFilter
+            ? `No ${statusFilter ? statusFilter.toLowerCase() : ''} requests for the selected day`.trim()
+            : (statusFilter ? `No ${statusFilter.toLowerCase()} requests` : 'No practice requests yet')}
         </div>
       ) : (
         <div className="grid gap-4">
-          {requests.map((request) => (
+          {visibleRequests.map((request) => (
             <div
               key={request.requestId}
               className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
@@ -221,12 +282,17 @@ export default function PracticeRequestsManager({ leagueId }) {
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2 mb-2">
                     <StatusBadge status={request.status} />
+                    {request.priority ? <span className="badge badge--sm">P{request.priority}</span> : null}
                     <span className="font-bold text-lg">{request.teamId}</span>
                     <span className="text-sm text-gray-600">{request.division}</span>
                   </div>
 
                   {request.slot ? (
                     <div className="grid gap-1 text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-gray-700">Day:</span>
+                        <span>{weekdayLabelFromDate(request.slot.gameDate) || '-'}</span>
+                      </div>
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-gray-700">Date:</span>
                         <span>{request.slot.gameDate}</span>

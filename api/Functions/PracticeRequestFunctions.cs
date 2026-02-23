@@ -45,6 +45,7 @@ public class PracticeRequestFunctions
         string teamId,
         string slotId,
         string status,
+        int? priority,
         string? reason,
         bool openToShareField,
         string? shareWithTeamId,
@@ -67,6 +68,7 @@ public class PracticeRequestFunctions
         string division,
         string teamId,
         string slotId,
+        int? priority,
         string? reason,
         bool openToShareField,
         string? shareWithTeamId
@@ -82,6 +84,7 @@ public class PracticeRequestFunctions
             teamId: (e.GetString("TeamId") ?? "").Trim(),
             slotId: (e.GetString("SlotId") ?? "").Trim(),
             status: (e.GetString("Status") ?? "Pending").Trim(),
+            priority: e.GetInt32("Priority"),
             reason: (e.GetString("Reason") ?? "").Trim(),
             openToShareField: e.GetBoolean("OpenToShareField") ?? false,
             shareWithTeamId: (e.GetString("ShareWithTeamId") ?? "").Trim(),
@@ -124,7 +127,8 @@ public class PracticeRequestFunctions
                 slotId: body.slotId,
                 reason: body.reason,
                 openToShareField: body.openToShareField,
-                shareWithTeamId: body.shareWithTeamId);
+                shareWithTeamId: body.shareWithTeamId,
+                priority: body.priority);
 
             SlotSummary? slotSummary = null;
             var division = (requestEntity.GetString("Division") ?? "").Trim();

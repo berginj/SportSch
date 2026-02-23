@@ -117,7 +117,7 @@ export default function DebugPage({ leagueId, me }) {
   const [previewPortalSlotsAll, setPreviewPortalSlotsAll] = useState([]);
   const [previewPortalOpenToShareField, setPreviewPortalOpenToShareField] = useState(false);
   const [previewPortalShareWithTeamId, setPreviewPortalShareWithTeamId] = useState("");
-  const [previewPortalDayFilter, setPreviewPortalDayFilter] = useState("");
+  const [previewPortalDayFilter, setPreviewPortalDayFilter] = useState("0");
   const [previewPortalClaimingSlotId, setPreviewPortalClaimingSlotId] = useState("");
   const [previewRefreshedAt, setPreviewRefreshedAt] = useState("");
   const previewLoadSeqRef = useRef(0);

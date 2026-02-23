@@ -97,14 +97,16 @@ export default function PracticePortalPage({ me, leagueId }) {
   const [division, setDivision] = useState("");
   const [divisionTeams, setDivisionTeams] = useState([]);
   const [slots, setSlots] = useState([]);
+  const [practiceRequests, setPracticeRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [notice, setNotice] = useState("");
   const [toast, setToast] = useState(null);
   const [openToShareField, setOpenToShareField] = useState(false);
   const [shareWithTeamId, setShareWithTeamId] = useState("");
-  const [availableDayFilter, setAvailableDayFilter] = useState("");
+  const [availableDayFilter, setAvailableDayFilter] = useState("0");
   const [requestingSlot, setRequestingSlot] = useState("");
+  const [portalMode, setPortalMode] = useState("recurring");
   const initializedRef = useRef(false);
   const loadedDivisionRef = useRef("");
   const { confirmState, requestConfirm, handleConfirm, handleCancel } = useConfirmDialog();
@@ -136,16 +138,23 @@ export default function PracticePortalPage({ me, leagueId }) {
 
       if (preferred) {
         const params = new URLSearchParams({ division: preferred, status: "Open,Confirmed" });
-        const [s, teams] = await Promise.all([
+        const requestParams = new URLSearchParams();
+        if (coachTeam.teamId) requestParams.set("teamId", coachTeam.teamId);
+        const [s, teams, requests] = await Promise.all([
           apiFetch(`/api/slots?${params.toString()}`),
           apiFetch(`/api/teams?division=${encodeURIComponent(preferred)}`).catch(() => []),
+          coachTeam.teamId
+            ? apiFetch(`/api/practice-requests?${requestParams.toString()}`).catch(() => [])
+            : Promise.resolve([]),
         ]);
         setSlots(Array.isArray(s) ? s : []);
         setDivisionTeams(Array.isArray(teams) ? teams : []);
+        setPracticeRequests(Array.isArray(requests) ? requests : []);
         loadedDivisionRef.current = preferred;
       } else {
         setSlots([]);
         setDivisionTeams([]);
+        setPracticeRequests([]);
         loadedDivisionRef.current = "";
       }
     } catch (e) {
@@ -161,7 +170,7 @@ export default function PracticePortalPage({ me, leagueId }) {
       initializedRef.current = true;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leagueId]);
+  }, [leagueId, coachTeam.division, coachTeam.teamId]);
 
   useEffect(() => {
     if (!initializedRef.current) return;
@@ -171,12 +180,18 @@ export default function PracticePortalPage({ me, leagueId }) {
       setLoading(true);
       try {
         const params = new URLSearchParams({ division, status: "Open,Confirmed" });
-        const [s, teams] = await Promise.all([
+        const requestParams = new URLSearchParams();
+        if (coachTeam.teamId) requestParams.set("teamId", coachTeam.teamId);
+        const [s, teams, requests] = await Promise.all([
           apiFetch(`/api/slots?${params.toString()}`),
           apiFetch(`/api/teams?division=${encodeURIComponent(division)}`).catch(() => []),
+          coachTeam.teamId
+            ? apiFetch(`/api/practice-requests?${requestParams.toString()}`).catch(() => [])
+            : Promise.resolve([]),
         ]);
         setSlots(Array.isArray(s) ? s : []);
         setDivisionTeams(Array.isArray(teams) ? teams : []);
+        setPracticeRequests(Array.isArray(requests) ? requests : []);
         loadedDivisionRef.current = division;
       } catch (e) {
         setErr(e?.message || String(e));
@@ -185,7 +200,7 @@ export default function PracticePortalPage({ me, leagueId }) {
       }
     };
     reload();
-  }, [division]);
+  }, [division, coachTeam.teamId]);
 
   useEffect(() => {
     if (!initializedRef.current || typeof window === "undefined") return;
@@ -217,6 +232,44 @@ export default function PracticePortalPage({ me, leagueId }) {
     }
     return map;
   }, [practiceSelections]);
+
+  const activePracticeRequests = useMemo(() => {
+    const teamId = (coachTeam.teamId || "").trim();
+    return (Array.isArray(practiceRequests) ? practiceRequests : [])
+      .filter((r) => ["Pending", "Approved"].includes((r?.status || "").trim()))
+      .filter((r) => !teamId || (r?.teamId || "").trim() === teamId)
+      .filter((r) => !division || (r?.division || "").trim() === division)
+      .sort((a, b) => {
+        const pa = Number.isFinite(Number(a?.priority)) ? Number(a.priority) : 99;
+        const pb = Number.isFinite(Number(b?.priority)) ? Number(b.priority) : 99;
+        if (pa !== pb) return pa - pb;
+        const ad = `${a?.slot?.gameDate || ""} ${a?.slot?.startTime || ""}`.trim();
+        const bd = `${b?.slot?.gameDate || ""} ${b?.slot?.startTime || ""}`.trim();
+        return ad.localeCompare(bd);
+      });
+  }, [practiceRequests, coachTeam.teamId, division]);
+
+  const activeRequestPatternByKey = useMemo(() => {
+    const map = new Map();
+    for (const req of activePracticeRequests) {
+      const slot = req?.slot || null;
+      const key = practicePatternKey(slot);
+      if (key && !map.has(key)) map.set(key, req);
+    }
+    return map;
+  }, [activePracticeRequests]);
+
+  const nextPracticeRequestPriority = useMemo(() => {
+    const used = new Set(
+      activePracticeRequests
+        .map((r) => Number(r?.priority))
+        .filter((p) => Number.isFinite(p) && p >= 1 && p <= 3)
+    );
+    for (const priority of [1, 2, 3]) {
+      if (!used.has(priority)) return priority;
+    }
+    return 0;
+  }, [activePracticeRequests]);
 
   const shareableTeams = useMemo(() => {
     return (Array.isArray(divisionTeams) ? divisionTeams : [])
@@ -312,11 +365,16 @@ export default function PracticePortalPage({ me, leagueId }) {
           firstDate,
           lastDate,
           weekdayLabel: representativeSlot ? weekdayLabelFromDate(representativeSlot.gameDate) : "",
+          existingRequest: activeRequestPatternByKey.get(group.key) || null,
+          matchesRequestedPattern: activeRequestPatternByKey.has(group.key),
           matchesSelectedPattern: selectedPracticePatternKeys.has(group.key),
         };
       })
       .filter((choice) => choice.representativeSlot)
       .sort((a, b) => {
+        if (a.matchesRequestedPattern !== b.matchesRequestedPattern) {
+          return a.matchesRequestedPattern ? -1 : 1;
+        }
         if (a.matchesSelectedPattern !== b.matchesSelectedPattern) {
           return a.matchesSelectedPattern ? -1 : 1;
         }
@@ -327,17 +385,21 @@ export default function PracticePortalPage({ me, leagueId }) {
         if (dateCmp !== 0) return dateCmp;
         return formatSlotLocation(a.representativeSlot).localeCompare(formatSlotLocation(b.representativeSlot));
       });
-  }, [filteredAvailableSlots, practiceByWeek, selectedPracticePatternKeys]);
+  }, [filteredAvailableSlots, practiceByWeek, selectedPracticePatternKeys, activeRequestPatternByKey]);
 
-  async function claimPractice(slot) {
+  async function requestPracticePattern(choice) {
+    const slot = choice?.representativeSlot;
     if (!slot?.slotId || !division) return;
-    const weekKey = weekKeyFromDate(slot.gameDate);
-    if (weekKey && practiceByWeek.has(weekKey)) {
-      setErr("You already selected a practice slot for this week.");
+    if (!coachTeam.teamId) {
+      setErr("Your coach profile needs a team assignment before requesting a practice slot.");
       return;
     }
-    if (!coachTeam.teamId) {
-      setErr("Your coach profile needs a team assignment before selecting a practice slot.");
+    if (choice?.existingRequest) {
+      setErr("You already requested this recurring field/day/time pattern.");
+      return;
+    }
+    if (!nextPracticeRequestPriority) {
+      setErr("You already have 3 active recurring practice requests. Wait for commissioner review before adding another.");
       return;
     }
     if (openToShareField && !shareWithTeamId) {
@@ -349,42 +411,16 @@ export default function PracticePortalPage({ me, leagueId }) {
     const shareMsg = openToShareField
       ? ` Open to share with: ${proposedShareTeam?.name || shareWithTeamId}.`
       : "";
-    const selectedDate = String(slot.gameDate || "").trim();
-    const selectedWeekday = weekdayKeyFromDate(selectedDate);
-    const selectedFieldKey = String(slot.fieldKey || "").trim();
-    const selectedStart = String(slot.startTime || "").trim();
-    const selectedEnd = String(slot.endTime || "").trim();
-    const existingPracticeWeeks = new Set(Array.from(practiceByWeek.keys()));
-    const recurringCandidates = [...availableSlots]
-      .filter((candidate) => {
-        const candidateDate = String(candidate?.gameDate || "").trim();
-        if (!candidateDate) return false;
-        if (selectedDate && candidateDate < selectedDate) return false;
-        if (selectedWeekday && weekdayKeyFromDate(candidateDate) !== selectedWeekday) return false;
-        if (String(candidate?.fieldKey || "").trim() !== selectedFieldKey) return false;
-        if (String(candidate?.startTime || "").trim() !== selectedStart) return false;
-        if (String(candidate?.endTime || "").trim() !== selectedEnd) return false;
-        const candidateWeek = weekKeyFromDate(candidateDate);
-        if (!candidateWeek) return false;
-        if (existingPracticeWeeks.has(candidateWeek)) return false;
-        return true;
-      })
-      .sort((a, b) => {
-        const aKey = `${a?.gameDate || ""} ${a?.startTime || ""}`.trim();
-        const bKey = `${b?.gameDate || ""} ${b?.startTime || ""}`.trim();
-        return aKey.localeCompare(bKey);
-      });
-
-    const seriesCount = recurringCandidates.length || 1;
+    const seriesCount = Number(choice?.claimableWeeks || 0);
     const recurringMsg =
       seriesCount > 1
-        ? ` This will claim the matching weekly slot pattern for ${seriesCount} weeks (same field and time) starting ${selectedDate} across the regular-season availability set.`
-        : "";
+        ? ` This requests the recurring weekly slot pattern for about ${seriesCount} available weeks (same field and time), starting ${slot.gameDate}.`
+        : " This requests the recurring field/day/time pattern represented by this slot.";
 
     const ok = await requestConfirm({
-      title: "Select practice slot",
-      message: `Claim ${slot.gameDate} ${formatSlotTime(slot)} at ${formatSlotLocation(slot)}?${recurringMsg}${shareMsg}`,
-      confirmLabel: "Select",
+      title: "Request recurring practice pattern",
+      message: `Request priority #${nextPracticeRequestPriority} for ${weekdayLabelFromDate(slot.gameDate)} ${formatSlotTime(slot)} at ${formatSlotLocation(slot)}?${recurringMsg} Commissioner approval locks the recurring pattern.${shareMsg}`,
+      confirmLabel: "Request",
     });
     if (!ok) return;
 
@@ -392,52 +428,27 @@ export default function PracticePortalPage({ me, leagueId }) {
     setRequestingSlot(String(slot.slotId || ""));
     try {
       const payload = {
+        division,
+        teamId: coachTeam.teamId,
+        slotId: slot.slotId,
+        priority: nextPracticeRequestPriority,
+        reason: "Recurring practice preference from practice portal",
         openToShareField,
         shareWithTeamId: openToShareField ? shareWithTeamId : "",
       };
-      const targets = recurringCandidates.length ? recurringCandidates : [slot];
-      let successCount = 0;
-      const failures = [];
-
-      for (const candidate of targets) {
-        try {
-          await apiFetch(`/api/slots/${encodeURIComponent(division)}/${encodeURIComponent(candidate.slotId)}/practice`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
-          successCount += 1;
-        } catch (e) {
-          failures.push({
-            slot: candidate,
-            message: e?.message || String(e),
-          });
-        }
-      }
-
+      await apiFetch("/api/practice-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
       await loadAll(division);
-      if (successCount > 0) {
-        const baseMessage = successCount === 1
-          ? "Practice slot confirmed."
-          : `Practice slot pattern confirmed for ${successCount} weeks.`;
-        const sharingSuffix = openToShareField ? " Sharing preference saved." : "";
-        const partialSuffix = failures.length ? ` ${failures.length} week(s) could not be claimed.` : "";
-        setToast({
-          tone: failures.length ? "warning" : "success",
-          message: `${baseMessage}${sharingSuffix}${partialSuffix}`.trim(),
-          duration: failures.length ? 4200 : 3000,
-        });
-      } else {
-        setErr(failures[0]?.message || "No matching weekly practice slots could be claimed.");
-      }
-
-      if (failures.length) {
-        const firstFew = failures
-          .slice(0, 3)
-          .map((f) => `${f.slot?.gameDate || "?"}: ${f.message}`)
-          .join(" | ");
-        setErr(`Some weeks were not claimed. ${firstFew}${failures.length > 3 ? " ..." : ""}`);
-      }
+      setToast({
+        tone: "success",
+        message: openToShareField
+          ? `Priority #${nextPracticeRequestPriority} requested. Sharing preference sent to commissioner.`
+          : `Priority #${nextPracticeRequestPriority} requested. Awaiting commissioner approval.`,
+        duration: 3200,
+      });
     } catch (e) {
       setErr(e?.message || String(e));
     } finally {
@@ -469,7 +480,7 @@ export default function PracticePortalPage({ me, leagueId }) {
       <div className="card">
         <h2>Practice selection portal</h2>
         <p className="muted">
-          Choose a practice slot pattern. Selecting a slot will claim the same field/day/time for matching open weeks in the regular-season availability set.
+          Coaches should submit up to 3 prioritized recurring practice requests. Commissioners approve one to lock the same field/day/time pattern across matching regular-season weeks.
         </p>
         <div className="formGrid">
           <label>
@@ -492,6 +503,42 @@ export default function PracticePortalPage({ me, leagueId }) {
         {notice ? <div className="callout callout--ok">{notice}</div> : null}
       </div>
 
+      <div className="card">
+        <div className="row row--wrap gap-2" style={{ alignItems: "center" }}>
+          <button
+            type="button"
+            className={`btn btn--sm ${portalMode === "recurring" ? "btn--primary" : ""}`}
+            onClick={() => setPortalMode("recurring")}
+          >
+            Recurring Selection
+          </button>
+          <button
+            type="button"
+            className="btn btn--sm"
+            onClick={() => setPortalMode("oneoff")}
+          >
+            One-off Practice Search
+          </button>
+        </div>
+        <div className="muted mt-2">
+          Recurring selection is the current setup workflow. One-off practice search will be enabled by the commissioner after recurring slots are finalized for teams.
+        </div>
+      </div>
+
+      {portalMode === "oneoff" ? (
+        <div className="card">
+          <h3>One-off practice search</h3>
+          <div className="callout">
+            <p>
+              One-off practice booking is not enabled yet for this league.
+            </p>
+            <p className="muted mt-2">
+              Commissioners should first approve recurring practice slots for teams. The next step will add a commissioner enable toggle and field/date search for self-requested one-off practices.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <>
       <div className="card">
         <h3>Your selected practices</h3>
         {practiceSelections.length ? (
@@ -519,6 +566,48 @@ export default function PracticePortalPage({ me, leagueId }) {
           </div>
         ) : (
           <div className="muted">No practice slots selected yet.</div>
+        )}
+      </div>
+
+      <div className="card">
+        <h3>Your recurring requests (priority 1-3)</h3>
+        {activePracticeRequests.length ? (
+          <div className="tableWrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Priority</th>
+                  <th>Status</th>
+                  <th>Day</th>
+                  <th>Time</th>
+                  <th>Location</th>
+                  <th>Requested</th>
+                  <th>Sharing</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activePracticeRequests.map((request) => (
+                  <tr key={request.requestId}>
+                    <td>{request.priority || "-"}</td>
+                    <td>{request.status}</td>
+                    <td>{weekdayLabelFromDate(request?.slot?.gameDate) || "-"}</td>
+                    <td>{request?.slot ? formatSlotTime(request.slot) : "-"}</td>
+                    <td>{request?.slot ? formatSlotLocation(request.slot) : (request.slot?.fieldKey || "-")}</td>
+                    <td>{request?.slot?.gameDate || "-"}</td>
+                    <td>
+                      {request.openToShareField
+                        ? `Open to share${request.shareWithTeamId ? ` (${request.shareWithTeamId})` : ""}`
+                        : "-"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="muted">
+            No recurring requests yet. Choose a day (defaults to Sunday) and request up to 3 prioritized options.
+          </div>
         )}
       </div>
 
@@ -573,13 +662,13 @@ export default function PracticePortalPage({ me, leagueId }) {
             </label>
           </div>
           <div className="muted mt-2">
-            This preference is attached to your practice slot selection(s) and can help commissioners coordinate shared fields.
+            This preference is attached to your recurring practice request(s) and can help commissioners coordinate shared fields.
           </div>
           <div className="muted">
-            Filter to a day (for example, Saturdays) and select one slot to claim that recurring field/time pattern for matching open regular-season weeks.
+            Filter to a day (defaults to Sunday) and request one recurring field/time pattern. Commissioner approval will lock matching regular-season weeks.
           </div>
           <div className="muted">
-            Choices that match your already-selected practice pattern appear first.
+            Choices matching your requested or approved patterns appear first.
           </div>
         </div>
         {availablePatternChoices.length ? (
@@ -601,8 +690,11 @@ export default function PracticePortalPage({ me, leagueId }) {
               <tbody>
                 {availablePatternChoices.map((choice) => {
                   const s = choice.representativeSlot;
-                  const disabled = choice.claimableWeeks <= 0;
-                  const statusLabel = choice.matchesSelectedPattern
+                  const hasExistingRequest = !!choice.existingRequest;
+                  const disabled = choice.claimableWeeks <= 0 || hasExistingRequest || !nextPracticeRequestPriority;
+                  const statusLabel = hasExistingRequest
+                    ? `Requested (P${choice.existingRequest?.priority || "?"}, ${choice.existingRequest?.status || "Pending"})`
+                    : choice.matchesSelectedPattern
                     ? "Matches your current pattern"
                     : (choice.blockedWeeks > 0 ? `${choice.blockedWeeks} week(s) blocked by existing selections` : "");
                   return (
@@ -620,16 +712,24 @@ export default function PracticePortalPage({ me, leagueId }) {
                           className="btn btn--primary"
                           type="button"
                           disabled={disabled || !!requestingSlot}
-                          onClick={() => claimPractice(s)}
+                          onClick={() => requestPracticePattern(choice)}
                           title={
-                            disabled
+                            hasExistingRequest
+                              ? "You already requested this recurring pattern"
+                              : !nextPracticeRequestPriority
+                                ? "You already have 3 active recurring requests"
+                                : disabled
                               ? "No claimable weeks remain in this pattern"
                               : requestingSlot
-                                ? "Processing practice selection..."
-                                : "Select this weekly pattern"
+                                ? "Submitting recurring request..."
+                                : `Request this pattern as priority #${nextPracticeRequestPriority}`
                           }
                         >
-                          {requestingSlot ? "Selecting..." : "Select"}
+                          {requestingSlot
+                            ? (requestingSlot === s?.slotId ? "Requesting..." : "Working...")
+                            : hasExistingRequest
+                              ? "Requested"
+                              : (nextPracticeRequestPriority ? `Request P${nextPracticeRequestPriority}` : "Max 3")}
                         </button>
                       </td>
                     </tr>
@@ -646,6 +746,8 @@ export default function PracticePortalPage({ me, leagueId }) {
           </div>
         )}
       </div>
+        </>
+      )}
 
       {toast ? <Toast tone={toast.tone} message={toast.message} onClose={() => setToast(null)} /> : null}
       <ConfirmDialog state={confirmState} onConfirm={handleConfirm} onCancel={handleCancel} />
