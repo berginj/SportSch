@@ -906,6 +906,7 @@ public class PracticeRequestService : IPracticeRequestService
         slot["OfferingTeamId"] = teamId;
         slot["IsAvailability"] = false;
         slot["GameType"] = "Practice";
+        slot["PracticeBookingMode"] = "RecurringApproved";
         slot["OpenToShareField"] = openToShareField;
         slot["ShareWithTeamId"] = openToShareField ? shareWithTeamId : "";
         slot["UpdatedUtc"] = nowUtc;

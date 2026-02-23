@@ -20,7 +20,7 @@ public class ClaimPracticeSlot
         _svc = svc;
     }
 
-    public record ClaimPracticeReq(string? notes, string? teamId, bool? openToShareField, string? shareWithTeamId);
+    public record ClaimPracticeReq(string? notes, string? teamId, bool? openToShareField, string? shareWithTeamId, bool? oneOffBooking);
 
     [Function("ClaimPracticeSlot")]
     public async Task<HttpResponseData> Run(
@@ -59,6 +59,7 @@ public class ClaimPracticeSlot
             var overrideTeamId = (body?.teamId ?? "").Trim();
             var openToShareField = body?.openToShareField ?? false;
             var shareWithTeamId = (body?.shareWithTeamId ?? "").Trim();
+            var oneOffBooking = body?.oneOffBooking ?? false;
 
             var canOverrideTeam = isGlobalAdmin || isLeagueAdmin;
             if (string.IsNullOrWhiteSpace(myTeamId))
@@ -96,6 +97,30 @@ public class ClaimPracticeSlot
             {
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "DIVISION_MISMATCH",
                     "You can only select practice slots in your exact division.");
+            }
+
+            if (oneOffBooking && !canOverrideTeam)
+            {
+                var oneOffGate = await CheckOneOffPracticeGateAsync(leagueId, divisionNorm);
+                if (!oneOffGate.oneOffEnabled)
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.Conflict, "PRACTICE_ONEOFF_DISABLED",
+                        "One-off practice booking is not enabled by the commissioner for this league.",
+                        new { oneOffEnabled = false, oneOffBooking = true });
+                }
+
+                if (!oneOffGate.allTeamsCovered)
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.Conflict, "PRACTICE_ONEOFF_BLOCKED",
+                        "One-off practice booking is not available until all teams in this division have an approved recurring practice.",
+                        new
+                        {
+                            oneOffEnabled = true,
+                            oneOffBooking = true,
+                            division = divisionNorm,
+                            missingTeams = oneOffGate.missingTeams
+                        });
+                }
             }
 
             if (!openToShareField)
@@ -181,7 +206,7 @@ public class ClaimPracticeSlot
             }
 
             var weekKey = WeekKey(gameDay);
-            if (!string.IsNullOrWhiteSpace(weekKey))
+            if (!oneOffBooking && !string.IsNullOrWhiteSpace(weekKey))
             {
                 var practiceConflict = await FindPracticeWeekConflictAsync(slots, leagueId, myTeamId, weekKey);
                 if (practiceConflict is not null)
@@ -225,6 +250,7 @@ public class ClaimPracticeSlot
             slot["OfferingEmail"] = me.Email ?? "";
             slot["IsAvailability"] = false;
             slot["GameType"] = "Practice";
+            slot["PracticeBookingMode"] = oneOffBooking ? "OneOffDirect" : "DirectClaim";
             slot["OpenToShareField"] = openToShareField;
             slot["ShareWithTeamId"] = shareWithTeamId;
             slot["UpdatedUtc"] = now;
@@ -240,6 +266,7 @@ public class ClaimPracticeSlot
                 gameType = "Practice",
                 openToShareField,
                 shareWithTeamId,
+                oneOffBooking,
                 weekKey,
                 requestedUtc = now
             }, HttpStatusCode.Created);
@@ -253,6 +280,55 @@ public class ClaimPracticeSlot
             _log.LogError(ex, "ClaimPracticeSlot failed");
             return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
         }
+    }
+
+    private async Task<(bool oneOffEnabled, bool allTeamsCovered, List<object> missingTeams)> CheckOneOffPracticeGateAsync(
+        string leagueId,
+        string division)
+    {
+        var leagues = await TableClients.GetTableAsync(_svc, Constants.Tables.Leagues);
+        var oneOffEnabled = false;
+        try
+        {
+            var league = (await leagues.GetEntityAsync<TableEntity>(Constants.Pk.Leagues, leagueId)).Value;
+            oneOffEnabled = league.GetBoolean("PracticeOneOffRequestsEnabled") ?? false;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            oneOffEnabled = false;
+        }
+
+        var teamsTable = await TableClients.GetTableAsync(_svc, Constants.Tables.Teams);
+        var teamPk = Constants.Pk.Teams(leagueId, division);
+        var teams = new List<(string teamId, string name)>();
+        await foreach (var team in teamsTable.QueryAsync<TableEntity>(filter: $"PartitionKey eq '{ApiGuards.EscapeOData(teamPk)}'"))
+        {
+            var teamId = (team.GetString("TeamId") ?? team.RowKey).Trim();
+            if (string.IsNullOrWhiteSpace(teamId)) continue;
+            var name = (team.GetString("Name") ?? "").Trim();
+            teams.Add((teamId, name));
+        }
+
+        var practiceRequests = await TableClients.GetTableAsync(_svc, Constants.Tables.PracticeRequests);
+        var requestPk = $"PRACTICEREQ|{leagueId}";
+        var requestFilter =
+            $"PartitionKey eq '{ApiGuards.EscapeOData(requestPk)}' and Division eq '{ApiGuards.EscapeOData(division)}' and Status eq 'Approved'";
+        var approvedTeams = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        await foreach (var req in practiceRequests.QueryAsync<TableEntity>(filter: requestFilter))
+        {
+            var teamId = (req.GetString("TeamId") ?? "").Trim();
+            if (!string.IsNullOrWhiteSpace(teamId))
+                approvedTeams.Add(teamId);
+        }
+
+        var missingTeams = teams
+            .Where(t => !approvedTeams.Contains(t.teamId))
+            .OrderBy(t => string.IsNullOrWhiteSpace(t.name) ? t.teamId : t.name)
+            .ThenBy(t => t.teamId)
+            .Select(t => (object)new { teamId = t.teamId, name = t.name })
+            .ToList();
+
+        return (oneOffEnabled, teams.Count > 0 && missingTeams.Count == 0, missingTeams);
     }
 
     private static async Task<object?> FindPracticeWeekConflictAsync(

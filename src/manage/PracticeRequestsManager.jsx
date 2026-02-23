@@ -41,7 +41,12 @@ function weekdayLabelFromDate(isoDate) {
  */
 export default function PracticeRequestsManager({ leagueId }) {
   const [requests, setRequests] = useState([]);
+  const [divisions, setDivisions] = useState([]);
+  const [portalDivision, setPortalDivision] = useState('');
+  const [portalSettings, setPortalSettings] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [portalLoading, setPortalLoading] = useState(false);
+  const [portalSaving, setPortalSaving] = useState(false);
   const [error, setError] = useState('');
   const [toast, setToast] = useState(null);
   const [statusFilter, setStatusFilter] = useState('Pending');
@@ -73,6 +78,43 @@ export default function PracticeRequestsManager({ leagueId }) {
     loadRequests();
   }, [loadRequests]);
 
+  const loadPortalSettings = useCallback(async (nextDivision = '') => {
+    if (!leagueId) return;
+    setPortalLoading(true);
+    try {
+      const [divs, settings] = await Promise.all([
+        apiFetch('/api/divisions').catch(() => []),
+        apiFetch(`/api/practice-portal/settings${nextDivision ? `?division=${encodeURIComponent(nextDivision)}` : ''}`).catch(() => null)
+      ]);
+      const divisionList = Array.isArray(divs) ? divs : [];
+      setDivisions(divisionList);
+
+      let resolvedDivision = nextDivision;
+      if (!resolvedDivision && divisionList.length) {
+        resolvedDivision = (divisionList[0]?.code || divisionList[0]?.division || '').trim();
+      }
+      if (resolvedDivision && resolvedDivision !== nextDivision) {
+        try {
+          const refreshed = await apiFetch(`/api/practice-portal/settings?division=${encodeURIComponent(resolvedDivision)}`);
+          setPortalSettings(refreshed && typeof refreshed === 'object' ? refreshed : null);
+        } catch {
+          setPortalSettings(settings && typeof settings === 'object' ? settings : null);
+        }
+      } else {
+        setPortalSettings(settings && typeof settings === 'object' ? settings : null);
+      }
+      setPortalDivision((prev) => (prev === resolvedDivision ? prev : resolvedDivision));
+    } catch (err) {
+      setError(err.message || 'Failed to load practice portal settings');
+    } finally {
+      setPortalLoading(false);
+    }
+  }, [leagueId]);
+
+  useEffect(() => {
+    loadPortalSettings(portalDivision);
+  }, [loadPortalSettings, portalDivision]);
+
   async function approveRequest(request) {
     const confirmed = await requestConfirm({
       title: 'Approve Practice Request',
@@ -96,6 +138,7 @@ export default function PracticeRequestsManager({ leagueId }) {
 
       setToast({ tone: 'success', message: 'Practice request approved' });
       await loadRequests();
+      await loadPortalSettings(portalDivision);
     } catch (err) {
       setError(err.message || 'Failed to approve request');
     } finally {
@@ -126,10 +169,38 @@ export default function PracticeRequestsManager({ leagueId }) {
 
       setToast({ tone: 'success', message: 'Practice request rejected' });
       await loadRequests();
+      await loadPortalSettings(portalDivision);
     } catch (err) {
       setError(err.message || 'Failed to reject request');
     } finally {
       setProcessingId('');
+    }
+  }
+
+  async function setOneOffPracticeEnabled(enabled) {
+    setPortalSaving(true);
+    setError('');
+    try {
+      const payload = {
+        oneOffRequestsEnabled: !!enabled,
+        division: portalDivision || ''
+      };
+      const result = await apiFetch('/api/practice-portal/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      setPortalSettings(result && typeof result === 'object' ? result : null);
+      setToast({
+        tone: 'success',
+        message: enabled
+          ? 'One-off practice self-booking enabled (coverage gate still applies by division).'
+          : 'One-off practice self-booking disabled.'
+      });
+    } catch (err) {
+      setError(err.message || 'Failed to update practice portal settings');
+    } finally {
+      setPortalSaving(false);
     }
   }
 
@@ -182,6 +253,68 @@ export default function PracticeRequestsManager({ leagueId }) {
       {error && (
         <div className="callout callout--error mb-4">{error}</div>
       )}
+
+      <div className="callout mb-4">
+        <div className="row row--wrap gap-3" style={{ alignItems: 'end' }}>
+          <label style={{ minWidth: 220 }}>
+            Coverage check division
+            <select
+              value={portalDivision}
+              onChange={(e) => setPortalDivision(e.target.value)}
+              disabled={portalLoading}
+            >
+              <option value="">Select division</option>
+              {divisions.map((d) => {
+                const code = (d?.code || d?.division || '').trim();
+                const name = (d?.name || code || '').trim();
+                return (
+                  <option key={code} value={code}>
+                    {name} ({code})
+                  </option>
+                );
+              })}
+            </select>
+          </label>
+          <label className="row row--wrap gap-2" style={{ alignItems: 'center' }}>
+            <input
+              type="checkbox"
+              checked={!!portalSettings?.oneOffRequestsEnabled}
+              onChange={(e) => setOneOffPracticeEnabled(e.target.checked)}
+              disabled={portalLoading || portalSaving}
+            />
+            <span>Enable one-off practice self-booking</span>
+          </label>
+          <button
+            type="button"
+            className="btn btn--sm"
+            onClick={() => loadPortalSettings(portalDivision)}
+            disabled={portalLoading || portalSaving}
+          >
+            {portalLoading ? 'Checking...' : 'Refresh gate status'}
+          </button>
+        </div>
+        <div className="muted mt-2">
+          One-off self-booking only unlocks for a division after all teams in that division have an approved recurring practice request.
+        </div>
+        {portalSettings?.divisionStatus ? (
+          <div className="mt-2">
+            <div>
+              Division coverage: <b>{portalSettings.divisionStatus.teamsWithApprovedRecurringPractice}/{portalSettings.divisionStatus.teamCount}</b>{" "}
+              {portalSettings.divisionStatus.allTeamsHaveRecurringPractice ? '(ready)' : '(not ready)'}
+            </div>
+            {Array.isArray(portalSettings.divisionStatus.missingTeams) && portalSettings.divisionStatus.missingTeams.length > 0 ? (
+              <div className="muted mt-1">
+                Missing recurring approvals: {portalSettings.divisionStatus.missingTeams
+                  .slice(0, 8)
+                  .map((t) => t?.name || t?.teamId)
+                  .filter(Boolean)
+                  .join(', ')}
+                {portalSettings.divisionStatus.missingTeams.length > 8 ? ' ...' : ''}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
 
       <div className="callout mb-4">
         <div className="row row--wrap gap-3" style={{ alignItems: 'center' }}>

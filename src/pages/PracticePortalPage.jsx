@@ -71,6 +71,14 @@ function weekdayLabelFromDate(isoDate) {
   return WEEKDAY_FILTER_OPTIONS.find((opt) => opt.key === key)?.label || "";
 }
 
+function isPracticeCapableAvailability(slot) {
+  if (!slot?.isAvailability) return false;
+  if ((slot?.status || "").trim() !== "Open") return false;
+  const allocationType = String(slot?.allocationSlotType || slot?.slotType || "").trim().toLowerCase();
+  if (!allocationType) return true;
+  return allocationType === "practice" || allocationType === "both";
+}
+
 export default function PracticePortalPage({ me, leagueId }) {
   const isGlobalAdmin = !!me?.isGlobalAdmin;
   const memberships = useMemo(
@@ -98,6 +106,7 @@ export default function PracticePortalPage({ me, leagueId }) {
   const [divisionTeams, setDivisionTeams] = useState([]);
   const [slots, setSlots] = useState([]);
   const [practiceRequests, setPracticeRequests] = useState([]);
+  const [portalSettings, setPortalSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [notice, setNotice] = useState("");
@@ -107,6 +116,10 @@ export default function PracticePortalPage({ me, leagueId }) {
   const [availableDayFilter, setAvailableDayFilter] = useState("0");
   const [requestingSlot, setRequestingSlot] = useState("");
   const [portalMode, setPortalMode] = useState("recurring");
+  const [oneOffDayFilter, setOneOffDayFilter] = useState("");
+  const [oneOffFieldSearch, setOneOffFieldSearch] = useState("");
+  const [oneOffDateFrom, setOneOffDateFrom] = useState("");
+  const [oneOffDateTo, setOneOffDateTo] = useState("");
   const initializedRef = useRef(false);
   const loadedDivisionRef = useRef("");
   const { confirmState, requestConfirm, handleConfirm, handleCancel } = useConfirmDialog();
@@ -139,22 +152,26 @@ export default function PracticePortalPage({ me, leagueId }) {
       if (preferred) {
         const params = new URLSearchParams({ division: preferred, status: "Open,Confirmed" });
         const requestParams = new URLSearchParams();
+        const portalParams = new URLSearchParams({ division: preferred });
         if (coachTeam.teamId) requestParams.set("teamId", coachTeam.teamId);
-        const [s, teams, requests] = await Promise.all([
+        const [s, teams, requests, settings] = await Promise.all([
           apiFetch(`/api/slots?${params.toString()}`),
           apiFetch(`/api/teams?division=${encodeURIComponent(preferred)}`).catch(() => []),
           coachTeam.teamId
             ? apiFetch(`/api/practice-requests?${requestParams.toString()}`).catch(() => [])
             : Promise.resolve([]),
+          apiFetch(`/api/practice-portal/settings?${portalParams.toString()}`).catch(() => null),
         ]);
         setSlots(Array.isArray(s) ? s : []);
         setDivisionTeams(Array.isArray(teams) ? teams : []);
         setPracticeRequests(Array.isArray(requests) ? requests : []);
+        setPortalSettings(settings && typeof settings === "object" ? settings : null);
         loadedDivisionRef.current = preferred;
       } else {
         setSlots([]);
         setDivisionTeams([]);
         setPracticeRequests([]);
+        setPortalSettings(null);
         loadedDivisionRef.current = "";
       }
     } catch (e) {
@@ -181,17 +198,20 @@ export default function PracticePortalPage({ me, leagueId }) {
       try {
         const params = new URLSearchParams({ division, status: "Open,Confirmed" });
         const requestParams = new URLSearchParams();
+        const portalParams = new URLSearchParams({ division });
         if (coachTeam.teamId) requestParams.set("teamId", coachTeam.teamId);
-        const [s, teams, requests] = await Promise.all([
+        const [s, teams, requests, settings] = await Promise.all([
           apiFetch(`/api/slots?${params.toString()}`),
           apiFetch(`/api/teams?division=${encodeURIComponent(division)}`).catch(() => []),
           coachTeam.teamId
             ? apiFetch(`/api/practice-requests?${requestParams.toString()}`).catch(() => [])
             : Promise.resolve([]),
+          apiFetch(`/api/practice-portal/settings?${portalParams.toString()}`).catch(() => null),
         ]);
         setSlots(Array.isArray(s) ? s : []);
         setDivisionTeams(Array.isArray(teams) ? teams : []);
         setPracticeRequests(Array.isArray(requests) ? requests : []);
+        setPortalSettings(settings && typeof settings === "object" ? settings : null);
         loadedDivisionRef.current = division;
       } catch (e) {
         setErr(e?.message || String(e));
@@ -304,11 +324,58 @@ export default function PracticePortalPage({ me, leagueId }) {
       });
   }, [slots]);
 
+  const practiceCapableOpenSlots = useMemo(() => {
+    return availableSlots.filter((s) => isPracticeCapableAvailability(s));
+  }, [availableSlots]);
+
   const filteredAvailableSlots = useMemo(() => {
     const dayKey = String(availableDayFilter || "").trim();
-    if (!dayKey) return availableSlots;
-    return availableSlots.filter((slot) => weekdayKeyFromDate(slot?.gameDate) === dayKey);
-  }, [availableSlots, availableDayFilter]);
+    if (!dayKey) return practiceCapableOpenSlots;
+    return practiceCapableOpenSlots.filter((slot) => weekdayKeyFromDate(slot?.gameDate) === dayKey);
+  }, [practiceCapableOpenSlots, availableDayFilter]);
+
+  const oneOffAvailabilityStatus = useMemo(() => {
+    const oneOffEnabled = !!portalSettings?.oneOffRequestsEnabled;
+    const divisionStatus = portalSettings?.divisionStatus || null;
+    const coverageReady = !!divisionStatus?.allTeamsHaveRecurringPractice;
+    return {
+      oneOffEnabled,
+      divisionStatus,
+      canBook: oneOffEnabled && coverageReady,
+    };
+  }, [portalSettings]);
+
+  const oneOffSearchResults = useMemo(() => {
+    const fieldSearch = String(oneOffFieldSearch || "").trim().toLowerCase();
+    const fromDate = String(oneOffDateFrom || "").trim();
+    const toDate = String(oneOffDateTo || "").trim();
+    const dayKey = String(oneOffDayFilter || "").trim();
+    return practiceCapableOpenSlots
+      .filter((slot) => {
+        const gameDate = String(slot?.gameDate || "").trim();
+        if (!gameDate) return false;
+        if (fromDate && gameDate < fromDate) return false;
+        if (toDate && gameDate > toDate) return false;
+        if (dayKey && weekdayKeyFromDate(gameDate) !== dayKey) return false;
+        if (!fieldSearch) return true;
+        const haystack = [
+          slot?.displayName,
+          slot?.fieldKey,
+          slot?.parkName,
+          slot?.fieldName,
+        ]
+          .map((v) => String(v || "").toLowerCase())
+          .join(" ");
+        return haystack.includes(fieldSearch);
+      })
+      .sort((a, b) => {
+        const ad = `${a?.gameDate || ""} ${a?.startTime || ""}`.trim();
+        const bd = `${b?.gameDate || ""} ${b?.startTime || ""}`.trim();
+        const cmp = ad.localeCompare(bd);
+        if (cmp !== 0) return cmp;
+        return formatSlotLocation(a).localeCompare(formatSlotLocation(b));
+      });
+  }, [practiceCapableOpenSlots, oneOffFieldSearch, oneOffDateFrom, oneOffDateTo, oneOffDayFilter]);
 
   const selectedPracticePatternKeys = useMemo(() => {
     const keys = new Set();
@@ -456,6 +523,62 @@ export default function PracticePortalPage({ me, leagueId }) {
     }
   }
 
+  async function bookOneOffPractice(slot) {
+    if (!slot?.slotId || !division) return;
+    if (!coachTeam.teamId) {
+      setErr("Your coach profile needs a team assignment before booking a one-off practice.");
+      return;
+    }
+    if (openToShareField && !shareWithTeamId) {
+      setErr('Select a team to propose sharing with, or uncheck "Open to sharing a field".');
+      return;
+    }
+
+    if (!oneOffAvailabilityStatus.canBook) {
+      setErr("One-off practice booking is not currently available.");
+      return;
+    }
+
+    const proposedShareTeam = shareableTeams.find((t) => (t?.teamId || "").trim() === shareWithTeamId);
+    const shareMsg = openToShareField
+      ? ` Open to share with: ${proposedShareTeam?.name || shareWithTeamId}.`
+      : "";
+
+    const ok = await requestConfirm({
+      title: "Book one-off practice",
+      message: `Book one-off practice on ${slot.gameDate} ${formatSlotTime(slot)} at ${formatSlotLocation(slot)}?${shareMsg}`,
+      confirmLabel: "Book",
+    });
+    if (!ok) return;
+
+    setErr("");
+    setRequestingSlot(String(slot.slotId || ""));
+    try {
+      await apiFetch(`/api/slots/${encodeURIComponent(division)}/${encodeURIComponent(slot.slotId)}/practice`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          openToShareField,
+          shareWithTeamId: openToShareField ? shareWithTeamId : "",
+          oneOffBooking: true,
+        }),
+      });
+
+      await loadAll(division);
+      setToast({
+        tone: "success",
+        message: openToShareField
+          ? "One-off practice booked. Sharing preference saved."
+          : "One-off practice booked.",
+        duration: 3000,
+      });
+    } catch (e) {
+      setErr(e?.message || String(e));
+    } finally {
+      setRequestingSlot("");
+    }
+  }
+
   if (loading) {
     return (
       <div className="page">
@@ -528,14 +651,157 @@ export default function PracticePortalPage({ me, leagueId }) {
       {portalMode === "oneoff" ? (
         <div className="card">
           <h3>One-off practice search</h3>
-          <div className="callout">
-            <p>
-              One-off practice booking is not enabled yet for this league.
-            </p>
-            <p className="muted mt-2">
-              Commissioners should first approve recurring practice slots for teams. The next step will add a commissioner enable toggle and field/date search for self-requested one-off practices.
-            </p>
+          <div className={`callout mb-3 ${oneOffAvailabilityStatus.canBook ? "callout--ok" : ""}`}>
+            <div>
+              Commissioner one-off booking toggle: <b>{oneOffAvailabilityStatus.oneOffEnabled ? "Enabled" : "Disabled"}</b>
+            </div>
+            <div className="mt-1">
+              Division recurring coverage:{" "}
+              <b>
+                {oneOffAvailabilityStatus.divisionStatus
+                  ? `${oneOffAvailabilityStatus.divisionStatus.teamsWithApprovedRecurringPractice}/${oneOffAvailabilityStatus.divisionStatus.teamCount}`
+                  : "-/-"}
+              </b>
+              {oneOffAvailabilityStatus.divisionStatus?.allTeamsHaveRecurringPractice
+                ? " (all teams covered)"
+                : " (waiting on recurring approvals)"}
+            </div>
+            {!oneOffAvailabilityStatus.oneOffEnabled ? (
+              <div className="muted mt-2">
+                Commissioner must enable one-off practice self-booking before coaches can use this tab.
+              </div>
+            ) : null}
+            {oneOffAvailabilityStatus.oneOffEnabled && !oneOffAvailabilityStatus.divisionStatus?.allTeamsHaveRecurringPractice ? (
+              <div className="muted mt-2">
+                One-off bookings unlock after all teams in this division have an approved recurring practice request.
+              </div>
+            ) : null}
+            {Array.isArray(oneOffAvailabilityStatus.divisionStatus?.missingTeams) &&
+            oneOffAvailabilityStatus.divisionStatus.missingTeams.length > 0 ? (
+              <div className="muted mt-2">
+                Missing recurring approval for:{" "}
+                {oneOffAvailabilityStatus.divisionStatus.missingTeams
+                  .slice(0, 8)
+                  .map((t) => t?.name || t?.teamId)
+                  .filter(Boolean)
+                  .join(", ")}
+                {oneOffAvailabilityStatus.divisionStatus.missingTeams.length > 8 ? " ..." : ""}
+              </div>
+            ) : null}
           </div>
+
+          <div className="callout mb-3">
+            <div className="row row--wrap gap-3">
+              <label className="row row--wrap gap-2" style={{ alignItems: "center" }}>
+                <input
+                  type="checkbox"
+                  checked={openToShareField}
+                  onChange={(e) => setOpenToShareField(e.target.checked)}
+                  disabled={!coachTeam.teamId}
+                />
+                <span>Open to sharing a field</span>
+              </label>
+              <label style={{ minWidth: 260 }}>
+                Propose sharing with team
+                <select
+                  value={shareWithTeamId}
+                  onChange={(e) => setShareWithTeamId(e.target.value)}
+                  disabled={!openToShareField || !coachTeam.teamId || shareableTeams.length === 0}
+                >
+                  <option value="">
+                    {!coachTeam.teamId
+                      ? "Coach team assignment required"
+                      : !openToShareField
+                        ? "Enable sharing first"
+                        : shareableTeams.length
+                          ? "Select a team"
+                          : "No other teams in division"}
+                  </option>
+                  {shareableTeams.map((t) => (
+                    <option key={t.teamId} value={t.teamId}>
+                      {t.name ? `${t.name} (${t.teamId})` : t.teamId}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="row row--wrap gap-3 mt-2">
+              <label style={{ minWidth: 220 }}>
+                Filter by day
+                <select value={oneOffDayFilter} onChange={(e) => setOneOffDayFilter(e.target.value)}>
+                  {WEEKDAY_FILTER_OPTIONS.map((opt) => (
+                    <option key={`oneoff-${opt.key || "all"}`} value={opt.key}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ minWidth: 180 }}>
+                Date from
+                <input type="date" value={oneOffDateFrom} onChange={(e) => setOneOffDateFrom(e.target.value)} />
+              </label>
+              <label style={{ minWidth: 180 }}>
+                Date to
+                <input type="date" value={oneOffDateTo} onChange={(e) => setOneOffDateTo(e.target.value)} />
+              </label>
+              <label className="flex-1 min-w-[220px]">
+                Search fields
+                <input
+                  value={oneOffFieldSearch}
+                  onChange={(e) => setOneOffFieldSearch(e.target.value)}
+                  placeholder="Search by field / park"
+                />
+              </label>
+            </div>
+            <div className="muted mt-2">
+              Search open practice-capable availability and book a single date (one-off) without changing your recurring practice selection.
+            </div>
+          </div>
+
+          {!oneOffAvailabilityStatus.canBook ? (
+            <div className="muted">One-off booking is currently locked.</div>
+          ) : oneOffSearchResults.length ? (
+            <div className="tableWrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Day</th>
+                    <th>Date</th>
+                    <th>Time</th>
+                    <th>Location</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {oneOffSearchResults.map((slot) => (
+                    <tr key={slot.slotId}>
+                      <td>{weekdayLabelFromDate(slot.gameDate)}</td>
+                      <td>{slot.gameDate}</td>
+                      <td>{formatSlotTime(slot)}</td>
+                      <td>{formatSlotLocation(slot)}</td>
+                      <td className="tableActions">
+                        <button
+                          type="button"
+                          className="btn btn--primary"
+                          disabled={!!requestingSlot}
+                          onClick={() => bookOneOffPractice(slot)}
+                          title={requestingSlot ? "Processing one-off booking..." : "Book this one-off practice"}
+                        >
+                          {requestingSlot
+                            ? (requestingSlot === slot.slotId ? "Booking..." : "Working...")
+                            : "Book one-off"}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="muted">
+              No open practice-capable slots match your search filters.
+            </div>
+          )}
         </div>
       ) : (
         <>
