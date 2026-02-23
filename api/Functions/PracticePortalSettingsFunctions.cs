@@ -15,21 +15,25 @@ namespace GameSwap.Functions.Functions;
 public class PracticePortalSettingsFunctions
 {
     private readonly ILeagueRepository _leagueRepo;
+    private readonly IDivisionRepository _divisionRepo;
     private readonly IMembershipRepository _membershipRepo;
     private readonly ITeamRepository _teamRepo;
     private readonly IPracticeRequestRepository _practiceRequestRepo;
     private readonly ILogger _log;
 
-    private const string OneOffEnabledProp = "PracticeOneOffRequestsEnabled";
+    private const string DivisionOneOffEnabledProp = "PracticeOneOffRequestsEnabled";
+    private const string LegacyLeagueOneOffEnabledProp = "PracticeOneOffRequestsEnabled";
 
     public PracticePortalSettingsFunctions(
         ILeagueRepository leagueRepo,
+        IDivisionRepository divisionRepo,
         IMembershipRepository membershipRepo,
         ITeamRepository teamRepo,
         IPracticeRequestRepository practiceRequestRepo,
         ILoggerFactory lf)
     {
         _leagueRepo = leagueRepo;
+        _divisionRepo = divisionRepo;
         _membershipRepo = membershipRepo;
         _teamRepo = teamRepo;
         _practiceRequestRepo = practiceRequestRepo;
@@ -77,11 +81,16 @@ public class PracticePortalSettingsFunctions
                 return ApiResponses.Error(req, HttpStatusCode.NotFound, "NOT_FOUND", $"league not found: {leagueId}");
             }
 
-            var oneOffEnabled = league.GetBoolean(OneOffEnabledProp) ?? false;
+            var oneOffEnabled = false;
             DivisionRecurringCoverageDto? divisionStatus = null;
             if (!string.IsNullOrWhiteSpace(division))
             {
+                oneOffEnabled = await ReadDivisionOneOffEnabledAsync(leagueId, division, leagueFallback: league);
                 divisionStatus = await BuildDivisionCoverageAsync(leagueId, division);
+            }
+            else
+            {
+                oneOffEnabled = league.GetBoolean(LegacyLeagueOneOffEnabledProp) ?? false;
             }
 
             return ApiResponses.Ok(req, new PracticePortalSettingsDto(
@@ -132,26 +141,32 @@ public class PracticePortalSettingsFunctions
                 return ApiResponses.Error(req, HttpStatusCode.NotFound, "NOT_FOUND", $"league not found: {leagueId}");
             }
 
+            var division = (body.division ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(division))
+            {
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST,
+                    "division is required when updating practice portal settings.");
+            }
+            ApiGuards.EnsureValidTableKeyPart("division", division);
+
+            var divisionEntity = await _divisionRepo.GetDivisionAsync(leagueId, division);
+            if (divisionEntity is null)
+            {
+                return ApiResponses.Error(req, HttpStatusCode.NotFound, "NOT_FOUND", $"division not found: {division}");
+            }
+
             if (body.oneOffRequestsEnabled.HasValue)
             {
-                league[OneOffEnabledProp] = body.oneOffRequestsEnabled.Value;
+                divisionEntity[DivisionOneOffEnabledProp] = body.oneOffRequestsEnabled.Value;
             }
-            league["UpdatedUtc"] = DateTimeOffset.UtcNow;
-            await _leagueRepo.UpdateLeagueAsync(league);
+            divisionEntity["UpdatedUtc"] = DateTimeOffset.UtcNow;
+            await _divisionRepo.UpdateDivisionAsync(divisionEntity);
 
-            var division = (body.division ?? "").Trim();
-            if (!string.IsNullOrWhiteSpace(division))
-                ApiGuards.EnsureValidTableKeyPart("division", division);
-
-            DivisionRecurringCoverageDto? divisionStatus = null;
-            if (!string.IsNullOrWhiteSpace(division))
-            {
-                divisionStatus = await BuildDivisionCoverageAsync(leagueId, division);
-            }
+            var divisionStatus = await BuildDivisionCoverageAsync(leagueId, division);
 
             return ApiResponses.Ok(req, new PracticePortalSettingsDto(
                 recurringSelectionEnabled: true,
-                oneOffRequestsEnabled: league.GetBoolean(OneOffEnabledProp) ?? false,
+                oneOffRequestsEnabled: divisionEntity.GetBoolean(DivisionOneOffEnabledProp) ?? false,
                 divisionStatus: divisionStatus));
         }
         catch (ApiGuards.HttpError ex)
@@ -199,5 +214,16 @@ public class PracticePortalSettingsFunctions
             teamsWithApprovedRecurringPractice: activeTeams.Count - missingTeams.Count,
             allTeamsHaveRecurringPractice: activeTeams.Count > 0 && missingTeams.Count == 0,
             missingTeams: missingTeams);
+    }
+
+    private async Task<bool> ReadDivisionOneOffEnabledAsync(string leagueId, string division, TableEntity? leagueFallback)
+    {
+        var divisionEntity = await _divisionRepo.GetDivisionAsync(leagueId, division);
+        if (divisionEntity is not null && divisionEntity.TryGetValue(DivisionOneOffEnabledProp, out var _))
+        {
+            return divisionEntity.GetBoolean(DivisionOneOffEnabledProp) ?? false;
+        }
+
+        return leagueFallback?.GetBoolean(LegacyLeagueOneOffEnabledProp) ?? false;
     }
 }

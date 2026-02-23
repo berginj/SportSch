@@ -194,8 +194,8 @@ export default function PracticeRequestsManager({ leagueId }) {
       setToast({
         tone: 'success',
         message: enabled
-          ? 'One-off practice self-booking enabled (coverage gate still applies by division).'
-          : 'One-off practice self-booking disabled.'
+          ? `One-off practice self-booking enabled for ${portalDivision || 'the selected division'} (coverage gate still applies).`
+          : `One-off practice self-booking disabled for ${portalDivision || 'the selected division'}.`
       });
     } catch (err) {
       setError(err.message || 'Failed to update practice portal settings');

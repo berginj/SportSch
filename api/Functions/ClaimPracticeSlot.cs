@@ -287,15 +287,32 @@ public class ClaimPracticeSlot
         string division)
     {
         var leagues = await TableClients.GetTableAsync(_svc, Constants.Tables.Leagues);
+        var divisions = await TableClients.GetTableAsync(_svc, Constants.Tables.Divisions);
         var oneOffEnabled = false;
         try
         {
-            var league = (await leagues.GetEntityAsync<TableEntity>(Constants.Pk.Leagues, leagueId)).Value;
-            oneOffEnabled = league.GetBoolean("PracticeOneOffRequestsEnabled") ?? false;
+            var divisionEntity = (await divisions.GetEntityAsync<TableEntity>(Constants.Pk.Divisions(leagueId), division)).Value;
+            if (divisionEntity.TryGetValue("PracticeOneOffRequestsEnabled", out var _))
+            {
+                oneOffEnabled = divisionEntity.GetBoolean("PracticeOneOffRequestsEnabled") ?? false;
+            }
+            else
+            {
+                var league = (await leagues.GetEntityAsync<TableEntity>(Constants.Pk.Leagues, leagueId)).Value;
+                oneOffEnabled = league.GetBoolean("PracticeOneOffRequestsEnabled") ?? false;
+            }
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {
-            oneOffEnabled = false;
+            try
+            {
+                var league = (await leagues.GetEntityAsync<TableEntity>(Constants.Pk.Leagues, leagueId)).Value;
+                oneOffEnabled = league.GetBoolean("PracticeOneOffRequestsEnabled") ?? false;
+            }
+            catch (RequestFailedException ex2) when (ex2.Status == 404)
+            {
+                oneOffEnabled = false;
+            }
         }
 
         var teamsTable = await TableClients.GetTableAsync(_svc, Constants.Tables.Teams);
