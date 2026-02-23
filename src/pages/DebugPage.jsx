@@ -373,6 +373,19 @@ export default function DebugPage({ leagueId, me }) {
     return lines.join("\n");
   }, [previewPortalAvailableSlotsAllFiltered, previewPortalSeasonWeekOrdinalByKey]);
 
+  const previewPortalGoogleFormPatternOptionsText = useMemo(() => {
+    const lines = previewPortalRecurringChoices.map((choice) => {
+      const slot = choice?.representativeSlot || null;
+      const location = formatSlotLocation(slot);
+      const startTime = normalizeText(slot?.startTime);
+      const endTime = normalizeText(slot?.endTime);
+      const timeLabel = startTime && endTime ? `${startTime}-${endTime}` : (startTime || endTime || "-");
+      const weeksLabel = choice?.weekRangeLabel || "-";
+      return `${location} | ${timeLabel} | ${weeksLabel}`;
+    });
+    return lines.join("\n");
+  }, [previewPortalRecurringChoices]);
+
   useEffect(() => {
     if (!previewPortalOpenToShareField && previewPortalShareWithTeamId) {
       setPreviewPortalShareWithTeamId("");
@@ -1521,6 +1534,19 @@ export default function DebugPage({ leagueId, me }) {
                     readOnly
                     value={previewPortalGoogleFormOptionsText || ""}
                     rows={Math.min(16, Math.max(4, (previewPortalGoogleFormOptionsText || "").split("\n").filter(Boolean).length + 1))}
+                    style={{ width: "100%", marginTop: "0.5rem", fontFamily: "monospace" }}
+                  />
+                </div>
+
+                <div className="mb-3">
+                  <h5 className="m-0">Google Form option text (Field | Time | Weeks)</h5>
+                  <div className="muted mt-1">
+                    One line per recurring pattern (field + time + season week range){previewPortalDayFilter ? " (filtered by selected day)" : ""}.
+                  </div>
+                  <textarea
+                    readOnly
+                    value={previewPortalGoogleFormPatternOptionsText || ""}
+                    rows={Math.min(16, Math.max(4, (previewPortalGoogleFormPatternOptionsText || "").split("\n").filter(Boolean).length + 1))}
                     style={{ width: "100%", marginTop: "0.5rem", fontFamily: "monospace" }}
                   />
                 </div>
