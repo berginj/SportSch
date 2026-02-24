@@ -208,4 +208,39 @@ public class ScheduleEngineTests
         var externalHomes = new HashSet<string>(result.Assignments.ConvertAll(a => a.HomeTeamId), StringComparer.OrdinalIgnoreCase);
         Assert.Equal(4, externalHomes.Count);
     }
+
+    [Fact]
+    public void AssignMatchups_PrefersFillingLongerIdleGap_WhenOtherwiseComparable()
+    {
+        var teams = new List<string> { "A", "B", "C", "D" };
+        var matchups = new List<MatchupPair>
+        {
+            new("C", "D"), // later game for C/D (farther from slot-gap)
+            new("A", "B"), // later game for A/B (closer to slot-gap)
+            new("A", "B"), // slot-gap candidate repeat (short gap)
+            new("C", "D"), // slot-gap candidate repeat (long gap)
+        };
+        var slots = new List<ScheduleSlot>
+        {
+            new("slot-w13", "2026-06-14", "10:00", "12:00", "Field-1", "C"),
+            new("slot-w10", "2026-05-24", "10:00", "12:00", "Field-1", "A"),
+            new("slot-gap", "2026-05-03", "10:00", "12:00", "Field-1", ""),
+        };
+        var constraints = new ScheduleConstraints(MaxGamesPerWeek: 2, NoDoubleHeaders: false, BalanceHomeAway: false, ExternalOfferPerWeek: 0);
+
+        var result = ScheduleEngine.AssignMatchups(slots, matchups, teams, constraints, includePlacementTraces: true);
+
+        Assert.Equal(3, result.Assignments.Count);
+        var gapAssignment = Assert.Single(result.Assignments.FindAll(a => a.SlotId == "slot-gap"));
+        Assert.Equal("C", gapAssignment.HomeTeamId);
+        Assert.Equal("D", gapAssignment.AwayTeamId);
+
+        var trace = Assert.Single(result.PlacementTraces!.FindAll(t => t.SlotId == "slot-gap"));
+        Assert.NotNull(trace.SelectedScoreBreakdown);
+        Assert.True(trace.SelectedScoreBreakdown!.IdleGapReductionBonus > 0);
+        Assert.Contains(
+            trace.TopFeasibleAlternatives,
+            c => c.HomeTeamId == "A" && c.AwayTeamId == "B" &&
+                 (c.ScoreBreakdown?.IdleGapReductionBonus ?? 0) < trace.SelectedScoreBreakdown.IdleGapReductionBonus);
+    }
 }
