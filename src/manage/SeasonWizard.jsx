@@ -243,6 +243,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [step, setStep] = useState(0);
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [repairApplyingId, setRepairApplyingId] = useState("");
   const [err, setErr] = useState("");
   const [toast, setToast] = useState(null);
   const [slotPlan, setSlotPlan] = useState([]);
@@ -1048,6 +1049,34 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       setErr(e?.message || "Apply failed.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function applyPreviewRepairProposal(proposal) {
+    if (!preview || !proposal || proposal.requiresUserAction) return;
+    const changes = Array.isArray(proposal.changes) ? proposal.changes : [];
+    const hasMove = changes.some((c) => String(c?.changeType || "").toLowerCase() === "move");
+    if (!hasMove) return;
+
+    setErr("");
+    setRepairApplyingId(String(proposal.proposalId || "repair"));
+    try {
+      const payload = {
+        wizard: buildWizardPayload(),
+        preview,
+        proposal,
+      };
+      const data = await apiFetch("/api/schedule/wizard/repair/apply-preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      setPreview(data || null);
+      setToast({ tone: "success", message: "Preview repair applied and revalidated." });
+    } catch (e) {
+      setErr(e?.message || "Failed to apply preview repair.");
+    } finally {
+      setRepairApplyingId("");
     }
   }
 
@@ -2571,6 +2600,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                       <tbody>
                         {previewRepairProposals.slice(0, 10).map((p, idx) => {
                           const rules = Array.isArray(p?.fixesRuleIds) ? p.fixesRuleIds : [];
+                          const changes = Array.isArray(p?.changes) ? p.changes : [];
+                          const canApplyPreviewFix = !p?.requiresUserAction && changes.some((c) => String(c?.changeType || "").toLowerCase() === "move");
+                          const isApplyingThis = repairApplyingId && String(p?.proposalId || "") === repairApplyingId;
                           const hardResolved = Number(p?.hardViolationsResolved || 0);
                           const hardRemaining = Number(p?.hardViolationsRemaining || 0);
                           const gamesMoved = Number(p?.gamesMoved || 0);
@@ -2595,7 +2627,21 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                                 <div className="subtle">{teamsTouched} team(s), {weeksTouched} week(s)</div>
                               </td>
                               <td>{p?.requiresUserAction ? "Manual action" : "Move/swap"}</td>
-                              <td>{p?.rationale || ""}</td>
+                              <td>
+                                <div>{p?.rationale || ""}</div>
+                                {canApplyPreviewFix ? (
+                                  <div className="mt-1">
+                                    <button
+                                      type="button"
+                                      className="btn btn--ghost"
+                                      onClick={() => applyPreviewRepairProposal(p)}
+                                      disabled={!!repairApplyingId}
+                                    >
+                                      {isApplyingThis ? "Applying fix..." : "Apply Fix (Preview)"}
+                                    </button>
+                                  </div>
+                                ) : null}
+                              </td>
                             </tr>
                           );
                         })}

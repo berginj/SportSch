@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Net;
+using System.Text.Json;
 using Azure;
 using Azure.Data.Tables;
 using GameSwap.Functions.Scheduling;
@@ -111,6 +112,12 @@ public class ScheduleWizardFunctions
         bool applyBlocked,
         int? seed,
         string? constructionStrategy
+    );
+
+    public record WizardPreviewRepairRequest(
+        WizardRequest? wizard,
+        WizardPreviewDto? preview,
+        ScheduleRepairProposal? proposal
     );
 
     [Function("ScheduleWizardPreview")]
@@ -232,6 +239,53 @@ public class ScheduleWizardFunctions
                 HttpStatusCode.InternalServerError,
                 ErrorCodes.INTERNAL_ERROR,
                 "An error occurred while analyzing feasibility.",
+                new { requestId, exception = ex.GetType().Name, detail = ex.Message });
+        }
+    }
+
+    [Function("ScheduleWizardApplyPreviewRepair")]
+    public async Task<HttpResponseData> ApplyPreviewRepair(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "schedule/wizard/repair/apply-preview")] HttpRequestData req)
+    {
+        try
+        {
+            var leagueId = ApiGuards.RequireLeagueId(req);
+            var me = IdentityUtil.GetMe(req);
+            await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+
+            var body = await HttpUtil.ReadJsonAsync<WizardPreviewRepairRequest>(req);
+            if (body is null || body.wizard is null || body.preview is null || body.proposal is null)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST, "wizard, preview, and proposal are required.");
+
+            var division = (body.wizard.division ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(division))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST, "division is required");
+            ApiGuards.EnsureValidTableKeyPart("division", division);
+
+            if (body.proposal.RequiresUserAction)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST, "Manual-action repair proposals cannot be auto-applied.");
+
+            var teams = await LoadTeamsAsync(leagueId, division);
+            var blockedRanges = NormalizeBlockedDateRanges(body.wizard.blockedDateRanges);
+            var validationConfig = BuildValidationConfig(
+                maxGamesPerWeek: (body.wizard.maxGamesPerWeek ?? 0) <= 0 ? null : body.wizard.maxGamesPerWeek,
+                noDoubleHeaders: body.wizard.noDoubleHeaders ?? true,
+                balanceHomeAway: body.wizard.balanceHomeAway ?? true,
+                blockedRanges: blockedRanges);
+
+            var updatedPreview = ApplyRepairProposalToPreviewSnapshot(body.preview, body.proposal, teams, validationConfig);
+            return ApiResponses.Ok(req, updatedPreview);
+        }
+        catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Schedule wizard preview repair failed");
+            var requestId = req.FunctionContext.InvocationId.ToString();
+            return ApiResponses.Error(
+                req,
+                HttpStatusCode.InternalServerError,
+                ErrorCodes.INTERNAL_ERROR,
+                "An unexpected error occurred",
                 new { requestId, exception = ex.GetType().Name, detail = ex.Message });
         }
     }
@@ -548,6 +602,279 @@ public class ScheduleWizardFunctions
             _ => "backward_greedy_v1" // Default to backward construction for regular-season scheduling.
         };
     }
+
+    private static ScheduleValidationV2Config BuildValidationConfig(
+        int? maxGamesPerWeek,
+        bool noDoubleHeaders,
+        bool balanceHomeAway,
+        List<BlockedDateRange> blockedRanges)
+    {
+        return new ScheduleValidationV2Config(
+            MaxGamesPerWeek: maxGamesPerWeek,
+            NoDoubleHeaders: noDoubleHeaders,
+            BalanceHomeAway: balanceHomeAway,
+            BlackoutWindows: blockedRanges
+                .Select((b, idx) => new ScheduleBlackoutWindow(
+                    RuleId: $"blackout-{idx + 1}",
+                    StartDate: b.StartDate,
+                    EndDate: b.EndDate,
+                    Label: string.IsNullOrWhiteSpace(b.Label) ? $"Blocked range {idx + 1}" : b.Label))
+                .ToList(),
+            TreatUnassignedRequiredMatchupsAsHard: true);
+    }
+
+    private static WizardPreviewDto ApplyRepairProposalToPreviewSnapshot(
+        WizardPreviewDto preview,
+        ScheduleRepairProposal proposal,
+        IReadOnlyList<string> teams,
+        ScheduleValidationV2Config validationConfig)
+    {
+        var assignments = (preview.assignments ?? new List<WizardSlotDto>()).Select(a => a with { }).ToList();
+        var unassignedSlots = (preview.unassignedSlots ?? new List<WizardSlotDto>()).Select(a => a with { }).ToList();
+        var unassignedMatchups = preview.unassignedMatchups ?? new List<object>();
+        var warnings = preview.warnings ?? new List<object>();
+
+        if (!TryExtractMoveChange(proposal, out var move))
+            throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, "Only move repair proposals are supported right now.");
+
+        var assignmentIndex = assignments.FindIndex(a =>
+            string.Equals(a.phase, "Regular Season", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(a.slotId, move.FromSlotId, StringComparison.OrdinalIgnoreCase));
+        if (assignmentIndex < 0)
+            throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, "The selected game could not be found in the current preview.");
+
+        var targetUnusedIndex = unassignedSlots.FindIndex(s =>
+            string.Equals(s.phase, "Regular Season", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(s.slotId, move.ToSlotId, StringComparison.OrdinalIgnoreCase));
+        if (targetUnusedIndex < 0)
+            throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, "The target open slot is no longer available in the current preview.");
+
+        var currentAssignment = assignments[assignmentIndex];
+        if (!string.Equals(currentAssignment.homeTeamId, move.BeforeHomeTeamId, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(currentAssignment.awayTeamId, move.BeforeAwayTeamId, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, "The preview changed and this repair proposal is stale. Run preview again.");
+        }
+
+        assignments[assignmentIndex] = currentAssignment with
+        {
+            slotId = move.ToSlotId,
+            gameDate = move.ToGameDate,
+            startTime = move.ToStartTime,
+            endTime = move.ToEndTime,
+            fieldKey = move.ToFieldKey
+        };
+
+        // Free the previous slot back to open regular-season capacity.
+        unassignedSlots.RemoveAt(targetUnusedIndex);
+        unassignedSlots.Add(new WizardSlotDto(
+            phase: "Regular Season",
+            slotId: move.FromSlotId,
+            gameDate: move.FromGameDate,
+            startTime: move.FromStartTime,
+            endTime: move.FromEndTime,
+            fieldKey: move.FromFieldKey,
+            homeTeamId: "",
+            awayTeamId: "",
+            isExternalOffer: false));
+
+        var regularAssignments = assignments
+            .Where(a => string.Equals(a.phase, "Regular Season", StringComparison.OrdinalIgnoreCase))
+            .Select(ToScheduleAssignment)
+            .ToList();
+        var regularUnassignedSlots = unassignedSlots
+            .Where(a => string.Equals(a.phase, "Regular Season", StringComparison.OrdinalIgnoreCase))
+            .Select(ToScheduleAssignment)
+            .ToList();
+        var regularUnassignedMatchups = ParsePreviewUnassignedMatchups(unassignedMatchups, "Regular Season");
+
+        var regularSummary = preview.summary.regularSeason;
+        var validationSummary = new ScheduleSummary(
+            SlotsTotal: regularSummary.slotsTotal,
+            SlotsAssigned: regularAssignments.Count,
+            MatchupsTotal: regularSummary.matchupsTotal,
+            MatchupsAssigned: regularSummary.matchupsTotal - regularUnassignedMatchups.Count,
+            ExternalOffers: regularAssignments.Count(a => a.IsExternalOffer),
+            UnassignedSlots: regularUnassignedSlots.Count,
+            UnassignedMatchups: regularUnassignedMatchups.Count);
+        var regularResult = new ScheduleResult(validationSummary, regularAssignments, regularUnassignedSlots, regularUnassignedMatchups);
+
+        var strictValidation = ScheduleValidationV2.Validate(regularResult, validationConfig, teams);
+        var regularIssues = BuildRegularSeasonIssuesFromRuleHealth(strictValidation.RuleHealth);
+        var otherIssues = (preview.issues ?? new List<object>())
+            .Where(issue => !string.Equals(GetIssuePhaseFromObject(issue), "Regular Season", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var mergedIssues = new List<object>(otherIssues.Count + regularIssues.Count);
+        mergedIssues.AddRange(otherIssues);
+        mergedIssues.AddRange(regularIssues);
+
+        var repairProposals = ScheduleRepairEngine.Propose(regularResult, strictValidation.RuleHealth, validationConfig, teams, maxProposals: 8)
+            .Cast<object>()
+            .ToList();
+
+        return new WizardPreviewDto(
+            summary: preview.summary,
+            assignments: assignments,
+            unassignedSlots: unassignedSlots
+                .OrderBy(s => s.phase)
+                .ThenBy(s => s.gameDate)
+                .ThenBy(s => s.startTime)
+                .ThenBy(s => s.fieldKey)
+                .ToList(),
+            unassignedMatchups: unassignedMatchups,
+            warnings: warnings,
+            issues: mergedIssues,
+            totalIssues: mergedIssues.Count,
+            ruleHealth: strictValidation.RuleHealth,
+            repairProposals: repairProposals,
+            applyBlocked: strictValidation.RuleHealth.ApplyBlocked,
+            seed: preview.seed,
+            constructionStrategy: preview.constructionStrategy
+        );
+    }
+
+    private static List<object> BuildRegularSeasonIssuesFromRuleHealth(ScheduleRuleHealthReport ruleHealth)
+    {
+        return (ruleHealth.Groups ?? Array.Empty<ScheduleRuleGroupReport>())
+            .Select(g => (object)new
+            {
+                phase = "Regular Season",
+                ruleId = g.RuleId,
+                severity = string.Equals(g.Severity, "hard", StringComparison.OrdinalIgnoreCase) ? "error" : "warning",
+                message = g.Summary,
+                details = new Dictionary<string, object?>
+                {
+                    ["count"] = g.Count,
+                    ["severity"] = g.Severity,
+                    ["smallestAffectedSet"] = g.SmallestAffectedSet
+                }
+            })
+            .ToList();
+    }
+
+    private static string GetIssuePhaseFromObject(object? issue)
+    {
+        if (issue is null) return "";
+        if (issue is JsonElement el)
+        {
+            if (el.ValueKind == JsonValueKind.Object)
+            {
+                if (el.TryGetProperty("phase", out var phaseEl))
+                    return phaseEl.GetString() ?? "";
+                if (el.TryGetProperty("details", out var detailsEl) && detailsEl.ValueKind == JsonValueKind.Object &&
+                    detailsEl.TryGetProperty("phase", out var detailsPhase))
+                    return detailsPhase.GetString() ?? "";
+            }
+            return "";
+        }
+        try
+        {
+            var serialized = JsonSerializer.Serialize(issue);
+            using var doc = JsonDocument.Parse(serialized);
+            return GetIssuePhaseFromObject(doc.RootElement);
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    private static List<MatchupPair> ParsePreviewUnassignedMatchups(List<object> rows, string phase)
+    {
+        var list = new List<MatchupPair>();
+        foreach (var row in rows ?? new List<object>())
+        {
+            var phaseValue = GetIssuePhaseFromObject(row);
+            if (!string.Equals(phaseValue, phase, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var home = ReadJsonObjectString(row, "homeTeamId");
+            var away = ReadJsonObjectString(row, "awayTeamId");
+            if (string.IsNullOrWhiteSpace(home) || string.IsNullOrWhiteSpace(away))
+                continue;
+            list.Add(new MatchupPair(home, away));
+        }
+        return list;
+    }
+
+    private static ScheduleAssignment ToScheduleAssignment(WizardSlotDto slot)
+        => new(slot.slotId ?? "", slot.gameDate ?? "", slot.startTime ?? "", slot.endTime ?? "", slot.fieldKey ?? "", slot.homeTeamId ?? "", slot.awayTeamId ?? "", slot.isExternalOffer);
+
+    private static bool TryExtractMoveChange(ScheduleRepairProposal proposal, out PreviewMoveChange move)
+    {
+        move = default;
+        var change = (proposal.Changes ?? Array.Empty<ScheduleDiffChange>())
+            .FirstOrDefault(c => string.Equals(c.ChangeType, "move", StringComparison.OrdinalIgnoreCase));
+        if (change is null || string.IsNullOrWhiteSpace(change.FromSlotId) || string.IsNullOrWhiteSpace(change.ToSlotId))
+            return false;
+
+        var beforeGameDate = ReadJsonObjectString(change.Before, "gameDate");
+        var beforeStart = ReadJsonObjectString(change.Before, "startTime");
+        var beforeEnd = ReadJsonObjectString(change.Before, "endTime");
+        var beforeField = ReadJsonObjectString(change.Before, "fieldKey");
+        var beforeHome = ReadJsonObjectString(change.Before, "homeTeamId");
+        var beforeAway = ReadJsonObjectString(change.Before, "awayTeamId");
+
+        var afterGameDate = ReadJsonObjectString(change.After, "gameDate");
+        var afterStart = ReadJsonObjectString(change.After, "startTime");
+        var afterEnd = ReadJsonObjectString(change.After, "endTime");
+        var afterField = ReadJsonObjectString(change.After, "fieldKey");
+
+        if (string.IsNullOrWhiteSpace(beforeGameDate) || string.IsNullOrWhiteSpace(beforeStart) || string.IsNullOrWhiteSpace(beforeEnd) || string.IsNullOrWhiteSpace(beforeField))
+            return false;
+        if (string.IsNullOrWhiteSpace(afterGameDate) || string.IsNullOrWhiteSpace(afterStart) || string.IsNullOrWhiteSpace(afterEnd) || string.IsNullOrWhiteSpace(afterField))
+            return false;
+
+        move = new PreviewMoveChange(
+            FromSlotId: change.FromSlotId!,
+            FromGameDate: beforeGameDate,
+            FromStartTime: beforeStart,
+            FromEndTime: beforeEnd,
+            FromFieldKey: beforeField,
+            BeforeHomeTeamId: beforeHome,
+            BeforeAwayTeamId: beforeAway,
+            ToSlotId: change.ToSlotId!,
+            ToGameDate: afterGameDate,
+            ToStartTime: afterStart,
+            ToEndTime: afterEnd,
+            ToFieldKey: afterField);
+        return true;
+    }
+
+    private static string ReadJsonObjectString(object? value, string propertyName)
+    {
+        if (value is null) return "";
+        if (value is JsonElement el)
+        {
+            if (el.ValueKind == JsonValueKind.Object && el.TryGetProperty(propertyName, out var prop))
+                return prop.ValueKind == JsonValueKind.String ? (prop.GetString() ?? "") : prop.ToString();
+            return "";
+        }
+        try
+        {
+            var serialized = JsonSerializer.Serialize(value);
+            using var doc = JsonDocument.Parse(serialized);
+            return ReadJsonObjectString(doc.RootElement, propertyName);
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    private readonly record struct PreviewMoveChange(
+        string FromSlotId,
+        string FromGameDate,
+        string FromStartTime,
+        string FromEndTime,
+        string FromFieldKey,
+        string BeforeHomeTeamId,
+        string BeforeAwayTeamId,
+        string ToSlotId,
+        string ToGameDate,
+        string ToStartTime,
+        string ToEndTime,
+        string ToFieldKey);
 
     private record PhaseAssignments(
         List<ScheduleAssignment> Assignments,
