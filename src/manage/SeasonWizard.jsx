@@ -151,6 +151,80 @@ function parseMinutes(raw) {
   return h * 60 + m;
 }
 
+function readObjectString(obj, key) {
+  if (!obj || typeof obj !== "object") return "";
+  const value = obj[key];
+  if (value == null) return "";
+  return String(value).trim();
+}
+
+function buildRepairProposalScope(proposal) {
+  if (!proposal || typeof proposal !== "object") return null;
+  const changes = Array.isArray(proposal.changes) ? proposal.changes : [];
+  const slotIds = new Set();
+  const teamIds = new Set();
+  const weekKeys = new Set();
+  const fieldKeys = new Set();
+  const dates = new Set();
+  const moveSummaries = [];
+
+  const collectEndpoint = (endpoint, fallbackSlotId) => {
+    if (!endpoint || typeof endpoint !== "object") return null;
+    const slotId = readObjectString(endpoint, "slotId") || String(fallbackSlotId || "").trim();
+    const gameDate = readObjectString(endpoint, "gameDate");
+    const startTime = readObjectString(endpoint, "startTime");
+    const endTime = readObjectString(endpoint, "endTime");
+    const fieldKey = readObjectString(endpoint, "fieldKey");
+    const homeTeamId = readObjectString(endpoint, "homeTeamId");
+    const awayTeamId = readObjectString(endpoint, "awayTeamId");
+    if (slotId) slotIds.add(slotId);
+    if (gameDate) {
+      dates.add(gameDate);
+      const weekKey = weekStartIso(gameDate);
+      if (weekKey) weekKeys.add(weekKey);
+    }
+    if (fieldKey) fieldKeys.add(fieldKey);
+    if (homeTeamId) teamIds.add(homeTeamId);
+    if (awayTeamId) teamIds.add(awayTeamId);
+    return { slotId, gameDate, startTime, endTime, fieldKey, homeTeamId, awayTeamId };
+  };
+
+  changes.forEach((change, idx) => {
+    const changeType = String(change?.changeType || "").trim().toLowerCase();
+    const fromSlotId = String(change?.fromSlotId || "").trim();
+    const toSlotId = String(change?.toSlotId || "").trim();
+    if (fromSlotId) slotIds.add(fromSlotId);
+    if (toSlotId) slotIds.add(toSlotId);
+    const before = collectEndpoint(change?.before, fromSlotId);
+    const after = collectEndpoint(change?.after, toSlotId);
+    if (changeType === "move") {
+      moveSummaries.push({
+        key: `${idx}-${fromSlotId}-${toSlotId}`,
+        from: before,
+        after,
+      });
+    }
+  });
+
+  const ruleIds = (Array.isArray(proposal.fixesRuleIds) ? proposal.fixesRuleIds : [])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+
+  return {
+    proposalId: String(proposal.proposalId || "").trim(),
+    title: String(proposal.title || "").trim(),
+    rationale: String(proposal.rationale || "").trim(),
+    ruleIds,
+    changeTypes: changes.map((change) => String(change?.changeType || "").trim()).filter(Boolean),
+    slotIds: [...slotIds].sort((a, b) => a.localeCompare(b)),
+    teamIds: [...teamIds].sort((a, b) => a.localeCompare(b)),
+    weekKeys: [...weekKeys].sort((a, b) => a.localeCompare(b)),
+    fieldKeys: [...fieldKeys].sort((a, b) => a.localeCompare(b)),
+    dates: [...dates].sort((a, b) => a.localeCompare(b)),
+    moveSummaries,
+  };
+}
+
 function formatMinutesAsTime(totalMinutes) {
   const value = Math.trunc(Number(totalMinutes));
   if (!Number.isFinite(value) || value < 0 || value >= 24 * 60) return "";
@@ -254,6 +328,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [repairApplyingId, setRepairApplyingId] = useState("");
+  const [selectedRepairProposalId, setSelectedRepairProposalId] = useState("");
   const [selectedExplainGameKey, setSelectedExplainGameKey] = useState("");
   const [err, setErr] = useState("");
   const [toast, setToast] = useState(null);
@@ -1250,6 +1325,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   useEffect(() => {
     if (!preview) {
       setSelectedExplainGameKey("");
+      setSelectedRepairProposalId("");
       return;
     }
     const keys = new Set(
@@ -1260,6 +1336,71 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       setSelectedExplainGameKey("");
     }
   }, [preview, selectedExplainGameKey]);
+
+  useEffect(() => {
+    if (!previewRepairProposals.length) {
+      if (selectedRepairProposalId) setSelectedRepairProposalId("");
+      return;
+    }
+    if (!selectedRepairProposalId) return;
+    const exists = previewRepairProposals.some((proposal) => String(proposal?.proposalId || "") === selectedRepairProposalId);
+    if (!exists) {
+      setSelectedRepairProposalId("");
+    }
+  }, [previewRepairProposals, selectedRepairProposalId]);
+
+  const selectedRepairScope = useMemo(() => {
+    if (!selectedRepairProposalId || !previewRepairProposals.length) return null;
+    const proposal = previewRepairProposals.find((item) => String(item?.proposalId || "") === selectedRepairProposalId);
+    return buildRepairProposalScope(proposal);
+  }, [previewRepairProposals, selectedRepairProposalId]);
+
+  const selectedRepairLookup = useMemo(() => {
+    const scope = selectedRepairScope;
+    if (!scope) return null;
+    return {
+      proposalId: scope.proposalId,
+      title: scope.title,
+      rationale: scope.rationale,
+      slotIds: new Set(scope.slotIds || []),
+      teamIds: new Set(scope.teamIds || []),
+      weekKeys: new Set(scope.weekKeys || []),
+      fieldKeys: new Set(scope.fieldKeys || []),
+      ruleIds: new Set(scope.ruleIds || []),
+      scope,
+    };
+  }, [selectedRepairScope]);
+
+  const isAssignmentHighlightedByRepair = (assignment) => {
+    if (!selectedRepairLookup || !assignment) return false;
+    const slotId = String(assignment?.slotId || "").trim();
+    const homeTeamId = String(assignment?.homeTeamId || "").trim();
+    const awayTeamId = String(assignment?.awayTeamId || "").trim();
+    const weekKey = weekStartIso(assignment?.gameDate);
+    const fieldKey = String(assignment?.fieldKey || "").trim();
+    if (slotId && selectedRepairLookup.slotIds.has(slotId)) return true;
+    if (weekKey && selectedRepairLookup.weekKeys.has(weekKey)) return true;
+    if (fieldKey && selectedRepairLookup.fieldKeys.has(fieldKey) && weekKey && selectedRepairLookup.weekKeys.has(weekKey)) return true;
+    if (homeTeamId && selectedRepairLookup.teamIds.has(homeTeamId)) return true;
+    if (awayTeamId && selectedRepairLookup.teamIds.has(awayTeamId)) return true;
+    return false;
+  };
+
+  const isWeekHighlightedByRepair = (weekKey) => !!(selectedRepairLookup && weekKey && selectedRepairLookup.weekKeys.has(String(weekKey).trim()));
+  const isTeamWeekHighlightedByRepair = (teamId, weekKey) => !!(
+    selectedRepairLookup &&
+    teamId &&
+    weekKey &&
+    selectedRepairLookup.teamIds.has(String(teamId).trim()) &&
+    selectedRepairLookup.weekKeys.has(String(weekKey).trim())
+  );
+  const isFieldWeekHighlightedByRepair = (fieldKey, weekKey) => !!(
+    selectedRepairLookup &&
+    fieldKey &&
+    weekKey &&
+    selectedRepairLookup.fieldKeys.has(String(fieldKey).trim()) &&
+    selectedRepairLookup.weekKeys.has(String(weekKey).trim())
+  );
 
   const unassignedRegularReport = useMemo(() => {
     if (!preview) {
@@ -3202,6 +3343,37 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                   <div className="subtle mb-2">
                     Ranked minimal-change proposals to reduce hard rule violations. Manual-action proposals require changing rules/capacity and rerunning preview.
                   </div>
+                  {selectedRepairScope ? (
+                    <div className="callout callout--warning mb-2">
+                      <div className="row row--between gap-2" style={{ alignItems: "center" }}>
+                        <div>
+                          <div className="font-bold" style={{ fontSize: "0.95rem" }}>Showing affected games: {selectedRepairScope.title || selectedRepairScope.proposalId}</div>
+                          <div className="subtle">
+                            Rules: {(selectedRepairScope.ruleIds || []).join(", ") || "-"} | Teams: {(selectedRepairScope.teamIds || []).length} | Weeks: {(selectedRepairScope.weekKeys || []).length} | Slots: {(selectedRepairScope.slotIds || []).length}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn btn--ghost"
+                          onClick={() => setSelectedRepairProposalId("")}
+                        >
+                          Clear highlights
+                        </button>
+                      </div>
+                      {selectedRepairScope.moveSummaries?.length ? (
+                        <div className="subtle mt-1">
+                          {selectedRepairScope.moveSummaries.slice(0, 3).map((move) => {
+                            const from = move?.from;
+                            const after = move?.after;
+                            const fromLabel = from ? `${from.gameDate || "?"} ${from.startTime || "?"}-${from.endTime || "?"} ${from.fieldKey || ""}`.trim() : "?";
+                            const toLabel = after ? `${after.gameDate || "?"} ${after.startTime || "?"}-${after.endTime || "?"} ${after.fieldKey || ""}`.trim() : "?";
+                            return `${fromLabel} -> ${toLabel}`;
+                          }).join(" | ")}
+                          {selectedRepairScope.moveSummaries.length > 3 ? ` | +${selectedRepairScope.moveSummaries.length - 3} more move(s)` : ""}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div className="tableWrap">
                     <table className="table">
                       <thead>
@@ -3215,17 +3387,22 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                       </thead>
                       <tbody>
                         {previewRepairProposals.slice(0, 10).map((p, idx) => {
+                          const proposalId = String(p?.proposalId || "");
                           const rules = Array.isArray(p?.fixesRuleIds) ? p.fixesRuleIds : [];
                           const changes = Array.isArray(p?.changes) ? p.changes : [];
                           const canApplyPreviewFix = !p?.requiresUserAction && changes.some((c) => String(c?.changeType || "").toLowerCase() === "move");
                           const isApplyingThis = repairApplyingId && String(p?.proposalId || "") === repairApplyingId;
+                          const isSelectedProposal = !!selectedRepairProposalId && proposalId === selectedRepairProposalId;
                           const hardResolved = Number(p?.hardViolationsResolved || 0);
                           const hardRemaining = Number(p?.hardViolationsRemaining || 0);
                           const gamesMoved = Number(p?.gamesMoved || 0);
                           const teamsTouched = Number(p?.teamsTouched || 0);
                           const weeksTouched = Number(p?.weeksTouched || 0);
                           return (
-                            <tr key={`repair-proposal-${p?.proposalId || idx}-${idx}`}>
+                            <tr
+                              key={`repair-proposal-${p?.proposalId || idx}-${idx}`}
+                              style={isSelectedProposal ? { backgroundColor: "#fffbeb", outline: "1px solid #fcd34d" } : undefined}
+                            >
                               <td>
                                 <div>{p?.title || "Proposal"}</div>
                                 <div className="subtle">
@@ -3245,8 +3422,16 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                               <td>{p?.requiresUserAction ? "Manual action" : "Move/swap"}</td>
                               <td>
                                 <div>{p?.rationale || ""}</div>
-                                {canApplyPreviewFix ? (
-                                  <div className="mt-1">
+                                <div className="mt-1 row row--wrap gap-2">
+                                  <button
+                                    type="button"
+                                    className="btn btn--ghost"
+                                    onClick={() => setSelectedRepairProposalId((prev) => (prev === proposalId ? "" : proposalId))}
+                                    disabled={!proposalId}
+                                  >
+                                    {isSelectedProposal ? "Hide affected" : "Show affected games"}
+                                  </button>
+                                  {canApplyPreviewFix ? (
                                     <button
                                       type="button"
                                       className="btn btn--ghost"
@@ -3255,8 +3440,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                                     >
                                       {isApplyingThis ? "Applying fix..." : "Apply Fix (Preview)"}
                                     </button>
-                                  </div>
-                                ) : null}
+                                  ) : null}
+                                </div>
                               </td>
                             </tr>
                           );
@@ -3347,7 +3532,10 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                       </thead>
                       <tbody>
                         {preview.issues.map((issue, idx) => (
-                          <tr key={`${getIssuePhase(issue)}-${issue.ruleId || "issue"}-${idx}`}>
+                          <tr
+                            key={`${getIssuePhase(issue)}-${issue.ruleId || "issue"}-${idx}`}
+                            style={selectedRepairLookup && selectedRepairLookup.ruleIds.has(String(issue?.ruleId || "")) ? { backgroundColor: "#fffbeb" } : undefined}
+                          >
                             <td>{getIssuePhase(issue)}</td>
                             <td>{issue.ruleId || ""}</td>
                             <td>{issue.severity || ""}</td>
@@ -3552,6 +3740,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                             <td>{lane.longestIdleGap}</td>
                             {lane.cells.map((cell, idx) => {
                               const lateFactor = teamLanesReport.weekKeys.length > 1 ? (idx / (teamLanesReport.weekKeys.length - 1)) : 0;
+                              const isRepairHighlighted = isTeamWeekHighlightedByRepair(lane.teamId, cell.weekKey);
                               const base =
                                 cell.status === "gap"
                                   ? { bg: `rgba(239,68,68,${0.12 + (lateFactor * 0.08)})`, border: "#fecaca", text: "#991b1b" }
@@ -3568,7 +3757,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                                     textAlign: "center",
                                     minWidth: 42,
                                     background: base.bg,
-                                    borderColor: base.border,
+                                    borderColor: isRepairHighlighted ? "#f59e0b" : base.border,
+                                    boxShadow: isRepairHighlighted ? "inset 0 0 0 2px rgba(245,158,11,0.45)" : "none",
                                     color: base.text,
                                     fontWeight: 700,
                                   }}
@@ -3618,6 +3808,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                             <td>{row.totalUnused}</td>
                             {row.cells.map((cell, idx) => {
                               const lateFactor = fieldHeatmapReport.weekKeys.length > 1 ? (idx / (fieldHeatmapReport.weekKeys.length - 1)) : 0;
+                              const isRepairHighlighted = isFieldWeekHighlightedByRepair(row.fieldKey, cell.weekKey);
                               const util = cell.capacity > 0 ? (cell.used / cell.capacity) : 0;
                               const alpha = cell.capacity > 0 ? (0.08 + (util * 0.38) + (lateFactor * 0.08)) : 0.03;
                               const hueColor = cell.capacity === 0
@@ -3639,6 +3830,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                                     textAlign: "center",
                                     minWidth: 46,
                                     background: hueColor,
+                                    boxShadow: isRepairHighlighted ? "inset 0 0 0 2px rgba(245,158,11,0.6)" : "none",
                                     color: cell.capacity > 0 && util >= 0.75 ? "#ffffff" : "inherit",
                                     fontWeight: cell.capacity > 0 ? 600 : 400,
                                   }}
@@ -3668,6 +3860,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                   </div>
                   <div className="row row--wrap gap-2">
                     {regularCalendarTimelineReport.weekRows.map((week) => {
+                      const isRepairWeek = isWeekHighlightedByRepair(week.weekKey);
                       const lateFactor = regularCalendarTimelineReport.weekRows.length > 1
                         ? ((week.weekIndex - 1) / (regularCalendarTimelineReport.weekRows.length - 1))
                         : 1;
@@ -3684,12 +3877,13 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                         <div
                           key={`timeline-card-${week.weekKey}`}
                           style={{
-                            border: "1px solid " + border,
+                            border: "1px solid " + (isRepairWeek ? "#f59e0b" : border),
                             borderRadius: 10,
                             background: bg,
                             padding: "0.55rem 0.65rem",
                             minWidth: 170,
                             flex: "1 1 170px",
+                            boxShadow: isRepairWeek ? "0 0 0 2px rgba(245,158,11,0.18)" : "none",
                           }}
                           title={`${week.weekKey} | games ${week.totalGames}/${week.totalCapacity || 0} | hard ${week.hardRuleTouches} | soft ${week.softRuleTouches}`}
                         >
@@ -3729,7 +3923,10 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                       </thead>
                       <tbody>
                         {regularCalendarTimelineReport.weekRows.map((week) => (
-                          <tr key={`calendar-week-${week.weekKey}`}>
+                          <tr
+                            key={`calendar-week-${week.weekKey}`}
+                            style={isWeekHighlightedByRepair(week.weekKey) ? { backgroundColor: "#fffbeb" } : undefined}
+                          >
                             <td>
                               <div>W{week.weekIndex}</div>
                               <div className="subtle">{week.phaseBand}</div>
@@ -3747,6 +3944,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                               {week.blocked ? <div className="subtle">Blocked overlap</div> : null}
                             </td>
                             {week.cells.map((cell) => {
+                              const isRepairWeek = isWeekHighlightedByRepair(week.weekKey);
                               const totalLoad = Number(cell.games || 0) + Number(cell.open || 0);
                               const bg = totalLoad <= 0
                                 ? "rgba(148,163,184,0.06)"
@@ -3758,7 +3956,11 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                               return (
                                 <td
                                   key={`calendar-cell-${week.weekKey}-${cell.day}`}
-                                  style={{ background: bg, minWidth: 66 }}
+                                  style={{
+                                    background: bg,
+                                    minWidth: 66,
+                                    boxShadow: isRepairWeek ? "inset 0 0 0 1px rgba(245,158,11,0.35)" : "none",
+                                  }}
                                   title={`${cell.day} | ${cell.firstDate || week.weekKey} | games ${cell.games} | open ${cell.open}`}
                                 >
                                   <div style={{ fontWeight: 600 }}>{cell.games > 0 ? `G${cell.games}` : "-"}</div>
@@ -3865,10 +4067,13 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                       {(preview.assignments || []).slice(0, 250).map((a) => {
                         const rowKey = assignmentExplainKey(a);
                         const isSelected = selectedGameExplain && assignmentExplainKey(selectedGameExplain.selected) === rowKey;
+                        const isRepairHighlighted = isAssignmentHighlightedByRepair(a);
                         return (
                           <tr
                             key={rowKey}
-                            style={isSelected ? { backgroundColor: "#ecfeff", outline: "1px solid #99f6e4" } : undefined}
+                            style={isSelected
+                              ? { backgroundColor: "#ecfeff", outline: "1px solid #99f6e4" }
+                              : (isRepairHighlighted ? { backgroundColor: "#fffbeb" } : undefined)}
                           >
                             <td>{a.phase}</td>
                             <td>{isoDayShort(a.gameDate) || "-"}</td>
