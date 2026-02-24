@@ -2329,6 +2329,18 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         detail: `Slot constrained to offering team ${backendExplanation.fixedHomeTeamId} as home.`,
       });
     }
+    if (backendExplanation?.source === "preview_repair_move_v1") {
+      const from = backendExplanation?.movedFrom || {};
+      const to = backendExplanation?.movedTo || {};
+      scoringFactors.push({
+        key: "preview-repair-move",
+        label: "Preview repair move",
+        tone: "warn",
+        detail:
+          `Moved in preview repair: ${from?.gameDate || "?"} ${from?.startTime || "?"}-${from?.endTime || "?"} ${from?.fieldKey || ""}`.trim() +
+          ` -> ${to?.gameDate || "?"} ${to?.startTime || "?"}-${to?.endTime || "?"} ${to?.fieldKey || ""}`.trim(),
+      });
+    }
     if (selectedPhase === "Regular Season" && constructionStrategy.startsWith("backward_") && weekNumber && weekCount > 0) {
       scoringFactors.push({
         key: "backward-priority",
@@ -4441,6 +4453,48 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                               )}
                             </div>
                           </div>
+                        </div>
+                      ) : null}
+                      {selectedGameExplain.backendExplanation?.source === "preview_repair_move_v1" ? (
+                        <div className="callout mt-2">
+                          <div className="font-bold mb-1">Preview repair trace</div>
+                          <div className="subtle">
+                            {selectedGameExplain.backendExplanation.note || "This game was moved by an Apply Fix (Preview) action."}
+                          </div>
+                          <div className="tableWrap mt-2">
+                            <table className="table table--compact">
+                              <thead>
+                                <tr>
+                                  <th></th>
+                                  <th>Date</th>
+                                  <th>Time</th>
+                                  <th>Field</th>
+                                  <th>Slot</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <tr>
+                                  <td>From</td>
+                                  <td>{selectedGameExplain.backendExplanation?.movedFrom?.gameDate || "-"}</td>
+                                  <td>{selectedGameExplain.backendExplanation?.movedFrom?.startTime || "-"}-{selectedGameExplain.backendExplanation?.movedFrom?.endTime || "-"}</td>
+                                  <td>{selectedGameExplain.backendExplanation?.movedFrom?.fieldKey || "-"}</td>
+                                  <td>{selectedGameExplain.backendExplanation?.movedFrom?.slotId || "-"}</td>
+                                </tr>
+                                <tr>
+                                  <td>To</td>
+                                  <td>{selectedGameExplain.backendExplanation?.movedTo?.gameDate || "-"}</td>
+                                  <td>{selectedGameExplain.backendExplanation?.movedTo?.startTime || "-"}-{selectedGameExplain.backendExplanation?.movedTo?.endTime || "-"}</td>
+                                  <td>{selectedGameExplain.backendExplanation?.movedTo?.fieldKey || "-"}</td>
+                                  <td>{selectedGameExplain.backendExplanation?.movedTo?.slotId || "-"}</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+                          {selectedGameExplain.backendExplanation?.originalTrace ? (
+                            <div className="subtle mt-2">
+                              Original engine trace preserved in backend response (`originalTrace`) for debugging/reference.
+                            </div>
+                          ) : null}
                         </div>
                       ) : null}
                     </>

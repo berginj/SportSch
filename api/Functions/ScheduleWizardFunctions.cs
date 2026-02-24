@@ -740,6 +740,7 @@ public class ScheduleWizardFunctions
         var repairProposals = ScheduleRepairEngine.Propose(regularResult, strictValidation.RuleHealth, validationConfig, teams, maxProposals: 8)
             .Cast<object>()
             .ToList();
+        var updatedExplanations = BuildPreviewRepairExplanations(preview.explanations, assignments, moves);
 
         return new WizardPreviewDto(
             summary: preview.summary,
@@ -759,7 +760,7 @@ public class ScheduleWizardFunctions
             applyBlocked: strictValidation.RuleHealth.ApplyBlocked,
             seed: preview.seed,
             constructionStrategy: preview.constructionStrategy,
-            explanations: null
+            explanations: updatedExplanations
         );
     }
 
@@ -916,6 +917,148 @@ public class ScheduleWizardFunctions
         catch
         {
             return "";
+        }
+    }
+
+    private static Dictionary<string, object> BuildPreviewRepairExplanations(
+        object? existingExplanations,
+        List<WizardSlotDto> assignments,
+        List<PreviewMoveChange> moves)
+    {
+        var map = ReadObjectMap(existingExplanations);
+        var movedByAfterKey = new Dictionary<string, PreviewMoveChange>(StringComparer.OrdinalIgnoreCase);
+        var movedBeforeKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var move in moves ?? new List<PreviewMoveChange>())
+        {
+            var beforeKey = BuildWizardAssignmentExplainKey(
+                "Regular Season",
+                move.FromSlotId,
+                move.FromGameDate,
+                move.FromStartTime,
+                move.BeforeHomeTeamId,
+                move.BeforeAwayTeamId);
+            var afterKey = BuildWizardAssignmentExplainKey(
+                "Regular Season",
+                move.ToSlotId,
+                move.ToGameDate,
+                move.ToStartTime,
+                move.BeforeHomeTeamId,
+                move.BeforeAwayTeamId);
+
+            movedBeforeKeys.Add(beforeKey);
+            movedByAfterKey[afterKey] = move;
+
+            if (map.TryGetValue(beforeKey, out var previousTrace))
+            {
+                map.Remove(beforeKey);
+                map[afterKey] = BuildPreviewRepairMovedTrace(previousTrace, move);
+            }
+            else if (!map.ContainsKey(afterKey))
+            {
+                map[afterKey] = BuildPreviewRepairMovedTrace(previousTrace: null, move);
+            }
+        }
+
+        foreach (var assignment in assignments.Where(a => string.Equals(a.phase, "Regular Season", StringComparison.OrdinalIgnoreCase)))
+        {
+            var key = BuildWizardAssignmentExplainKey(
+                phase: "Regular Season",
+                slotId: assignment.slotId ?? "",
+                gameDate: assignment.gameDate ?? "",
+                startTime: assignment.startTime ?? "",
+                homeTeamId: assignment.homeTeamId ?? "",
+                awayTeamId: assignment.awayTeamId ?? "");
+
+            if (map.ContainsKey(key)) continue;
+
+            if (assignment.isExternalOffer)
+            {
+                map[key] = new
+                {
+                    source = "preview_repair_external_offer_v1",
+                    phase = "Regular Season",
+                    outcome = "external-offer",
+                    note = "Guest/external offer in preview snapshot after repair."
+                };
+                continue;
+            }
+
+            map[key] = new
+            {
+                source = "preview_repair_snapshot_fallback_v1",
+                phase = "Regular Season",
+                outcome = "assigned",
+                note = movedBeforeKeys.Contains(key)
+                    ? "Game was part of a preview repair change; original engine trace was replaced."
+                    : "Fallback preview explanation after repair revalidation (engine candidate trace unavailable for this snapshot)."
+            };
+        }
+
+        return map;
+    }
+
+    private static object BuildPreviewRepairMovedTrace(object? previousTrace, PreviewMoveChange move)
+    {
+        return new
+        {
+            source = "preview_repair_move_v1",
+            outcome = "assigned",
+            movedFrom = new
+            {
+                slotId = move.FromSlotId,
+                gameDate = move.FromGameDate,
+                startTime = move.FromStartTime,
+                endTime = move.FromEndTime,
+                fieldKey = move.FromFieldKey
+            },
+            movedTo = new
+            {
+                slotId = move.ToSlotId,
+                gameDate = move.ToGameDate,
+                startTime = move.ToStartTime,
+                endTime = move.ToEndTime,
+                fieldKey = move.ToFieldKey
+            },
+            originalTrace = previousTrace,
+            note = "Preview repair moved this game. Original engine trace (if present) is preserved in originalTrace."
+        };
+    }
+
+    private static Dictionary<string, object> ReadObjectMap(object? value)
+    {
+        var result = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+        if (value is null) return result;
+
+        if (value is JsonElement el)
+        {
+            if (el.ValueKind != JsonValueKind.Object) return result;
+            foreach (var prop in el.EnumerateObject())
+            {
+                result[prop.Name] = prop.Value.Clone();
+            }
+            return result;
+        }
+
+        if (value is IDictionary<string, object> dict)
+        {
+            foreach (var kvp in dict)
+            {
+                if (string.IsNullOrWhiteSpace(kvp.Key)) continue;
+                result[kvp.Key] = kvp.Value!;
+            }
+            return result;
+        }
+
+        try
+        {
+            var serialized = JsonSerializer.Serialize(value);
+            using var doc = JsonDocument.Parse(serialized);
+            return ReadObjectMap(doc.RootElement);
+        }
+        catch
+        {
+            return result;
         }
     }
 
