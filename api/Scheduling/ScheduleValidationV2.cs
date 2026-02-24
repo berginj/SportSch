@@ -61,6 +61,8 @@ public static class ScheduleValidationV2
         AddMaxGamesPerWeekViolations(result.Assignments, config.MaxGamesPerWeek, violations);
         AddUnassignedRequiredMatchupViolations(result.UnassignedMatchups, config.TreatUnassignedRequiredMatchupsAsHard, violations);
         AddUnassignedSlotSoftViolations(result.UnassignedSlots, violations);
+        AddPairRepeatSoftViolations(result.Assignments, violations);
+        AddIdleGapSoftViolations(result.Assignments, teams, violations);
         AddHomeAwayBalanceSoftViolations(result.Assignments, teams, config.BalanceHomeAway, violations);
 
         var groups = violations
@@ -400,6 +402,129 @@ public static class ScheduleValidationV2
             }));
     }
 
+    private static void AddPairRepeatSoftViolations(
+        IEnumerable<ScheduleAssignment> assignments,
+        List<ScheduleRuleViolation> violations)
+    {
+        var games = assignments
+            .Where(a => !a.IsExternalOffer && !string.IsNullOrWhiteSpace(a.HomeTeamId) && !string.IsNullOrWhiteSpace(a.AwayTeamId))
+            .ToList();
+        if (games.Count == 0) return;
+
+        var repeats = games
+            .GroupBy(a => PairKey(a.HomeTeamId, a.AwayTeamId), StringComparer.OrdinalIgnoreCase)
+            .Where(g => !string.IsNullOrWhiteSpace(g.Key) && g.Count() > 1)
+            .Select(g =>
+            {
+                var list = g.ToList();
+                var pairTeams = g.Key.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                return new
+                {
+                    PairKey = g.Key,
+                    Count = list.Count,
+                    TeamA = pairTeams.Length > 0 ? pairTeams[0] : "",
+                    TeamB = pairTeams.Length > 1 ? pairTeams[1] : "",
+                    Games = list
+                };
+            })
+            .OrderByDescending(x => x.Count)
+            .ThenBy(x => x.PairKey, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (repeats.Count == 0) return;
+
+        violations.Add(new ScheduleRuleViolation(
+            "opponent-repeat-balance",
+            SeveritySoft,
+            $"{repeats.Count} opponent pairing(s) repeat more than once.",
+            repeats.SelectMany(x => TeamIds(x.TeamA, x.TeamB))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+            repeats.SelectMany(x => x.Games.Select(g => g.SlotId))
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+                .Take(25)
+                .ToList(),
+            repeats.SelectMany(x => x.Games.SelectMany(g => WeekKeys(g.GameDate)))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+            new Dictionary<string, object?>
+            {
+                ["pairs"] = repeats.Take(10)
+                    .Select(x => new Dictionary<string, object?>
+                    {
+                        ["pairKey"] = x.PairKey,
+                        ["count"] = x.Count
+                    })
+                    .ToList()
+            }));
+    }
+
+    private static void AddIdleGapSoftViolations(
+        IEnumerable<ScheduleAssignment> assignments,
+        IReadOnlyList<string>? teams,
+        List<ScheduleRuleViolation> violations)
+    {
+        var teamList = (teams ?? Array.Empty<string>())
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (teamList.Count == 0) return;
+
+        var byTeamDates = BuildTeamGameDates(assignments);
+        var offenders = teamList
+            .Select(teamId =>
+            {
+                var dates = byTeamDates.TryGetValue(teamId, out var list) ? list : new List<DateOnly>();
+                dates.Sort();
+                var extraGapWeeks = 0;
+                var gapSegments = new List<Dictionary<string, object?>>();
+                for (var i = 1; i < dates.Count; i++)
+                {
+                    var gapDays = dates[i].DayNumber - dates[i - 1].DayNumber;
+                    var extraWeeks = Math.Max(0, (gapDays - 7) / 7);
+                    if (extraWeeks <= 0) continue;
+                    extraGapWeeks += extraWeeks;
+                    gapSegments.Add(new Dictionary<string, object?>
+                    {
+                        ["startDate"] = dates[i - 1].ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                        ["endDate"] = dates[i].ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                        ["gapDays"] = gapDays,
+                        ["extraGapWeeks"] = extraWeeks
+                    });
+                }
+                return new { TeamId = teamId, ExtraGapWeeks = extraGapWeeks, Segments = gapSegments };
+            })
+            .Where(x => x.ExtraGapWeeks > 0)
+            .OrderByDescending(x => x.ExtraGapWeeks)
+            .ThenBy(x => x.TeamId, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (offenders.Count == 0) return;
+
+        violations.Add(new ScheduleRuleViolation(
+            "idle-gap-balance",
+            SeveritySoft,
+            $"Long idle gaps detected for {offenders.Count} team(s).",
+            offenders.Select(x => x.TeamId).ToList(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            new Dictionary<string, object?>
+            {
+                ["offenders"] = offenders.Take(10)
+                    .Select(x => new Dictionary<string, object?>
+                    {
+                        ["teamId"] = x.TeamId,
+                        ["extraGapWeeks"] = x.ExtraGapWeeks,
+                        ["segments"] = x.Segments
+                    })
+                    .ToList()
+            }));
+    }
+
     private static List<ScheduleSoftScoreTerm> BuildSoftScoreBreakdown(
         ScheduleResult result,
         IReadOnlyList<string>? teams,
@@ -409,6 +534,16 @@ public static class ScheduleValidationV2
 
         var unusedSlots = result.UnassignedSlots.Count;
         terms.Add(new ScheduleSoftScoreTerm("unused-game-capacity", 5, unusedSlots, unusedSlots * 5));
+
+        var pairRepeatRaw = result.Assignments
+            .Where(a => !a.IsExternalOffer && !string.IsNullOrWhiteSpace(a.HomeTeamId) && !string.IsNullOrWhiteSpace(a.AwayTeamId))
+            .GroupBy(a => PairKey(a.HomeTeamId, a.AwayTeamId), StringComparer.OrdinalIgnoreCase)
+            .Where(g => !string.IsNullOrWhiteSpace(g.Key))
+            .Sum(g => Math.Max(0, g.Count() - 1));
+        terms.Add(new ScheduleSoftScoreTerm("opponent-repeat-overage", 4, pairRepeatRaw, pairRepeatRaw * 4));
+
+        var idleGapRaw = ComputeIdleGapExtraWeeks(result.Assignments, teams);
+        terms.Add(new ScheduleSoftScoreTerm("idle-gap-extra-weeks", 3, idleGapRaw, idleGapRaw * 3));
 
         if (!config.BalanceHomeAway || teams is null || teams.Count == 0)
         {
@@ -429,6 +564,30 @@ public static class ScheduleValidationV2
         var homeAwayGapSum = teamList.Sum(t => Math.Abs(homeCounts[t] - awayCounts[t]));
         terms.Add(new ScheduleSoftScoreTerm("home-away-balance-gap", 2, homeAwayGapSum, homeAwayGapSum * 2));
         return terms;
+    }
+
+    private static double ComputeIdleGapExtraWeeks(IEnumerable<ScheduleAssignment> assignments, IReadOnlyList<string>? teams)
+    {
+        var teamList = (teams ?? Array.Empty<string>())
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (teamList.Count == 0) return 0;
+
+        var byTeamDates = BuildTeamGameDates(assignments);
+        var total = 0;
+        foreach (var teamId in teamList)
+        {
+            if (!byTeamDates.TryGetValue(teamId, out var dates) || dates.Count < 2) continue;
+            dates.Sort();
+            for (var i = 1; i < dates.Count; i++)
+            {
+                var gapDays = dates[i].DayNumber - dates[i - 1].DayNumber;
+                total += Math.Max(0, (gapDays - 7) / 7);
+            }
+        }
+
+        return total;
     }
 
     private static void AddTeamDateAssignment(
@@ -470,6 +629,30 @@ public static class ScheduleValidationV2
             byTeamDate[teamId] = dates;
         }
         dates[gameDate] = dates.TryGetValue(gameDate, out var count) ? count + 1 : 1;
+    }
+
+    private static Dictionary<string, List<DateOnly>> BuildTeamGameDates(IEnumerable<ScheduleAssignment> assignments)
+    {
+        var byTeamDates = new Dictionary<string, List<DateOnly>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var a in assignments.Where(a => !a.IsExternalOffer))
+        {
+            if (!TryParseDate(a.GameDate, out var date)) continue;
+            AddTeamGameDate(byTeamDates, a.HomeTeamId, date);
+            AddTeamGameDate(byTeamDates, a.AwayTeamId, date);
+        }
+
+        return byTeamDates;
+    }
+
+    private static void AddTeamGameDate(Dictionary<string, List<DateOnly>> byTeamDates, string teamId, DateOnly date)
+    {
+        if (string.IsNullOrWhiteSpace(teamId)) return;
+        if (!byTeamDates.TryGetValue(teamId, out var dates))
+        {
+            dates = new List<DateOnly>();
+            byTeamDates[teamId] = dates;
+        }
+        dates.Add(date);
     }
 
     private static void AddTeamWeekCount(Dictionary<string, Dictionary<string, int>> byTeamWeek, string teamId, string gameDate)
@@ -535,4 +718,12 @@ public static class ScheduleValidationV2
     private readonly record struct RuleGroupKey(string RuleId, string Severity);
     private readonly record struct TimeWindow(ScheduleAssignment Assignment, int? StartMinutes, int? EndMinutes);
     private readonly record struct TeamGap(string TeamId, int Gap);
+
+    private static string PairKey(string homeTeamId, string awayTeamId)
+    {
+        if (string.IsNullOrWhiteSpace(homeTeamId) || string.IsNullOrWhiteSpace(awayTeamId)) return "";
+        return string.Compare(homeTeamId, awayTeamId, StringComparison.OrdinalIgnoreCase) <= 0
+            ? $"{homeTeamId}|{awayTeamId}"
+            : $"{awayTeamId}|{homeTeamId}";
+    }
 }

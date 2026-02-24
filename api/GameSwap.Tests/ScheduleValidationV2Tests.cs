@@ -85,6 +85,35 @@ public class ScheduleValidationV2Tests
         Assert.Contains(report.Groups, g => g.RuleId == "unscheduled-required-matchups" && g.Severity == "hard");
     }
 
+    [Fact]
+    public void Validate_ReportsOpponentRepeatAndIdleGapSoftHealth()
+    {
+        var result = BuildResult(assignments: new[]
+        {
+            A("s1", "2026-04-05", "09:00", "10:30", "Field-1", "A", "B"),
+            A("s2", "2026-04-26", "09:00", "10:30", "Field-1", "A", "B"), // repeat pair + 3-week gap
+            A("s3", "2026-04-12", "09:00", "10:30", "Field-2", "C", "D"),
+            A("s4", "2026-04-19", "09:00", "10:30", "Field-2", "C", "D")
+        });
+
+        var report = ScheduleValidationV2.Validate(
+            result,
+            new ScheduleValidationV2Config(MaxGamesPerWeek: 2, NoDoubleHeaders: true, BalanceHomeAway: false),
+            teams: new[] { "A", "B", "C", "D" }).RuleHealth;
+
+        Assert.False(report.ApplyBlocked);
+        Assert.Equal("yellow", report.Status);
+        Assert.Contains(report.Groups, g => g.RuleId == "opponent-repeat-balance" && g.Severity == "soft");
+        Assert.Contains(report.Groups, g => g.RuleId == "idle-gap-balance" && g.Severity == "soft");
+
+        var repeatTerm = Assert.Single(report.ScoreBreakdown, t => t.ObjectiveId == "opponent-repeat-overage");
+        var idleGapTerm = Assert.Single(report.ScoreBreakdown, t => t.ObjectiveId == "idle-gap-extra-weeks");
+        Assert.True(repeatTerm.Raw > 0);
+        Assert.True(repeatTerm.Weighted > 0);
+        Assert.True(idleGapTerm.Raw > 0);
+        Assert.True(idleGapTerm.Weighted > 0);
+    }
+
     private static ScheduleAssignment A(
         string slotId,
         string gameDate,
