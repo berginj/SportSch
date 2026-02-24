@@ -1202,6 +1202,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
   const previewRuleHealth = preview && typeof preview.ruleHealth === "object" ? preview.ruleHealth : null;
   const previewApplyBlocked = !!preview?.applyBlocked;
+  const previewRepairProposals = Array.isArray(preview?.repairProposals) ? preview.repairProposals : [];
 
   const unassignedRegularReport = useMemo(() => {
     if (!preview) {
@@ -2547,6 +2548,63 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                       ) : null}
                     </div>
                   ) : null}
+                </div>
+              ) : null}
+
+              {previewRepairProposals.length ? (
+                <div className="callout">
+                  <div className="font-bold mb-2">Repair proposals</div>
+                  <div className="subtle mb-2">
+                    Ranked minimal-change proposals to reduce hard rule violations. Manual-action proposals require changing rules/capacity and rerunning preview.
+                  </div>
+                  <div className="tableWrap">
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>Proposal</th>
+                          <th>Rules</th>
+                          <th>Impact</th>
+                          <th>Type</th>
+                          <th>Rationale</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {previewRepairProposals.slice(0, 10).map((p, idx) => {
+                          const rules = Array.isArray(p?.fixesRuleIds) ? p.fixesRuleIds : [];
+                          const hardResolved = Number(p?.hardViolationsResolved || 0);
+                          const hardRemaining = Number(p?.hardViolationsRemaining || 0);
+                          const gamesMoved = Number(p?.gamesMoved || 0);
+                          const teamsTouched = Number(p?.teamsTouched || 0);
+                          const weeksTouched = Number(p?.weeksTouched || 0);
+                          return (
+                            <tr key={`repair-proposal-${p?.proposalId || idx}-${idx}`}>
+                              <td>
+                                <div>{p?.title || "Proposal"}</div>
+                                <div className="subtle">
+                                  Hard fix: {hardResolved} | Remaining: {hardRemaining}
+                                </div>
+                                {Array.isArray(p?.changes) && p.changes.length ? (
+                                  <div className="subtle">
+                                    {p.changes[0]?.changeType || "change"}{p.changes.length > 1 ? ` (+${p.changes.length - 1})` : ""}
+                                  </div>
+                                ) : null}
+                              </td>
+                              <td>{rules.length ? rules.join(", ") : "-"}</td>
+                              <td>
+                                {gamesMoved} game{gamesMoved === 1 ? "" : "s"} moved
+                                <div className="subtle">{teamsTouched} team(s), {weeksTouched} week(s)</div>
+                              </td>
+                              <td>{p?.requiresUserAction ? "Manual action" : "Move/swap"}</td>
+                              <td>{p?.rationale || ""}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    {previewRepairProposals.length > 10 ? (
+                      <div className="subtle mt-2">Showing first 10 proposals.</div>
+                    ) : null}
+                  </div>
                 </div>
               ) : null}
 

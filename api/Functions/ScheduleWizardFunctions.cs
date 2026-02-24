@@ -390,21 +390,19 @@ public class ScheduleWizardFunctions
                 UnassignedSlots: regularAssignments.UnassignedSlots.Count,
                 UnassignedMatchups: regularAssignments.UnassignedMatchups.Count);
             var validationResult = new ScheduleResult(validationSummary, regularAssignments.Assignments, regularAssignments.UnassignedSlots, regularAssignments.UnassignedMatchups);
-            var strictValidation = ScheduleValidationV2.Validate(
-                validationResult,
-                new ScheduleValidationV2Config(
-                    MaxGamesPerWeek: maxGamesPerWeek,
-                    NoDoubleHeaders: noDoubleHeaders,
-                    BalanceHomeAway: balanceHomeAway,
-                    BlackoutWindows: blockedRanges
-                        .Select((b, idx) => new ScheduleBlackoutWindow(
-                            RuleId: $"blackout-{idx + 1}",
-                            StartDate: b.StartDate,
-                            EndDate: b.EndDate,
-                            Label: string.IsNullOrWhiteSpace(b.Label) ? $"Blocked range {idx + 1}" : b.Label))
-                        .ToList(),
-                    TreatUnassignedRequiredMatchupsAsHard: true),
-                teams);
+            var validationConfig = new ScheduleValidationV2Config(
+                MaxGamesPerWeek: maxGamesPerWeek,
+                NoDoubleHeaders: noDoubleHeaders,
+                BalanceHomeAway: balanceHomeAway,
+                BlackoutWindows: blockedRanges
+                    .Select((b, idx) => new ScheduleBlackoutWindow(
+                        RuleId: $"blackout-{idx + 1}",
+                        StartDate: b.StartDate,
+                        EndDate: b.EndDate,
+                        Label: string.IsNullOrWhiteSpace(b.Label) ? $"Blocked range {idx + 1}" : b.Label))
+                    .ToList(),
+                TreatUnassignedRequiredMatchupsAsHard: true);
+            var strictValidation = ScheduleValidationV2.Validate(validationResult, validationConfig, teams);
             var issues = strictValidation.RuleHealth.Groups
                 .Select(g => (object)new
                 {
@@ -444,7 +442,9 @@ public class ScheduleWizardFunctions
             }
             var totalIssues = issues.Count;
             var applyBlocked = strictValidation.RuleHealth.ApplyBlocked;
-            var repairProposals = new List<object>(); // Stage C repair/swap engine will populate this.
+            var repairProposals = ScheduleRepairEngine.Propose(validationResult, strictValidation.RuleHealth, validationConfig, teams, maxProposals: 8)
+                .Cast<object>()
+                .ToList();
             var seed = requestedSeed ?? StableWizardSeed(division, seasonStart, seasonEnd);
             var constructionStrategy = $"{normalizedConstructionStrategy}+strict_validation_v2";
 
