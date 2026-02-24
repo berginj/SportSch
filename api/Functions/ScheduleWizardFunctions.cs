@@ -868,6 +868,7 @@ public class ScheduleWizardFunctions
             teamImbalancePenalty = score.TeamImbalancePenalty,
             teamLoadSpreadPenalty = score.TeamLoadSpreadPenalty,
             weeklyParticipationPenalty = score.WeeklyParticipationPenalty,
+            pairRepeatPenalty = score.PairRepeatPenalty,
             homeAwayPenalty = score.HomeAwayPenalty
         };
     }

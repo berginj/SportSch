@@ -45,6 +45,7 @@ public record ScheduleScoreBreakdown(
     int TeamImbalancePenalty,
     int TeamLoadSpreadPenalty,
     int WeeklyParticipationPenalty,
+    int PairRepeatPenalty,
     int HomeAwayPenalty,
     int TotalScore);
 
@@ -127,6 +128,7 @@ public static class ScheduleEngine
         var awayCounts = teams.ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
         var gamesByDate = teams.ToDictionary(t => t, _ => new HashSet<string>(StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase);
         var gamesByWeek = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var pairCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
         var assignments = new List<ScheduleAssignment>();
         var remainingMatchups = new List<MatchupPair>(matchups);
@@ -156,6 +158,7 @@ public static class ScheduleEngine
                     awayCounts,
                     gamesByDate,
                     gamesByWeek,
+                    pairCounts,
                     constraints.MaxGamesPerWeek,
                     constraints.NoDoubleHeaders,
                     constraints.BalanceHomeAway,
@@ -169,7 +172,7 @@ public static class ScheduleEngine
             }
             else
             {
-                pick = PickMatchup(slot.GameDate, slot.SlotId, fixedHome, remainingMatchups, teams, homeCounts, awayCounts, gamesByDate, gamesByWeek, constraints.MaxGamesPerWeek, constraints.NoDoubleHeaders, constraints.BalanceHomeAway, tieBreakSeed);
+                pick = PickMatchup(slot.GameDate, slot.SlotId, fixedHome, remainingMatchups, teams, homeCounts, awayCounts, gamesByDate, gamesByWeek, pairCounts, constraints.MaxGamesPerWeek, constraints.NoDoubleHeaders, constraints.BalanceHomeAway, tieBreakSeed);
             }
 
             if (pick is null)
@@ -201,7 +204,7 @@ public static class ScheduleEngine
             var home = pick.HomeTeamId;
             var away = pick.AwayTeamId;
             remainingMatchups.Remove(pick);
-            ApplyCounts(home, away, slot.GameDate, homeCounts, awayCounts, gamesByDate, gamesByWeek);
+            ApplyCounts(home, away, slot.GameDate, homeCounts, awayCounts, gamesByDate, gamesByWeek, pairCounts);
             assignments.Add(new ScheduleAssignment(slot.SlotId, slot.GameDate, slot.StartTime, slot.EndTime, slot.FieldKey, home, away, false));
             if (placementTraces is not null)
             {
@@ -245,7 +248,7 @@ public static class ScheduleEngine
                 foreach (var slot in picks)
                 {
                     var home = PickExternalHome(teams, homeCounts, awayCounts);
-                    ApplyCounts(home, "", slot.GameDate, homeCounts, awayCounts, gamesByDate, gamesByWeek);
+                    ApplyCounts(home, "", slot.GameDate, homeCounts, awayCounts, gamesByDate, gamesByWeek, pairCounts);
                     assignments.Add(new ScheduleAssignment(slot.SlotId, slot.GameDate, slot.StartTime, slot.EndTime, slot.FieldKey, home, "", true));
                 }
 
@@ -279,6 +282,7 @@ public static class ScheduleEngine
         Dictionary<string, int> awayCounts,
         Dictionary<string, HashSet<string>> gamesByDate,
         Dictionary<string, int> gamesByWeek,
+        Dictionary<string, int> pairCounts,
         int? maxGamesPerWeek,
         bool noDoubleHeaders,
         bool balanceHomeAway,
@@ -308,7 +312,7 @@ public static class ScheduleEngine
 
             if (!CanAssign(home, away, gameDate, gamesByDate, gamesByWeek, maxGamesPerWeek, noDoubleHeaders)) continue;
 
-            var score = ScoreCandidate(home, away, gameDate, teams, homeCounts, awayCounts, gamesByWeek, balanceHomeAway);
+            var score = ScoreCandidate(home, away, gameDate, teams, homeCounts, awayCounts, gamesByWeek, pairCounts, balanceHomeAway);
             var tieBreakValue = tieBreakSeed.HasValue
                 ? ComputeSeededTieBreak(tieBreakSeed.Value, slotId, gameDate, home, away)
                 : int.MaxValue;
@@ -340,6 +344,7 @@ public static class ScheduleEngine
         Dictionary<string, int> awayCounts,
         Dictionary<string, HashSet<string>> gamesByDate,
         Dictionary<string, int> gamesByWeek,
+        Dictionary<string, int> pairCounts,
         int? maxGamesPerWeek,
         bool noDoubleHeaders,
         bool balanceHomeAway,
@@ -391,7 +396,7 @@ public static class ScheduleEngine
             }
 
             feasibleCount += 1;
-            var breakdown = ScoreCandidateBreakdown(home, away, gameDate, teams, homeCounts, awayCounts, gamesByWeek, balanceHomeAway);
+            var breakdown = ScoreCandidateBreakdown(home, away, gameDate, teams, homeCounts, awayCounts, gamesByWeek, pairCounts, balanceHomeAway);
             candidates.Add(new ScheduleCandidateTrace(
                 HomeTeamId: home,
                 AwayTeamId: away,
@@ -454,9 +459,10 @@ public static class ScheduleEngine
         Dictionary<string, int> homeCounts,
         Dictionary<string, int> awayCounts,
         Dictionary<string, int> gamesByWeek,
+        Dictionary<string, int> pairCounts,
         bool balanceHomeAway)
     {
-        return ScoreCandidateBreakdown(home, away, gameDate, teams, homeCounts, awayCounts, gamesByWeek, balanceHomeAway).TotalScore;
+        return ScoreCandidateBreakdown(home, away, gameDate, teams, homeCounts, awayCounts, gamesByWeek, pairCounts, balanceHomeAway).TotalScore;
     }
 
     private static ScheduleScoreBreakdown ScoreCandidateBreakdown(
@@ -467,6 +473,7 @@ public static class ScheduleEngine
         Dictionary<string, int> homeCounts,
         Dictionary<string, int> awayCounts,
         Dictionary<string, int> gamesByWeek,
+        Dictionary<string, int> pairCounts,
         bool balanceHomeAway)
     {
         var homeGames = homeCounts[home] + awayCounts[home];
@@ -477,6 +484,7 @@ public static class ScheduleEngine
         var teamImbalancePenalty = Math.Abs(homeGames - awayGames) * 5;
         var teamLoadSpreadPenalty = TeamLoadSpreadAfterAssignment(home, away, teams, homeCounts, awayCounts) * 100;
         var weeklyParticipationPenalty = WeeklyParticipationPenaltyAfterAssignment(home, away, gameDate, gamesByWeek);
+        var pairRepeatPenalty = PairRepeatPenaltyAfterAssignment(home, away, pairCounts);
         var homeAwayPenalty = 0;
 
         if (balanceHomeAway)
@@ -491,8 +499,9 @@ public static class ScheduleEngine
             TeamImbalancePenalty: teamImbalancePenalty,
             TeamLoadSpreadPenalty: teamLoadSpreadPenalty,
             WeeklyParticipationPenalty: weeklyParticipationPenalty,
+            PairRepeatPenalty: pairRepeatPenalty,
             HomeAwayPenalty: homeAwayPenalty,
-            TotalScore: teamVolumePenalty + teamImbalancePenalty + teamLoadSpreadPenalty + weeklyParticipationPenalty + homeAwayPenalty);
+            TotalScore: teamVolumePenalty + teamImbalancePenalty + teamLoadSpreadPenalty + weeklyParticipationPenalty + pairRepeatPenalty + homeAwayPenalty);
     }
 
     private static int TeamLoadSpreadAfterAssignment(
@@ -537,6 +546,19 @@ public static class ScheduleEngine
         var homePenalty = homeWeekCount * homeWeekCount * 40;
         var awayPenalty = awayWeekCount * awayWeekCount * 40;
         return homePenalty + awayPenalty;
+    }
+
+    private static int PairRepeatPenaltyAfterAssignment(
+        string home,
+        string away,
+        Dictionary<string, int> pairCounts)
+    {
+        var pairKey = PairKey(home, away);
+        if (string.IsNullOrWhiteSpace(pairKey)) return 0;
+        var existing = pairCounts.TryGetValue(pairKey, out var count) ? count : 0;
+
+        // Strongly prefer fresh pairings before repeats; quadratic growth makes repeated pairs expensive.
+        return existing * existing * 60;
     }
 
     private static bool CanAssign(
@@ -621,7 +643,8 @@ public static class ScheduleEngine
         Dictionary<string, int> homeCounts,
         Dictionary<string, int> awayCounts,
         Dictionary<string, HashSet<string>> gamesByDate,
-        Dictionary<string, int> gamesByWeek)
+        Dictionary<string, int> gamesByWeek,
+        Dictionary<string, int> pairCounts)
     {
         if (!string.IsNullOrWhiteSpace(home))
         {
@@ -634,6 +657,14 @@ public static class ScheduleEngine
             awayCounts[away] += 1;
             gamesByDate[away].Add(gameDate);
             AddWeekCount(gamesByWeek, away, gameDate);
+        }
+        if (!string.IsNullOrWhiteSpace(home) && !string.IsNullOrWhiteSpace(away))
+        {
+            var pairKey = PairKey(home, away);
+            if (!string.IsNullOrWhiteSpace(pairKey))
+            {
+                pairCounts[pairKey] = pairCounts.TryGetValue(pairKey, out var count) ? count + 1 : 1;
+            }
         }
     }
 
@@ -653,6 +684,14 @@ public static class ScheduleEngine
         var cal = CultureInfo.InvariantCulture.Calendar;
         var week = cal.GetWeekOfYear(dt, CalendarWeekRule.FirstFourDayWeek, DayOfWeek.Monday);
         return $"{dt.Year}-W{week:D2}";
+    }
+
+    private static string PairKey(string teamA, string teamB)
+    {
+        if (string.IsNullOrWhiteSpace(teamA) || string.IsNullOrWhiteSpace(teamB)) return "";
+        return string.Compare(teamA, teamB, StringComparison.OrdinalIgnoreCase) <= 0
+            ? $"{teamA}|{teamB}"
+            : $"{teamB}|{teamA}";
     }
 
     private static int GetWeekCount(Dictionary<string, int> gamesByWeek, string teamId, string weekKey)
