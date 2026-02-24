@@ -103,7 +103,12 @@ public class ScheduleWizardFunctions
         List<object> unassignedMatchups,
         List<object> warnings,
         List<object> issues,
-        int totalIssues
+        int totalIssues,
+        object? ruleHealth,
+        List<object>? repairProposals,
+        bool applyBlocked,
+        int? seed,
+        string? constructionStrategy
     );
 
     [Function("ScheduleWizardPreview")]
@@ -380,9 +385,35 @@ public class ScheduleWizardFunctions
                 UnassignedSlots: regularAssignments.UnassignedSlots.Count,
                 UnassignedMatchups: regularAssignments.UnassignedMatchups.Count);
             var validationResult = new ScheduleResult(validationSummary, regularAssignments.Assignments, regularAssignments.UnassignedSlots, regularAssignments.UnassignedMatchups);
-            var validation = ScheduleValidation.Validate(validationResult, constraints);
-            var issues = validation.Issues
-                .Select(i => (object)new { phase = "Regular Season", ruleId = i.RuleId, severity = i.Severity, message = i.Message, details = i.Details })
+            var strictValidation = ScheduleValidationV2.Validate(
+                validationResult,
+                new ScheduleValidationV2Config(
+                    MaxGamesPerWeek: maxGamesPerWeek,
+                    NoDoubleHeaders: noDoubleHeaders,
+                    BalanceHomeAway: balanceHomeAway,
+                    BlackoutWindows: blockedRanges
+                        .Select((b, idx) => new ScheduleBlackoutWindow(
+                            RuleId: $"blackout-{idx + 1}",
+                            StartDate: b.StartDate,
+                            EndDate: b.EndDate,
+                            Label: string.IsNullOrWhiteSpace(b.Label) ? $"Blocked range {idx + 1}" : b.Label))
+                        .ToList(),
+                    TreatUnassignedRequiredMatchupsAsHard: true),
+                teams);
+            var issues = strictValidation.RuleHealth.Groups
+                .Select(g => (object)new
+                {
+                    phase = "Regular Season",
+                    ruleId = g.RuleId,
+                    severity = string.Equals(g.Severity, "hard", StringComparison.OrdinalIgnoreCase) ? "error" : "warning",
+                    message = g.Summary,
+                    details = new Dictionary<string, object?>
+                    {
+                        ["count"] = g.Count,
+                        ["severity"] = g.Severity,
+                        ["smallestAffectedSet"] = g.SmallestAffectedSet
+                    }
+                })
                 .ToList();
             if (poolAssignments.UnassignedMatchups.Count > 0)
             {
@@ -407,9 +438,29 @@ public class ScheduleWizardFunctions
                 });
             }
             var totalIssues = issues.Count;
+            var applyBlocked = strictValidation.RuleHealth.ApplyBlocked;
+            var repairProposals = new List<object>(); // Stage C repair/swap engine will populate this.
+            var seed = StableWizardSeed(division, seasonStart, seasonEnd);
+            const string constructionStrategy = "legacy_greedy_v1+strict_validation_v2";
 
             if (apply)
             {
+                if (applyBlocked)
+                {
+                    var requestId = req.FunctionContext.InvocationId.ToString();
+                    return ApiResponses.Error(
+                        req,
+                        HttpStatusCode.Conflict,
+                        ErrorCodes.SCHEDULE_BLOCKED,
+                        "Schedule has hard rule violations. Review Rule Health and repair suggestions before applying.",
+                        new
+                        {
+                            requestId,
+                            ruleHealth = strictValidation.RuleHealth,
+                            hardViolations = strictValidation.RuleHealth.HardViolationCount,
+                            totalIssues
+                        });
+                }
                 var runId = Guid.NewGuid().ToString("N");
                 await ApplyAssignmentsAsync(leagueId, division, runId, assignments);
                 await SaveWizardRunAsync(leagueId, division, runId, me.Email ?? me.UserId, summary, body);
@@ -420,10 +471,11 @@ public class ScheduleWizardFunctions
                 division,
                 slotsTotal = summary.totalSlots,
                 assignedTotal = summary.totalAssigned,
-                issues = totalIssues
+                issues = totalIssues,
+                applyBlocked
             });
 
-            return ApiResponses.Ok(req, new WizardPreviewDto(summary, assignments, unassignedSlots, unassignedMatchups, warnings, issues, totalIssues));
+            return ApiResponses.Ok(req, new WizardPreviewDto(summary, assignments, unassignedSlots, unassignedMatchups, warnings, issues, totalIssues, strictValidation.RuleHealth, repairProposals, applyBlocked, seed, constructionStrategy));
         }
         catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
         catch (Exception ex)
@@ -463,6 +515,20 @@ public class ScheduleWizardFunctions
             Math.Max(0, slotsTotal - assigned),
             unassignedMatchups
         );
+    }
+
+    private static int StableWizardSeed(string division, DateOnly seasonStart, DateOnly seasonEnd)
+    {
+        var text = $"{division}|{seasonStart:yyyyMMdd}|{seasonEnd:yyyyMMdd}";
+        unchecked
+        {
+            var hash = 17;
+            foreach (var ch in text)
+            {
+                hash = (hash * 31) + ch;
+            }
+            return Math.Abs(hash);
+        }
     }
 
     private record PhaseAssignments(

@@ -53,6 +53,7 @@ public static class ErrorCodes
     // Conflicts
     public const string CONFLICT = "CONFLICT";
     public const string CONCURRENT_MODIFICATION = "CONCURRENT_MODIFICATION";
+    public const string SCHEDULE_BLOCKED = "SCHEDULE_BLOCKED";
 
     // Server Errors
     public const string INTERNAL_ERROR = "INTERNAL_ERROR";
