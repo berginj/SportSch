@@ -284,6 +284,24 @@ public class ScheduleWizardFunctions
                 matchupPriorityByPair: BuildRegularSeasonMatchupPriorityMap(previewRegularMatchups, body.wizard.rivalryMatchups));
 
             var updatedPreview = ApplyRepairProposalToPreviewSnapshot(body.preview, body.proposal, teams, validationConfig);
+
+            try
+            {
+                await SavePreviewRepairAuditAsync(
+                    leagueId,
+                    division,
+                    me.Email ?? me.UserId,
+                    body.wizard,
+                    body.preview,
+                    updatedPreview,
+                    body.proposal,
+                    req.FunctionContext.InvocationId.ToString());
+            }
+            catch (Exception auditEx)
+            {
+                _log.LogWarning(auditEx, "Failed to save wizard preview repair audit for {LeagueId}/{Division}", leagueId, division);
+            }
+
             return ApiResponses.Ok(req, updatedPreview);
         }
         catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
@@ -2200,6 +2218,7 @@ public class ScheduleWizardFunctions
         var now = DateTimeOffset.UtcNow;
         var entity = new TableEntity(pk, runId)
         {
+            ["RecordType"] = "WizardRun",
             ["LeagueId"] = leagueId,
             ["Division"] = division,
             ["RunId"] = runId,
@@ -2219,6 +2238,114 @@ public class ScheduleWizardFunctions
 
         await table.AddEntityAsync(entity);
     }
+
+    private async Task SavePreviewRepairAuditAsync(
+        string leagueId,
+        string division,
+        string createdBy,
+        WizardRequest request,
+        WizardPreviewDto beforePreview,
+        WizardPreviewDto afterPreview,
+        ScheduleRepairProposal proposal,
+        string requestId)
+    {
+        var table = await TableClients.GetTableAsync(_svc, Constants.Tables.ScheduleRuns);
+        var pk = Constants.Pk.ScheduleRuns(leagueId, division);
+        var now = DateTimeOffset.UtcNow;
+        var auditId = BuildPreviewRepairAuditId(now);
+
+        var beforeRuleHealth = ExtractRuleHealthMetrics(beforePreview.ruleHealth);
+        var afterRuleHealth = ExtractRuleHealthMetrics(afterPreview.ruleHealth);
+
+        var entity = new TableEntity(pk, auditId)
+        {
+            ["RecordType"] = "WizardPreviewRepair",
+            ["LeagueId"] = leagueId,
+            ["Division"] = division,
+            ["RunId"] = auditId,
+            ["CreatedBy"] = createdBy,
+            ["CreatedUtc"] = now,
+            ["RequestId"] = requestId,
+            ["DateFrom"] = request.seasonStart ?? "",
+            ["DateTo"] = request.seasonEnd ?? "",
+            ["ConstructionStrategy"] = NormalizeConstructionStrategy(request.constructionStrategy),
+            ["Seed"] = request.seed ?? 0,
+            ["ProposalId"] = proposal.ProposalId ?? "",
+            ["ProposalTitle"] = TruncateForTable(proposal.Title ?? "", 400),
+            ["ProposalRationale"] = TruncateForTable(proposal.Rationale ?? "", 2000),
+            ["FixesRuleIds"] = SerializeForTableAudit(proposal.FixesRuleIds ?? Array.Empty<string>()),
+            ["Changes"] = SerializeForTableAudit(proposal.Changes ?? Array.Empty<ScheduleDiffChange>()),
+            ["BeforeAfterSummary"] = SerializeForTableAudit(proposal.BeforeAfterSummary ?? new Dictionary<string, object?>()),
+            ["RuleHealthBefore"] = SerializeForTableAudit(beforePreview.ruleHealth),
+            ["RuleHealthAfter"] = SerializeForTableAudit(afterPreview.ruleHealth),
+            ["ApplyBlockedBefore"] = beforePreview.applyBlocked,
+            ["ApplyBlockedAfter"] = afterPreview.applyBlocked,
+            ["HardViolationsBefore"] = beforeRuleHealth.HardViolationCount,
+            ["HardViolationsAfter"] = afterRuleHealth.HardViolationCount,
+            ["SoftViolationsBefore"] = beforeRuleHealth.SoftViolationCount,
+            ["SoftViolationsAfter"] = afterRuleHealth.SoftViolationCount,
+            ["SoftScoreBefore"] = beforeRuleHealth.SoftScore,
+            ["SoftScoreAfter"] = afterRuleHealth.SoftScore
+        };
+
+        await table.AddEntityAsync(entity);
+    }
+
+    private static string BuildPreviewRepairAuditId(DateTimeOffset nowUtc)
+        => $"PREVIEWFIX|{nowUtc.UtcDateTime:yyyyMMddHHmmssfff}|{Guid.NewGuid():N}";
+
+    private static string SerializeForTableAudit(object? value, int maxLength = 60000)
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(value);
+            return TruncateForTable(json, maxLength);
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    private static string TruncateForTable(string? value, int maxLength)
+    {
+        var text = value ?? "";
+        if (maxLength <= 0 || text.Length <= maxLength) return text;
+        var suffix = "...[truncated]";
+        if (maxLength <= suffix.Length) return text[..maxLength];
+        return text[..(maxLength - suffix.Length)] + suffix;
+    }
+
+    private static RuleHealthMetricsSnapshot ExtractRuleHealthMetrics(object? ruleHealth)
+    {
+        if (ruleHealth is JsonElement el && el.ValueKind == JsonValueKind.Object)
+        {
+            return new RuleHealthMetricsSnapshot(
+                HardViolationCount: ReadJsonInt(el, "hardViolationCount"),
+                SoftViolationCount: ReadJsonInt(el, "softViolationCount"),
+                SoftScore: ReadJsonDouble(el, "softScore"));
+        }
+
+        return new RuleHealthMetricsSnapshot(0, 0, 0);
+    }
+
+    private static int ReadJsonInt(JsonElement obj, string property)
+    {
+        if (!obj.TryGetProperty(property, out var value)) return 0;
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var result)) return result;
+        if (value.ValueKind == JsonValueKind.String && int.TryParse(value.GetString(), out var parsed)) return parsed;
+        return 0;
+    }
+
+    private static double ReadJsonDouble(JsonElement obj, string property)
+    {
+        if (!obj.TryGetProperty(property, out var value)) return 0;
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var result)) return result;
+        if (value.ValueKind == JsonValueKind.String && double.TryParse(value.GetString(), out var parsed)) return parsed;
+        return 0;
+    }
+
+    private readonly record struct RuleHealthMetricsSnapshot(int HardViolationCount, int SoftViolationCount, double SoftScore);
 
     private record SlotInfo(
         string slotId,
