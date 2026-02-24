@@ -41,6 +41,7 @@ public class ScheduleWizardFunctions
         bool? noDoubleHeaders,
         bool? balanceHomeAway,
         List<SlotPlanItem>? slotPlan,
+        List<RivalryMatchupOption>? rivalryMatchups,
         GuestAnchorOption? guestAnchorPrimary,
         GuestAnchorOption? guestAnchorSecondary,
         string? constructionStrategy,
@@ -59,6 +60,12 @@ public class ScheduleWizardFunctions
         int? priorityRank,
         string? startTime,
         string? endTime
+    );
+
+    public record RivalryMatchupOption(
+        string? teamA,
+        string? teamB,
+        double? weight
     );
 
     public record GuestAnchorOption(
@@ -268,11 +275,13 @@ public class ScheduleWizardFunctions
 
             var teams = await LoadTeamsAsync(leagueId, division);
             var blockedRanges = NormalizeBlockedDateRanges(body.wizard.blockedDateRanges);
+            var previewRegularMatchups = BuildRepeatedMatchups(teams, Math.Max(0, body.wizard.minGamesPerTeam ?? 0));
             var validationConfig = BuildValidationConfig(
                 maxGamesPerWeek: (body.wizard.maxGamesPerWeek ?? 0) <= 0 ? null : body.wizard.maxGamesPerWeek,
                 noDoubleHeaders: body.wizard.noDoubleHeaders ?? true,
                 balanceHomeAway: body.wizard.balanceHomeAway ?? true,
-                blockedRanges: blockedRanges);
+                blockedRanges: blockedRanges,
+                matchupPriorityByPair: BuildRegularSeasonMatchupPriorityMap(previewRegularMatchups, body.wizard.rivalryMatchups));
 
             var updatedPreview = ApplyRepairProposalToPreviewSnapshot(body.preview, body.proposal, teams, validationConfig);
             return ApiResponses.Ok(req, updatedPreview);
@@ -383,8 +392,9 @@ public class ScheduleWizardFunctions
             var regularMatchups = BuildRepeatedMatchups(teams, minGamesPerTeam);
             var poolMatchups = BuildTargetMatchups(teams, poolGamesPerTeam);
             var bracketMatchups = BuildBracketMatchups();
+            var regularMatchupPriorityByPair = BuildRegularSeasonMatchupPriorityMap(regularMatchups, body.rivalryMatchups);
 
-            var regularAssignments = AssignPhaseSlots("Regular Season", regularSlots, regularMatchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek, preferredDays, strictPreferredWeeknights, guestAnchors, scheduleBackward: useBackwardRegularSeason, tieBreakSeed: seed);
+            var regularAssignments = AssignPhaseSlots("Regular Season", regularSlots, regularMatchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek, preferredDays, strictPreferredWeeknights, guestAnchors, scheduleBackward: useBackwardRegularSeason, tieBreakSeed: seed, matchupPriorityByPair: regularMatchupPriorityByPair);
             var poolAssignments = AssignPhaseSlots("Pool Play", poolSlots, poolMatchups, teams, null, noDoubleHeaders, balanceHomeAway, 0, preferredDays: new List<DayOfWeek>(), strictPreferredWeeknights: false, guestAnchors: null, scheduleBackward: false, tieBreakSeed: seed);
             var bracketAssignments = AssignBracketSlots(bracketSlots, bracketMatchups);
             var totalPhaseSlots = regularSlots
@@ -457,7 +467,8 @@ public class ScheduleWizardFunctions
                         EndDate: b.EndDate,
                         Label: string.IsNullOrWhiteSpace(b.Label) ? $"Blocked range {idx + 1}" : b.Label))
                     .ToList(),
-                TreatUnassignedRequiredMatchupsAsHard: true);
+                TreatUnassignedRequiredMatchupsAsHard: true,
+                MatchupPriorityByPair: regularMatchupPriorityByPair);
             var strictValidation = ScheduleValidationV2.Validate(validationResult, validationConfig, teams);
             var issues = strictValidation.RuleHealth.Groups
                 .Select(g => (object)new
@@ -609,7 +620,8 @@ public class ScheduleWizardFunctions
         int? maxGamesPerWeek,
         bool noDoubleHeaders,
         bool balanceHomeAway,
-        List<BlockedDateRange> blockedRanges)
+        List<BlockedDateRange> blockedRanges,
+        IReadOnlyDictionary<string, int>? matchupPriorityByPair = null)
     {
         return new ScheduleValidationV2Config(
             MaxGamesPerWeek: maxGamesPerWeek,
@@ -622,7 +634,8 @@ public class ScheduleWizardFunctions
                     EndDate: b.EndDate,
                     Label: string.IsNullOrWhiteSpace(b.Label) ? $"Blocked range {idx + 1}" : b.Label))
                 .ToList(),
-            TreatUnassignedRequiredMatchupsAsHard: true);
+            TreatUnassignedRequiredMatchupsAsHard: true,
+            MatchupPriorityByPair: matchupPriorityByPair);
     }
 
     private static WizardPreviewDto ApplyRepairProposalToPreviewSnapshot(
@@ -870,6 +883,7 @@ public class ScheduleWizardFunctions
             weeklyParticipationPenalty = score.WeeklyParticipationPenalty,
             pairRepeatPenalty = score.PairRepeatPenalty,
             idleGapReductionBonus = score.IdleGapReductionBonus,
+            latePriorityPenalty = score.LatePriorityPenalty,
             homeAwayPenalty = score.HomeAwayPenalty
         };
     }
@@ -1205,7 +1219,8 @@ public class ScheduleWizardFunctions
         bool strictPreferredWeeknights,
         GuestAnchorSet? guestAnchors,
         bool scheduleBackward,
-        int? tieBreakSeed)
+        int? tieBreakSeed,
+        IReadOnlyDictionary<string, int>? matchupPriorityByPair = null)
     {
         if (slots.Count == 0)
             return new PhaseAssignments(new List<ScheduleAssignment>(), new List<ScheduleAssignment>(), new List<MatchupPair>(matchups));
@@ -1228,7 +1243,14 @@ public class ScheduleWizardFunctions
 
         var constraints = new ScheduleConstraints(maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, 0);
         var includePlacementTraces = string.Equals(phase, "Regular Season", StringComparison.OrdinalIgnoreCase);
-        var result = ScheduleEngine.AssignMatchups(orderedSlots, matchups, teams, constraints, includePlacementTraces: includePlacementTraces, tieBreakSeed: tieBreakSeed);
+        var result = ScheduleEngine.AssignMatchups(
+            orderedSlots,
+            matchups,
+            teams,
+            constraints,
+            includePlacementTraces: includePlacementTraces,
+            tieBreakSeed: tieBreakSeed,
+            matchupPriorityByPair: string.Equals(phase, "Regular Season", StringComparison.OrdinalIgnoreCase) ? matchupPriorityByPair : null);
         var assignments = new List<ScheduleAssignment>(result.Assignments);
         var carriedUnassignedSlots = new List<ScheduleAssignment>(result.UnassignedSlots);
         if (anchoredExternalSlots.Count > 0)
@@ -1695,6 +1717,14 @@ public class ScheduleWizardFunctions
         return $"{dt.Year}-W{week:D2}";
     }
 
+    private static string PairKey(string? teamA, string? teamB)
+    {
+        if (string.IsNullOrWhiteSpace(teamA) || string.IsNullOrWhiteSpace(teamB)) return "";
+        return string.Compare(teamA, teamB, StringComparison.OrdinalIgnoreCase) <= 0
+            ? $"{teamA}|{teamB}"
+            : $"{teamB}|{teamA}";
+    }
+
     private static WizardSlotDto ToWizardSlot(string phase, ScheduleAssignment assignment)
         => new(
             phase,
@@ -2019,6 +2049,46 @@ public class ScheduleWizardFunctions
             new MatchupPair("Seed2", "Seed3"),
             new MatchupPair("WinnerSF1", "WinnerSF2")
         };
+    }
+
+    private static Dictionary<string, int> BuildRegularSeasonMatchupPriorityMap(
+        IReadOnlyList<MatchupPair> regularMatchups,
+        IReadOnlyList<RivalryMatchupOption>? rivalryMatchups)
+    {
+        var result = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var group in (regularMatchups ?? Array.Empty<MatchupPair>())
+            .Where(m => !string.IsNullOrWhiteSpace(m.HomeTeamId) && !string.IsNullOrWhiteSpace(m.AwayTeamId))
+            .GroupBy(m => PairKey(m.HomeTeamId, m.AwayTeamId), StringComparer.OrdinalIgnoreCase))
+        {
+            if (string.IsNullOrWhiteSpace(group.Key)) continue;
+            var repeatWeight = Math.Max(0, group.Count() - 1);
+            if (repeatWeight > 0)
+                result[group.Key] = repeatWeight;
+        }
+
+        if (rivalryMatchups is not null)
+        {
+            foreach (var rivalry in rivalryMatchups)
+            {
+                var pairKey = PairKey(rivalry?.teamA, rivalry?.teamB);
+                if (string.IsNullOrWhiteSpace(pairKey)) continue;
+                var normalized = NormalizeRivalryWeight(rivalry?.weight);
+                if (normalized <= 0) continue;
+                result[pairKey] = result.TryGetValue(pairKey, out var existing)
+                    ? Math.Max(existing, normalized)
+                    : normalized;
+            }
+        }
+
+        return result;
+    }
+
+    private static int NormalizeRivalryWeight(double? rawWeight)
+    {
+        if (!rawWeight.HasValue) return 0;
+        if (double.IsNaN(rawWeight.Value) || double.IsInfinity(rawWeight.Value)) return 0;
+        return Math.Clamp((int)Math.Round(rawWeight.Value), 0, 10);
     }
 
     private async Task<List<string>> LoadTeamsAsync(string leagueId, string division)

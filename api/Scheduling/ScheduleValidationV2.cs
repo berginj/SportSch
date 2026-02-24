@@ -7,7 +7,8 @@ public record ScheduleValidationV2Config(
     bool NoDoubleHeaders,
     bool BalanceHomeAway,
     IReadOnlyList<ScheduleBlackoutWindow>? BlackoutWindows = null,
-    bool TreatUnassignedRequiredMatchupsAsHard = true);
+    bool TreatUnassignedRequiredMatchupsAsHard = true,
+    IReadOnlyDictionary<string, int>? MatchupPriorityByPair = null);
 
 public record ScheduleRuleViolation(
     string RuleId,
@@ -545,6 +546,9 @@ public static class ScheduleValidationV2
         var idleGapRaw = ComputeIdleGapExtraWeeks(result.Assignments, teams);
         terms.Add(new ScheduleSoftScoreTerm("idle-gap-extra-weeks", 3, idleGapRaw, idleGapRaw * 3));
 
+        var latePriorityRaw = ComputeLatePriorityPlacementPenalty(result, config.MatchupPriorityByPair);
+        terms.Add(new ScheduleSoftScoreTerm("late-priority-placement", 2, latePriorityRaw, latePriorityRaw * 2));
+
         if (!config.BalanceHomeAway || teams is null || teams.Count == 0)
         {
             terms.Add(new ScheduleSoftScoreTerm("home-away-balance-gap", 0, 0, 0));
@@ -588,6 +592,43 @@ public static class ScheduleValidationV2
         }
 
         return total;
+    }
+
+    private static double ComputeLatePriorityPlacementPenalty(
+        ScheduleResult result,
+        IReadOnlyDictionary<string, int>? matchupPriorityByPair)
+    {
+        if (matchupPriorityByPair is null || matchupPriorityByPair.Count == 0) return 0;
+
+        var allDates = result.Assignments
+            .Concat(result.UnassignedSlots)
+            .Select(a => TryParseDate(a.GameDate, out var date) ? date : (DateOnly?)null)
+            .Where(d => d.HasValue)
+            .Select(d => d!.Value)
+            .Distinct()
+            .OrderBy(d => d)
+            .ToList();
+        if (allDates.Count < 2) return 0;
+
+        var minDate = allDates[0];
+        var maxDate = allDates[^1];
+        var totalDays = Math.Max(0, maxDate.DayNumber - minDate.DayNumber);
+        if (totalDays <= 0) return 0;
+
+        double totalPenalty = 0;
+        foreach (var a in result.Assignments.Where(a => !a.IsExternalOffer))
+        {
+            var pairKey = PairKey(a.HomeTeamId, a.AwayTeamId);
+            if (string.IsNullOrWhiteSpace(pairKey)) continue;
+            if (!matchupPriorityByPair.TryGetValue(pairKey, out var weight) || weight <= 0) continue;
+            if (!TryParseDate(a.GameDate, out var date)) continue;
+
+            var daysFromStart = Math.Clamp(date.DayNumber - minDate.DayNumber, 0, totalDays);
+            var earlinessDays = totalDays - daysFromStart;
+            totalPenalty += ((double)weight * earlinessDays) / totalDays;
+        }
+
+        return totalPenalty;
     }
 
     private static void AddTeamDateAssignment(

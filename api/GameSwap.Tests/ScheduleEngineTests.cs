@@ -243,4 +243,39 @@ public class ScheduleEngineTests
             c => c.HomeTeamId == "A" && c.AwayTeamId == "B" &&
                  (c.ScoreBreakdown?.IdleGapReductionBonus ?? 0) < trace.SelectedScoreBreakdown.IdleGapReductionBonus);
     }
+
+    [Fact]
+    public void AssignMatchups_PushesPriorityMatchupLater_WhenEarlierAlternativeExists()
+    {
+        var teams = new List<string> { "A", "B", "C", "D" };
+        var matchups = new List<MatchupPair>
+        {
+            new("A", "B"), // priority matchup
+            new("C", "D")
+        };
+        var slots = new List<ScheduleSlot>
+        {
+            new("slot-early", "2026-04-05", "10:00", "12:00", "Field-1", ""),
+            new("slot-late", "2026-05-31", "10:00", "12:00", "Field-1", "")
+        };
+        var constraints = new ScheduleConstraints(MaxGamesPerWeek: 1, NoDoubleHeaders: true, BalanceHomeAway: false, ExternalOfferPerWeek: 0);
+        var priorities = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["A|B"] = 5 };
+
+        var result = ScheduleEngine.AssignMatchups(slots, matchups, teams, constraints, includePlacementTraces: true, matchupPriorityByPair: priorities);
+
+        Assert.Equal(2, result.Assignments.Count);
+        var early = Assert.Single(result.Assignments.FindAll(a => a.SlotId == "slot-early"));
+        var late = Assert.Single(result.Assignments.FindAll(a => a.SlotId == "slot-late"));
+        Assert.Equal("C", early.HomeTeamId);
+        Assert.Equal("D", early.AwayTeamId);
+        Assert.Equal("A", late.HomeTeamId);
+        Assert.Equal("B", late.AwayTeamId);
+
+        var earlyTrace = Assert.Single(result.PlacementTraces!.FindAll(t => t.SlotId == "slot-early"));
+        Assert.NotNull(earlyTrace.SelectedScoreBreakdown);
+        Assert.Equal(0, earlyTrace.SelectedScoreBreakdown!.LatePriorityPenalty);
+        Assert.Contains(
+            earlyTrace.TopFeasibleAlternatives,
+            c => c.HomeTeamId == "A" && c.AwayTeamId == "B" && (c.ScoreBreakdown?.LatePriorityPenalty ?? 0) > 0);
+    }
 }

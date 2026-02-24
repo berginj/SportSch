@@ -4402,6 +4402,10 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                                     <td>{selectedGameExplain.backendExplanation.scoreBreakdown.idleGapReductionBonus ?? 0}</td>
                                   </tr>
                                   <tr>
+                                    <td>Late priority matchup</td>
+                                    <td>{selectedGameExplain.backendExplanation.scoreBreakdown.latePriorityPenalty ?? 0}</td>
+                                  </tr>
+                                  <tr>
                                     <td>Home/away</td>
                                     <td>{selectedGameExplain.backendExplanation.scoreBreakdown.homeAwayPenalty ?? 0}</td>
                                   </tr>

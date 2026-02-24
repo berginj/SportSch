@@ -98,7 +98,14 @@ public class ScheduleValidationV2Tests
 
         var report = ScheduleValidationV2.Validate(
             result,
-            new ScheduleValidationV2Config(MaxGamesPerWeek: 2, NoDoubleHeaders: true, BalanceHomeAway: false),
+            new ScheduleValidationV2Config(
+                MaxGamesPerWeek: 2,
+                NoDoubleHeaders: true,
+                BalanceHomeAway: false,
+                MatchupPriorityByPair: new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["A|B"] = 3
+                }),
             teams: new[] { "A", "B", "C", "D" }).RuleHealth;
 
         Assert.False(report.ApplyBlocked);
@@ -108,10 +115,13 @@ public class ScheduleValidationV2Tests
 
         var repeatTerm = Assert.Single(report.ScoreBreakdown, t => t.ObjectiveId == "opponent-repeat-overage");
         var idleGapTerm = Assert.Single(report.ScoreBreakdown, t => t.ObjectiveId == "idle-gap-extra-weeks");
+        var latePriorityTerm = Assert.Single(report.ScoreBreakdown, t => t.ObjectiveId == "late-priority-placement");
         Assert.True(repeatTerm.Raw > 0);
         Assert.True(repeatTerm.Weighted > 0);
         Assert.True(idleGapTerm.Raw > 0);
         Assert.True(idleGapTerm.Weighted > 0);
+        Assert.True(latePriorityTerm.Raw > 0);
+        Assert.True(latePriorityTerm.Weighted > 0);
     }
 
     private static ScheduleAssignment A(

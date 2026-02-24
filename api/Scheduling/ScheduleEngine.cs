@@ -47,6 +47,7 @@ public record ScheduleScoreBreakdown(
     int WeeklyParticipationPenalty,
     int PairRepeatPenalty,
     int IdleGapReductionBonus,
+    int LatePriorityPenalty,
     int HomeAwayPenalty,
     int TotalScore);
 
@@ -122,7 +123,8 @@ public static class ScheduleEngine
         IReadOnlyList<string> teams,
         ScheduleConstraints constraints,
         bool includePlacementTraces = false,
-        int? tieBreakSeed = null)
+        int? tieBreakSeed = null,
+        IReadOnlyDictionary<string, int>? matchupPriorityByPair = null)
     {
         var teamSet = new HashSet<string>(teams, StringComparer.OrdinalIgnoreCase);
         var homeCounts = teams.ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
@@ -132,6 +134,7 @@ public static class ScheduleEngine
         var pairCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var gamesByTeamDates = teams.ToDictionary(t => t, _ => new List<DateTime>(), StringComparer.OrdinalIgnoreCase);
         var externalOfferCounts = teams.ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
+        var slotDateRange = BuildSlotDateRange(slots);
 
         var assignments = new List<ScheduleAssignment>();
         var remainingMatchups = new List<MatchupPair>(matchups);
@@ -163,6 +166,8 @@ public static class ScheduleEngine
                     gamesByWeek,
                     pairCounts,
                     gamesByTeamDates,
+                    matchupPriorityByPair,
+                    slotDateRange,
                     constraints.MaxGamesPerWeek,
                     constraints.NoDoubleHeaders,
                     constraints.BalanceHomeAway,
@@ -176,7 +181,7 @@ public static class ScheduleEngine
             }
             else
             {
-                pick = PickMatchup(slot.GameDate, slot.SlotId, fixedHome, remainingMatchups, teams, homeCounts, awayCounts, gamesByDate, gamesByWeek, pairCounts, gamesByTeamDates, constraints.MaxGamesPerWeek, constraints.NoDoubleHeaders, constraints.BalanceHomeAway, tieBreakSeed);
+                pick = PickMatchup(slot.GameDate, slot.SlotId, fixedHome, remainingMatchups, teams, homeCounts, awayCounts, gamesByDate, gamesByWeek, pairCounts, gamesByTeamDates, matchupPriorityByPair, slotDateRange, constraints.MaxGamesPerWeek, constraints.NoDoubleHeaders, constraints.BalanceHomeAway, tieBreakSeed);
             }
 
             if (pick is null)
@@ -311,6 +316,8 @@ public static class ScheduleEngine
         Dictionary<string, int> gamesByWeek,
         Dictionary<string, int> pairCounts,
         Dictionary<string, List<DateTime>> gamesByTeamDates,
+        IReadOnlyDictionary<string, int>? matchupPriorityByPair,
+        SlotDateRange? slotDateRange,
         int? maxGamesPerWeek,
         bool noDoubleHeaders,
         bool balanceHomeAway,
@@ -340,7 +347,7 @@ public static class ScheduleEngine
 
             if (!CanAssign(home, away, gameDate, gamesByDate, gamesByWeek, maxGamesPerWeek, noDoubleHeaders)) continue;
 
-            var score = ScoreCandidate(home, away, gameDate, teams, homeCounts, awayCounts, gamesByWeek, pairCounts, gamesByTeamDates, balanceHomeAway);
+            var score = ScoreCandidate(home, away, gameDate, teams, homeCounts, awayCounts, gamesByWeek, pairCounts, gamesByTeamDates, matchupPriorityByPair, slotDateRange, balanceHomeAway);
             var tieBreakValue = tieBreakSeed.HasValue
                 ? ComputeSeededTieBreak(tieBreakSeed.Value, slotId, gameDate, home, away)
                 : int.MaxValue;
@@ -374,6 +381,8 @@ public static class ScheduleEngine
         Dictionary<string, int> gamesByWeek,
         Dictionary<string, int> pairCounts,
         Dictionary<string, List<DateTime>> gamesByTeamDates,
+        IReadOnlyDictionary<string, int>? matchupPriorityByPair,
+        SlotDateRange? slotDateRange,
         int? maxGamesPerWeek,
         bool noDoubleHeaders,
         bool balanceHomeAway,
@@ -425,7 +434,7 @@ public static class ScheduleEngine
             }
 
             feasibleCount += 1;
-            var breakdown = ScoreCandidateBreakdown(home, away, gameDate, teams, homeCounts, awayCounts, gamesByWeek, pairCounts, gamesByTeamDates, balanceHomeAway);
+            var breakdown = ScoreCandidateBreakdown(home, away, gameDate, teams, homeCounts, awayCounts, gamesByWeek, pairCounts, gamesByTeamDates, matchupPriorityByPair, slotDateRange, balanceHomeAway);
             candidates.Add(new ScheduleCandidateTrace(
                 HomeTeamId: home,
                 AwayTeamId: away,
@@ -490,9 +499,11 @@ public static class ScheduleEngine
         Dictionary<string, int> gamesByWeek,
         Dictionary<string, int> pairCounts,
         Dictionary<string, List<DateTime>> gamesByTeamDates,
+        IReadOnlyDictionary<string, int>? matchupPriorityByPair,
+        SlotDateRange? slotDateRange,
         bool balanceHomeAway)
     {
-        return ScoreCandidateBreakdown(home, away, gameDate, teams, homeCounts, awayCounts, gamesByWeek, pairCounts, gamesByTeamDates, balanceHomeAway).TotalScore;
+        return ScoreCandidateBreakdown(home, away, gameDate, teams, homeCounts, awayCounts, gamesByWeek, pairCounts, gamesByTeamDates, matchupPriorityByPair, slotDateRange, balanceHomeAway).TotalScore;
     }
 
     private static ScheduleScoreBreakdown ScoreCandidateBreakdown(
@@ -505,6 +516,8 @@ public static class ScheduleEngine
         Dictionary<string, int> gamesByWeek,
         Dictionary<string, int> pairCounts,
         Dictionary<string, List<DateTime>> gamesByTeamDates,
+        IReadOnlyDictionary<string, int>? matchupPriorityByPair,
+        SlotDateRange? slotDateRange,
         bool balanceHomeAway)
     {
         var homeGames = homeCounts[home] + awayCounts[home];
@@ -517,6 +530,7 @@ public static class ScheduleEngine
         var weeklyParticipationPenalty = WeeklyParticipationPenaltyAfterAssignment(home, away, gameDate, gamesByWeek);
         var pairRepeatPenalty = PairRepeatPenaltyAfterAssignment(home, away, pairCounts);
         var idleGapReductionBonus = IdleGapReductionBonusAfterAssignment(home, away, gameDate, gamesByTeamDates);
+        var latePriorityPenalty = LatePriorityPenaltyAfterAssignment(home, away, gameDate, matchupPriorityByPair, slotDateRange);
         var homeAwayPenalty = 0;
 
         if (balanceHomeAway)
@@ -533,8 +547,9 @@ public static class ScheduleEngine
             WeeklyParticipationPenalty: weeklyParticipationPenalty,
             PairRepeatPenalty: pairRepeatPenalty,
             IdleGapReductionBonus: idleGapReductionBonus,
+            LatePriorityPenalty: latePriorityPenalty,
             HomeAwayPenalty: homeAwayPenalty,
-            TotalScore: teamVolumePenalty + teamImbalancePenalty + teamLoadSpreadPenalty + weeklyParticipationPenalty + pairRepeatPenalty - idleGapReductionBonus + homeAwayPenalty);
+            TotalScore: teamVolumePenalty + teamImbalancePenalty + teamLoadSpreadPenalty + weeklyParticipationPenalty + pairRepeatPenalty - idleGapReductionBonus + latePriorityPenalty + homeAwayPenalty);
     }
 
     private static int TeamLoadSpreadAfterAssignment(
@@ -627,6 +642,28 @@ public static class ScheduleEngine
         // Reward filling longer-than-weekly gaps. Weekly cadence (~7 days) gets no bonus.
         var extraWeeksOfGap = Math.Max(0, (nearestGapDays - 7) / 7);
         return Math.Min(4, extraWeeksOfGap) * 20;
+    }
+
+    private static int LatePriorityPenaltyAfterAssignment(
+        string home,
+        string away,
+        string gameDate,
+        IReadOnlyDictionary<string, int>? matchupPriorityByPair,
+        SlotDateRange? slotDateRange)
+    {
+        if (matchupPriorityByPair is null || matchupPriorityByPair.Count == 0) return 0;
+        if (slotDateRange is null) return 0;
+        if (!TryGetMatchupPriority(home, away, matchupPriorityByPair, out var priorityWeight) || priorityWeight <= 0) return 0;
+        if (!DateTime.TryParseExact(gameDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var currentDate))
+            return 0;
+
+        var totalDays = Math.Max(0, (slotDateRange.Value.MaxDate.Date - slotDateRange.Value.MinDate.Date).Days);
+        if (totalDays <= 0) return 0;
+        var daysFromStart = Math.Clamp((currentDate.Date - slotDateRange.Value.MinDate.Date).Days, 0, totalDays);
+        var earlinessDays = totalDays - daysFromStart;
+
+        // Higher-priority pairings should prefer later dates; earlier placements pay a proportional penalty.
+        return (priorityWeight * earlinessDays * 20) / totalDays;
     }
 
     private static bool CanAssign(
@@ -832,6 +869,32 @@ public static class ScheduleEngine
         return teamVolumePenalty + weeklyParticipationPenalty + externalOfferRepeatPenalty;
     }
 
+    private static SlotDateRange? BuildSlotDateRange(IReadOnlyList<ScheduleSlot> slots)
+    {
+        DateTime? minDate = null;
+        DateTime? maxDate = null;
+        foreach (var slot in slots)
+        {
+            if (!DateTime.TryParseExact(slot.GameDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
+                continue;
+            var date = dt.Date;
+            minDate = !minDate.HasValue || date < minDate.Value ? date : minDate;
+            maxDate = !maxDate.HasValue || date > maxDate.Value ? date : maxDate;
+        }
+
+        return minDate.HasValue && maxDate.HasValue ? new SlotDateRange(minDate.Value, maxDate.Value) : null;
+    }
+
+    private static bool TryGetMatchupPriority(string home, string away, IReadOnlyDictionary<string, int> matchupPriorityByPair, out int priorityWeight)
+    {
+        priorityWeight = 0;
+        var pairKey = PairKey(home, away);
+        if (string.IsNullOrWhiteSpace(pairKey)) return false;
+        if (!matchupPriorityByPair.TryGetValue(pairKey, out var weight)) return false;
+        priorityWeight = Math.Max(0, weight);
+        return priorityWeight > 0;
+    }
+
     private static string WeekKey(string gameDate)
     {
         if (!DateTime.TryParseExact(gameDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
@@ -877,4 +940,6 @@ public static class ScheduleEngine
 
         dates.Add(dt.Date);
     }
+
+    private readonly record struct SlotDateRange(DateTime MinDate, DateTime MaxDate);
 }
