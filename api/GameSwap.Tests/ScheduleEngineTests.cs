@@ -72,4 +72,68 @@ public class ScheduleEngineTests
         Assert.NotNull(firstTrace.SelectedScoreBreakdown);
         Assert.NotEmpty(firstTrace.TopFeasibleAlternatives);
     }
+
+    [Fact]
+    public void AssignMatchups_UsesSeededTieBreak_WhenCandidatesHaveEqualScores()
+    {
+        var teams = new List<string> { "A", "B", "C", "D" };
+        var matchups = new List<MatchupPair>
+        {
+            new("A", "B"),
+            new("A", "C"),
+            new("A", "D"),
+            new("B", "C"),
+            new("B", "D"),
+            new("C", "D"),
+        };
+        var slots = new List<ScheduleSlot> { new("slot-1", "2026-05-10", "10:00", "12:00", "Field-1", "") };
+        var constraints = new ScheduleConstraints(MaxGamesPerWeek: 2, NoDoubleHeaders: false, BalanceHomeAway: false, ExternalOfferPerWeek: 0);
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var seed = 1; seed <= 12; seed++)
+        {
+            var result1 = ScheduleEngine.AssignMatchups(slots, matchups, teams, constraints, tieBreakSeed: seed);
+            var result2 = ScheduleEngine.AssignMatchups(slots, matchups, teams, constraints, tieBreakSeed: seed);
+            Assert.Single(result1.Assignments);
+            Assert.Single(result2.Assignments);
+            Assert.Equal(result1.Assignments[0].HomeTeamId, result2.Assignments[0].HomeTeamId);
+            Assert.Equal(result1.Assignments[0].AwayTeamId, result2.Assignments[0].AwayTeamId);
+            seen.Add($"{result1.Assignments[0].HomeTeamId}|{result1.Assignments[0].AwayTeamId}");
+        }
+
+        Assert.True(seen.Count > 1);
+    }
+
+    [Fact]
+    public void AssignMatchups_PrefersFirstWeeklyGameOverSecond_WhenScoresOtherwiseTie()
+    {
+        var teams = new List<string> { "A", "B", "C", "D" };
+        var matchups = new List<MatchupPair>
+        {
+            new("B", "D"), // Week 1
+            new("A", "C"), // Week 2 slot 1
+            new("A", "B"), // Week 2 slot 2 candidate (repeats A in same week)
+            new("B", "D"), // Week 2 slot 2 candidate (first weekly game for both B and D)
+        };
+        var slots = new List<ScheduleSlot>
+        {
+            new("slot-w1", "2026-04-06", "10:00", "12:00", "Field-1", ""),
+            new("slot-w2a", "2026-04-13", "10:00", "12:00", "Field-1", ""),
+            new("slot-w2b", "2026-04-15", "10:00", "12:00", "Field-1", ""),
+        };
+        var constraints = new ScheduleConstraints(MaxGamesPerWeek: 2, NoDoubleHeaders: false, BalanceHomeAway: false, ExternalOfferPerWeek: 0);
+
+        var result = ScheduleEngine.AssignMatchups(slots, matchups, teams, constraints, includePlacementTraces: true);
+
+        Assert.Equal(3, result.Assignments.Count);
+        var third = result.Assignments[2];
+        Assert.Equal("slot-w2b", third.SlotId);
+        Assert.Equal("B", third.HomeTeamId);
+        Assert.Equal("D", third.AwayTeamId);
+
+        var trace = Assert.Single(result.PlacementTraces!.FindAll(t => t.SlotId == "slot-w2b"));
+        Assert.NotNull(trace.SelectedScoreBreakdown);
+        Assert.Equal(0, trace.SelectedScoreBreakdown!.WeeklyParticipationPenalty);
+        Assert.Contains(trace.TopFeasibleAlternatives, c => c.HomeTeamId == "A" && c.AwayTeamId == "B" && (c.ScoreBreakdown?.WeeklyParticipationPenalty ?? 0) > 0);
+    }
 }

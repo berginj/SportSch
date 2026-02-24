@@ -345,6 +345,7 @@ public class ScheduleWizardFunctions
             var normalizedConstructionStrategy = NormalizeConstructionStrategy(body.constructionStrategy);
             var useBackwardRegularSeason = string.Equals(normalizedConstructionStrategy, "backward_greedy_v1", StringComparison.OrdinalIgnoreCase);
             var requestedSeed = body.seed.HasValue ? Math.Abs(body.seed.Value) : (int?)null;
+            var seed = requestedSeed ?? StableWizardSeed(division, seasonStart, seasonEnd);
 
             var teams = await LoadTeamsAsync(leagueId, division);
             if (teams.Count < 2)
@@ -383,8 +384,8 @@ public class ScheduleWizardFunctions
             var poolMatchups = BuildTargetMatchups(teams, poolGamesPerTeam);
             var bracketMatchups = BuildBracketMatchups();
 
-            var regularAssignments = AssignPhaseSlots("Regular Season", regularSlots, regularMatchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek, preferredDays, strictPreferredWeeknights, guestAnchors, scheduleBackward: useBackwardRegularSeason);
-            var poolAssignments = AssignPhaseSlots("Pool Play", poolSlots, poolMatchups, teams, null, noDoubleHeaders, balanceHomeAway, 0, preferredDays: new List<DayOfWeek>(), strictPreferredWeeknights: false, guestAnchors: null, scheduleBackward: false);
+            var regularAssignments = AssignPhaseSlots("Regular Season", regularSlots, regularMatchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek, preferredDays, strictPreferredWeeknights, guestAnchors, scheduleBackward: useBackwardRegularSeason, tieBreakSeed: seed);
+            var poolAssignments = AssignPhaseSlots("Pool Play", poolSlots, poolMatchups, teams, null, noDoubleHeaders, balanceHomeAway, 0, preferredDays: new List<DayOfWeek>(), strictPreferredWeeknights: false, guestAnchors: null, scheduleBackward: false, tieBreakSeed: seed);
             var bracketAssignments = AssignBracketSlots(bracketSlots, bracketMatchups);
             var totalPhaseSlots = regularSlots
                 .Select(s => s.slotId)
@@ -500,7 +501,6 @@ public class ScheduleWizardFunctions
             var repairProposals = ScheduleRepairEngine.Propose(validationResult, strictValidation.RuleHealth, validationConfig, teams, maxProposals: 8)
                 .Cast<object>()
                 .ToList();
-            var seed = requestedSeed ?? StableWizardSeed(division, seasonStart, seasonEnd);
             var constructionStrategy = $"{normalizedConstructionStrategy}+strict_validation_v2";
             var explanations = BuildWizardPlacementExplanations(regularAssignments, normalizedConstructionStrategy, seed);
 
@@ -867,6 +867,7 @@ public class ScheduleWizardFunctions
             teamVolumePenalty = score.TeamVolumePenalty,
             teamImbalancePenalty = score.TeamImbalancePenalty,
             teamLoadSpreadPenalty = score.TeamLoadSpreadPenalty,
+            weeklyParticipationPenalty = score.WeeklyParticipationPenalty,
             homeAwayPenalty = score.HomeAwayPenalty
         };
     }
@@ -1201,7 +1202,8 @@ public class ScheduleWizardFunctions
         List<DayOfWeek> preferredDays,
         bool strictPreferredWeeknights,
         GuestAnchorSet? guestAnchors,
-        bool scheduleBackward)
+        bool scheduleBackward,
+        int? tieBreakSeed)
     {
         if (slots.Count == 0)
             return new PhaseAssignments(new List<ScheduleAssignment>(), new List<ScheduleAssignment>(), new List<MatchupPair>(matchups));
@@ -1224,7 +1226,7 @@ public class ScheduleWizardFunctions
 
         var constraints = new ScheduleConstraints(maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, 0);
         var includePlacementTraces = string.Equals(phase, "Regular Season", StringComparison.OrdinalIgnoreCase);
-        var result = ScheduleEngine.AssignMatchups(orderedSlots, matchups, teams, constraints, includePlacementTraces: includePlacementTraces);
+        var result = ScheduleEngine.AssignMatchups(orderedSlots, matchups, teams, constraints, includePlacementTraces: includePlacementTraces, tieBreakSeed: tieBreakSeed);
         var assignments = new List<ScheduleAssignment>(result.Assignments);
         var carriedUnassignedSlots = new List<ScheduleAssignment>(result.UnassignedSlots);
         if (anchoredExternalSlots.Count > 0)

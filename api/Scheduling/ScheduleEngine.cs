@@ -44,6 +44,7 @@ public record ScheduleScoreBreakdown(
     int TeamVolumePenalty,
     int TeamImbalancePenalty,
     int TeamLoadSpreadPenalty,
+    int WeeklyParticipationPenalty,
     int HomeAwayPenalty,
     int TotalScore);
 
@@ -118,7 +119,8 @@ public static class ScheduleEngine
         IReadOnlyList<MatchupPair> matchups,
         IReadOnlyList<string> teams,
         ScheduleConstraints constraints,
-        bool includePlacementTraces = false)
+        bool includePlacementTraces = false,
+        int? tieBreakSeed = null)
     {
         var teamSet = new HashSet<string>(teams, StringComparer.OrdinalIgnoreCase);
         var homeCounts = teams.ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
@@ -146,6 +148,7 @@ public static class ScheduleEngine
             {
                 var tracedPick = PickMatchupWithTrace(
                     slot.GameDate,
+                    slot.SlotId,
                     fixedHome,
                     remainingMatchups,
                     teams,
@@ -155,7 +158,8 @@ public static class ScheduleEngine
                     gamesByWeek,
                     constraints.MaxGamesPerWeek,
                     constraints.NoDoubleHeaders,
-                    constraints.BalanceHomeAway);
+                    constraints.BalanceHomeAway,
+                    tieBreakSeed);
                 pick = tracedPick.Pick;
                 selectedScoreBreakdown = tracedPick.SelectedScoreBreakdown;
                 topFeasibleAlternatives = tracedPick.TopFeasibleAlternatives;
@@ -165,7 +169,7 @@ public static class ScheduleEngine
             }
             else
             {
-                pick = PickMatchup(slot.GameDate, fixedHome, remainingMatchups, teams, homeCounts, awayCounts, gamesByDate, gamesByWeek, constraints.MaxGamesPerWeek, constraints.NoDoubleHeaders, constraints.BalanceHomeAway);
+                pick = PickMatchup(slot.GameDate, slot.SlotId, fixedHome, remainingMatchups, teams, homeCounts, awayCounts, gamesByDate, gamesByWeek, constraints.MaxGamesPerWeek, constraints.NoDoubleHeaders, constraints.BalanceHomeAway, tieBreakSeed);
             }
 
             if (pick is null)
@@ -267,6 +271,7 @@ public static class ScheduleEngine
 
     private static MatchupPair? PickMatchup(
         string gameDate,
+        string slotId,
         string fixedHome,
         List<MatchupPair> matchups,
         IReadOnlyList<string> teams,
@@ -276,10 +281,12 @@ public static class ScheduleEngine
         Dictionary<string, int> gamesByWeek,
         int? maxGamesPerWeek,
         bool noDoubleHeaders,
-        bool balanceHomeAway)
+        bool balanceHomeAway,
+        int? tieBreakSeed)
     {
         MatchupPair? best = null;
         var bestScore = int.MaxValue;
+        var bestTieBreak = int.MaxValue;
 
         foreach (var m in matchups)
         {
@@ -301,13 +308,22 @@ public static class ScheduleEngine
 
             if (!CanAssign(home, away, gameDate, gamesByDate, gamesByWeek, maxGamesPerWeek, noDoubleHeaders)) continue;
 
-            var score = ScoreCandidate(home, away, teams, homeCounts, awayCounts, balanceHomeAway);
+            var score = ScoreCandidate(home, away, gameDate, teams, homeCounts, awayCounts, gamesByWeek, balanceHomeAway);
+            var tieBreakValue = tieBreakSeed.HasValue
+                ? ComputeSeededTieBreak(tieBreakSeed.Value, slotId, gameDate, home, away)
+                : int.MaxValue;
 
             if (score < bestScore)
             {
                 bestScore = score;
+                bestTieBreak = tieBreakValue;
                 best = new MatchupPair(home, away);
-                if (score == 0) break;
+                if (score == 0 && !tieBreakSeed.HasValue) break;
+            }
+            else if (score == bestScore && tieBreakSeed.HasValue && tieBreakValue < bestTieBreak)
+            {
+                bestTieBreak = tieBreakValue;
+                best = new MatchupPair(home, away);
             }
         }
 
@@ -316,6 +332,7 @@ public static class ScheduleEngine
 
     private static MatchupPickTraceResult PickMatchupWithTrace(
         string gameDate,
+        string slotId,
         string fixedHome,
         List<MatchupPair> matchups,
         IReadOnlyList<string> teams,
@@ -325,11 +342,13 @@ public static class ScheduleEngine
         Dictionary<string, int> gamesByWeek,
         int? maxGamesPerWeek,
         bool noDoubleHeaders,
-        bool balanceHomeAway)
+        bool balanceHomeAway,
+        int? tieBreakSeed)
     {
         MatchupPair? best = null;
         ScheduleScoreBreakdown? bestBreakdown = null;
         var bestScore = int.MaxValue;
+        var bestTieBreak = int.MaxValue;
         var candidates = new List<ScheduleCandidateTrace>(matchups.Count);
         var feasibleCount = 0;
 
@@ -372,7 +391,7 @@ public static class ScheduleEngine
             }
 
             feasibleCount += 1;
-            var breakdown = ScoreCandidateBreakdown(home, away, teams, homeCounts, awayCounts, balanceHomeAway);
+            var breakdown = ScoreCandidateBreakdown(home, away, gameDate, teams, homeCounts, awayCounts, gamesByWeek, balanceHomeAway);
             candidates.Add(new ScheduleCandidateTrace(
                 HomeTeamId: home,
                 AwayTeamId: away,
@@ -380,12 +399,23 @@ public static class ScheduleEngine
                 RejectReason: null,
                 ScoreBreakdown: breakdown));
 
+            var tieBreakValue = tieBreakSeed.HasValue
+                ? ComputeSeededTieBreak(tieBreakSeed.Value, slotId, gameDate, home, away)
+                : int.MaxValue;
+
             if (breakdown.TotalScore < bestScore)
             {
                 bestScore = breakdown.TotalScore;
+                bestTieBreak = tieBreakValue;
                 bestBreakdown = breakdown;
                 best = new MatchupPair(home, away);
-                if (bestScore == 0) break;
+                if (bestScore == 0 && !tieBreakSeed.HasValue) break;
+            }
+            else if (breakdown.TotalScore == bestScore && tieBreakSeed.HasValue && tieBreakValue < bestTieBreak)
+            {
+                bestTieBreak = tieBreakValue;
+                bestBreakdown = breakdown;
+                best = new MatchupPair(home, away);
             }
         }
 
@@ -419,20 +449,24 @@ public static class ScheduleEngine
     private static int ScoreCandidate(
         string home,
         string away,
+        string gameDate,
         IReadOnlyList<string> teams,
         Dictionary<string, int> homeCounts,
         Dictionary<string, int> awayCounts,
+        Dictionary<string, int> gamesByWeek,
         bool balanceHomeAway)
     {
-        return ScoreCandidateBreakdown(home, away, teams, homeCounts, awayCounts, balanceHomeAway).TotalScore;
+        return ScoreCandidateBreakdown(home, away, gameDate, teams, homeCounts, awayCounts, gamesByWeek, balanceHomeAway).TotalScore;
     }
 
     private static ScheduleScoreBreakdown ScoreCandidateBreakdown(
         string home,
         string away,
+        string gameDate,
         IReadOnlyList<string> teams,
         Dictionary<string, int> homeCounts,
         Dictionary<string, int> awayCounts,
+        Dictionary<string, int> gamesByWeek,
         bool balanceHomeAway)
     {
         var homeGames = homeCounts[home] + awayCounts[home];
@@ -442,6 +476,7 @@ public static class ScheduleEngine
         var teamVolumePenalty = (homeGames + awayGames) * 20;
         var teamImbalancePenalty = Math.Abs(homeGames - awayGames) * 5;
         var teamLoadSpreadPenalty = TeamLoadSpreadAfterAssignment(home, away, teams, homeCounts, awayCounts) * 100;
+        var weeklyParticipationPenalty = WeeklyParticipationPenaltyAfterAssignment(home, away, gameDate, gamesByWeek);
         var homeAwayPenalty = 0;
 
         if (balanceHomeAway)
@@ -455,8 +490,9 @@ public static class ScheduleEngine
             TeamVolumePenalty: teamVolumePenalty,
             TeamImbalancePenalty: teamImbalancePenalty,
             TeamLoadSpreadPenalty: teamLoadSpreadPenalty,
+            WeeklyParticipationPenalty: weeklyParticipationPenalty,
             HomeAwayPenalty: homeAwayPenalty,
-            TotalScore: teamVolumePenalty + teamImbalancePenalty + teamLoadSpreadPenalty + homeAwayPenalty);
+            TotalScore: teamVolumePenalty + teamImbalancePenalty + teamLoadSpreadPenalty + weeklyParticipationPenalty + homeAwayPenalty);
     }
 
     private static int TeamLoadSpreadAfterAssignment(
@@ -482,6 +518,25 @@ public static class ScheduleEngine
 
         if (min == int.MaxValue || max == int.MinValue) return 0;
         return max - min;
+    }
+
+    private static int WeeklyParticipationPenaltyAfterAssignment(
+        string home,
+        string away,
+        string gameDate,
+        Dictionary<string, int> gamesByWeek)
+    {
+        var weekKey = WeekKey(gameDate);
+        if (string.IsNullOrWhiteSpace(weekKey)) return 0;
+
+        var homeWeekCount = GetWeekCount(gamesByWeek, home, weekKey);
+        var awayWeekCount = GetWeekCount(gamesByWeek, away, weekKey);
+
+        // Explicitly prefer giving teams their first game in a week (0 -> 1) over stacking second/third games.
+        // This complements total-season balance and makes "1 game > 0 games" visible in scoring traces.
+        var homePenalty = homeWeekCount * homeWeekCount * 40;
+        var awayPenalty = awayWeekCount * awayWeekCount * 40;
+        return homePenalty + awayPenalty;
     }
 
     private static bool CanAssign(
@@ -538,6 +593,25 @@ public static class ScheduleEngine
         }
 
         return null;
+    }
+
+    private static int ComputeSeededTieBreak(int seed, string slotId, string gameDate, string home, string away)
+    {
+        unchecked
+        {
+            var hash = 17;
+            foreach (var ch in $"{slotId}|{gameDate}|{home}|{away}")
+            {
+                hash = (hash * 31) + ch;
+            }
+
+            var normalizedSeed = seed == int.MinValue ? 0 : seed;
+            var mixed = hash ^ (normalizedSeed * 16777619);
+            mixed ^= (mixed >> 16);
+            mixed *= 224682251;
+            mixed ^= (mixed >> 13);
+            return mixed;
+        }
     }
 
     private static void ApplyCounts(
