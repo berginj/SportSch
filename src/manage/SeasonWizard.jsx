@@ -449,10 +449,83 @@ function summarizeRepairProposalPriorityImpact(scope, priorityPairInfoByKey) {
     touchedCount: touched.length,
     summary: summaryParts.join("; "),
     pairDetails,
+    manualLater: totals.manualLater,
+    manualEarlier: totals.manualEarlier,
+    repeatLater: totals.repeatLater,
+    repeatEarlier: totals.repeatEarlier,
+    netScore:
+      (totals.manualLater * 4) +
+      (totals.repeatLater * 2) -
+      (totals.manualEarlier * 5) -
+      (totals.repeatEarlier * 2),
     hasManualEarlier: totals.manualEarlier > 0,
     hasRepeatEarlier: totals.repeatEarlier > 0,
     hasAnyLater: totals.manualLater > 0 || totals.repeatLater > 0,
   };
+}
+
+function classifyRepairPriorityImpact(impact) {
+  if (!impact) return null;
+  const manualLater = Number(impact.manualLater || 0);
+  const manualEarlier = Number(impact.manualEarlier || 0);
+  const repeatLater = Number(impact.repeatLater || 0);
+  const repeatEarlier = Number(impact.repeatEarlier || 0);
+  const netScore = Number(impact.netScore || 0);
+
+  if (manualEarlier > 0 || repeatEarlier > 0) {
+    if (manualLater > 0 || repeatLater > 0) {
+      return {
+        label: "Priority mixed",
+        tone: "warning",
+        title: "Moves some priority pairs later but also pulls some earlier.",
+        score: netScore,
+      };
+    }
+    return {
+      label: "Priority risk",
+      tone: "error",
+      title: "Moves priority pairs earlier.",
+      score: netScore,
+    };
+  }
+
+  if (manualLater > 0) {
+    return {
+      label: "Priority +",
+      tone: "success",
+      title: "Improves manual priority matchup placement (moves later).",
+      score: netScore,
+    };
+  }
+  if (repeatLater > 0) {
+    return {
+      label: "Priority +",
+      tone: "ok",
+      title: "Improves repeat-priority matchup placement (moves later).",
+      score: netScore,
+    };
+  }
+  return {
+    label: "Priority neutral",
+    tone: "neutral",
+    title: "No clear priority-pair placement impact detected.",
+    score: netScore,
+  };
+}
+
+function repairPriorityBadgeStyle(tone) {
+  switch (String(tone || "").toLowerCase()) {
+    case "success":
+      return { background: "#dcfce7", border: "1px solid #86efac", color: "#166534" };
+    case "ok":
+      return { background: "#e0f2fe", border: "1px solid #7dd3fc", color: "#0c4a6e" };
+    case "warning":
+      return { background: "#fef3c7", border: "1px solid #fcd34d", color: "#92400e" };
+    case "error":
+      return { background: "#fee2e2", border: "1px solid #fca5a5", color: "#991b1b" };
+    default:
+      return { background: "#f3f4f6", border: "1px solid #d1d5db", color: "#374151" };
+  }
 }
 
 function buildRuleGroupFocusScope(group) {
@@ -2347,6 +2420,10 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     () => summarizeRepairProposalPriorityImpact(selectedRepairScope, priorityPairInfoByKey),
     [selectedRepairScope, priorityPairInfoByKey]
   );
+  const selectedRepairPriorityBadge = useMemo(
+    () => classifyRepairPriorityImpact(selectedRepairPriorityImpact),
+    [selectedRepairPriorityImpact]
+  );
 
   const fieldHeatmapReport = useMemo(() => {
     if (!preview) {
@@ -4023,6 +4100,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                   <div className="subtle mb-2">
                     Ranked minimal-change proposals to reduce hard rule violations. Manual-action proposals require changing rules/capacity and rerunning preview.
                   </div>
+                  <div className="subtle mb-2">
+                    Priority badge is a tie-break hint only: prefer <b>Priority +</b> proposals when hard-fix impact is otherwise similar.
+                  </div>
                   {selectedRepairScope ? (
                     <div className="callout callout--warning mb-2">
                       <div className="row row--between gap-2" style={{ alignItems: "center" }}>
@@ -4054,6 +4134,15 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                       ) : null}
                       {selectedRepairPriorityImpact ? (
                         <div className={`subtle mt-1 ${selectedRepairPriorityImpact.hasManualEarlier || selectedRepairPriorityImpact.hasRepeatEarlier ? "" : ""}`}>
+                          {selectedRepairPriorityBadge ? (
+                            <span
+                              className="pill mr-2"
+                              title={selectedRepairPriorityBadge.title}
+                              style={repairPriorityBadgeStyle(selectedRepairPriorityBadge.tone)}
+                            >
+                              {selectedRepairPriorityBadge.label}
+                            </span>
+                          ) : null}
                           Priority pair impact: {selectedRepairPriorityImpact.summary || "priority pair moves detected."}
                           {selectedRepairPriorityImpact.pairDetails?.length ? (
                             <> | {selectedRepairPriorityImpact.pairDetails.join(" | ")}</>
@@ -4088,6 +4177,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                           const weeksTouched = Number(p?.weeksTouched || 0);
                           const proposalScope = buildRepairProposalScope(p);
                           const proposalPriorityImpact = summarizeRepairProposalPriorityImpact(proposalScope, priorityPairInfoByKey);
+                          const proposalPriorityBadge = classifyRepairPriorityImpact(proposalPriorityImpact);
                           return (
                             <tr
                               key={`repair-proposal-${p?.proposalId || idx}-${idx}`}
@@ -4095,6 +4185,17 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                             >
                               <td>
                                 <div>{p?.title || "Proposal"}</div>
+                                {proposalPriorityBadge ? (
+                                  <div className="mt-1">
+                                    <span
+                                      className="pill"
+                                      title={proposalPriorityBadge.title}
+                                      style={repairPriorityBadgeStyle(proposalPriorityBadge.tone)}
+                                    >
+                                      {proposalPriorityBadge.label}
+                                    </span>
+                                  </div>
+                                ) : null}
                                 <div className="subtle">
                                   Hard fix: {hardResolved} | Remaining: {hardRemaining}
                                 </div>
