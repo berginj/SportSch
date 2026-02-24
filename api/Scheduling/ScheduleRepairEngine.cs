@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 
 namespace GameSwap.Functions.Scheduling;
 
@@ -57,7 +58,11 @@ public static class ScheduleRepairEngine
             proposals.AddRange(GenerateSuggestionProposalsForGroup(result, ruleHealth, group, validationConfig, unusedSlots));
         }
 
-        return proposals
+        var annotated = proposals
+            .Select(p => AnnotatePriorityPairImpact(p, validationConfig.MatchupPriorityByPair))
+            .ToList();
+
+        return annotated
             .GroupBy(p => p.ProposalId, StringComparer.OrdinalIgnoreCase)
             .Select(g => g.First())
             .OrderByDescending(p => p.HardViolationsResolved)
@@ -65,6 +70,11 @@ public static class ScheduleRepairEngine
             .ThenBy(p => p.GamesMoved)
             .ThenBy(p => p.TeamsTouched)
             .ThenBy(p => p.WeeksTouched)
+            // Hard-fix / minimal-change ordering stays authoritative.
+            // When comparable, prefer proposals that move priority matchups later (not earlier).
+            .ThenByDescending(GetPriorityImpactLaterCount)
+            .ThenBy(GetPriorityImpactEarlierCount)
+            .ThenByDescending(GetPriorityImpactWeightDelta)
             .ThenByDescending(p => p.SoftScoreDelta)
             .ThenByDescending(p => p.UtilizationDelta)
             .ThenBy(p => p.Title, StringComparer.OrdinalIgnoreCase)
@@ -670,4 +680,159 @@ public static class ScheduleRepairEngine
         var week = cal.GetWeekOfYear(dt, CalendarWeekRule.FirstFourDayWeek, DayOfWeek.Monday);
         return $"{dt.Year}-W{week:D2}";
     }
+
+    private static string PairKey(string teamA, string teamB)
+    {
+        if (string.IsNullOrWhiteSpace(teamA) || string.IsNullOrWhiteSpace(teamB)) return "";
+        return string.Compare(teamA, teamB, StringComparison.OrdinalIgnoreCase) <= 0
+            ? $"{teamA}|{teamB}"
+            : $"{teamB}|{teamA}";
+    }
+
+    private static ScheduleRepairProposal AnnotatePriorityPairImpact(
+        ScheduleRepairProposal proposal,
+        IReadOnlyDictionary<string, int>? matchupPriorityByPair)
+    {
+        if (matchupPriorityByPair is null || matchupPriorityByPair.Count == 0)
+            return proposal;
+
+        var totalLater = 0;
+        var totalEarlier = 0;
+        var sameDate = 0;
+        double weightedDelta = 0;
+
+        foreach (var change in proposal.Changes ?? Array.Empty<ScheduleDiffChange>())
+        {
+            if (!string.Equals(change.ChangeType, "move", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var homeTeamId = ReadStringObjectProperty(change.After, "homeTeamId");
+            if (string.IsNullOrWhiteSpace(homeTeamId))
+                homeTeamId = ReadStringObjectProperty(change.Before, "homeTeamId");
+            var awayTeamId = ReadStringObjectProperty(change.After, "awayTeamId");
+            if (string.IsNullOrWhiteSpace(awayTeamId))
+                awayTeamId = ReadStringObjectProperty(change.Before, "awayTeamId");
+
+            if (string.IsNullOrWhiteSpace(homeTeamId) || string.IsNullOrWhiteSpace(awayTeamId))
+                continue;
+
+            var pairKey = PairKey(homeTeamId, awayTeamId);
+            if (string.IsNullOrWhiteSpace(pairKey)) continue;
+            if (!matchupPriorityByPair.TryGetValue(pairKey, out var weight) || weight <= 0) continue;
+
+            var beforeDate = ReadStringObjectProperty(change.Before, "gameDate");
+            var afterDate = ReadStringObjectProperty(change.After, "gameDate");
+            if (!TryParseDateOnly(beforeDate, out var before) || !TryParseDateOnly(afterDate, out var after))
+                continue;
+
+            var dayDelta = after.DayNumber - before.DayNumber;
+            if (dayDelta > 0)
+            {
+                totalLater += 1;
+                weightedDelta += weight * Math.Min(6.0, dayDelta / 7.0);
+            }
+            else if (dayDelta < 0)
+            {
+                totalEarlier += 1;
+                weightedDelta -= weight * Math.Min(6.0, Math.Abs(dayDelta) / 7.0);
+            }
+            else
+            {
+                sameDate += 1;
+            }
+        }
+
+        if (totalLater == 0 && totalEarlier == 0 && sameDate == 0)
+            return proposal;
+
+        var summaryParts = new List<string>();
+        if (totalLater > 0) summaryParts.Add($"{totalLater} priority pair move(s) later");
+        if (totalEarlier > 0) summaryParts.Add($"{totalEarlier} priority pair move(s) earlier");
+        if (sameDate > 0 && summaryParts.Count == 0) summaryParts.Add($"{sameDate} priority pair move(s) without date change");
+        var summary = string.Join("; ", summaryParts);
+
+        var updatedSummary = new Dictionary<string, object?>(proposal.BeforeAfterSummary ?? new Dictionary<string, object?>(), StringComparer.OrdinalIgnoreCase)
+        {
+            ["priorityPairsLater"] = totalLater,
+            ["priorityPairsEarlier"] = totalEarlier,
+            ["priorityPairsSameDate"] = sameDate,
+            ["priorityImpactWeightDelta"] = Math.Round(weightedDelta, 3),
+            ["priorityImpactSummary"] = summary
+        };
+
+        var rationale = proposal.Rationale ?? "";
+        if (!string.IsNullOrWhiteSpace(summary) && !rationale.Contains("priority", StringComparison.OrdinalIgnoreCase))
+        {
+            rationale = string.IsNullOrWhiteSpace(rationale)
+                ? $"Priority pair impact: {summary}."
+                : $"{rationale} Priority pair impact: {summary}.";
+        }
+
+        return proposal with
+        {
+            Rationale = rationale,
+            BeforeAfterSummary = updatedSummary
+        };
+    }
+
+    private static int GetPriorityImpactLaterCount(ScheduleRepairProposal proposal)
+        => ReadSummaryInt(proposal.BeforeAfterSummary, "priorityPairsLater");
+
+    private static int GetPriorityImpactEarlierCount(ScheduleRepairProposal proposal)
+        => ReadSummaryInt(proposal.BeforeAfterSummary, "priorityPairsEarlier");
+
+    private static double GetPriorityImpactWeightDelta(ScheduleRepairProposal proposal)
+        => ReadSummaryDouble(proposal.BeforeAfterSummary, "priorityImpactWeightDelta");
+
+    private static int ReadSummaryInt(IReadOnlyDictionary<string, object?>? summary, string key)
+    {
+        if (summary is null || !summary.TryGetValue(key, out var raw) || raw is null) return 0;
+        if (raw is int i) return i;
+        if (raw is long l) return (int)l;
+        if (raw is JsonElement el)
+        {
+            if (el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var parsed)) return parsed;
+            if (el.ValueKind == JsonValueKind.String && int.TryParse(el.GetString(), out var parsedText)) return parsedText;
+        }
+        return int.TryParse(raw.ToString(), out var result) ? result : 0;
+    }
+
+    private static double ReadSummaryDouble(IReadOnlyDictionary<string, object?>? summary, string key)
+    {
+        if (summary is null || !summary.TryGetValue(key, out var raw) || raw is null) return 0;
+        if (raw is double d) return d;
+        if (raw is float f) return f;
+        if (raw is decimal m) return (double)m;
+        if (raw is JsonElement el)
+        {
+            if (el.ValueKind == JsonValueKind.Number && el.TryGetDouble(out var parsed)) return parsed;
+            if (el.ValueKind == JsonValueKind.String && double.TryParse(el.GetString(), out var parsedText)) return parsedText;
+        }
+        return double.TryParse(raw.ToString(), out var result) ? result : 0;
+    }
+
+    private static string ReadStringObjectProperty(object? value, string property)
+    {
+        if (value is null) return "";
+        if (value is JsonElement el)
+        {
+            if (el.ValueKind == JsonValueKind.Object && el.TryGetProperty(property, out var prop))
+                return prop.ToString() ?? "";
+            return "";
+        }
+
+        try
+        {
+            var info = value.GetType().GetProperty(property);
+            var raw = info?.GetValue(value, null);
+            return raw?.ToString() ?? "";
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    private static bool TryParseDateOnly(string raw, out DateOnly date)
+        => DateOnly.TryParseExact(raw ?? "", "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out date);
 }

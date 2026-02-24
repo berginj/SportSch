@@ -278,4 +278,25 @@ public class ScheduleEngineTests
             earlyTrace.TopFeasibleAlternatives,
             c => c.HomeTeamId == "A" && c.AwayTeamId == "B" && (c.ScoreBreakdown?.LatePriorityPenalty ?? 0) > 0);
     }
+
+    [Fact]
+    public void AssignMatchups_TraceIncludesWeatherReliabilityPenalty_ForSlotDate()
+    {
+        var teams = new List<string> { "A", "B", "C", "D" };
+        var matchups = new List<MatchupPair> { new("A", "B"), new("C", "D") };
+        var slots = new List<ScheduleSlot>
+        {
+            new("slot-early", "2026-04-05", "10:00", "12:00", "Field-1", ""),
+            new("slot-late", "2026-05-31", "10:00", "12:00", "Field-1", "")
+        };
+        var constraints = new ScheduleConstraints(MaxGamesPerWeek: 1, NoDoubleHeaders: true, BalanceHomeAway: false, ExternalOfferPerWeek: 0);
+
+        var result = ScheduleEngine.AssignMatchups(slots, matchups, teams, constraints, includePlacementTraces: true);
+
+        var earlyTrace = Assert.Single(result.PlacementTraces!.FindAll(t => t.SlotId == "slot-early"));
+        var lateTrace = Assert.Single(result.PlacementTraces!.FindAll(t => t.SlotId == "slot-late"));
+        Assert.NotNull(earlyTrace.SelectedScoreBreakdown);
+        Assert.NotNull(lateTrace.SelectedScoreBreakdown);
+        Assert.True(earlyTrace.SelectedScoreBreakdown!.WeatherReliabilityPenalty > lateTrace.SelectedScoreBreakdown!.WeatherReliabilityPenalty);
+    }
 }

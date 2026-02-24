@@ -67,6 +67,82 @@ public class DebugFunctions
         }
     }
 
+    [Function("DebugLeagueScheduleRepairAudits")]
+    public async Task<HttpResponseData> LeagueScheduleRepairAudits(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "admin/debug/league/{leagueId}/schedule-repair-audits")] HttpRequestData req,
+        string leagueId)
+    {
+        try
+        {
+            var me = IdentityUtil.GetMe(req);
+            await ApiGuards.RequireGlobalAdminAsync(_svc, me.UserId);
+
+            leagueId = (leagueId ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(leagueId))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "leagueId is required");
+
+            var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
+            var division = (query["division"] ?? "").Trim();
+            var limitRaw = (query["limit"] ?? "").Trim();
+            var includeWizardRuns = string.Equals((query["includeWizardRuns"] ?? "").Trim(), "1", StringComparison.OrdinalIgnoreCase)
+                || string.Equals((query["includeWizardRuns"] ?? "").Trim(), "true", StringComparison.OrdinalIgnoreCase);
+            var limit = 100;
+            if (int.TryParse(limitRaw, out var parsedLimit))
+                limit = Math.Clamp(parsedLimit, 1, 500);
+
+            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.ScheduleRuns);
+            var rows = new List<Dictionary<string, object?>>();
+
+            if (!string.IsNullOrWhiteSpace(division))
+            {
+                ApiGuards.EnsureValidTableKeyPart("division", division);
+                var pk = Constants.Pk.ScheduleRuns(leagueId, division);
+                var filter = $"PartitionKey eq '{ApiGuards.EscapeOData(pk)}'";
+                if (!includeWizardRuns)
+                {
+                    filter += $" and RecordType eq '{ApiGuards.EscapeOData("WizardPreviewRepair")}'";
+                }
+
+                await foreach (var entity in table.QueryAsync<TableEntity>(filter: filter))
+                    rows.Add(ToPlain(entity));
+            }
+            else
+            {
+                var prefix = Constants.Pk.ScheduleRuns(leagueId, "");
+                var filter = PrefixFilter(prefix);
+                await foreach (var entity in table.QueryAsync<TableEntity>(filter: filter))
+                {
+                    var recordType = (entity.GetString("RecordType") ?? "").Trim();
+                    if (!includeWizardRuns && !string.Equals(recordType, "WizardPreviewRepair", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    rows.Add(ToPlain(entity));
+                }
+            }
+
+            var ordered = rows
+                .OrderByDescending(r => (r.TryGetValue("CreatedUtc", out var createdUtc) ? createdUtc?.ToString() : null) ?? "")
+                .ThenByDescending(r => (r.TryGetValue("Timestamp", out var ts) ? ts?.ToString() : null) ?? "")
+                .Take(limit)
+                .ToList();
+
+            return ApiResponses.Ok(req, new
+            {
+                leagueId,
+                division = string.IsNullOrWhiteSpace(division) ? null : division,
+                limit,
+                count = ordered.Count,
+                includeWizardRuns,
+                rows = ordered
+            });
+        }
+        catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "DebugLeagueScheduleRepairAudits failed");
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
+        }
+    }
+
     private async Task<List<Dictionary<string, object?>>> ReadByPkAsync(string tableName, string pk, string rk)
     {
         var table = await TableClients.GetTableAsync(_svc, tableName);

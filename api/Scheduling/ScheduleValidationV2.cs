@@ -8,7 +8,17 @@ public record ScheduleValidationV2Config(
     bool BalanceHomeAway,
     IReadOnlyList<ScheduleBlackoutWindow>? BlackoutWindows = null,
     bool TreatUnassignedRequiredMatchupsAsHard = true,
-    IReadOnlyDictionary<string, int>? MatchupPriorityByPair = null);
+    IReadOnlyDictionary<string, int>? MatchupPriorityByPair = null,
+    SchedulePhaseReliabilityWeights? PhaseReliabilityWeights = null,
+    IReadOnlyCollection<string>? NoGamesOnDates = null,
+    int? NoGamesBeforeMinute = null,
+    int? NoGamesAfterMinute = null,
+    int? MaxExternalOffersPerTeamSeason = null);
+
+public record SchedulePhaseReliabilityWeights(double Early, double Mid, double Late)
+{
+    public static SchedulePhaseReliabilityWeights Default => new(0.85, 1.0, 1.2);
+}
 
 public record ScheduleRuleViolation(
     string RuleId,
@@ -60,6 +70,9 @@ public static class ScheduleValidationV2
         AddTeamOverlapViolations(result.Assignments, violations);
         AddDoubleHeaderViolations(result.Assignments, config.NoDoubleHeaders, violations);
         AddMaxGamesPerWeekViolations(result.Assignments, config.MaxGamesPerWeek, violations);
+        AddNoGamesOnDatesViolations(result.Assignments, config.NoGamesOnDates, violations);
+        AddTimeWindowViolations(result.Assignments, config.NoGamesBeforeMinute, config.NoGamesAfterMinute, violations);
+        AddExternalOfferCapViolations(result.Assignments, config.MaxExternalOffersPerTeamSeason, violations);
         AddUnassignedRequiredMatchupViolations(result.UnassignedMatchups, config.TreatUnassignedRequiredMatchupsAsHard, violations);
         AddUnassignedSlotSoftViolations(result.UnassignedSlots, violations);
         AddPairRepeatSoftViolations(result.Assignments, violations);
@@ -536,6 +549,12 @@ public static class ScheduleValidationV2
         var unusedSlots = result.UnassignedSlots.Count;
         terms.Add(new ScheduleSoftScoreTerm("unused-game-capacity", 5, unusedSlots, unusedSlots * 5));
 
+        var weatherWeightedUnused = ComputeWeatherWeightedUnusedCapacityPenalty(
+            result.Assignments,
+            result.UnassignedSlots,
+            config.PhaseReliabilityWeights ?? SchedulePhaseReliabilityWeights.Default);
+        terms.Add(new ScheduleSoftScoreTerm("weather-weighted-unused-capacity", 2, weatherWeightedUnused, weatherWeightedUnused * 2));
+
         var pairRepeatRaw = result.Assignments
             .Where(a => !a.IsExternalOffer && !string.IsNullOrWhiteSpace(a.HomeTeamId) && !string.IsNullOrWhiteSpace(a.AwayTeamId))
             .GroupBy(a => PairKey(a.HomeTeamId, a.AwayTeamId), StringComparer.OrdinalIgnoreCase)
@@ -629,6 +648,164 @@ public static class ScheduleValidationV2
         }
 
         return totalPenalty;
+    }
+
+    private static double ComputeWeatherWeightedUnusedCapacityPenalty(
+        IReadOnlyList<ScheduleAssignment> assignments,
+        IReadOnlyList<ScheduleAssignment> unassignedSlots,
+        SchedulePhaseReliabilityWeights weights)
+    {
+        if (unassignedSlots is null || unassignedSlots.Count == 0) return 0;
+        var allDates = assignments
+            .Concat(unassignedSlots)
+            .Select(a => TryParseDate(a.GameDate, out var d) ? d : (DateOnly?)null)
+            .Where(d => d.HasValue)
+            .Select(d => d!.Value)
+            .OrderBy(d => d)
+            .ToList();
+        if (allDates.Count == 0) return 0;
+
+        var minDate = allDates[0];
+        var maxDate = allDates[^1];
+        var spanDays = Math.Max(0, maxDate.DayNumber - minDate.DayNumber);
+        if (spanDays <= 0)
+            return unassignedSlots.Count * Math.Max(0, weights.Late);
+
+        double total = 0;
+        foreach (var slot in unassignedSlots)
+        {
+            if (!TryParseDate(slot.GameDate, out var date)) continue;
+            var position = (double)(date.DayNumber - minDate.DayNumber) / spanDays;
+            total += position switch
+            {
+                < (1.0 / 3.0) => Math.Max(0, weights.Early),
+                < (2.0 / 3.0) => Math.Max(0, weights.Mid),
+                _ => Math.Max(0, weights.Late)
+            };
+        }
+
+        return Math.Round(total, 3);
+    }
+
+    private static void AddNoGamesOnDatesViolations(
+        IEnumerable<ScheduleAssignment> assignments,
+        IReadOnlyCollection<string>? noGamesOnDates,
+        List<ScheduleRuleViolation> violations)
+    {
+        if (noGamesOnDates is null || noGamesOnDates.Count == 0) return;
+        var blocked = new HashSet<string>(
+            noGamesOnDates.Where(d => !string.IsNullOrWhiteSpace(d)).Select(d => d.Trim()),
+            StringComparer.OrdinalIgnoreCase);
+        if (blocked.Count == 0) return;
+
+        foreach (var a in assignments)
+        {
+            if (!blocked.Contains(a.GameDate)) continue;
+            violations.Add(new ScheduleRuleViolation(
+                "no-games-on-date",
+                SeverityHard,
+                $"Game assigned on blocked date {a.GameDate}.",
+                TeamIds(a.HomeTeamId, a.AwayTeamId),
+                SlotIds(a.SlotId),
+                WeekKeys(a.GameDate),
+                new Dictionary<string, object?>
+                {
+                    ["slotId"] = a.SlotId,
+                    ["gameDate"] = a.GameDate
+                }));
+        }
+    }
+
+    private static void AddTimeWindowViolations(
+        IEnumerable<ScheduleAssignment> assignments,
+        int? noGamesBeforeMinute,
+        int? noGamesAfterMinute,
+        List<ScheduleRuleViolation> violations)
+    {
+        if (!noGamesBeforeMinute.HasValue && !noGamesAfterMinute.HasValue) return;
+
+        foreach (var a in assignments)
+        {
+            var start = ParseMinutes(a.StartTime);
+            var end = ParseMinutes(a.EndTime);
+            if (!start.HasValue && !end.HasValue) continue;
+
+            if (noGamesBeforeMinute.HasValue && start.HasValue && start.Value < noGamesBeforeMinute.Value)
+            {
+                violations.Add(new ScheduleRuleViolation(
+                    "no-games-before-time",
+                    SeverityHard,
+                    $"Game starts before allowed time on {a.GameDate} ({a.StartTime}).",
+                    TeamIds(a.HomeTeamId, a.AwayTeamId),
+                    SlotIds(a.SlotId),
+                    WeekKeys(a.GameDate),
+                    new Dictionary<string, object?>
+                    {
+                        ["slotId"] = a.SlotId,
+                        ["gameDate"] = a.GameDate,
+                        ["startTime"] = a.StartTime,
+                        ["limitMinute"] = noGamesBeforeMinute.Value
+                    }));
+            }
+
+            if (noGamesAfterMinute.HasValue && end.HasValue && end.Value > noGamesAfterMinute.Value)
+            {
+                violations.Add(new ScheduleRuleViolation(
+                    "no-games-after-time",
+                    SeverityHard,
+                    $"Game ends after allowed time on {a.GameDate} ({a.EndTime}).",
+                    TeamIds(a.HomeTeamId, a.AwayTeamId),
+                    SlotIds(a.SlotId),
+                    WeekKeys(a.GameDate),
+                    new Dictionary<string, object?>
+                    {
+                        ["slotId"] = a.SlotId,
+                        ["gameDate"] = a.GameDate,
+                        ["endTime"] = a.EndTime,
+                        ["limitMinute"] = noGamesAfterMinute.Value
+                    }));
+            }
+        }
+    }
+
+    private static void AddExternalOfferCapViolations(
+        IEnumerable<ScheduleAssignment> assignments,
+        int? maxExternalOffersPerTeamSeason,
+        List<ScheduleRuleViolation> violations)
+    {
+        if (!maxExternalOffersPerTeamSeason.HasValue || maxExternalOffersPerTeamSeason.Value <= 0) return;
+
+        var counts = assignments
+            .Where(a => a.IsExternalOffer && !string.IsNullOrWhiteSpace(a.HomeTeamId))
+            .GroupBy(a => a.HomeTeamId, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new
+            {
+                TeamId = g.Key,
+                Count = g.Count(),
+                Slots = g.Select(a => a.SlotId).Where(s => !string.IsNullOrWhiteSpace(s)).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+                Weeks = g.SelectMany(a => WeekKeys(a.GameDate)).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+            })
+            .Where(x => x.Count > maxExternalOffersPerTeamSeason.Value)
+            .OrderByDescending(x => x.Count)
+            .ThenBy(x => x.TeamId, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        foreach (var offender in counts)
+        {
+            violations.Add(new ScheduleRuleViolation(
+                "max-external-offers-per-team",
+                SeverityHard,
+                $"{offender.TeamId} exceeds external/crossover offer limit ({offender.Count} > {maxExternalOffersPerTeamSeason.Value}).",
+                TeamIds(offender.TeamId),
+                offender.Slots,
+                offender.Weeks,
+                new Dictionary<string, object?>
+                {
+                    ["teamId"] = offender.TeamId,
+                    ["count"] = offender.Count,
+                    ["limit"] = maxExternalOffersPerTeamSeason.Value
+                }));
+        }
     }
 
     private static void AddTeamDateAssignment(

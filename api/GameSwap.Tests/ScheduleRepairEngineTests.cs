@@ -79,6 +79,48 @@ public class ScheduleRepairEngineTests
         Assert.Contains(swap!.FixesRuleIds, r => r == "double-header");
     }
 
+    [Fact]
+    public void Propose_PrefersPriorityPairMoveLater_WhenHardFixImpactIsEquivalent()
+    {
+        var assignments = new List<ScheduleAssignment>
+        {
+            A("used-1", "2026-04-12", "10:00", "12:00", "Field-1", "A", "B")
+        };
+        var unusedSlots = new List<ScheduleAssignment>
+        {
+            Empty("open-earlier", "2026-04-05", "10:00", "12:00", "Field-2"),
+            Empty("open-later", "2026-04-19", "10:00", "12:00", "Field-2")
+        };
+        var result = BuildResult(assignments, unusedSlots, new List<MatchupPair>());
+        var config = new ScheduleValidationV2Config(
+            MaxGamesPerWeek: 2,
+            NoDoubleHeaders: true,
+            BalanceHomeAway: false,
+            BlackoutWindows: new[]
+            {
+                new ScheduleBlackoutWindow("spring-break", new DateOnly(2026, 4, 10), new DateOnly(2026, 4, 14), "Spring Break")
+            },
+            MatchupPriorityByPair: new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["A|B"] = 5
+            });
+        var baseline = ScheduleValidationV2.Validate(result, config, new[] { "A", "B" }).RuleHealth;
+
+        var proposals = ScheduleRepairEngine.Propose(result, baseline, config, new[] { "A", "B" }, maxProposals: 10);
+
+        var moveProposals = proposals
+            .Where(p => !p.RequiresUserAction && p.FixesRuleIds.Contains("blackout-window"))
+            .Where(p => p.Changes.Any(c => c.ToSlotId == "open-earlier" || c.ToSlotId == "open-later"))
+            .ToList();
+
+        Assert.True(moveProposals.Count >= 2);
+        var firstMove = moveProposals[0];
+        Assert.Contains(firstMove.Changes, c => c.ToSlotId == "open-later");
+        Assert.Contains("Priority pair impact", firstMove.Rationale, StringComparison.OrdinalIgnoreCase);
+        Assert.True(firstMove.BeforeAfterSummary.TryGetValue("priorityPairsLater", out var laterRaw));
+        Assert.Equal(1, Convert.ToInt32(laterRaw));
+    }
+
     private static ScheduleAssignment A(string slotId, string date, string start, string end, string field, string home, string away)
         => new(slotId, date, start, end, field, home, away, false);
 

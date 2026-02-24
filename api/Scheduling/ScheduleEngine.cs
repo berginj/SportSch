@@ -48,6 +48,7 @@ public record ScheduleScoreBreakdown(
     int PairRepeatPenalty,
     int IdleGapReductionBonus,
     int LatePriorityPenalty,
+    int WeatherReliabilityPenalty,
     int HomeAwayPenalty,
     int TotalScore);
 
@@ -531,6 +532,7 @@ public static class ScheduleEngine
         var pairRepeatPenalty = PairRepeatPenaltyAfterAssignment(home, away, pairCounts);
         var idleGapReductionBonus = IdleGapReductionBonusAfterAssignment(home, away, gameDate, gamesByTeamDates);
         var latePriorityPenalty = LatePriorityPenaltyAfterAssignment(home, away, gameDate, matchupPriorityByPair, slotDateRange);
+        var weatherReliabilityPenalty = WeatherReliabilityPenaltyForSlot(gameDate, slotDateRange);
         var homeAwayPenalty = 0;
 
         if (balanceHomeAway)
@@ -548,8 +550,9 @@ public static class ScheduleEngine
             PairRepeatPenalty: pairRepeatPenalty,
             IdleGapReductionBonus: idleGapReductionBonus,
             LatePriorityPenalty: latePriorityPenalty,
+            WeatherReliabilityPenalty: weatherReliabilityPenalty,
             HomeAwayPenalty: homeAwayPenalty,
-            TotalScore: teamVolumePenalty + teamImbalancePenalty + teamLoadSpreadPenalty + weeklyParticipationPenalty + pairRepeatPenalty - idleGapReductionBonus + latePriorityPenalty + homeAwayPenalty);
+            TotalScore: teamVolumePenalty + teamImbalancePenalty + teamLoadSpreadPenalty + weeklyParticipationPenalty + pairRepeatPenalty - idleGapReductionBonus + latePriorityPenalty + weatherReliabilityPenalty + homeAwayPenalty);
     }
 
     private static int TeamLoadSpreadAfterAssignment(
@@ -664,6 +667,30 @@ public static class ScheduleEngine
 
         // Higher-priority pairings should prefer later dates; earlier placements pay a proportional penalty.
         return (priorityWeight * earlinessDays * 20) / totalDays;
+    }
+
+    private static int WeatherReliabilityPenaltyForSlot(string gameDate, SlotDateRange? slotDateRange)
+    {
+        if (slotDateRange is null) return 0;
+        if (!DateTime.TryParseExact(gameDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var currentDate))
+            return 0;
+
+        var totalDays = Math.Max(0, (slotDateRange.Value.MaxDate.Date - slotDateRange.Value.MinDate.Date).Days);
+        if (totalDays <= 0) return 0;
+
+        var daysFromStart = Math.Clamp((currentDate.Date - slotDateRange.Value.MinDate.Date).Days, 0, totalDays);
+        var position = (double)daysFromStart / totalDays;
+
+        // Explicit weather/reliability weighting (early season less reliable than late season).
+        // This term is slot-level and mostly complements backward slot ordering by making the bias visible in traces.
+        var reliabilityWeight = position switch
+        {
+            < (1.0 / 3.0) => 1.2,
+            < (2.0 / 3.0) => 1.0,
+            _ => 0.85
+        };
+
+        return (int)Math.Round(reliabilityWeight * 5);
     }
 
     private static bool CanAssign(

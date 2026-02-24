@@ -124,6 +124,97 @@ public class ScheduleValidationV2Tests
         Assert.True(latePriorityTerm.Weighted > 0);
     }
 
+    [Fact]
+    public void Validate_FlagsNoGamesOnDateAsHardViolation()
+    {
+        var result = BuildResult(assignments: new[]
+        {
+            A("s1", "2026-05-24", "10:00", "12:00", "Field-1", "A", "B")
+        });
+
+        var report = ScheduleValidationV2.Validate(
+            result,
+            new ScheduleValidationV2Config(
+                MaxGamesPerWeek: 2,
+                NoDoubleHeaders: true,
+                BalanceHomeAway: false,
+                NoGamesOnDates: new[] { "2026-05-24" }),
+            teams: new[] { "A", "B" }).RuleHealth;
+
+        Assert.True(report.ApplyBlocked);
+        Assert.Contains(report.Groups, g => g.RuleId == "no-games-on-date" && g.Severity == "hard");
+    }
+
+    [Fact]
+    public void Validate_FlagsTimeWindowHardViolations()
+    {
+        var result = BuildResult(assignments: new[]
+        {
+            A("s1", "2026-05-10", "07:30", "09:00", "Field-1", "A", "B"),
+            A("s2", "2026-05-17", "19:30", "21:30", "Field-1", "C", "D")
+        });
+
+        var report = ScheduleValidationV2.Validate(
+            result,
+            new ScheduleValidationV2Config(
+                MaxGamesPerWeek: 2,
+                NoDoubleHeaders: true,
+                BalanceHomeAway: false,
+                NoGamesBeforeMinute: 8 * 60,
+                NoGamesAfterMinute: 21 * 60),
+            teams: new[] { "A", "B", "C", "D" }).RuleHealth;
+
+        Assert.True(report.ApplyBlocked);
+        Assert.Contains(report.Groups, g => g.RuleId == "no-games-before-time");
+        Assert.Contains(report.Groups, g => g.RuleId == "no-games-after-time");
+    }
+
+    [Fact]
+    public void Validate_IncludesWeatherWeightedUnusedCapacitySoftScore()
+    {
+        var result = BuildResult(
+            assignments: new[]
+            {
+                A("used", "2026-04-05", "10:00", "12:00", "Field-1", "A", "B")
+            },
+            unassignedSlots: new[]
+            {
+                Empty("open-early", "2026-04-12", "10:00", "12:00", "Field-1"),
+                Empty("open-late", "2026-05-31", "10:00", "12:00", "Field-2")
+            });
+
+        var report = ScheduleValidationV2.Validate(
+            result,
+            new ScheduleValidationV2Config(MaxGamesPerWeek: 2, NoDoubleHeaders: true, BalanceHomeAway: false),
+            teams: new[] { "A", "B" }).RuleHealth;
+
+        var weightedUnused = Assert.Single(report.ScoreBreakdown, t => t.ObjectiveId == "weather-weighted-unused-capacity");
+        Assert.True(weightedUnused.Raw > 0);
+        Assert.True(weightedUnused.Weighted > 0);
+    }
+
+    [Fact]
+    public void Validate_FlagsExternalOfferPerTeamSeasonCap_AsHardViolation()
+    {
+        var result = BuildResult(assignments: new[]
+        {
+            A("e1", "2026-04-05", "10:00", "12:00", "Field-1", "A", "", isExternalOffer: true),
+            A("e2", "2026-04-12", "10:00", "12:00", "Field-1", "A", "", isExternalOffer: true)
+        });
+
+        var report = ScheduleValidationV2.Validate(
+            result,
+            new ScheduleValidationV2Config(
+                MaxGamesPerWeek: 2,
+                NoDoubleHeaders: true,
+                BalanceHomeAway: false,
+                MaxExternalOffersPerTeamSeason: 1),
+            teams: new[] { "A", "B" }).RuleHealth;
+
+        Assert.True(report.ApplyBlocked);
+        Assert.Contains(report.Groups, g => g.RuleId == "max-external-offers-per-team" && g.Severity == "hard");
+    }
+
     private static ScheduleAssignment A(
         string slotId,
         string gameDate,
@@ -134,6 +225,14 @@ public class ScheduleValidationV2Tests
         string awayTeamId,
         bool isExternalOffer = false)
         => new(slotId, gameDate, startTime, endTime, fieldKey, homeTeamId, awayTeamId, isExternalOffer);
+
+    private static ScheduleAssignment Empty(
+        string slotId,
+        string gameDate,
+        string startTime,
+        string endTime,
+        string fieldKey)
+        => new(slotId, gameDate, startTime, endTime, fieldKey, "", "", false);
 
     private static ScheduleResult BuildResult(
         IEnumerable<ScheduleAssignment>? assignments = null,

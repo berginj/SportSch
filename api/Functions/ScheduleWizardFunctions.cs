@@ -902,6 +902,7 @@ public class ScheduleWizardFunctions
             pairRepeatPenalty = score.PairRepeatPenalty,
             idleGapReductionBonus = score.IdleGapReductionBonus,
             latePriorityPenalty = score.LatePriorityPenalty,
+            weatherReliabilityPenalty = score.WeatherReliabilityPenalty,
             homeAwayPenalty = score.HomeAwayPenalty
         };
     }
@@ -1825,6 +1826,7 @@ public class ScheduleWizardFunctions
 
     private static List<ScheduleSlot> OrderSlotsByPreference(List<SlotInfo> slots, List<DayOfWeek> preferredDays, bool scheduleBackward)
     {
+        var slotDateRange = GetSlotDateRange(slots);
         var ordered = slots
             .OrderBy(s => SlotTypeSchedulingPriority(s))
             .ThenBy(s => s.priorityRank.HasValue ? 0 : 1)
@@ -1832,12 +1834,47 @@ public class ScheduleWizardFunctions
             .ThenBy(s => PreferredDayRank(s.gameDate, preferredDays));
 
         ordered = scheduleBackward
-            ? ordered.ThenByDescending(s => s.gameDate).ThenByDescending(s => s.startTime).ThenBy(s => s.fieldKey)
+            ? ordered
+                .ThenByDescending(s => WeatherReliabilityOrderWeight(s.gameDate, slotDateRange))
+                .ThenByDescending(s => s.gameDate)
+                .ThenByDescending(s => s.startTime)
+                .ThenBy(s => s.fieldKey)
             : ordered.ThenBy(s => s.gameDate).ThenBy(s => s.startTime).ThenBy(s => s.fieldKey);
 
         return ordered
             .Select(s => new ScheduleSlot(s.slotId, s.gameDate, s.startTime, s.endTime, s.fieldKey, s.offeringTeamId))
             .ToList();
+    }
+
+    private static (DateOnly MinDate, DateOnly MaxDate)? GetSlotDateRange(IReadOnlyList<SlotInfo> slots)
+    {
+        DateOnly? min = null;
+        DateOnly? max = null;
+        foreach (var slot in slots ?? Array.Empty<SlotInfo>())
+        {
+            if (!DateOnly.TryParseExact(slot.gameDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+                continue;
+            min = !min.HasValue || date < min.Value ? date : min;
+            max = !max.HasValue || date > max.Value ? date : max;
+        }
+        return min.HasValue && max.HasValue ? (min.Value, max.Value) : null;
+    }
+
+    private static int WeatherReliabilityOrderWeight(string gameDate, (DateOnly MinDate, DateOnly MaxDate)? dateRange)
+    {
+        if (!dateRange.HasValue) return 100;
+        if (!DateOnly.TryParseExact(gameDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+            return 100;
+
+        var totalDays = Math.Max(0, dateRange.Value.MaxDate.DayNumber - dateRange.Value.MinDate.DayNumber);
+        if (totalDays <= 0) return 100;
+
+        var position = (double)(date.DayNumber - dateRange.Value.MinDate.DayNumber) / totalDays;
+        // Explicit weather reliability weighting for backward scheduling:
+        // later-season slots are higher-value due to better weather reliability.
+        if (position >= (2.0 / 3.0)) return 120;
+        if (position >= (1.0 / 3.0)) return 100;
+        return 85;
     }
 
     private static int PreferredDayRank(string gameDate, List<DayOfWeek> preferredDays)
