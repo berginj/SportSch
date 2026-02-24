@@ -338,6 +338,123 @@ function buildRepairProposalScope(proposal) {
   };
 }
 
+function summarizeRepairProposalPriorityImpact(scope, priorityPairInfoByKey) {
+  if (!scope || typeof scope !== "object") return null;
+  if (!(priorityPairInfoByKey instanceof Map) || priorityPairInfoByKey.size === 0) return null;
+  const moves = Array.isArray(scope.moveSummaries) ? scope.moveSummaries : [];
+  if (!moves.length) return null;
+
+  const touched = [];
+  const byPair = new Map();
+
+  const compareIso = (fromDate, toDate) => {
+    const from = String(fromDate || "").trim();
+    const to = String(toDate || "").trim();
+    if (!isIsoDate(from) || !isIsoDate(to)) return 0;
+    if (to > from) return 1;
+    if (to < from) return -1;
+    return 0;
+  };
+
+  for (const move of moves) {
+    const from = move?.from || null;
+    const after = move?.after || null;
+    const homeTeamId = String(from?.homeTeamId || after?.homeTeamId || "").trim();
+    const awayTeamId = String(from?.awayTeamId || after?.awayTeamId || "").trim();
+    const pairKey = normalizeTeamPairKey(homeTeamId, awayTeamId);
+    if (!pairKey) continue;
+
+    const priorityInfo = priorityPairInfoByKey.get(pairKey);
+    if (!priorityInfo || (!priorityInfo.manualPriorityWeight && !priorityInfo.autoRepeatPriority)) continue;
+
+    const direction = compareIso(from?.gameDate, after?.gameDate);
+    const dirLabel = direction > 0 ? "later" : direction < 0 ? "earlier" : "same-week/date";
+    const touch = {
+      pairKey,
+      pairLabel: `${priorityInfo.teamA} vs ${priorityInfo.teamB}`,
+      manualPriorityWeight: Number(priorityInfo.manualPriorityWeight || 0),
+      autoRepeatPriority: !!priorityInfo.autoRepeatPriority,
+      direction,
+      directionLabel: dirLabel,
+      fromDate: String(from?.gameDate || "").trim(),
+      toDate: String(after?.gameDate || "").trim(),
+    };
+    touched.push(touch);
+
+    const agg = byPair.get(pairKey) || {
+      ...touch,
+      laterMoves: 0,
+      earlierMoves: 0,
+      sameMoves: 0,
+    };
+    if (direction > 0) agg.laterMoves += 1;
+    else if (direction < 0) agg.earlierMoves += 1;
+    else agg.sameMoves += 1;
+    byPair.set(pairKey, agg);
+  }
+
+  if (!touched.length) return null;
+
+  const totals = {
+    manualLater: 0,
+    manualEarlier: 0,
+    repeatLater: 0,
+    repeatEarlier: 0,
+    same: 0,
+  };
+  touched.forEach((item) => {
+    if (item.direction === 0) totals.same += 1;
+    if (item.manualPriorityWeight > 0) {
+      if (item.direction > 0) totals.manualLater += 1;
+      if (item.direction < 0) totals.manualEarlier += 1;
+    }
+    if (item.autoRepeatPriority) {
+      if (item.direction > 0) totals.repeatLater += 1;
+      if (item.direction < 0) totals.repeatEarlier += 1;
+    }
+  });
+
+  const summaryParts = [];
+  if (totals.manualLater > 0) summaryParts.push(`${totals.manualLater} manual priority move(s) later`);
+  if (totals.manualEarlier > 0) summaryParts.push(`${totals.manualEarlier} manual priority move(s) earlier`);
+  if (totals.repeatLater > 0) summaryParts.push(`${totals.repeatLater} repeat-priority move(s) later`);
+  if (totals.repeatEarlier > 0) summaryParts.push(`${totals.repeatEarlier} repeat-priority move(s) earlier`);
+  if (!summaryParts.length && totals.same > 0) summaryParts.push(`${totals.same} priority move(s) without date change`);
+
+  const pairDetails = [...byPair.values()]
+    .sort((a, b) => {
+      const manualDiff = (b.manualPriorityWeight || 0) - (a.manualPriorityWeight || 0);
+      if (manualDiff !== 0) return manualDiff;
+      const repeatDiff = Number(b.autoRepeatPriority) - Number(a.autoRepeatPriority);
+      if (repeatDiff !== 0) return repeatDiff;
+      return String(a.pairLabel || "").localeCompare(String(b.pairLabel || ""));
+    })
+    .slice(0, 3)
+    .map((item) => {
+      const tags = [];
+      if (item.manualPriorityWeight > 0) tags.push(`manual w${item.manualPriorityWeight}`);
+      if (item.autoRepeatPriority) tags.push("repeat");
+      const movement =
+        item.laterMoves > 0 && item.earlierMoves > 0
+          ? "mixed (earlier + later)"
+          : item.laterMoves > 0
+            ? "later"
+            : item.earlierMoves > 0
+              ? "earlier"
+              : "same date";
+      return `${item.pairLabel} (${tags.join(", ")}) -> ${movement}`;
+    });
+
+  return {
+    touchedCount: touched.length,
+    summary: summaryParts.join("; "),
+    pairDetails,
+    hasManualEarlier: totals.manualEarlier > 0,
+    hasRepeatEarlier: totals.repeatEarlier > 0,
+    hasAnyLater: totals.manualLater > 0 || totals.repeatLater > 0,
+  };
+}
+
 function buildRuleGroupFocusScope(group) {
   if (!group || typeof group !== "object") return null;
   const ruleId = String(group?.ruleId || "").trim();
@@ -2208,6 +2325,29 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     };
   }, [preview, regularBalanceReport]);
 
+  const priorityPairInfoByKey = useMemo(() => {
+    const pairRows = Array.isArray(regularBalanceReport?.pairRows) ? regularBalanceReport.pairRows : [];
+    const map = new Map();
+    pairRows.forEach((pair) => {
+      const key = String(pair?.key || "").trim();
+      if (!key) return;
+      map.set(key, {
+        key,
+        teamA: String(pair?.teamA || "").trim(),
+        teamB: String(pair?.teamB || "").trim(),
+        manualPriorityWeight: Math.max(0, Number(pair?.manualPriorityWeight || 0)),
+        autoRepeatPriority: !!pair?.autoRepeatPriority,
+        priorityLabel: String(pair?.priorityLabel || "").trim(),
+      });
+    });
+    return map;
+  }, [regularBalanceReport]);
+
+  const selectedRepairPriorityImpact = useMemo(
+    () => summarizeRepairProposalPriorityImpact(selectedRepairScope, priorityPairInfoByKey),
+    [selectedRepairScope, priorityPairInfoByKey]
+  );
+
   const fieldHeatmapReport = useMemo(() => {
     if (!preview) {
       return { weekKeys: [], rows: [], totalFields: 0, shownFields: 0 };
@@ -3912,6 +4052,14 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                           {selectedRepairScope.moveSummaries.length > 3 ? ` | +${selectedRepairScope.moveSummaries.length - 3} more move(s)` : ""}
                         </div>
                       ) : null}
+                      {selectedRepairPriorityImpact ? (
+                        <div className={`subtle mt-1 ${selectedRepairPriorityImpact.hasManualEarlier || selectedRepairPriorityImpact.hasRepeatEarlier ? "" : ""}`}>
+                          Priority pair impact: {selectedRepairPriorityImpact.summary || "priority pair moves detected."}
+                          {selectedRepairPriorityImpact.pairDetails?.length ? (
+                            <> | {selectedRepairPriorityImpact.pairDetails.join(" | ")}</>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                   <div className="tableWrap">
@@ -3938,6 +4086,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                           const gamesMoved = Number(p?.gamesMoved || 0);
                           const teamsTouched = Number(p?.teamsTouched || 0);
                           const weeksTouched = Number(p?.weeksTouched || 0);
+                          const proposalScope = buildRepairProposalScope(p);
+                          const proposalPriorityImpact = summarizeRepairProposalPriorityImpact(proposalScope, priorityPairInfoByKey);
                           return (
                             <tr
                               key={`repair-proposal-${p?.proposalId || idx}-${idx}`}
@@ -3962,6 +4112,11 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                               <td>{p?.requiresUserAction ? "Manual action" : "Move/swap"}</td>
                               <td>
                                 <div>{p?.rationale || ""}</div>
+                                {proposalPriorityImpact ? (
+                                  <div className="subtle mt-1">
+                                    Priority pair impact: {proposalPriorityImpact.summary || "priority pair moves detected."}
+                                  </div>
+                                ) : null}
                                 <div className="mt-1 row row--wrap gap-2">
                                   <button
                                     type="button"
