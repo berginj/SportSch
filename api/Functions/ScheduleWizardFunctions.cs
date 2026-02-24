@@ -634,49 +634,76 @@ public class ScheduleWizardFunctions
         var unassignedMatchups = preview.unassignedMatchups ?? new List<object>();
         var warnings = preview.warnings ?? new List<object>();
 
-        if (!TryExtractMoveChange(proposal, out var move))
-            throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, "Only move repair proposals are supported right now.");
+        if (!TryExtractMoveChanges(proposal, out var moves) || moves.Count == 0)
+            throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, "Only move/swap repair proposals are supported right now.");
 
-        var assignmentIndex = assignments.FindIndex(a =>
-            string.Equals(a.phase, "Regular Season", StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(a.slotId, move.FromSlotId, StringComparison.OrdinalIgnoreCase));
-        if (assignmentIndex < 0)
-            throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, "The selected game could not be found in the current preview.");
+        var regularAssignmentsBySlot = assignments
+            .Select((a, idx) => new { a, idx })
+            .Where(x => string.Equals(x.a.phase, "Regular Season", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(x.a.slotId))
+            .ToDictionary(x => x.a.slotId, x => x.idx, StringComparer.OrdinalIgnoreCase);
+        var sourceSlotIds = new HashSet<string>(moves.Select(m => m.FromSlotId), StringComparer.OrdinalIgnoreCase);
+        var targetSlotIds = new HashSet<string>(moves.Select(m => m.ToSlotId), StringComparer.OrdinalIgnoreCase);
 
-        var targetUnusedIndex = unassignedSlots.FindIndex(s =>
-            string.Equals(s.phase, "Regular Season", StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(s.slotId, move.ToSlotId, StringComparison.OrdinalIgnoreCase));
-        if (targetUnusedIndex < 0)
-            throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, "The target open slot is no longer available in the current preview.");
-
-        var currentAssignment = assignments[assignmentIndex];
-        if (!string.Equals(currentAssignment.homeTeamId, move.BeforeHomeTeamId, StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(currentAssignment.awayTeamId, move.BeforeAwayTeamId, StringComparison.OrdinalIgnoreCase))
+        foreach (var move in moves)
         {
-            throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, "The preview changed and this repair proposal is stale. Run preview again.");
+            if (!regularAssignmentsBySlot.TryGetValue(move.FromSlotId, out var idx))
+                throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, "A source game could not be found in the current preview.");
+
+            var currentAssignment = assignments[idx];
+            if (!string.Equals(currentAssignment.homeTeamId, move.BeforeHomeTeamId, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(currentAssignment.awayTeamId, move.BeforeAwayTeamId, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, "The preview changed and this repair proposal is stale. Run preview again.");
+            }
         }
 
-        assignments[assignmentIndex] = currentAssignment with
+        var requiredOpenTargetIds = targetSlotIds
+            .Where(slotId => !sourceSlotIds.Contains(slotId))
+            .ToList();
+        foreach (var slotId in requiredOpenTargetIds)
         {
-            slotId = move.ToSlotId,
-            gameDate = move.ToGameDate,
-            startTime = move.ToStartTime,
-            endTime = move.ToEndTime,
-            fieldKey = move.ToFieldKey
-        };
+            var exists = unassignedSlots.Any(s =>
+                string.Equals(s.phase, "Regular Season", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(s.slotId, slotId, StringComparison.OrdinalIgnoreCase));
+            if (!exists)
+                throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, "One or more target open slots are no longer available in the current preview.");
+        }
 
-        // Free the previous slot back to open regular-season capacity.
-        unassignedSlots.RemoveAt(targetUnusedIndex);
-        unassignedSlots.Add(new WizardSlotDto(
-            phase: "Regular Season",
-            slotId: move.FromSlotId,
-            gameDate: move.FromGameDate,
-            startTime: move.FromStartTime,
-            endTime: move.FromEndTime,
-            fieldKey: move.FromFieldKey,
-            homeTeamId: "",
-            awayTeamId: "",
-            isExternalOffer: false));
+        // Apply all moves atomically to assignments first (supports swap proposals as two reciprocal move diffs).
+        foreach (var move in moves)
+        {
+            var idx = regularAssignmentsBySlot[move.FromSlotId];
+            var currentAssignment = assignments[idx];
+            assignments[idx] = currentAssignment with
+            {
+                slotId = move.ToSlotId,
+                gameDate = move.ToGameDate,
+                startTime = move.ToStartTime,
+                endTime = move.ToEndTime,
+                fieldKey = move.ToFieldKey
+            };
+        }
+
+        // Consume target unused slots that came from open capacity (not another moved game's slot).
+        unassignedSlots = unassignedSlots
+            .Where(s => !(string.Equals(s.phase, "Regular Season", StringComparison.OrdinalIgnoreCase)
+                && requiredOpenTargetIds.Contains(s.slotId ?? "", StringComparer.OrdinalIgnoreCase)))
+            .ToList();
+
+        // Free any source slots that are not reused by another move target.
+        foreach (var move in moves.Where(m => !targetSlotIds.Contains(m.FromSlotId)))
+        {
+            unassignedSlots.Add(new WizardSlotDto(
+                phase: "Regular Season",
+                slotId: move.FromSlotId,
+                gameDate: move.FromGameDate,
+                startTime: move.FromStartTime,
+                endTime: move.FromEndTime,
+                fieldKey: move.FromFieldKey,
+                homeTeamId: "",
+                awayTeamId: "",
+                isExternalOffer: false));
+        }
 
         var regularAssignments = assignments
             .Where(a => string.Equals(a.phase, "Regular Season", StringComparison.OrdinalIgnoreCase))
@@ -800,45 +827,48 @@ public class ScheduleWizardFunctions
     private static ScheduleAssignment ToScheduleAssignment(WizardSlotDto slot)
         => new(slot.slotId ?? "", slot.gameDate ?? "", slot.startTime ?? "", slot.endTime ?? "", slot.fieldKey ?? "", slot.homeTeamId ?? "", slot.awayTeamId ?? "", slot.isExternalOffer);
 
-    private static bool TryExtractMoveChange(ScheduleRepairProposal proposal, out PreviewMoveChange move)
+    private static bool TryExtractMoveChanges(ScheduleRepairProposal proposal, out List<PreviewMoveChange> moves)
     {
-        move = default;
-        var change = (proposal.Changes ?? Array.Empty<ScheduleDiffChange>())
-            .FirstOrDefault(c => string.Equals(c.ChangeType, "move", StringComparison.OrdinalIgnoreCase));
-        if (change is null || string.IsNullOrWhiteSpace(change.FromSlotId) || string.IsNullOrWhiteSpace(change.ToSlotId))
-            return false;
+        moves = new List<PreviewMoveChange>();
+        foreach (var change in (proposal.Changes ?? Array.Empty<ScheduleDiffChange>())
+            .Where(c => string.Equals(c.ChangeType, "move", StringComparison.OrdinalIgnoreCase)))
+        {
+            if (string.IsNullOrWhiteSpace(change.FromSlotId) || string.IsNullOrWhiteSpace(change.ToSlotId))
+                return false;
 
-        var beforeGameDate = ReadJsonObjectString(change.Before, "gameDate");
-        var beforeStart = ReadJsonObjectString(change.Before, "startTime");
-        var beforeEnd = ReadJsonObjectString(change.Before, "endTime");
-        var beforeField = ReadJsonObjectString(change.Before, "fieldKey");
-        var beforeHome = ReadJsonObjectString(change.Before, "homeTeamId");
-        var beforeAway = ReadJsonObjectString(change.Before, "awayTeamId");
+            var beforeGameDate = ReadJsonObjectString(change.Before, "gameDate");
+            var beforeStart = ReadJsonObjectString(change.Before, "startTime");
+            var beforeEnd = ReadJsonObjectString(change.Before, "endTime");
+            var beforeField = ReadJsonObjectString(change.Before, "fieldKey");
+            var beforeHome = ReadJsonObjectString(change.Before, "homeTeamId");
+            var beforeAway = ReadJsonObjectString(change.Before, "awayTeamId");
 
-        var afterGameDate = ReadJsonObjectString(change.After, "gameDate");
-        var afterStart = ReadJsonObjectString(change.After, "startTime");
-        var afterEnd = ReadJsonObjectString(change.After, "endTime");
-        var afterField = ReadJsonObjectString(change.After, "fieldKey");
+            var afterGameDate = ReadJsonObjectString(change.After, "gameDate");
+            var afterStart = ReadJsonObjectString(change.After, "startTime");
+            var afterEnd = ReadJsonObjectString(change.After, "endTime");
+            var afterField = ReadJsonObjectString(change.After, "fieldKey");
 
-        if (string.IsNullOrWhiteSpace(beforeGameDate) || string.IsNullOrWhiteSpace(beforeStart) || string.IsNullOrWhiteSpace(beforeEnd) || string.IsNullOrWhiteSpace(beforeField))
-            return false;
-        if (string.IsNullOrWhiteSpace(afterGameDate) || string.IsNullOrWhiteSpace(afterStart) || string.IsNullOrWhiteSpace(afterEnd) || string.IsNullOrWhiteSpace(afterField))
-            return false;
+            if (string.IsNullOrWhiteSpace(beforeGameDate) || string.IsNullOrWhiteSpace(beforeStart) || string.IsNullOrWhiteSpace(beforeEnd) || string.IsNullOrWhiteSpace(beforeField))
+                return false;
+            if (string.IsNullOrWhiteSpace(afterGameDate) || string.IsNullOrWhiteSpace(afterStart) || string.IsNullOrWhiteSpace(afterEnd) || string.IsNullOrWhiteSpace(afterField))
+                return false;
 
-        move = new PreviewMoveChange(
-            FromSlotId: change.FromSlotId!,
-            FromGameDate: beforeGameDate,
-            FromStartTime: beforeStart,
-            FromEndTime: beforeEnd,
-            FromFieldKey: beforeField,
-            BeforeHomeTeamId: beforeHome,
-            BeforeAwayTeamId: beforeAway,
-            ToSlotId: change.ToSlotId!,
-            ToGameDate: afterGameDate,
-            ToStartTime: afterStart,
-            ToEndTime: afterEnd,
-            ToFieldKey: afterField);
-        return true;
+            moves.Add(new PreviewMoveChange(
+                FromSlotId: change.FromSlotId!,
+                FromGameDate: beforeGameDate,
+                FromStartTime: beforeStart,
+                FromEndTime: beforeEnd,
+                FromFieldKey: beforeField,
+                BeforeHomeTeamId: beforeHome,
+                BeforeAwayTeamId: beforeAway,
+                ToSlotId: change.ToSlotId!,
+                ToGameDate: afterGameDate,
+                ToStartTime: afterStart,
+                ToEndTime: afterEnd,
+                ToFieldKey: afterField));
+        }
+
+        return moves.Count > 0;
     }
 
     private static string ReadJsonObjectString(object? value, string propertyName)

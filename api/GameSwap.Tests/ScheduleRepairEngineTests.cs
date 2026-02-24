@@ -54,6 +54,31 @@ public class ScheduleRepairEngineTests
         Assert.Contains(proposals, p => p.RequiresUserAction && p.FixesRuleIds.Contains("unscheduled-required-matchups"));
     }
 
+    [Fact]
+    public void Propose_ReturnsSwapProposal_ForDoubleHeaderViolation()
+    {
+        var assignments = new List<ScheduleAssignment>
+        {
+            A("slot-1", "2026-04-12", "09:00", "10:30", "Field-1", "A", "B"),
+            A("slot-2", "2026-04-12", "11:00", "12:30", "Field-2", "A", "C"),
+            A("slot-3", "2026-04-19", "11:00", "12:30", "Field-2", "D", "C")
+        };
+        var result = BuildResult(assignments, new List<ScheduleAssignment>(), new List<MatchupPair>());
+        var config = new ScheduleValidationV2Config(MaxGamesPerWeek: 2, NoDoubleHeaders: true, BalanceHomeAway: false);
+        var baseline = ScheduleValidationV2.Validate(result, config, new[] { "A", "B", "C", "D" }).RuleHealth;
+
+        var proposals = ScheduleRepairEngine.Propose(result, baseline, config, new[] { "A", "B", "C", "D" }, maxProposals: 10);
+
+        var swap = proposals.FirstOrDefault(p =>
+            !p.RequiresUserAction &&
+            p.GamesMoved == 2 &&
+            p.HardViolationsResolved >= 1 &&
+            p.Changes.Count >= 2 &&
+            p.Changes.All(c => c.ChangeType == "move"));
+        Assert.NotNull(swap);
+        Assert.Contains(swap!.FixesRuleIds, r => r == "double-header");
+    }
+
     private static ScheduleAssignment A(string slotId, string date, string start, string end, string field, string home, string away)
         => new(slotId, date, start, end, field, home, away, false);
 

@@ -53,6 +53,7 @@ public static class ScheduleRepairEngine
         foreach (var group in hardGroups.Take(3))
         {
             proposals.AddRange(GenerateMoveProposalsForGroup(result, ruleHealth, group, validationConfig, teams, assignmentsBySlot, unusedSlots));
+            proposals.AddRange(GenerateSwapProposalsForGroup(result, ruleHealth, group, validationConfig, teams));
             proposals.AddRange(GenerateSuggestionProposalsForGroup(result, ruleHealth, group, validationConfig, unusedSlots));
         }
 
@@ -82,11 +83,7 @@ public static class ScheduleRepairEngine
     {
         if (unusedSlots.Count == 0) yield break;
 
-        var sourceAssignments = group.Violations
-            .SelectMany(v => v.SlotIds)
-            .Where(slotId => !string.IsNullOrWhiteSpace(slotId) && assignmentsBySlot.ContainsKey(slotId))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Select(slotId => assignmentsBySlot[slotId])
+        var sourceAssignments = GetSourceAssignmentsForGroup(result.Assignments, group, assignmentsBySlot)
             .Take(4)
             .ToList();
 
@@ -98,6 +95,45 @@ public static class ScheduleRepairEngine
             foreach (var target in candidates)
             {
                 var proposal = TryBuildMoveProposal(result, baseline, group, validationConfig, teams, assignment, target);
+                if (proposal is not null)
+                    yield return proposal;
+            }
+        }
+    }
+
+    private static IEnumerable<ScheduleRepairProposal> GenerateSwapProposalsForGroup(
+        ScheduleResult result,
+        ScheduleRuleHealthReport baseline,
+        ScheduleRuleGroupReport group,
+        ScheduleValidationV2Config validationConfig,
+        IReadOnlyList<string> teams)
+    {
+        var sourceAssignments = GetSourceAssignmentsForGroup(
+                result.Assignments,
+                group,
+                result.Assignments
+                    .Where(a => !string.IsNullOrWhiteSpace(a.SlotId))
+                    .GroupBy(a => a.SlotId, StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase))
+            .Take(4)
+            .ToList();
+        if (sourceAssignments.Count == 0) yield break;
+
+        var allAssignments = result.Assignments
+            .Where(a => !string.IsNullOrWhiteSpace(a.SlotId))
+            .OrderBy(a => a.GameDate, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(a => a.StartTime, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(a => a.FieldKey, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        foreach (var source in sourceAssignments)
+        {
+            var candidates = RankSwapCandidates(source, allAssignments, validationConfig)
+                .Take(16)
+                .ToList();
+            foreach (var candidate in candidates)
+            {
+                var proposal = TryBuildSwapProposal(result, baseline, group, validationConfig, teams, source, candidate);
                 if (proposal is not null)
                     yield return proposal;
             }
@@ -187,6 +223,115 @@ public static class ScheduleRepairEngine
             GamesMoved: 1,
             TeamsTouched: teamsTouched,
             WeeksTouched: weeksTouched,
+            HardViolationsResolved: hardResolved,
+            HardViolationsRemaining: after.HardViolationCount,
+            SoftScoreDelta: after.SoftScore - baseline.SoftScore,
+            UtilizationDelta: 0,
+            RequiresUserAction: false,
+            BeforeAfterSummary: new Dictionary<string, object?>
+            {
+                ["beforeHardViolations"] = baseline.HardViolationCount,
+                ["afterHardViolations"] = after.HardViolationCount,
+                ["beforeSoftScore"] = baseline.SoftScore,
+                ["afterSoftScore"] = after.SoftScore,
+                ["targetRuleBefore"] = beforeGroupCount,
+                ["targetRuleAfter"] = afterGroupCount
+            });
+    }
+
+    private static ScheduleRepairProposal? TryBuildSwapProposal(
+        ScheduleResult result,
+        ScheduleRuleHealthReport baseline,
+        ScheduleRuleGroupReport targetGroup,
+        ScheduleValidationV2Config validationConfig,
+        IReadOnlyList<string> teams,
+        ScheduleAssignment first,
+        ScheduleAssignment second)
+    {
+        if (string.Equals(first.SlotId, second.SlotId, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var swappedAssignments = new List<ScheduleAssignment>(result.Assignments.Count);
+        foreach (var a in result.Assignments)
+        {
+            if (string.Equals(a.SlotId, first.SlotId, StringComparison.OrdinalIgnoreCase))
+            {
+                swappedAssignments.Add(a with
+                {
+                    SlotId = second.SlotId,
+                    GameDate = second.GameDate,
+                    StartTime = second.StartTime,
+                    EndTime = second.EndTime,
+                    FieldKey = second.FieldKey
+                });
+            }
+            else if (string.Equals(a.SlotId, second.SlotId, StringComparison.OrdinalIgnoreCase))
+            {
+                swappedAssignments.Add(a with
+                {
+                    SlotId = first.SlotId,
+                    GameDate = first.GameDate,
+                    StartTime = first.StartTime,
+                    EndTime = first.EndTime,
+                    FieldKey = first.FieldKey
+                });
+            }
+            else
+            {
+                swappedAssignments.Add(a);
+            }
+        }
+
+        var swappedResult = new ScheduleResult(
+            result.Summary,
+            swappedAssignments,
+            new List<ScheduleAssignment>(result.UnassignedSlots),
+            new List<MatchupPair>(result.UnassignedMatchups));
+        var after = ScheduleValidationV2.Validate(swappedResult, validationConfig, teams).RuleHealth;
+        if (after.HardViolationCount >= baseline.HardViolationCount) return null;
+
+        var beforeGroupCount = targetGroup.Count;
+        var afterGroup = after.Groups.FirstOrDefault(g =>
+            string.Equals(g.RuleId, targetGroup.RuleId, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(g.Severity, targetGroup.Severity, StringComparison.OrdinalIgnoreCase));
+        var afterGroupCount = afterGroup?.Count ?? 0;
+        if (afterGroupCount >= beforeGroupCount && after.HardViolationCount >= baseline.HardViolationCount)
+            return null;
+
+        var hardResolved = Math.Max(0, baseline.HardViolationCount - after.HardViolationCount);
+        var teamIdsTouched = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        AddTeams(teamIdsTouched, first);
+        AddTeams(teamIdsTouched, second);
+        var weekKeysTouched = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        AddWeek(weekKeysTouched, first.GameDate);
+        AddWeek(weekKeysTouched, second.GameDate);
+
+        var proposalId = $"swap:{targetGroup.RuleId}:{first.SlotId}<->{second.SlotId}";
+        return new ScheduleRepairProposal(
+            ProposalId: proposalId,
+            Title: $"Swap {FormatGameLabel(first)} with {FormatGameLabel(second)}",
+            Rationale: $"Swaps two games to reduce hard rule violations ({targetGroup.RuleId}) without consuming extra capacity.",
+            FixesRuleIds: new[] { targetGroup.RuleId },
+            Changes: new[]
+            {
+                new ScheduleDiffChange(
+                    ChangeType: "move",
+                    GameId: BuildGameId(first),
+                    FromSlotId: first.SlotId,
+                    ToSlotId: second.SlotId,
+                    Before: new { slotId = first.SlotId, gameDate = first.GameDate, startTime = first.StartTime, endTime = first.EndTime, fieldKey = first.FieldKey, homeTeamId = first.HomeTeamId, awayTeamId = first.AwayTeamId },
+                    After: new { slotId = second.SlotId, gameDate = second.GameDate, startTime = second.StartTime, endTime = second.EndTime, fieldKey = second.FieldKey, homeTeamId = first.HomeTeamId, awayTeamId = first.AwayTeamId }),
+                new ScheduleDiffChange(
+                    ChangeType: "move",
+                    GameId: BuildGameId(second),
+                    FromSlotId: second.SlotId,
+                    ToSlotId: first.SlotId,
+                    Before: new { slotId = second.SlotId, gameDate = second.GameDate, startTime = second.StartTime, endTime = second.EndTime, fieldKey = second.FieldKey, homeTeamId = second.HomeTeamId, awayTeamId = second.AwayTeamId },
+                    After: new { slotId = first.SlotId, gameDate = first.GameDate, startTime = first.StartTime, endTime = first.EndTime, fieldKey = first.FieldKey, homeTeamId = second.HomeTeamId, awayTeamId = second.AwayTeamId })
+            },
+            GamesMoved: 2,
+            TeamsTouched: teamIdsTouched.Count,
+            WeeksTouched: weekKeysTouched.Count,
             HardViolationsResolved: hardResolved,
             HardViolationsRemaining: after.HardViolationCount,
             SoftScoreDelta: after.SoftScore - baseline.SoftScore,
@@ -372,6 +517,25 @@ public static class ScheduleRepairEngine
             .ThenBy(s => s.FieldKey, StringComparer.OrdinalIgnoreCase);
     }
 
+    private static IEnumerable<ScheduleAssignment> RankSwapCandidates(
+        ScheduleAssignment source,
+        IReadOnlyList<ScheduleAssignment> assignments,
+        ScheduleValidationV2Config validationConfig)
+    {
+        var sourceDate = ParseDate(source.GameDate);
+        var sourceStart = ParseMinutes(source.StartTime);
+        return assignments
+            .Where(a => !string.Equals(a.SlotId, source.SlotId, StringComparison.OrdinalIgnoreCase))
+            .Where(a => !IsBlackout(source.GameDate, validationConfig.BlackoutWindows) || !IsBlackout(a.GameDate, validationConfig.BlackoutWindows))
+            .OrderBy(a => SharesTeam(source, a) ? 1 : 0)
+            .ThenBy(a => DateDistanceDays(sourceDate, ParseDate(a.GameDate)))
+            .ThenBy(a => sourceStart.HasValue && ParseMinutes(a.StartTime).HasValue ? Math.Abs(sourceStart.Value - ParseMinutes(a.StartTime)!.Value) : int.MaxValue)
+            .ThenBy(a => string.Equals(source.FieldKey, a.FieldKey, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .ThenBy(a => a.GameDate, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(a => a.StartTime, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(a => a.FieldKey, StringComparer.OrdinalIgnoreCase);
+    }
+
     private static bool IsBlackout(string gameDate, IReadOnlyList<ScheduleBlackoutWindow>? blackouts)
     {
         if (blackouts is null || blackouts.Count == 0) return false;
@@ -407,6 +571,85 @@ public static class ScheduleRepairEngine
         if (!string.IsNullOrWhiteSpace(a.HomeTeamId)) count++;
         if (!string.IsNullOrWhiteSpace(a.AwayTeamId)) count++;
         return count;
+    }
+
+    private static IEnumerable<ScheduleAssignment> GetSourceAssignmentsForGroup(
+        IReadOnlyList<ScheduleAssignment> assignments,
+        ScheduleRuleGroupReport group,
+        IReadOnlyDictionary<string, ScheduleAssignment> assignmentsBySlot)
+    {
+        var fromSlotIds = group.Violations
+            .SelectMany(v => v.SlotIds)
+            .Where(slotId => !string.IsNullOrWhiteSpace(slotId) && assignmentsBySlot.ContainsKey(slotId))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(slotId => assignmentsBySlot[slotId])
+            .ToList();
+        if (fromSlotIds.Count > 0)
+            return fromSlotIds;
+
+        if (string.Equals(group.RuleId, "double-header", StringComparison.OrdinalIgnoreCase))
+        {
+            return group.Violations
+                .SelectMany(v =>
+                {
+                    var teamId = ReadStringDetail(v.Details, "teamId");
+                    var gameDate = ReadStringDetail(v.Details, "gameDate");
+                    return assignments.Where(a =>
+                        string.Equals(a.GameDate, gameDate, StringComparison.OrdinalIgnoreCase) &&
+                        ContainsTeam(a, teamId));
+                })
+                .DistinctBy(a => a.SlotId, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        if (string.Equals(group.RuleId, "max-games-per-week", StringComparison.OrdinalIgnoreCase))
+        {
+            return group.Violations
+                .SelectMany(v =>
+                {
+                    var teamId = ReadStringDetail(v.Details, "teamId");
+                    var week = ReadStringDetail(v.Details, "week");
+                    return assignments.Where(a =>
+                        string.Equals(WeekKey(a.GameDate), week, StringComparison.OrdinalIgnoreCase) &&
+                        ContainsTeam(a, teamId));
+                })
+                .DistinctBy(a => a.SlotId, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        return Array.Empty<ScheduleAssignment>();
+    }
+
+    private static bool ContainsTeam(ScheduleAssignment a, string teamId)
+    {
+        if (string.IsNullOrWhiteSpace(teamId)) return false;
+        return string.Equals(a.HomeTeamId, teamId, StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(a.AwayTeamId, teamId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ReadStringDetail(Dictionary<string, object?> details, string key)
+    {
+        if (details is null || !details.TryGetValue(key, out var raw) || raw is null) return "";
+        return raw.ToString() ?? "";
+    }
+
+    private static bool SharesTeam(ScheduleAssignment a, ScheduleAssignment b)
+    {
+        if (ContainsTeam(b, a.HomeTeamId)) return true;
+        if (ContainsTeam(b, a.AwayTeamId)) return true;
+        return false;
+    }
+
+    private static void AddTeams(HashSet<string> teamIds, ScheduleAssignment a)
+    {
+        if (!string.IsNullOrWhiteSpace(a.HomeTeamId)) teamIds.Add(a.HomeTeamId);
+        if (!string.IsNullOrWhiteSpace(a.AwayTeamId)) teamIds.Add(a.AwayTeamId);
+    }
+
+    private static void AddWeek(HashSet<string> weeks, string gameDate)
+    {
+        var week = WeekKey(gameDate);
+        if (!string.IsNullOrWhiteSpace(week)) weeks.Add(week);
     }
 
     private static string BuildGameId(ScheduleAssignment a)
