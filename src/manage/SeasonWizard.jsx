@@ -1782,6 +1782,147 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     };
   }, [preview, regularBalanceReport]);
 
+  const regularCalendarTimelineReport = useMemo(() => {
+    if (!preview) {
+      return {
+        weekRows: [],
+        shownWeeks: 0,
+        totalWeeks: 0,
+        weekdayColumns: WEEKDAY_OPTIONS,
+      };
+    }
+
+    const assignments = Array.isArray(preview.assignments) ? preview.assignments : [];
+    const unassignedSlots = Array.isArray(preview.unassignedSlots) ? preview.unassignedSlots : [];
+    const regularAssignments = assignments.filter((a) => a?.phase === "Regular Season");
+    const regularOpenSlots = unassignedSlots.filter((s) => s?.phase === "Regular Season");
+    const weekKeysSet = new Set(Array.isArray(regularBalanceReport.weekKeys) ? regularBalanceReport.weekKeys : []);
+
+    [...regularAssignments, ...regularOpenSlots].forEach((row) => {
+      const weekKey = weekStartIso(row?.gameDate);
+      if (weekKey) weekKeysSet.add(weekKey);
+    });
+    const weekKeys = [...weekKeysSet].sort((a, b) => a.localeCompare(b));
+
+    const byWeek = new Map();
+    const ensureWeek = (weekKey) => {
+      if (!weekKey) return null;
+      if (!byWeek.has(weekKey)) {
+        const cells = Object.fromEntries(WEEKDAY_OPTIONS.map((day) => [day, {
+          games: 0,
+          guest: 0,
+          open: 0,
+          firstDate: "",
+          lastDate: "",
+        }]));
+        byWeek.set(weekKey, {
+          weekKey,
+          totalGames: 0,
+          totalGuest: 0,
+          totalOpen: 0,
+          cells,
+        });
+      }
+      return byWeek.get(weekKey);
+    };
+
+    const touchCell = (container, day, gameDate, updater) => {
+      if (!container || !WEEKDAY_OPTIONS.includes(day)) return;
+      const cell = container.cells?.[day];
+      if (!cell) return;
+      updater(cell);
+      if (gameDate) {
+        if (!cell.firstDate || gameDate < cell.firstDate) cell.firstDate = gameDate;
+        if (!cell.lastDate || gameDate > cell.lastDate) cell.lastDate = gameDate;
+      }
+    };
+
+    regularAssignments.forEach((a) => {
+      const weekKey = weekStartIso(a?.gameDate);
+      const day = isoDayShort(a?.gameDate);
+      const row = ensureWeek(weekKey);
+      if (!row) return;
+      row.totalGames += 1;
+      if (a?.isExternalOffer) row.totalGuest += 1;
+      touchCell(row, day, a?.gameDate, (cell) => {
+        cell.games += 1;
+        if (a?.isExternalOffer) cell.guest += 1;
+      });
+    });
+
+    regularOpenSlots.forEach((s) => {
+      const weekKey = weekStartIso(s?.gameDate);
+      const day = isoDayShort(s?.gameDate);
+      const row = ensureWeek(weekKey);
+      if (!row) return;
+      row.totalOpen += 1;
+      touchCell(row, day, s?.gameDate, (cell) => {
+        cell.open += 1;
+      });
+    });
+
+    const hardRuleByWeek = new Map();
+    const softRuleByWeek = new Map();
+    (Array.isArray(previewRuleHealth?.groups) ? previewRuleHealth.groups : []).forEach((group) => {
+      const severity = String(group?.severity || "").toLowerCase();
+      const violations = Array.isArray(group?.violations) ? group.violations : [];
+      violations.forEach((violation) => {
+        const weekKeysForViolation = Array.isArray(violation?.weekKeys) ? violation.weekKeys : [];
+        weekKeysForViolation.forEach((weekKeyRaw) => {
+          const weekKey = String(weekKeyRaw || "").trim();
+          if (!weekKey) return;
+          const map = severity === "hard" ? hardRuleByWeek : softRuleByWeek;
+          map.set(weekKey, (map.get(weekKey) || 0) + 1);
+        });
+      });
+    });
+
+    const weekRows = weekKeys.map((weekKey, idx) => {
+      const row = byWeek.get(weekKey) || ensureWeek(weekKey);
+      const weekStart = weekKey;
+      const weekEnd = addIsoDays(weekKey, 6);
+      const totalCapacity = Number(row?.totalGames || 0) + Number(row?.totalOpen || 0);
+      const utilizationPct = totalCapacity > 0 ? Math.round(((row?.totalGames || 0) / totalCapacity) * 100) : 0;
+      const progress = weekKeys.length > 1 ? (idx / (weekKeys.length - 1)) : 1;
+      const weatherWeight = Number((0.85 + (progress * 0.35)).toFixed(2));
+      const phaseBand = progress >= 0.67 ? "late" : (progress >= 0.34 ? "mid" : "early");
+      const blocked = (activeBlockedRanges || []).some((range) => {
+        const startDate = String(range?.startDate || "").trim();
+        const endDate = String(range?.endDate || "").trim();
+        if (!isIsoDate(startDate) || !isIsoDate(endDate)) return false;
+        return !(weekEnd < startDate || weekStart > endDate);
+      });
+      return {
+        weekKey,
+        weekIndex: idx + 1,
+        weekStart,
+        weekEnd,
+        totalGames: Number(row?.totalGames || 0),
+        totalGuest: Number(row?.totalGuest || 0),
+        totalOpen: Number(row?.totalOpen || 0),
+        totalCapacity,
+        utilizationPct,
+        weatherWeight,
+        phaseBand,
+        blocked,
+        hardRuleTouches: hardRuleByWeek.get(weekKey) || 0,
+        softRuleTouches: softRuleByWeek.get(weekKey) || 0,
+        cells: WEEKDAY_OPTIONS.map((day) => ({
+          day,
+          ...(row?.cells?.[day] || { games: 0, guest: 0, open: 0, firstDate: "", lastDate: "" }),
+        })),
+      };
+    });
+
+    const shownRows = weekRows.slice(0, 16);
+    return {
+      weekRows: shownRows,
+      shownWeeks: shownRows.length,
+      totalWeeks: weekRows.length,
+      weekdayColumns: WEEKDAY_OPTIONS,
+    };
+  }, [preview, previewRuleHealth, regularBalanceReport, activeBlockedRanges]);
+
   const selectedGameExplain = useMemo(() => {
     if (!preview || !selectedExplainGameKey) return null;
 
@@ -3515,6 +3656,128 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                   {fieldHeatmapReport.totalFields > fieldHeatmapReport.shownFields ? (
                     <div className="subtle mt-2">
                       Showing {fieldHeatmapReport.shownFields} of {fieldHeatmapReport.totalFields} fields (sorted by utilization).
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              {regularCalendarTimelineReport.weekRows.length ? (
+                <div className="callout">
+                  <div className="font-bold mb-2">Season timeline + calendar (Regular Season)</div>
+                  <div className="subtle mb-2">
+                    Timeline cards emphasize late-season weeks (weather reliability weighting) and show week-level utilization/rule pressure. Calendar grid shows games/open slots by day.
+                  </div>
+                  <div className="row row--wrap gap-2">
+                    {regularCalendarTimelineReport.weekRows.map((week) => {
+                      const lateFactor = regularCalendarTimelineReport.weekRows.length > 1
+                        ? ((week.weekIndex - 1) / (regularCalendarTimelineReport.weekRows.length - 1))
+                        : 1;
+                      const utilFactor = Math.max(0, Math.min(1, Number(week.utilizationPct || 0) / 100));
+                      const bg = week.hardRuleTouches > 0
+                        ? `rgba(239,68,68,${0.10 + (lateFactor * 0.08)})`
+                        : week.utilizationPct >= 75
+                          ? `rgba(15,118,110,${0.08 + (utilFactor * 0.18) + (lateFactor * 0.06)})`
+                          : `rgba(59,130,246,${0.06 + (utilFactor * 0.12) + (lateFactor * 0.05)})`;
+                      const border = week.hardRuleTouches > 0
+                        ? "#fecaca"
+                        : (week.blocked ? "#fcd34d" : "#cbd5e1");
+                      return (
+                        <div
+                          key={`timeline-card-${week.weekKey}`}
+                          style={{
+                            border: "1px solid " + border,
+                            borderRadius: 10,
+                            background: bg,
+                            padding: "0.55rem 0.65rem",
+                            minWidth: 170,
+                            flex: "1 1 170px",
+                          }}
+                          title={`${week.weekKey} | games ${week.totalGames}/${week.totalCapacity || 0} | hard ${week.hardRuleTouches} | soft ${week.softRuleTouches}`}
+                        >
+                          <div className="row row--between gap-2" style={{ alignItems: "center" }}>
+                            <div style={{ fontWeight: 700 }}>W{week.weekIndex}</div>
+                            <span className="pill">{week.phaseBand}</span>
+                          </div>
+                          <div className="subtle">{week.weekStart}{week.weekEnd ? ` to ${week.weekEnd}` : ""}</div>
+                          <div className="subtle">
+                            Util: <b>{week.totalGames}/{week.totalCapacity}</b> ({week.utilizationPct}%)
+                            {week.totalGuest > 0 ? <> | G{week.totalGuest}</> : null}
+                          </div>
+                          <div className="subtle">
+                            Weather weight: <b>{week.weatherWeight.toFixed(2)}</b>
+                            {week.blocked ? <> | <b>blocked overlap</b></> : null}
+                          </div>
+                          <div className="subtle">
+                            Rules: hard <b>{week.hardRuleTouches}</b> / soft <b>{week.softRuleTouches}</b>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className={`tableWrap mt-3 ${tableView === "B" ? "tableWrap--sticky" : ""}`}>
+                    <table className={`table ${tableView === "B" ? "table--compact table--sticky" : ""}`}>
+                      <thead>
+                        <tr>
+                          <th>Week</th>
+                          <th>Range</th>
+                          <th>Util</th>
+                          <th>Rules</th>
+                          {regularCalendarTimelineReport.weekdayColumns.map((day) => (
+                            <th key={`calendar-day-${day}`}>{day}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {regularCalendarTimelineReport.weekRows.map((week) => (
+                          <tr key={`calendar-week-${week.weekKey}`}>
+                            <td>
+                              <div>W{week.weekIndex}</div>
+                              <div className="subtle">{week.phaseBand}</div>
+                            </td>
+                            <td>
+                              <div>{week.weekStart}</div>
+                              <div className="subtle">{week.weekEnd}</div>
+                            </td>
+                            <td>
+                              <div>{week.totalGames}/{week.totalCapacity}</div>
+                              <div className="subtle">{week.utilizationPct}%</div>
+                            </td>
+                            <td>
+                              <div>H{week.hardRuleTouches} / S{week.softRuleTouches}</div>
+                              {week.blocked ? <div className="subtle">Blocked overlap</div> : null}
+                            </td>
+                            {week.cells.map((cell) => {
+                              const totalLoad = Number(cell.games || 0) + Number(cell.open || 0);
+                              const bg = totalLoad <= 0
+                                ? "rgba(148,163,184,0.06)"
+                                : (cell.games > 0 && cell.open === 0
+                                  ? "rgba(34,197,94,0.10)"
+                                  : (cell.games > 0
+                                    ? "rgba(59,130,246,0.10)"
+                                    : "rgba(148,163,184,0.10)"));
+                              return (
+                                <td
+                                  key={`calendar-cell-${week.weekKey}-${cell.day}`}
+                                  style={{ background: bg, minWidth: 66 }}
+                                  title={`${cell.day} | ${cell.firstDate || week.weekKey} | games ${cell.games} | open ${cell.open}`}
+                                >
+                                  <div style={{ fontWeight: 600 }}>{cell.games > 0 ? `G${cell.games}` : "-"}</div>
+                                  <div className="subtle">
+                                    {cell.open > 0 ? `Open ${cell.open}` : "Open 0"}
+                                    {cell.guest > 0 ? ` | Guest ${cell.guest}` : ""}
+                                  </div>
+                                  {cell.firstDate ? <div className="subtle">{cell.firstDate}</div> : null}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {regularCalendarTimelineReport.totalWeeks > regularCalendarTimelineReport.shownWeeks ? (
+                    <div className="subtle mt-2">
+                      Showing first {regularCalendarTimelineReport.shownWeeks} of {regularCalendarTimelineReport.totalWeeks} regular-season weeks in the timeline/calendar views.
                     </div>
                   ) : null}
                 </div>
