@@ -1856,6 +1856,15 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     const regularGuestGames = regularAssignments.filter((a) => a?.isExternalOffer && a?.homeTeamId);
     const regularUnassignedSlots = unassignedSlots.filter((s) => s?.phase === "Regular Season");
     const regularUnassignedMatchups = unassignedMatchups.filter((m) => getIssuePhase(m) === "Regular Season");
+    const manualPriorityByPair = new Map(
+      (rivalryPayload || [])
+        .map((row) => {
+          const key = normalizeTeamPairKey(row?.teamA, row?.teamB);
+          const weight = Math.max(1, Math.min(10, Number(row?.weight) || 0));
+          return key ? [key, weight] : null;
+        })
+        .filter(Boolean)
+    );
 
     const teamIds = new Set();
     regularGames.forEach((a) => {
@@ -2036,23 +2045,44 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         const rowIsA = rowTeamId === record.teamA;
         const homeForRow = rowIsA ? record.homeForA : record.homeForB;
         const awayForRow = record.assigned - homeForRow;
+        const target = record.assigned + record.unassigned;
+        const manualPriorityWeight = manualPriorityByPair.get(record.key) || 0;
+        const autoRepeatPriority = target > 1;
         return {
           assigned: record.assigned,
-          target: record.assigned + record.unassigned,
+          target,
           unassigned: record.unassigned,
           homeForRow,
           awayForRow,
+          manualPriorityWeight,
+          autoRepeatPriority,
         };
       }),
     }));
 
     const pairRows = [...pairMap.values()]
-      .map((record) => ({
-        ...record,
-        target: record.assigned + record.unassigned,
-        homeAwayGap: Math.abs(record.homeForA - record.homeForB),
-      }))
+      .map((record) => {
+        const target = record.assigned + record.unassigned;
+        const manualPriorityWeight = manualPriorityByPair.get(record.key) || 0;
+        const autoRepeatPriority = target > 1;
+        let priorityLabel = "";
+        if (manualPriorityWeight > 0 && autoRepeatPriority) priorityLabel = `Manual w${manualPriorityWeight} + Repeat`;
+        else if (manualPriorityWeight > 0) priorityLabel = `Manual w${manualPriorityWeight}`;
+        else if (autoRepeatPriority) priorityLabel = "Repeat";
+        return {
+          ...record,
+          target,
+          homeAwayGap: Math.abs(record.homeForA - record.homeForB),
+          manualPriorityWeight,
+          autoRepeatPriority,
+          priorityLabel,
+        };
+      })
       .sort((a, b) => {
+        const manualDiff = (b.manualPriorityWeight || 0) - (a.manualPriorityWeight || 0);
+        if (manualDiff !== 0) return manualDiff;
+        const repeatDiff = Number(b.autoRepeatPriority) - Number(a.autoRepeatPriority);
+        if (repeatDiff !== 0) return repeatDiff;
         const targetDiff = b.target - a.target;
         if (targetDiff !== 0) return targetDiff;
         const assignedDiff = b.assigned - a.assigned;
@@ -2071,8 +2101,10 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       totalGuestGames: regularGuestGames.length,
       weekCount: regularWeekKeys.length,
       weekKeys: regularWeekKeys,
+      manualPriorityPairCount: manualPriorityByPair.size,
+      autoRepeatPriorityPairCount: [...pairMap.values()].filter((p) => (p.assigned + p.unassigned) > 1).length,
     };
-  }, [preview, seasonStart, seasonEnd, poolStart, minGamesPerTeam]);
+  }, [preview, seasonStart, seasonEnd, poolStart, minGamesPerTeam, rivalryPayload]);
 
   const teamLanesReport = useMemo(() => {
     if (!preview) {
@@ -4112,6 +4144,11 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                   <div className="subtle mb-2">
                     Guest games are tracked separately and are not counted in the matchup matrix.
                   </div>
+                  <div className="subtle mb-2">
+                    Priority markers: <b>M</b> = manual priority matchup, <b>R</b> = auto repeat-pair priority.
+                    {" "}Manual pairs: <b>{regularBalanceReport.manualPriorityPairCount || 0}</b>.
+                    {" "}Repeat-priority pairs: <b>{regularBalanceReport.autoRepeatPriorityPairCount || 0}</b>.
+                  </div>
 
                   <div className="tableWrap mt-2">
                     <table className="table">
@@ -4170,9 +4207,19 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                             {row.cells.map((cell, idx) => {
                               const colTeamId = regularBalanceReport.teams[idx];
                               if (!cell) return <td key={`matrix-cell-${row.teamId}-${colTeamId}`}>-</td>;
+                              const priorityTags = [];
+                              if ((cell.manualPriorityWeight || 0) > 0) priorityTags.push(`M${cell.manualPriorityWeight}`);
+                              if (cell.autoRepeatPriority) priorityTags.push("R");
+                              const titleBits = [`${row.teamId} vs ${colTeamId}`];
+                              if (priorityTags.length) titleBits.push(`Priority: ${priorityTags.join(" + ")}`);
                               return (
-                                <td key={`matrix-cell-${row.teamId}-${colTeamId}`} title={`${row.teamId} vs ${colTeamId}`}>
+                                <td key={`matrix-cell-${row.teamId}-${colTeamId}`} title={titleBits.join(" | ")}>
                                   {cell.assigned}/{cell.target}
+                                  {priorityTags.length ? (
+                                    <div className="subtle" style={{ whiteSpace: "nowrap" }}>
+                                      [{priorityTags.join("+")}]
+                                    </div>
+                                  ) : null}
                                   <div className="subtle" style={{ whiteSpace: "nowrap" }}>
                                     ({cell.homeForRow}H/{cell.awayForRow}A)
                                   </div>
@@ -4195,6 +4242,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                             <th>Target</th>
                             <th>Unassigned</th>
                             <th>Home split</th>
+                            <th>Priority</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -4205,6 +4253,13 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                               <td>{pair.target}</td>
                               <td>{pair.unassigned}</td>
                               <td>{pair.teamA}:{pair.homeForA} / {pair.teamB}:{pair.homeForB}</td>
+                              <td>
+                                {pair.priorityLabel ? (
+                                  <span className="pill">{pair.priorityLabel}</span>
+                                ) : (
+                                  <span className="subtle">-</span>
+                                )}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
