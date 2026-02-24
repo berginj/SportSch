@@ -25,4 +25,25 @@ public class ScheduleEngineTests
 
         Assert.Equal(6, pairs.Count);
     }
+
+    [Fact]
+    public void AssignMatchups_UsesProvidedSlotOrder_SoBackwardOrderedSlotsFillLateDatesFirst()
+    {
+        var teams = new List<string> { "A", "B" };
+        var matchups = new List<MatchupPair> { new("A", "B") };
+        var slots = new List<ScheduleSlot>
+        {
+            // Wizard backward strategy now sends later season slots first for regular-season construction.
+            new("late-slot", "2026-05-31", "10:00", "12:00", "Field-1", ""),
+            new("early-slot", "2026-03-15", "10:00", "12:00", "Field-1", "")
+        };
+        var constraints = new ScheduleConstraints(MaxGamesPerWeek: 1, NoDoubleHeaders: true, BalanceHomeAway: true, ExternalOfferPerWeek: 0);
+
+        var result = ScheduleEngine.AssignMatchups(slots, matchups, teams, constraints);
+
+        Assert.Single(result.Assignments);
+        Assert.Equal("late-slot", result.Assignments[0].SlotId);
+        Assert.Single(result.UnassignedSlots);
+        Assert.Equal("early-slot", result.UnassignedSlots[0].SlotId);
+    }
 }

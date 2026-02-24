@@ -41,7 +41,9 @@ public class ScheduleWizardFunctions
         bool? balanceHomeAway,
         List<SlotPlanItem>? slotPlan,
         GuestAnchorOption? guestAnchorPrimary,
-        GuestAnchorOption? guestAnchorSecondary
+        GuestAnchorOption? guestAnchorSecondary,
+        string? constructionStrategy,
+        int? seed
     );
 
     public record DateRangeOption(
@@ -285,6 +287,9 @@ public class ScheduleWizardFunctions
             var preferredDays = NormalizePreferredDays(body.preferredWeeknights);
             var strictPreferredWeeknights = body.strictPreferredWeeknights ?? false;
             var blockedRanges = NormalizeBlockedDateRanges(body.blockedDateRanges);
+            var normalizedConstructionStrategy = NormalizeConstructionStrategy(body.constructionStrategy);
+            var useBackwardRegularSeason = string.Equals(normalizedConstructionStrategy, "backward_greedy_v1", StringComparison.OrdinalIgnoreCase);
+            var requestedSeed = body.seed.HasValue ? Math.Abs(body.seed.Value) : (int?)null;
 
             var teams = await LoadTeamsAsync(leagueId, division);
             if (teams.Count < 2)
@@ -323,8 +328,8 @@ public class ScheduleWizardFunctions
             var poolMatchups = BuildTargetMatchups(teams, poolGamesPerTeam);
             var bracketMatchups = BuildBracketMatchups();
 
-            var regularAssignments = AssignPhaseSlots("Regular Season", regularSlots, regularMatchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek, preferredDays, strictPreferredWeeknights, guestAnchors);
-            var poolAssignments = AssignPhaseSlots("Pool Play", poolSlots, poolMatchups, teams, null, noDoubleHeaders, balanceHomeAway, 0, preferredDays: new List<DayOfWeek>(), strictPreferredWeeknights: false, guestAnchors: null);
+            var regularAssignments = AssignPhaseSlots("Regular Season", regularSlots, regularMatchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek, preferredDays, strictPreferredWeeknights, guestAnchors, scheduleBackward: useBackwardRegularSeason);
+            var poolAssignments = AssignPhaseSlots("Pool Play", poolSlots, poolMatchups, teams, null, noDoubleHeaders, balanceHomeAway, 0, preferredDays: new List<DayOfWeek>(), strictPreferredWeeknights: false, guestAnchors: null, scheduleBackward: false);
             var bracketAssignments = AssignBracketSlots(bracketSlots, bracketMatchups);
             var totalPhaseSlots = regularSlots
                 .Select(s => s.slotId)
@@ -440,8 +445,8 @@ public class ScheduleWizardFunctions
             var totalIssues = issues.Count;
             var applyBlocked = strictValidation.RuleHealth.ApplyBlocked;
             var repairProposals = new List<object>(); // Stage C repair/swap engine will populate this.
-            var seed = StableWizardSeed(division, seasonStart, seasonEnd);
-            const string constructionStrategy = "legacy_greedy_v1+strict_validation_v2";
+            var seed = requestedSeed ?? StableWizardSeed(division, seasonStart, seasonEnd);
+            var constructionStrategy = $"{normalizedConstructionStrategy}+strict_validation_v2";
 
             if (apply)
             {
@@ -472,7 +477,9 @@ public class ScheduleWizardFunctions
                 slotsTotal = summary.totalSlots,
                 assignedTotal = summary.totalAssigned,
                 issues = totalIssues,
-                applyBlocked
+                applyBlocked,
+                constructionStrategy,
+                seed
             });
 
             return ApiResponses.Ok(req, new WizardPreviewDto(summary, assignments, unassignedSlots, unassignedMatchups, warnings, issues, totalIssues, strictValidation.RuleHealth, repairProposals, applyBlocked, seed, constructionStrategy));
@@ -531,6 +538,17 @@ public class ScheduleWizardFunctions
         }
     }
 
+    private static string NormalizeConstructionStrategy(string? raw)
+    {
+        var value = (raw ?? "").Trim().ToLowerInvariant();
+        return value switch
+        {
+            "legacy" or "legacy_greedy" or "legacy_greedy_v1" => "legacy_greedy_v1",
+            "backward" or "backward_greedy" or "backward_greedy_v1" => "backward_greedy_v1",
+            _ => "backward_greedy_v1" // Default to backward construction for regular-season scheduling.
+        };
+    }
+
     private record PhaseAssignments(
         List<ScheduleAssignment> Assignments,
         List<ScheduleAssignment> UnassignedSlots,
@@ -568,7 +586,8 @@ public class ScheduleWizardFunctions
         int externalOfferPerWeek,
         List<DayOfWeek> preferredDays,
         bool strictPreferredWeeknights,
-        GuestAnchorSet? guestAnchors)
+        GuestAnchorSet? guestAnchors,
+        bool scheduleBackward)
     {
         if (slots.Count == 0)
             return new PhaseAssignments(new List<ScheduleAssignment>(), new List<ScheduleAssignment>(), new List<MatchupPair>(matchups));
@@ -587,7 +606,7 @@ public class ScheduleWizardFunctions
             slots = slots.Where(s => !reservedIds.Contains(s.slotId)).ToList();
         }
 
-        var orderedSlots = OrderSlotsByPreference(slots, preferredDays);
+        var orderedSlots = OrderSlotsByPreference(slots, preferredDays, scheduleBackward);
 
         var constraints = new ScheduleConstraints(maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, 0);
         var result = ScheduleEngine.AssignMatchups(orderedSlots, matchups, teams, constraints);
@@ -1137,16 +1156,19 @@ public class ScheduleWizardFunctions
         return false;
     }
 
-    private static List<ScheduleSlot> OrderSlotsByPreference(List<SlotInfo> slots, List<DayOfWeek> preferredDays)
+    private static List<ScheduleSlot> OrderSlotsByPreference(List<SlotInfo> slots, List<DayOfWeek> preferredDays, bool scheduleBackward)
     {
-        return slots
+        var ordered = slots
             .OrderBy(s => SlotTypeSchedulingPriority(s))
             .ThenBy(s => s.priorityRank.HasValue ? 0 : 1)
             .ThenBy(s => s.priorityRank ?? int.MaxValue)
-            .ThenBy(s => PreferredDayRank(s.gameDate, preferredDays))
-            .ThenBy(s => s.gameDate)
-            .ThenBy(s => s.startTime)
-            .ThenBy(s => s.fieldKey)
+            .ThenBy(s => PreferredDayRank(s.gameDate, preferredDays));
+
+        ordered = scheduleBackward
+            ? ordered.ThenByDescending(s => s.gameDate).ThenByDescending(s => s.startTime).ThenBy(s => s.fieldKey)
+            : ordered.ThenBy(s => s.gameDate).ThenBy(s => s.startTime).ThenBy(s => s.fieldKey);
+
+        return ordered
             .Select(s => new ScheduleSlot(s.slotId, s.gameDate, s.startTime, s.endTime, s.fieldKey, s.offeringTeamId))
             .ToList();
     }
@@ -1501,6 +1523,8 @@ public class ScheduleWizardFunctions
             ["BalanceHomeAway"] = request.balanceHomeAway ?? true,
             ["ExternalOfferPerWeek"] = request.externalOfferPerWeek ?? 0,
             ["BlockedDateRanges"] = System.Text.Json.JsonSerializer.Serialize(request.blockedDateRanges ?? new List<DateRangeOption>()),
+            ["ConstructionStrategy"] = NormalizeConstructionStrategy(request.constructionStrategy),
+            ["Seed"] = request.seed ?? 0,
             ["Summary"] = System.Text.Json.JsonSerializer.Serialize(summary)
         };
 
