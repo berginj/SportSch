@@ -97,6 +97,24 @@ function buildCoachSetupLink(leagueId, teamId) {
   return `${prefix}?${params.toString()}#coach-setup`;
 }
 
+function parseJsonString(value, fallback = null) {
+  if (value == null) return fallback;
+  if (typeof value === "object") return value;
+  const text = String(value || "").trim();
+  if (!text) return fallback;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return fallback;
+  }
+}
+
+function csvCell(value) {
+  const text = String(value ?? "");
+  if (!/[",\n]/.test(text)) return text;
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
 export default function DebugPage({ leagueId, me }) {
   const isGlobalAdmin = !!me?.isGlobalAdmin;
   const [loading, setLoading] = useState(true);
@@ -142,6 +160,12 @@ export default function DebugPage({ leagueId, me }) {
   const [previewPortalDayFilter, setPreviewPortalDayFilter] = useState("0");
   const [previewPortalClaimingSlotId, setPreviewPortalClaimingSlotId] = useState("");
   const [previewRefreshedAt, setPreviewRefreshedAt] = useState("");
+  const [repairAuditLoading, setRepairAuditLoading] = useState(false);
+  const [repairAuditErr, setRepairAuditErr] = useState("");
+  const [repairAuditDivision, setRepairAuditDivision] = useState("");
+  const [repairAuditLimit, setRepairAuditLimit] = useState("100");
+  const [repairAuditIncludeWizardRuns, setRepairAuditIncludeWizardRuns] = useState(false);
+  const [repairAuditRows, setRepairAuditRows] = useState([]);
   const previewLoadSeqRef = useRef(0);
 
   const usersById = useMemo(() => {
@@ -394,6 +418,111 @@ export default function DebugPage({ leagueId, me }) {
     });
     return lines.join("\n");
   }, [previewPortalRecurringChoices]);
+
+  const repairAuditRowsNormalized = useMemo(() => {
+    return (repairAuditRows || []).map((row) => {
+      const recordType = normalizeText(row?.RecordType);
+      const fixesRuleIds = parseJsonString(row?.FixesRuleIds, []);
+      const changes = parseJsonString(row?.Changes, []);
+      const beforeRuleHealth = parseJsonString(row?.RuleHealthBefore, null);
+      const afterRuleHealth = parseJsonString(row?.RuleHealthAfter, null);
+      const beforeAfterSummary = parseJsonString(row?.BeforeAfterSummary, {});
+      const createdUtc = normalizeText(row?.CreatedUtc) || normalizeText(row?.Timestamp);
+      const hardBefore = Number(row?.HardViolationsBefore ?? beforeRuleHealth?.hardViolationCount ?? 0);
+      const hardAfter = Number(row?.HardViolationsAfter ?? afterRuleHealth?.hardViolationCount ?? 0);
+      const softBefore = Number(row?.SoftScoreBefore ?? beforeRuleHealth?.softScore ?? 0);
+      const softAfter = Number(row?.SoftScoreAfter ?? afterRuleHealth?.softScore ?? 0);
+      const proposalTitle = normalizeText(row?.ProposalTitle);
+      const proposalId = normalizeText(row?.ProposalId);
+      const deltaHard = Number.isFinite(hardBefore) && Number.isFinite(hardAfter) ? (hardAfter - hardBefore) : null;
+      const deltaSoft = Number.isFinite(softBefore) && Number.isFinite(softAfter)
+        ? Number((softAfter - softBefore).toFixed(2))
+        : null;
+      return {
+        raw: row,
+        recordType,
+        createdUtc,
+        division: normalizeText(row?.Division),
+        runId: normalizeText(row?.RunId || row?.RowKey),
+        requestId: normalizeText(row?.RequestId),
+        proposalId,
+        proposalTitle,
+        proposalRationale: normalizeText(row?.ProposalRationale),
+        fixesRuleIds: Array.isArray(fixesRuleIds) ? fixesRuleIds : [],
+        changes: Array.isArray(changes) ? changes : [],
+        beforeRuleHealth,
+        afterRuleHealth,
+        beforeAfterSummary: beforeAfterSummary && typeof beforeAfterSummary === "object" ? beforeAfterSummary : {},
+        hardBefore,
+        hardAfter,
+        softBefore,
+        softAfter,
+        deltaHard,
+        deltaSoft,
+        applyBlockedBefore: row?.ApplyBlockedBefore === true || String(row?.ApplyBlockedBefore).toLowerCase() === "true",
+        applyBlockedAfter: row?.ApplyBlockedAfter === true || String(row?.ApplyBlockedAfter).toLowerCase() === "true",
+      };
+    });
+  }, [repairAuditRows]);
+
+  const repairAuditExportCsv = useMemo(() => {
+    const rows = [
+      [
+        "CreatedUtc",
+        "Division",
+        "RecordType",
+        "ProposalTitle",
+        "FixesRuleIds",
+        "Changes",
+        "HardBefore",
+        "HardAfter",
+        "HardDelta",
+        "SoftScoreBefore",
+        "SoftScoreAfter",
+        "SoftDelta",
+        "ApplyBlockedBefore",
+        "ApplyBlockedAfter",
+        "RequestId",
+        "RunId",
+      ].join(","),
+    ];
+
+    for (const row of repairAuditRowsNormalized) {
+      rows.push([
+        csvCell(row.createdUtc),
+        csvCell(row.division),
+        csvCell(row.recordType),
+        csvCell(row.proposalTitle),
+        csvCell((row.fixesRuleIds || []).join("|")),
+        csvCell((row.changes || []).map((c) => c?.changeType).filter(Boolean).join("|")),
+        csvCell(row.hardBefore),
+        csvCell(row.hardAfter),
+        csvCell(row.deltaHard),
+        csvCell(row.softBefore),
+        csvCell(row.softAfter),
+        csvCell(row.deltaSoft),
+        csvCell(row.applyBlockedBefore),
+        csvCell(row.applyBlockedAfter),
+        csvCell(row.requestId),
+        csvCell(row.runId),
+      ].join(","));
+    }
+
+    return rows.join("\n");
+  }, [repairAuditRowsNormalized]);
+
+  const repairAuditExportSummaryText = useMemo(() => {
+    return repairAuditRowsNormalized.map((row) => {
+      const title = row.proposalTitle || row.proposalId || row.recordType || row.runId;
+      const hardPart = Number.isFinite(row.hardBefore) && Number.isFinite(row.hardAfter)
+        ? `hard ${row.hardBefore} -> ${row.hardAfter}`
+        : "hard ?";
+      const softPart = Number.isFinite(row.softBefore) && Number.isFinite(row.softAfter)
+        ? `soft ${row.softBefore} -> ${row.softAfter}`
+        : "soft ?";
+      return `${row.createdUtc || "-"} | ${row.division || "-"} | ${title} | ${hardPart} | ${softPart}`;
+    }).join("\n");
+  }, [repairAuditRowsNormalized]);
 
   useEffect(() => {
     if (!previewPortalOpenToShareField && previewPortalShareWithTeamId) {
@@ -774,6 +903,34 @@ export default function DebugPage({ leagueId, me }) {
       setPreviewPortalSlotsAll([]);
     } finally {
       setPreviewContextLoading(false);
+    }
+  }
+
+  async function loadScheduleRepairAudits() {
+    if (!isGlobalAdmin) return;
+    if (!leagueId) {
+      setRepairAuditErr("Select a league to load schedule repair audit history.");
+      setRepairAuditRows([]);
+      return;
+    }
+
+    setRepairAuditLoading(true);
+    setRepairAuditErr("");
+    try {
+      const qs = new URLSearchParams();
+      if (normalizeText(repairAuditDivision)) qs.set("division", normalizeText(repairAuditDivision));
+      const parsedLimit = Number(repairAuditLimit);
+      if (Number.isFinite(parsedLimit) && parsedLimit > 0) qs.set("limit", String(Math.trunc(parsedLimit)));
+      if (repairAuditIncludeWizardRuns) qs.set("includeWizardRuns", "1");
+
+      const data = await apiFetch(`/api/admin/debug/league/${encodeURIComponent(leagueId)}/schedule-repair-audits?${qs.toString()}`);
+      const rows = Array.isArray(data?.rows) ? data.rows : (Array.isArray(data) ? data : []);
+      setRepairAuditRows(rows);
+    } catch (e) {
+      setRepairAuditErr(e?.message || "Failed to load schedule repair audits.");
+      setRepairAuditRows([]);
+    } finally {
+      setRepairAuditLoading(false);
     }
   }
 
@@ -1614,6 +1771,153 @@ export default function DebugPage({ leagueId, me }) {
             </>
           ) : (
             <div className="muted">Select division and team to preview coach practice requests.</div>
+          )}
+        </div>
+      ) : null}
+
+      {isGlobalAdmin ? (
+        <div className="card">
+          <h2>Debug: wizard preview repair audit history</h2>
+          <p className="muted">
+            Preview repair actions saved to <code>GameSwapScheduleRuns</code> with <code>RecordType = WizardPreviewRepair</code>.
+            Use this to review what fixes commissioners applied in Wizard Preview and how rule health changed.
+          </p>
+
+          <div className="row gap-3 row--wrap mb-2">
+            <label>
+              Division (optional)
+              <input
+                value={repairAuditDivision}
+                onChange={(e) => setRepairAuditDivision(e.target.value)}
+                placeholder="e.g. 12U"
+              />
+            </label>
+            <label>
+              Limit
+              <input
+                value={repairAuditLimit}
+                onChange={(e) => setRepairAuditLimit(e.target.value)}
+                inputMode="numeric"
+                style={{ width: 110 }}
+              />
+            </label>
+            <label className="row row--wrap gap-2" style={{ alignItems: "center", paddingTop: "1.8rem" }}>
+              <input
+                type="checkbox"
+                checked={repairAuditIncludeWizardRuns}
+                onChange={(e) => setRepairAuditIncludeWizardRuns(e.target.checked)}
+              />
+              <span>Include normal wizard runs</span>
+            </label>
+            <button className="btn" onClick={loadScheduleRepairAudits} disabled={repairAuditLoading}>
+              {repairAuditLoading ? "Loading..." : "Load repair audits"}
+            </button>
+          </div>
+
+          {repairAuditErr && <div className="error">{repairAuditErr}</div>}
+
+          {repairAuditRowsNormalized.length === 0 ? (
+            <div className="muted">
+              {repairAuditLoading ? "Loading..." : "No schedule repair audit entries loaded yet."}
+            </div>
+          ) : (
+            <>
+              <div className="callout mb-3">
+                Loaded <b>{repairAuditRowsNormalized.length}</b> row(s).
+                {" "}Preview repairs: <b>{repairAuditRowsNormalized.filter((r) => r.recordType === "WizardPreviewRepair").length}</b>.
+                {" "}Avg hard delta: <b>{
+                  (() => {
+                    const deltas = repairAuditRowsNormalized
+                      .map((r) => r.deltaHard)
+                      .filter((n) => Number.isFinite(n));
+                    if (!deltas.length) return "-";
+                    const avg = deltas.reduce((sum, n) => sum + n, 0) / deltas.length;
+                    return avg.toFixed(2);
+                  })()
+                }</b>
+              </div>
+
+              <div className="mb-3">
+                <h4 className="m-0">Audit export (summary copy/paste)</h4>
+                <div className="muted mt-1">
+                  One line per audit row showing proposal and rule-health before/after.
+                </div>
+                <textarea
+                  readOnly
+                  value={repairAuditExportSummaryText || ""}
+                  rows={Math.min(14, Math.max(4, (repairAuditExportSummaryText || "").split("\n").filter(Boolean).length + 1))}
+                  style={{ width: "100%", marginTop: "0.5rem", fontFamily: "monospace" }}
+                />
+              </div>
+
+              <div className="mb-3">
+                <h4 className="m-0">Audit export CSV</h4>
+                <div className="muted mt-1">
+                  Copy into Sheets/Excel for sorting and review.
+                </div>
+                <textarea
+                  readOnly
+                  value={repairAuditExportCsv || ""}
+                  rows={8}
+                  style={{ width: "100%", marginTop: "0.5rem", fontFamily: "monospace" }}
+                />
+              </div>
+
+              <div className="tableWrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Created</th>
+                      <th>Division</th>
+                      <th>Type</th>
+                      <th>Proposal</th>
+                      <th>Rules</th>
+                      <th>Changes</th>
+                      <th>Hard</th>
+                      <th>Soft</th>
+                      <th>Request</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {repairAuditRowsNormalized.map((row) => (
+                      <tr key={row.runId || row.requestId || `${row.createdUtc}-${row.proposalId}`}>
+                        <td>{row.createdUtc ? new Date(row.createdUtc).toLocaleString() : ""}</td>
+                        <td>{row.division || ""}</td>
+                        <td>{row.recordType || ""}</td>
+                        <td>
+                          <div className="font-semibold">{row.proposalTitle || row.proposalId || "(no proposal title)"}</div>
+                          {row.proposalRationale ? <div className="muted text-xs">{row.proposalRationale}</div> : null}
+                          {row.beforeAfterSummary?.priorityImpactSummary ? (
+                            <div className="muted text-xs">Priority impact: {String(row.beforeAfterSummary.priorityImpactSummary)}</div>
+                          ) : null}
+                        </td>
+                        <td>{(row.fixesRuleIds || []).join(", ") || "-"}</td>
+                        <td>{Array.isArray(row.changes) ? row.changes.length : 0}</td>
+                        <td>
+                          {Number.isFinite(row.hardBefore) && Number.isFinite(row.hardAfter)
+                            ? `${row.hardBefore} -> ${row.hardAfter}${Number.isFinite(row.deltaHard) ? ` (${row.deltaHard >= 0 ? "+" : ""}${row.deltaHard})` : ""}`
+                            : "-"}
+                        </td>
+                        <td>
+                          {Number.isFinite(row.softBefore) && Number.isFinite(row.softAfter)
+                            ? `${Number(row.softBefore).toFixed(1)} -> ${Number(row.softAfter).toFixed(1)}${Number.isFinite(row.deltaSoft) ? ` (${row.deltaSoft >= 0 ? "+" : ""}${row.deltaSoft})` : ""}`
+                            : "-"}
+                        </td>
+                        <td>
+                          <div>{row.requestId || ""}</div>
+                          <div className="muted text-xs">{row.runId || ""}</div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <details className="mt-4">
+                <summary>Raw audit JSON</summary>
+                <pre className="codeblock">{JSON.stringify(repairAuditRows, null, 2)}</pre>
+              </details>
+            </>
           )}
         </div>
       ) : null}

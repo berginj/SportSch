@@ -220,6 +220,56 @@ function suggestPriorityMatchupsFromDemand(teamIds, gamesPerTeam, maxSuggestions
     });
 }
 
+function suggestPriorityMatchupsByAdjacency(teamIds, maxSuggestions = MAX_RIVALRY_MATCHUPS) {
+  const teams = Array.isArray(teamIds) ? teamIds.map((v) => String(v || "").trim()).filter(Boolean) : [];
+  if (teams.length < 2) return [];
+
+  const suggestions = [];
+  const seen = new Set();
+  const max = Math.max(1, Number(maxSuggestions) || MAX_RIVALRY_MATCHUPS);
+
+  const pushPair = (teamA, teamB, weight, reason) => {
+    const key = normalizeTeamPairKey(teamA, teamB);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    const [a, b] = key.split("|");
+    suggestions.push({ teamA: a, teamB: b, weight, suggestionReason: reason });
+  };
+
+  // Adjacent teams in current division order are often competitive peers (seed/order proxy).
+  for (let i = 0; i < teams.length - 1 && suggestions.length < max; i += 1) {
+    pushPair(teams[i], teams[i + 1], 4, "adjacent");
+  }
+
+  // Add near-adjacent / mirrored pairs for broader spread if we still have room.
+  for (let i = 0; i < teams.length - 2 && suggestions.length < max; i += 1) {
+    pushPair(teams[i], teams[i + 2], 3, "near-adjacent");
+  }
+  for (let i = 0; i < Math.floor(teams.length / 2) && suggestions.length < max; i += 1) {
+    pushPair(teams[i], teams[teams.length - 1 - i], 2, "mirrored");
+  }
+
+  return suggestions.slice(0, max);
+}
+
+function suggestPriorityMatchupsComposite(teamIds, gamesPerTeam, maxSuggestions = MAX_RIVALRY_MATCHUPS) {
+  const max = Math.max(1, Number(maxSuggestions) || MAX_RIVALRY_MATCHUPS);
+  const demandBased = suggestPriorityMatchupsFromDemand(teamIds, gamesPerTeam, max);
+  if (demandBased.length >= max) return demandBased.slice(0, max);
+
+  const seen = new Set(demandBased.map((row) => normalizeTeamPairKey(row.teamA, row.teamB)).filter(Boolean));
+  const fallback = suggestPriorityMatchupsByAdjacency(teamIds, max * 2)
+    .filter((row) => {
+      const key = normalizeTeamPairKey(row.teamA, row.teamB);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, Math.max(0, max - demandBased.length));
+
+  return [...demandBased, ...fallback].slice(0, max);
+}
+
 function buildSpringBreakRange(seasonStart, seasonEnd) {
   if (!isIsoDate(seasonStart) || !isIsoDate(seasonEnd)) return null;
   const from = seasonStart;
@@ -1453,11 +1503,12 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       return;
     }
 
-    const suggestions = suggestPriorityMatchupsFromDemand(teamIds, targetGames, MAX_RIVALRY_MATCHUPS);
+    const demandOnly = suggestPriorityMatchupsFromDemand(teamIds, targetGames, MAX_RIVALRY_MATCHUPS);
+    const suggestions = suggestPriorityMatchupsComposite(teamIds, targetGames, MAX_RIVALRY_MATCHUPS);
     if (!suggestions.length) {
       setToast({
         tone: "info",
-        message: "No repeated regular-season pairings in the current target. Add priority matchups manually if you still want late-season bias.",
+        message: "No priority matchup suggestions were found from repeated demand or team-order proximity. Add matchups manually if you still want late-season bias.",
       });
       return;
     }
@@ -1470,9 +1521,11 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     setRivalryMatchups(suggestions.map((row) => ({ teamA: row.teamA, teamB: row.teamB, weight: row.weight })));
     setPreview(null);
     setErr("");
+    const demandCount = demandOnly.length;
+    const fallbackCount = Math.max(0, suggestions.length - demandCount);
     setToast({
       tone: "success",
-      message: `Suggested ${suggestions.length} priority matchup${suggestions.length === 1 ? "" : "s"} from repeated pair demand.`,
+      message: `Suggested ${suggestions.length} priority matchup${suggestions.length === 1 ? "" : "s"} (${demandCount} from repeated pair demand${fallbackCount ? `, ${fallbackCount} from nearby-team pairing` : ""}).`,
     });
   }
 
@@ -3768,7 +3821,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                         ? "Need at least two teams in the division."
                         : (Number(minGamesPerTeam) || 0) <= 0
                           ? "Set Min games per team above 0 to auto-suggest."
-                          : "Suggest priority matchups from repeated regular-season pair demand"
+                          : "Suggest priority matchups from repeated pair demand, then fill with nearby-team pairings"
                     }
                   >
                     Suggest rivalries
@@ -5080,6 +5133,10 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                                   <tr>
                                     <td>Late priority matchup</td>
                                     <td>{selectedGameExplain.backendExplanation.scoreBreakdown.latePriorityPenalty ?? 0}</td>
+                                  </tr>
+                                  <tr>
+                                    <td>Weather reliability (slot)</td>
+                                    <td>{selectedGameExplain.backendExplanation.scoreBreakdown.weatherReliabilityPenalty ?? 0}</td>
                                   </tr>
                                   <tr>
                                     <td>Home/away</td>
