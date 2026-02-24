@@ -225,6 +225,45 @@ function buildRepairProposalScope(proposal) {
   };
 }
 
+function buildRuleGroupFocusScope(group) {
+  if (!group || typeof group !== "object") return null;
+  const ruleId = String(group?.ruleId || "").trim();
+  const severity = String(group?.severity || "").trim().toLowerCase();
+  const summary = String(group?.summary || "").trim();
+  const slotIds = new Set();
+  const teamIds = new Set();
+  const weekKeys = new Set();
+
+  const violations = Array.isArray(group?.violations) ? group.violations : [];
+  violations.forEach((violation) => {
+    (Array.isArray(violation?.slotIds) ? violation.slotIds : []).forEach((value) => {
+      const slotId = String(value || "").trim();
+      if (slotId) slotIds.add(slotId);
+    });
+    (Array.isArray(violation?.teamIds) ? violation.teamIds : []).forEach((value) => {
+      const teamId = String(value || "").trim();
+      if (teamId) teamIds.add(teamId);
+    });
+    (Array.isArray(violation?.weekKeys) ? violation.weekKeys : []).forEach((value) => {
+      const weekKey = String(value || "").trim();
+      if (weekKey) weekKeys.add(weekKey);
+    });
+  });
+
+  return {
+    key: `${severity}:${ruleId}`,
+    ruleId,
+    severity,
+    summary,
+    slotIds: [...slotIds].sort((a, b) => a.localeCompare(b)),
+    teamIds: [...teamIds].sort((a, b) => a.localeCompare(b)),
+    weekKeys: [...weekKeys].sort((a, b) => a.localeCompare(b)),
+    fieldKeys: [],
+    ruleIds: ruleId ? [ruleId] : [],
+    source: "rule-health",
+  };
+}
+
 function formatMinutesAsTime(totalMinutes) {
   const value = Math.trunc(Number(totalMinutes));
   if (!Number.isFinite(value) || value < 0 || value >= 24 * 60) return "";
@@ -329,6 +368,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [loading, setLoading] = useState(false);
   const [repairApplyingId, setRepairApplyingId] = useState("");
   const [selectedRepairProposalId, setSelectedRepairProposalId] = useState("");
+  const [selectedRuleFocusKey, setSelectedRuleFocusKey] = useState("");
   const [selectedExplainGameKey, setSelectedExplainGameKey] = useState("");
   const [err, setErr] = useState("");
   const [toast, setToast] = useState(null);
@@ -1326,6 +1366,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     if (!preview) {
       setSelectedExplainGameKey("");
       setSelectedRepairProposalId("");
+      setSelectedRuleFocusKey("");
       return;
     }
     const keys = new Set(
@@ -1371,35 +1412,87 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     };
   }, [selectedRepairScope]);
 
+  useEffect(() => {
+    const groups = Array.isArray(previewRuleHealth?.groups) ? previewRuleHealth.groups : [];
+    if (!groups.length) {
+      if (selectedRuleFocusKey) setSelectedRuleFocusKey("");
+      return;
+    }
+    if (!selectedRuleFocusKey) return;
+    const exists = groups.some((group) => `${String(group?.severity || "").toLowerCase()}:${String(group?.ruleId || "")}` === selectedRuleFocusKey);
+    if (!exists) setSelectedRuleFocusKey("");
+  }, [previewRuleHealth, selectedRuleFocusKey]);
+
+  const selectedRuleFocusScope = useMemo(() => {
+    const groups = Array.isArray(previewRuleHealth?.groups) ? previewRuleHealth.groups : [];
+    if (!selectedRuleFocusKey || !groups.length) return null;
+    const group = groups.find((item) => `${String(item?.severity || "").toLowerCase()}:${String(item?.ruleId || "")}` === selectedRuleFocusKey);
+    return buildRuleGroupFocusScope(group);
+  }, [previewRuleHealth, selectedRuleFocusKey]);
+
+  const selectedRuleLookup = useMemo(() => {
+    if (!selectedRuleFocusScope || !preview) return null;
+    const slotIds = new Set(selectedRuleFocusScope.slotIds || []);
+    const teamIds = new Set(selectedRuleFocusScope.teamIds || []);
+    const weekKeys = new Set(selectedRuleFocusScope.weekKeys || []);
+    const fieldKeys = new Set(selectedRuleFocusScope.fieldKeys || []);
+    const slotRows = [
+      ...(Array.isArray(preview.assignments) ? preview.assignments : []),
+      ...(Array.isArray(preview.unassignedSlots) ? preview.unassignedSlots : []),
+    ];
+    slotRows.forEach((row) => {
+      const slotId = String(row?.slotId || "").trim();
+      if (!slotId || !slotIds.has(slotId)) return;
+      const fieldKey = String(row?.fieldKey || "").trim();
+      if (fieldKey) fieldKeys.add(fieldKey);
+      const weekKey = weekStartIso(row?.gameDate);
+      if (weekKey) weekKeys.add(weekKey);
+    });
+    return {
+      proposalId: "",
+      title: selectedRuleFocusScope.ruleId,
+      rationale: selectedRuleFocusScope.summary,
+      slotIds,
+      teamIds,
+      weekKeys,
+      fieldKeys,
+      ruleIds: new Set(selectedRuleFocusScope.ruleIds || []),
+      scope: selectedRuleFocusScope,
+      source: "rule-health",
+    };
+  }, [preview, selectedRuleFocusScope]);
+
+  const activeHighlightLookup = selectedRepairLookup || selectedRuleLookup || null;
+
   const isAssignmentHighlightedByRepair = (assignment) => {
-    if (!selectedRepairLookup || !assignment) return false;
+    if (!activeHighlightLookup || !assignment) return false;
     const slotId = String(assignment?.slotId || "").trim();
     const homeTeamId = String(assignment?.homeTeamId || "").trim();
     const awayTeamId = String(assignment?.awayTeamId || "").trim();
     const weekKey = weekStartIso(assignment?.gameDate);
     const fieldKey = String(assignment?.fieldKey || "").trim();
-    if (slotId && selectedRepairLookup.slotIds.has(slotId)) return true;
-    if (weekKey && selectedRepairLookup.weekKeys.has(weekKey)) return true;
-    if (fieldKey && selectedRepairLookup.fieldKeys.has(fieldKey) && weekKey && selectedRepairLookup.weekKeys.has(weekKey)) return true;
-    if (homeTeamId && selectedRepairLookup.teamIds.has(homeTeamId)) return true;
-    if (awayTeamId && selectedRepairLookup.teamIds.has(awayTeamId)) return true;
+    if (slotId && activeHighlightLookup.slotIds.has(slotId)) return true;
+    if (weekKey && activeHighlightLookup.weekKeys.has(weekKey)) return true;
+    if (fieldKey && activeHighlightLookup.fieldKeys.has(fieldKey) && weekKey && activeHighlightLookup.weekKeys.has(weekKey)) return true;
+    if (homeTeamId && activeHighlightLookup.teamIds.has(homeTeamId)) return true;
+    if (awayTeamId && activeHighlightLookup.teamIds.has(awayTeamId)) return true;
     return false;
   };
 
-  const isWeekHighlightedByRepair = (weekKey) => !!(selectedRepairLookup && weekKey && selectedRepairLookup.weekKeys.has(String(weekKey).trim()));
+  const isWeekHighlightedByRepair = (weekKey) => !!(activeHighlightLookup && weekKey && activeHighlightLookup.weekKeys.has(String(weekKey).trim()));
   const isTeamWeekHighlightedByRepair = (teamId, weekKey) => !!(
-    selectedRepairLookup &&
+    activeHighlightLookup &&
     teamId &&
     weekKey &&
-    selectedRepairLookup.teamIds.has(String(teamId).trim()) &&
-    selectedRepairLookup.weekKeys.has(String(weekKey).trim())
+    activeHighlightLookup.teamIds.has(String(teamId).trim()) &&
+    activeHighlightLookup.weekKeys.has(String(weekKey).trim())
   );
   const isFieldWeekHighlightedByRepair = (fieldKey, weekKey) => !!(
-    selectedRepairLookup &&
+    activeHighlightLookup &&
     fieldKey &&
     weekKey &&
-    selectedRepairLookup.fieldKeys.has(String(fieldKey).trim()) &&
-    selectedRepairLookup.weekKeys.has(String(weekKey).trim())
+    activeHighlightLookup.fieldKeys.has(String(fieldKey).trim()) &&
+    activeHighlightLookup.weekKeys.has(String(weekKey).trim())
   );
 
   const unassignedRegularReport = useMemo(() => {
@@ -3307,6 +3400,25 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                   <div className="subtle">
                     Strategy: <b>{preview.constructionStrategy || "legacy_greedy_v1"}</b> | Seed: <b>{preview.seed ?? "-"}</b>
                   </div>
+                  {selectedRuleFocusScope ? (
+                    <div className="callout mt-2">
+                      <div className="row row--between gap-2" style={{ alignItems: "center" }}>
+                        <div>
+                          <div className="font-bold" style={{ fontSize: "0.95rem" }}>Focused rule: {selectedRuleFocusScope.ruleId}</div>
+                          <div className="subtle">
+                            Severity: {selectedRuleFocusScope.severity || "-"} | Teams: {selectedRuleFocusScope.teamIds.length} | Weeks: {selectedRuleFocusScope.weekKeys.length} | Slots: {selectedRuleFocusScope.slotIds.length}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn btn--ghost"
+                          onClick={() => setSelectedRuleFocusKey("")}
+                        >
+                          Clear focus
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                   {Array.isArray(previewRuleHealth.groups) && previewRuleHealth.groups.length ? (
                     <div className="tableWrap mt-2">
                       <table className="table">
@@ -3316,17 +3428,36 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                             <th>Severity</th>
                             <th>Count</th>
                             <th>Summary</th>
+                            <th>Focus</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {previewRuleHealth.groups.slice(0, 12).map((g, idx) => (
-                            <tr key={`rule-health-group-${g.ruleId || idx}-${idx}`}>
+                          {previewRuleHealth.groups.slice(0, 12).map((g, idx) => {
+                            const focusKey = `${String(g?.severity || "").toLowerCase()}:${String(g?.ruleId || "")}`;
+                            const isFocused = !!selectedRuleFocusKey && selectedRuleFocusKey === focusKey;
+                            return (
+                            <tr
+                              key={`rule-health-group-${g.ruleId || idx}-${idx}`}
+                              style={isFocused ? { backgroundColor: "#fffbeb" } : undefined}
+                            >
                               <td>{g.ruleId || ""}</td>
                               <td>{g.severity || ""}</td>
                               <td>{g.count || 0}</td>
                               <td>{g.summary || ""}</td>
+                              <td>
+                                <button
+                                  type="button"
+                                  className="btn btn--ghost"
+                                  onClick={() => {
+                                    setSelectedRepairProposalId("");
+                                    setSelectedRuleFocusKey((prev) => (prev === focusKey ? "" : focusKey));
+                                  }}
+                                >
+                                  {isFocused ? "Hide" : "Focus"}
+                                </button>
+                              </td>
                             </tr>
-                          ))}
+                          );})}
                         </tbody>
                       </table>
                       {previewRuleHealth.groups.length > 12 ? (
@@ -3426,7 +3557,10 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                                   <button
                                     type="button"
                                     className="btn btn--ghost"
-                                    onClick={() => setSelectedRepairProposalId((prev) => (prev === proposalId ? "" : proposalId))}
+                                    onClick={() => {
+                                      setSelectedRuleFocusKey("");
+                                      setSelectedRepairProposalId((prev) => (prev === proposalId ? "" : proposalId));
+                                    }}
                                     disabled={!proposalId}
                                   >
                                     {isSelectedProposal ? "Hide affected" : "Show affected games"}
@@ -3534,7 +3668,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                         {preview.issues.map((issue, idx) => (
                           <tr
                             key={`${getIssuePhase(issue)}-${issue.ruleId || "issue"}-${idx}`}
-                            style={selectedRepairLookup && selectedRepairLookup.ruleIds.has(String(issue?.ruleId || "")) ? { backgroundColor: "#fffbeb" } : undefined}
+                            style={activeHighlightLookup && activeHighlightLookup.ruleIds.has(String(issue?.ruleId || "")) ? { backgroundColor: "#fffbeb" } : undefined}
                           >
                             <td>{getIssuePhase(issue)}</td>
                             <td>{issue.ruleId || ""}</td>
