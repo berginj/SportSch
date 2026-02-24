@@ -1200,6 +1200,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     return "";
   }, [preview]);
 
+  const previewRuleHealth = preview && typeof preview.ruleHealth === "object" ? preview.ruleHealth : null;
+  const previewApplyBlocked = !!preview?.applyBlocked;
+
   const unassignedRegularReport = useMemo(() => {
     if (!preview) {
       return {
@@ -2498,6 +2501,55 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                   </div>
                 </div>
 
+              {previewRuleHealth ? (
+                <div
+                  className={
+                    previewRuleHealth.status === "red"
+                      ? "callout callout--error"
+                      : (previewRuleHealth.status === "yellow" ? "callout callout--warning" : "callout")
+                  }
+                >
+                  <div className="font-bold mb-2">Rule Health</div>
+                  <div className="subtle">
+                    Status: <b>{String(previewRuleHealth.status || "").toUpperCase() || "-"}</b> | Hard:{" "}
+                    <b>{Number(previewRuleHealth.hardViolationCount || 0)}</b> | Soft:{" "}
+                    <b>{Number(previewRuleHealth.softViolationCount || 0)}</b> | Soft score:{" "}
+                    <b>{Number(previewRuleHealth.softScore || 0)}</b>
+                    {previewApplyBlocked ? " | Apply is blocked until hard violations are resolved." : ""}
+                  </div>
+                  <div className="subtle">
+                    Strategy: <b>{preview.constructionStrategy || "legacy_greedy_v1"}</b> | Seed: <b>{preview.seed ?? "-"}</b>
+                  </div>
+                  {Array.isArray(previewRuleHealth.groups) && previewRuleHealth.groups.length ? (
+                    <div className="tableWrap mt-2">
+                      <table className="table">
+                        <thead>
+                          <tr>
+                            <th>Rule</th>
+                            <th>Severity</th>
+                            <th>Count</th>
+                            <th>Summary</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {previewRuleHealth.groups.slice(0, 12).map((g, idx) => (
+                            <tr key={`rule-health-group-${g.ruleId || idx}-${idx}`}>
+                              <td>{g.ruleId || ""}</td>
+                              <td>{g.severity || ""}</td>
+                              <td>{g.count || 0}</td>
+                              <td>{g.summary || ""}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {previewRuleHealth.groups.length > 12 ? (
+                        <div className="subtle mt-2">Showing first 12 rule groups.</div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
               {preview.warnings?.length ? (
                 <div className="callout">
                   {preview.warnings.map((w, idx) => (
@@ -2848,8 +2900,13 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
             <button className="btn btn--ghost" type="button" onClick={() => setStep(3)}>
               Back
             </button>
-            <button className="btn btn--primary" type="button" onClick={applySchedule} disabled={loading || !preview}>
-              {loading ? "Applying..." : "Apply schedule"}
+            {previewApplyBlocked ? (
+              <div className="subtle" style={{ alignSelf: "center", marginRight: "0.5rem" }}>
+                Apply blocked by hard rule violations. Use Rule Health to review the failing rules.
+              </div>
+            ) : null}
+            <button className="btn btn--primary" type="button" onClick={applySchedule} disabled={loading || !preview || previewApplyBlocked}>
+              {loading ? "Applying..." : (previewApplyBlocked ? "Apply blocked" : "Apply schedule")}
             </button>
           </div>
         </div>
