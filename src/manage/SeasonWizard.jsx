@@ -1243,6 +1243,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const previewRuleHealth = preview && typeof preview.ruleHealth === "object" ? preview.ruleHealth : null;
   const previewApplyBlocked = !!preview?.applyBlocked;
   const previewRepairProposals = Array.isArray(preview?.repairProposals) ? preview.repairProposals : [];
+  const previewExplainMap = preview?.explanations && typeof preview.explanations === "object"
+    ? preview.explanations
+    : null;
 
   useEffect(() => {
     if (!preview) {
@@ -1795,6 +1798,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     const selectedTeamIds = [selectedHomeTeamId, selectedAwayTeamId].filter(Boolean);
     const constructionStrategy = String(preview?.constructionStrategy || "").trim();
     const seed = Number(preview?.seed);
+    const backendExplanation = previewExplainMap && typeof previewExplainMap[selectedExplainGameKey] === "object"
+      ? previewExplainMap[selectedExplainGameKey]
+      : null;
 
     const regularAssignments = assignments.filter((a) => a?.phase === "Regular Season");
     const regularWeekKeys = Array.isArray(regularBalanceReport.weekKeys) ? regularBalanceReport.weekKeys : [];
@@ -1929,6 +1935,25 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     const awayWeek = buildTeamWeekSummary(selectedAwayTeamId);
 
     const scoringFactors = [];
+    if (backendExplanation?.source === "schedule_engine_trace_v1") {
+      scoringFactors.push({
+        key: "scheduler-trace",
+        label: "Scheduler score trace",
+        tone: "neutral",
+        detail:
+          `Engine evaluated ${backendExplanation?.candidateCount ?? "?"} candidate(s), ` +
+          `${backendExplanation?.feasibleCandidateCount ?? "?"} feasible` +
+          (backendExplanation?.selectedScore != null ? `, selected score ${backendExplanation.selectedScore}.` : "."),
+      });
+    }
+    if (backendExplanation?.fixedHomeTeamId) {
+      scoringFactors.push({
+        key: "fixed-home-slot",
+        label: "Offering team / fixed-home filter",
+        tone: "neutral",
+        detail: `Slot constrained to offering team ${backendExplanation.fixedHomeTeamId} as home.`,
+      });
+    }
     if (selectedPhase === "Regular Season" && constructionStrategy.startsWith("backward_") && weekNumber && weekCount > 0) {
       scoringFactors.push({
         key: "backward-priority",
@@ -2006,12 +2031,13 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       awayWeek,
       pairBalance,
       selectedFieldUsage,
+      backendExplanation,
       relatedRuleGroups,
       hardRuleTouches,
       softRuleTouches,
       scoringFactors,
     };
-  }, [preview, previewRuleHealth, regularBalanceReport, selectedExplainGameKey]);
+  }, [preview, previewExplainMap, previewRuleHealth, regularBalanceReport, selectedExplainGameKey]);
 
   const previewRecommendations = useMemo(() => {
     if (!preview) return [];
@@ -3632,21 +3658,21 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                       <div className="subtle mt-2">
                         <b>{selectedGameExplain.selected.homeTeamId || "-"}</b>
                         {selectedGameExplain.selected.isExternalOffer ? " vs Guest" : ` vs ${selectedGameExplain.selected.awayTeamId || "-"}`}
-                        {" • "}
+                        {" | "}
                         {selectedGameExplain.selected.phase}
-                        {" • "}
+                        {" | "}
                         {selectedGameExplain.selected.gameDate} {selectedGameExplain.selected.startTime}-{selectedGameExplain.selected.endTime}
-                        {" • "}
+                        {" | "}
                         {selectedGameExplain.selected.fieldKey || "(Unknown field)"}
                       </div>
                       <div className="subtle">
                         Strategy: <b>{selectedGameExplain.constructionStrategy || "legacy"}</b>
-                        {selectedGameExplain.seed != null ? <> • Seed: <b>{selectedGameExplain.seed}</b></> : null}
+                        {selectedGameExplain.seed != null ? <> | Seed: <b>{selectedGameExplain.seed}</b></> : null}
                         {selectedGameExplain.weekNumber && selectedGameExplain.weekCount ? (
-                          <> • Regular season week: <b>W{selectedGameExplain.weekNumber}</b> of {selectedGameExplain.weekCount}</>
+                          <> | Regular season week: <b>W{selectedGameExplain.weekNumber}</b> of {selectedGameExplain.weekCount}</>
                         ) : null}
                         {selectedGameExplain.lateSeasonFactor != null ? (
-                          <> • Late-season position: <b>{Math.round(selectedGameExplain.lateSeasonFactor * 100)}%</b></>
+                          <> | Late-season position: <b>{Math.round(selectedGameExplain.lateSeasonFactor * 100)}%</b></>
                         ) : null}
                       </div>
 
@@ -3678,7 +3704,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                         <div className={`callout ${selectedGameExplain.hardRuleTouches > 0 ? "callout--error" : ""}`}>
                           <div className="font-bold mb-1">Rule touchpoints</div>
                           <div className="subtle mb-2">
-                            Hard matches: <b>{selectedGameExplain.hardRuleTouches}</b> • Soft matches: <b>{selectedGameExplain.softRuleTouches}</b>
+                            Hard matches: <b>{selectedGameExplain.hardRuleTouches}</b> | Soft matches: <b>{selectedGameExplain.softRuleTouches}</b>
                           </div>
                           {selectedGameExplain.relatedRuleGroups.length ? (
                             <div className="stack gap-1">
@@ -3719,6 +3745,102 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                           )}
                         </div>
                       </div>
+                      {selectedGameExplain.backendExplanation?.source === "schedule_engine_trace_v1" ? (
+                        <div className="callout mt-2">
+                          <div className="font-bold mb-1">Scheduler trace details (engine)</div>
+                          <div className="subtle mb-2">
+                            Placement rank: <b>{selectedGameExplain.backendExplanation.placementRank ?? "-"}</b>
+                            {" | "}Slot order: <b>{selectedGameExplain.backendExplanation.slotOrderDirection || "unknown"}</b>
+                            {" | "}Candidates: <b>{selectedGameExplain.backendExplanation.feasibleCandidateCount ?? "?"}</b> feasible / {selectedGameExplain.backendExplanation.candidateCount ?? "?"} total
+                          </div>
+                          {selectedGameExplain.backendExplanation.scoreBreakdown ? (
+                            <div className="tableWrap">
+                              <table className="table table--compact">
+                                <thead>
+                                  <tr>
+                                    <th>Score term</th>
+                                    <th>Penalty</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  <tr>
+                                    <td>Team volume</td>
+                                    <td>{selectedGameExplain.backendExplanation.scoreBreakdown.teamVolumePenalty ?? 0}</td>
+                                  </tr>
+                                  <tr>
+                                    <td>Team imbalance</td>
+                                    <td>{selectedGameExplain.backendExplanation.scoreBreakdown.teamImbalancePenalty ?? 0}</td>
+                                  </tr>
+                                  <tr>
+                                    <td>Load spread</td>
+                                    <td>{selectedGameExplain.backendExplanation.scoreBreakdown.teamLoadSpreadPenalty ?? 0}</td>
+                                  </tr>
+                                  <tr>
+                                    <td>Home/away</td>
+                                    <td>{selectedGameExplain.backendExplanation.scoreBreakdown.homeAwayPenalty ?? 0}</td>
+                                  </tr>
+                                  <tr>
+                                    <td><b>Total</b></td>
+                                    <td><b>{selectedGameExplain.backendExplanation.scoreBreakdown.totalScore ?? selectedGameExplain.backendExplanation.selectedScore ?? 0}</b></td>
+                                  </tr>
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : null}
+                          <div className="grid2 mt-2">
+                            <div>
+                              <div className="font-bold mb-1" style={{ fontSize: "0.95rem" }}>Top feasible alternatives</div>
+                              {Array.isArray(selectedGameExplain.backendExplanation.topFeasibleAlternatives) && selectedGameExplain.backendExplanation.topFeasibleAlternatives.length ? (
+                                <div className="tableWrap">
+                                  <table className="table table--compact">
+                                    <thead>
+                                      <tr>
+                                        <th>Matchup</th>
+                                        <th>Score</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {selectedGameExplain.backendExplanation.topFeasibleAlternatives.slice(0, 5).map((row, idx) => (
+                                        <tr key={`trace-feasible-${idx}`}>
+                                          <td>{row?.homeTeamId || "-"} vs {row?.awayTeamId || "-"}</td>
+                                          <td>{row?.score ?? "-"}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              ) : (
+                                <div className="subtle">No feasible alternative list available.</div>
+                              )}
+                            </div>
+                            <div>
+                              <div className="font-bold mb-1" style={{ fontSize: "0.95rem" }}>Top rejected alternatives</div>
+                              {Array.isArray(selectedGameExplain.backendExplanation.topRejectedAlternatives) && selectedGameExplain.backendExplanation.topRejectedAlternatives.length ? (
+                                <div className="tableWrap">
+                                  <table className="table table--compact">
+                                    <thead>
+                                      <tr>
+                                        <th>Matchup</th>
+                                        <th>Reject reason</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {selectedGameExplain.backendExplanation.topRejectedAlternatives.slice(0, 5).map((row, idx) => (
+                                        <tr key={`trace-rejected-${idx}`}>
+                                          <td>{row?.homeTeamId || "-"} vs {row?.awayTeamId || "-"}</td>
+                                          <td>{row?.rejectReason || "-"}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              ) : (
+                                <div className="subtle">No rejected alternatives recorded.</div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
                     </>
                   )}
                 </div>

@@ -111,7 +111,8 @@ public class ScheduleWizardFunctions
         List<object>? repairProposals,
         bool applyBlocked,
         int? seed,
-        string? constructionStrategy
+        string? constructionStrategy,
+        object? explanations
     );
 
     public record WizardPreviewRepairRequest(
@@ -501,6 +502,7 @@ public class ScheduleWizardFunctions
                 .ToList();
             var seed = requestedSeed ?? StableWizardSeed(division, seasonStart, seasonEnd);
             var constructionStrategy = $"{normalizedConstructionStrategy}+strict_validation_v2";
+            var explanations = BuildWizardPlacementExplanations(regularAssignments, normalizedConstructionStrategy, seed);
 
             if (apply)
             {
@@ -536,7 +538,7 @@ public class ScheduleWizardFunctions
                 seed
             });
 
-            return ApiResponses.Ok(req, new WizardPreviewDto(summary, assignments, unassignedSlots, unassignedMatchups, warnings, issues, totalIssues, strictValidation.RuleHealth, repairProposals, applyBlocked, seed, constructionStrategy));
+            return ApiResponses.Ok(req, new WizardPreviewDto(summary, assignments, unassignedSlots, unassignedMatchups, warnings, issues, totalIssues, strictValidation.RuleHealth, repairProposals, applyBlocked, seed, constructionStrategy, explanations));
         }
         catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
         catch (Exception ex)
@@ -756,7 +758,8 @@ public class ScheduleWizardFunctions
             repairProposals: repairProposals,
             applyBlocked: strictValidation.RuleHealth.ApplyBlocked,
             seed: preview.seed,
-            constructionStrategy: preview.constructionStrategy
+            constructionStrategy: preview.constructionStrategy,
+            explanations: null
         );
     }
 
@@ -777,6 +780,116 @@ public class ScheduleWizardFunctions
                 }
             })
             .ToList();
+    }
+
+    private static Dictionary<string, object> BuildWizardPlacementExplanations(
+        PhaseAssignments regularAssignments,
+        string normalizedConstructionStrategy,
+        int seed)
+    {
+        var result = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+        var traces = regularAssignments.PlacementTraces ?? new List<SchedulePlacementTrace>();
+        var slotOrderDirection = string.Equals(normalizedConstructionStrategy, "backward_greedy_v1", StringComparison.OrdinalIgnoreCase)
+            ? "backward"
+            : "forward";
+
+        foreach (var trace in traces.Where(t => string.Equals(t.Outcome, "assigned", StringComparison.OrdinalIgnoreCase)))
+        {
+            var home = trace.SelectedHomeTeamId ?? "";
+            var away = trace.SelectedAwayTeamId ?? "";
+            var key = BuildWizardAssignmentExplainKey(
+                phase: "Regular Season",
+                slotId: trace.SlotId,
+                gameDate: trace.GameDate,
+                startTime: trace.StartTime,
+                homeTeamId: home,
+                awayTeamId: away);
+
+            result[key] = new
+            {
+                source = "schedule_engine_trace_v1",
+                phase = "Regular Season",
+                outcome = trace.Outcome,
+                placementRank = trace.SlotOrderIndex + 1,
+                slotOrderIndex = trace.SlotOrderIndex,
+                slotOrderDirection,
+                seed,
+                fixedHomeTeamId = trace.FixedHomeTeamId,
+                candidateCount = trace.CandidateCount,
+                feasibleCandidateCount = trace.FeasibleCandidateCount,
+                selectedScore = trace.SelectedScoreBreakdown?.TotalScore,
+                scoreBreakdown = ToExplainScoreBreakdown(trace.SelectedScoreBreakdown),
+                topFeasibleAlternatives = trace.TopFeasibleAlternatives
+                    .Select(c => (object)new
+                    {
+                        homeTeamId = c.HomeTeamId,
+                        awayTeamId = c.AwayTeamId,
+                        score = c.ScoreBreakdown?.TotalScore,
+                        scoreBreakdown = ToExplainScoreBreakdown(c.ScoreBreakdown)
+                    })
+                    .ToList(),
+                topRejectedAlternatives = trace.TopRejectedAlternatives
+                    .Select(c => (object)new
+                    {
+                        homeTeamId = c.HomeTeamId,
+                        awayTeamId = c.AwayTeamId,
+                        rejectReason = c.RejectReason
+                    })
+                    .ToList()
+            };
+        }
+
+        foreach (var external in regularAssignments.Assignments.Where(a => a.IsExternalOffer))
+        {
+            var key = BuildWizardAssignmentExplainKey("Regular Season", external);
+            if (result.ContainsKey(key)) continue;
+            result[key] = new
+            {
+                source = "external_offer_builder_v1",
+                phase = "Regular Season",
+                outcome = "external-offer",
+                slotOrderDirection,
+                seed,
+                note = "Guest/external offers are generated after matchup assignment from remaining open slots."
+            };
+        }
+
+        return result;
+    }
+
+    private static object? ToExplainScoreBreakdown(ScheduleScoreBreakdown? score)
+    {
+        if (score is null) return null;
+        return new
+        {
+            totalScore = score.TotalScore,
+            teamVolumePenalty = score.TeamVolumePenalty,
+            teamImbalancePenalty = score.TeamImbalancePenalty,
+            teamLoadSpreadPenalty = score.TeamLoadSpreadPenalty,
+            homeAwayPenalty = score.HomeAwayPenalty
+        };
+    }
+
+    private static string BuildWizardAssignmentExplainKey(string phase, ScheduleAssignment assignment)
+        => BuildWizardAssignmentExplainKey(phase, assignment.SlotId, assignment.GameDate, assignment.StartTime, assignment.HomeTeamId, assignment.AwayTeamId);
+
+    private static string BuildWizardAssignmentExplainKey(
+        string phase,
+        string slotId,
+        string gameDate,
+        string startTime,
+        string homeTeamId,
+        string awayTeamId)
+    {
+        return string.Join("|", new[]
+        {
+            (phase ?? "").Trim(),
+            (slotId ?? "").Trim(),
+            (gameDate ?? "").Trim(),
+            (startTime ?? "").Trim(),
+            (homeTeamId ?? "").Trim(),
+            (awayTeamId ?? "").Trim()
+        });
     }
 
     private static string GetIssuePhaseFromObject(object? issue)
@@ -909,7 +1022,8 @@ public class ScheduleWizardFunctions
     private record PhaseAssignments(
         List<ScheduleAssignment> Assignments,
         List<ScheduleAssignment> UnassignedSlots,
-        List<MatchupPair> UnassignedMatchups
+        List<MatchupPair> UnassignedMatchups,
+        List<SchedulePlacementTrace>? PlacementTraces = null
     );
 
     private record SlotPlanConfig(string SlotType, int? PriorityRank, string? StartTime, string? EndTime);
@@ -966,7 +1080,8 @@ public class ScheduleWizardFunctions
         var orderedSlots = OrderSlotsByPreference(slots, preferredDays, scheduleBackward);
 
         var constraints = new ScheduleConstraints(maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, 0);
-        var result = ScheduleEngine.AssignMatchups(orderedSlots, matchups, teams, constraints);
+        var includePlacementTraces = string.Equals(phase, "Regular Season", StringComparison.OrdinalIgnoreCase);
+        var result = ScheduleEngine.AssignMatchups(orderedSlots, matchups, teams, constraints, includePlacementTraces: includePlacementTraces);
         var assignments = new List<ScheduleAssignment>(result.Assignments);
         var carriedUnassignedSlots = new List<ScheduleAssignment>(result.UnassignedSlots);
         if (anchoredExternalSlots.Count > 0)
@@ -976,10 +1091,10 @@ public class ScheduleWizardFunctions
             carriedUnassignedSlots.AddRange(anchoredResult.UnassignedSlots);
         }
         if (externalOfferPerWeek <= 0 || carriedUnassignedSlots.Count == 0)
-            return new PhaseAssignments(assignments, carriedUnassignedSlots, result.UnassignedMatchups);
+            return new PhaseAssignments(assignments, carriedUnassignedSlots, result.UnassignedMatchups, result.PlacementTraces);
 
         var withExternal = AddExternalOffers(assignments, carriedUnassignedSlots, result.UnassignedMatchups, teams, externalOfferPerWeek, guestAnchors, maxGamesPerWeek);
-        return withExternal;
+        return new PhaseAssignments(withExternal.Assignments, withExternal.UnassignedSlots, withExternal.UnassignedMatchups, result.PlacementTraces);
     }
 
     private static List<SlotInfo> SelectAnchoredExternalSlots(

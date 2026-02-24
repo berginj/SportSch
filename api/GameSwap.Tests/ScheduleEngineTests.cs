@@ -46,4 +46,30 @@ public class ScheduleEngineTests
         Assert.Single(result.UnassignedSlots);
         Assert.Equal("early-slot", result.UnassignedSlots[0].SlotId);
     }
+
+    [Fact]
+    public void AssignMatchups_WhenPlacementTracesEnabled_ReturnsDeterministicTraceMetadata()
+    {
+        var teams = new List<string> { "A", "B", "C", "D" };
+        var matchups = ScheduleEngine.BuildRoundRobin(teams);
+        var slots = new List<ScheduleSlot>
+        {
+            new("slot-1", "2026-05-10", "09:00", "11:00", "Field-1", ""),
+            new("slot-2", "2026-05-17", "09:00", "11:00", "Field-1", "")
+        };
+        var constraints = new ScheduleConstraints(MaxGamesPerWeek: 1, NoDoubleHeaders: true, BalanceHomeAway: true, ExternalOfferPerWeek: 0);
+
+        var result = ScheduleEngine.AssignMatchups(slots, matchups, teams, constraints, includePlacementTraces: true);
+
+        Assert.NotNull(result.PlacementTraces);
+        Assert.Equal(slots.Count, result.PlacementTraces!.Count);
+
+        var firstTrace = result.PlacementTraces[0];
+        Assert.Equal("slot-1", firstTrace.SlotId);
+        Assert.Equal(0, firstTrace.SlotOrderIndex);
+        Assert.True(firstTrace.CandidateCount > 0);
+        Assert.True(firstTrace.FeasibleCandidateCount > 0);
+        Assert.NotNull(firstTrace.SelectedScoreBreakdown);
+        Assert.NotEmpty(firstTrace.TopFeasibleAlternatives);
+    }
 }
