@@ -1564,6 +1564,196 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     };
   }, [preview, seasonStart, seasonEnd, poolStart, minGamesPerTeam]);
 
+  const teamLanesReport = useMemo(() => {
+    if (!preview) {
+      return { weekKeys: [], lanes: [], totalTeams: 0, shownTeams: 0 };
+    }
+
+    const assignments = Array.isArray(preview.assignments) ? preview.assignments : [];
+    const regularAssignments = assignments.filter((a) => a?.phase === "Regular Season");
+    const weekKeys = Array.isArray(regularBalanceReport.weekKeys) ? regularBalanceReport.weekKeys : [];
+    const byTeamWeek = new Map();
+
+    const ensureTeamWeek = (teamId, weekKey) => {
+      const normalizedTeam = String(teamId || "").trim();
+      const normalizedWeek = String(weekKey || "").trim();
+      if (!normalizedTeam || !normalizedWeek) return null;
+      let weekMap = byTeamWeek.get(normalizedTeam);
+      if (!weekMap) {
+        weekMap = new Map();
+        byTeamWeek.set(normalizedTeam, weekMap);
+      }
+      if (!weekMap.has(normalizedWeek)) {
+        weekMap.set(normalizedWeek, { regular: 0, guest: 0 });
+      }
+      return weekMap.get(normalizedWeek);
+    };
+
+    regularAssignments.forEach((a) => {
+      const weekKey = weekStartIso(a?.gameDate);
+      if (!weekKey) return;
+      if (a?.isExternalOffer) {
+        const home = String(a?.homeTeamId || "").trim();
+        const cell = ensureTeamWeek(home, weekKey);
+        if (cell) cell.guest += 1;
+        return;
+      }
+      const home = String(a?.homeTeamId || "").trim();
+      const away = String(a?.awayTeamId || "").trim();
+      const homeCell = ensureTeamWeek(home, weekKey);
+      const awayCell = ensureTeamWeek(away, weekKey);
+      if (homeCell) homeCell.regular += 1;
+      if (awayCell) awayCell.regular += 1;
+    });
+
+    const laneSource = Array.isArray(regularBalanceReport.teamRows) ? regularBalanceReport.teamRows : [];
+    const lanes = laneSource
+      .map((teamRow) => {
+        const teamId = String(teamRow?.teamId || "").trim();
+        const weekMap = byTeamWeek.get(teamId) || new Map();
+        let zeroWeeks = 0;
+        let singleWeeks = 0;
+        let multiWeeks = 0;
+        let currentIdle = 0;
+        let longestIdleGap = 0;
+        const cells = weekKeys.map((weekKey) => {
+          const counts = weekMap.get(weekKey) || { regular: 0, guest: 0 };
+          const total = Number(counts.regular || 0) + Number(counts.guest || 0);
+          if (total <= 0) {
+            zeroWeeks += 1;
+            currentIdle += 1;
+            longestIdleGap = Math.max(longestIdleGap, currentIdle);
+          } else {
+            currentIdle = 0;
+            if (total === 1) singleWeeks += 1;
+            else multiWeeks += 1;
+          }
+          const status = total <= 0 ? "gap" : (total === 1 ? "single" : "multi");
+          return {
+            weekKey,
+            regular: Number(counts.regular || 0),
+            guest: Number(counts.guest || 0),
+            total,
+            status,
+          };
+        });
+        return {
+          teamId,
+          games: Number(teamRow?.games || 0),
+          guest: Number(teamRow?.guest || 0),
+          byeWeeks: Number(teamRow?.byeWeeks || 0),
+          zeroWeeks,
+          singleWeeks,
+          multiWeeks,
+          longestIdleGap,
+          cells,
+        };
+      })
+      .sort((a, b) => {
+        const gapDiff = b.zeroWeeks - a.zeroWeeks;
+        if (gapDiff !== 0) return gapDiff;
+        const idleDiff = b.longestIdleGap - a.longestIdleGap;
+        if (idleDiff !== 0) return idleDiff;
+        return a.teamId.localeCompare(b.teamId);
+      });
+
+    const shownLanes = lanes.slice(0, 20);
+    return {
+      weekKeys,
+      lanes: shownLanes,
+      totalTeams: lanes.length,
+      shownTeams: shownLanes.length,
+    };
+  }, [preview, regularBalanceReport]);
+
+  const fieldHeatmapReport = useMemo(() => {
+    if (!preview) {
+      return { weekKeys: [], rows: [], totalFields: 0, shownFields: 0 };
+    }
+
+    const assignments = Array.isArray(preview.assignments) ? preview.assignments : [];
+    const unassignedSlots = Array.isArray(preview.unassignedSlots) ? preview.unassignedSlots : [];
+    const regularAssignments = assignments.filter((a) => a?.phase === "Regular Season");
+    const regularOpenSlots = unassignedSlots.filter((s) => s?.phase === "Regular Season");
+    const weekKeysSet = new Set(Array.isArray(regularBalanceReport.weekKeys) ? regularBalanceReport.weekKeys : []);
+
+    [...regularAssignments, ...regularOpenSlots].forEach((slot) => {
+      const weekKey = weekStartIso(slot?.gameDate);
+      if (weekKey) weekKeysSet.add(weekKey);
+    });
+
+    const weekKeys = [...weekKeysSet].sort((a, b) => a.localeCompare(b));
+    const fieldMap = new Map();
+
+    const ensureFieldWeek = (fieldKey, weekKey) => {
+      const field = String(fieldKey || "").trim() || "(Unknown field)";
+      const week = String(weekKey || "").trim();
+      if (!week) return null;
+      let byWeek = fieldMap.get(field);
+      if (!byWeek) {
+        byWeek = new Map();
+        fieldMap.set(field, byWeek);
+      }
+      if (!byWeek.has(week)) {
+        byWeek.set(week, { capacity: 0, used: 0, guest: 0, regular: 0 });
+      }
+      return byWeek.get(week);
+    };
+
+    regularAssignments.forEach((slot) => {
+      const weekKey = weekStartIso(slot?.gameDate);
+      const cell = ensureFieldWeek(slot?.fieldKey, weekKey);
+      if (!cell) return;
+      cell.capacity += 1;
+      cell.used += 1;
+      if (slot?.isExternalOffer) cell.guest += 1;
+      else cell.regular += 1;
+    });
+
+    regularOpenSlots.forEach((slot) => {
+      const weekKey = weekStartIso(slot?.gameDate);
+      const cell = ensureFieldWeek(slot?.fieldKey, weekKey);
+      if (!cell) return;
+      cell.capacity += 1;
+    });
+
+    const rows = [...fieldMap.entries()]
+      .map(([fieldKey, byWeek]) => {
+        let totalCapacity = 0;
+        let totalUsed = 0;
+        const cells = weekKeys.map((weekKey) => {
+          const data = byWeek.get(weekKey) || { capacity: 0, used: 0, guest: 0, regular: 0 };
+          totalCapacity += data.capacity;
+          totalUsed += data.used;
+          const utilizationPct = data.capacity > 0 ? Math.round((data.used / data.capacity) * 100) : null;
+          return { weekKey, ...data, utilizationPct };
+        });
+        return {
+          fieldKey,
+          totalCapacity,
+          totalUsed,
+          totalUnused: Math.max(0, totalCapacity - totalUsed),
+          utilizationPct: totalCapacity > 0 ? Math.round((totalUsed / totalCapacity) * 100) : 0,
+          cells,
+        };
+      })
+      .sort((a, b) => {
+        const utilDiff = b.utilizationPct - a.utilizationPct;
+        if (utilDiff !== 0) return utilDiff;
+        const capDiff = b.totalCapacity - a.totalCapacity;
+        if (capDiff !== 0) return capDiff;
+        return a.fieldKey.localeCompare(b.fieldKey);
+      });
+
+    const shownRows = rows.slice(0, 16);
+    return {
+      weekKeys,
+      rows: shownRows,
+      totalFields: rows.length,
+      shownFields: shownRows.length,
+    };
+  }, [preview, regularBalanceReport]);
+
   const previewRecommendations = useMemo(() => {
     if (!preview) return [];
 
@@ -2897,6 +3087,149 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                       {regularBalanceReport.pairRows.length > 40 ? (
                         <div className="subtle mt-2">Showing first 40 pair rows.</div>
                       ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              {teamLanesReport.weekKeys.length && teamLanesReport.lanes.length ? (
+                <div className="callout">
+                  <div className="font-bold mb-2">Team lanes (Regular Season)</div>
+                  <div className="subtle mb-2">
+                    Each team is a lane across regular-season weeks. <b>Green = 1 game</b>, <b>red = 0 games</b>, <b>amber = 2+</b>. Late-season weeks are on the right.
+                  </div>
+                  <div className={`tableWrap ${tableView === "B" ? "tableWrap--sticky" : ""}`}>
+                    <table className={`table ${tableView === "B" ? "table--compact table--sticky" : ""}`}>
+                      <thead>
+                        <tr>
+                          <th>Team</th>
+                          <th>0w</th>
+                          <th>1w</th>
+                          <th>2+w</th>
+                          <th>Longest idle</th>
+                          {teamLanesReport.weekKeys.map((weekKey, idx) => (
+                            <th key={`lane-week-${weekKey}`} title={weekKey}>
+                              W{idx + 1}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {teamLanesReport.lanes.map((lane) => (
+                          <tr key={`team-lane-${lane.teamId}`}>
+                            <td>
+                              <div>{lane.teamId}</div>
+                              <div className="subtle">{lane.games} reg / {lane.guest} guest</div>
+                            </td>
+                            <td>{lane.zeroWeeks}</td>
+                            <td>{lane.singleWeeks}</td>
+                            <td>{lane.multiWeeks}</td>
+                            <td>{lane.longestIdleGap}</td>
+                            {lane.cells.map((cell, idx) => {
+                              const lateFactor = teamLanesReport.weekKeys.length > 1 ? (idx / (teamLanesReport.weekKeys.length - 1)) : 0;
+                              const base =
+                                cell.status === "gap"
+                                  ? { bg: `rgba(239,68,68,${0.12 + (lateFactor * 0.08)})`, border: "#fecaca", text: "#991b1b" }
+                                  : cell.status === "single"
+                                    ? { bg: `rgba(34,197,94,${0.12 + (lateFactor * 0.08)})`, border: "#bbf7d0", text: "#166534" }
+                                    : { bg: `rgba(245,158,11,${0.14 + (lateFactor * 0.08)})`, border: "#fde68a", text: "#92400e" };
+                              const label = cell.total > 0 ? String(cell.total) : "0";
+                              const detail = `${lane.teamId} • ${cell.weekKey} • total ${cell.total} (regular ${cell.regular}, guest ${cell.guest})`;
+                              return (
+                                <td
+                                  key={`lane-cell-${lane.teamId}-${cell.weekKey}`}
+                                  title={detail}
+                                  style={{
+                                    textAlign: "center",
+                                    minWidth: 42,
+                                    background: base.bg,
+                                    borderColor: base.border,
+                                    color: base.text,
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  {label}
+                                  {cell.guest > 0 ? <div className="subtle" style={{ fontSize: "0.7rem" }}>G{cell.guest}</div> : null}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {teamLanesReport.totalTeams > teamLanesReport.shownTeams ? (
+                    <div className="subtle mt-2">
+                      Showing {teamLanesReport.shownTeams} of {teamLanesReport.totalTeams} teams (prioritized by zero-game weeks and longest idle gaps).
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              {fieldHeatmapReport.weekKeys.length && fieldHeatmapReport.rows.length ? (
+                <div className="callout">
+                  <div className="font-bold mb-2">Field utilization heatmap (Regular Season)</div>
+                  <div className="subtle mb-2">
+                    Field x week capacity. Cells show <b>used/capacity</b>; darker cells indicate higher utilization. Late-season weeks are on the right.
+                  </div>
+                  <div className={`tableWrap ${tableView === "B" ? "tableWrap--sticky" : ""}`}>
+                    <table className={`table ${tableView === "B" ? "table--compact table--sticky" : ""}`}>
+                      <thead>
+                        <tr>
+                          <th>Field</th>
+                          <th>Total</th>
+                          <th>Unused</th>
+                          {fieldHeatmapReport.weekKeys.map((weekKey, idx) => (
+                            <th key={`heat-week-${weekKey}`} title={weekKey}>
+                              W{idx + 1}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {fieldHeatmapReport.rows.map((row) => (
+                          <tr key={`heat-row-${row.fieldKey}`}>
+                            <td>{row.fieldKey}</td>
+                            <td>{row.totalUsed}/{row.totalCapacity}</td>
+                            <td>{row.totalUnused}</td>
+                            {row.cells.map((cell, idx) => {
+                              const lateFactor = fieldHeatmapReport.weekKeys.length > 1 ? (idx / (fieldHeatmapReport.weekKeys.length - 1)) : 0;
+                              const util = cell.capacity > 0 ? (cell.used / cell.capacity) : 0;
+                              const alpha = cell.capacity > 0 ? (0.08 + (util * 0.38) + (lateFactor * 0.08)) : 0.03;
+                              const hueColor = cell.capacity === 0
+                                ? "rgba(148,163,184,0.08)"
+                                : util >= 0.9
+                                  ? `rgba(15,118,110,${Math.min(0.62, alpha)})`
+                                  : util >= 0.5
+                                    ? `rgba(59,130,246,${Math.min(0.54, alpha)})`
+                                    : `rgba(148,163,184,${Math.min(0.32, alpha)})`;
+                              const label = cell.capacity > 0 ? `${cell.used}/${cell.capacity}` : "-";
+                              const detail = `${row.fieldKey} • ${cell.weekKey} • used ${cell.used}/${cell.capacity}` +
+                                (cell.guest ? ` • guest ${cell.guest}` : "") +
+                                (cell.regular ? ` • regular ${cell.regular}` : "");
+                              return (
+                                <td
+                                  key={`heat-cell-${row.fieldKey}-${cell.weekKey}`}
+                                  title={detail}
+                                  style={{
+                                    textAlign: "center",
+                                    minWidth: 46,
+                                    background: hueColor,
+                                    color: cell.capacity > 0 && util >= 0.75 ? "#ffffff" : "inherit",
+                                    fontWeight: cell.capacity > 0 ? 600 : 400,
+                                  }}
+                                >
+                                  {label}
+                                  {cell.guest > 0 ? <div className="subtle" style={{ fontSize: "0.7rem", color: "inherit" }}>G{cell.guest}</div> : null}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {fieldHeatmapReport.totalFields > fieldHeatmapReport.shownFields ? (
+                    <div className="subtle mt-2">
+                      Showing {fieldHeatmapReport.shownFields} of {fieldHeatmapReport.totalFields} fields (sorted by utilization).
                     </div>
                   ) : null}
                 </div>
