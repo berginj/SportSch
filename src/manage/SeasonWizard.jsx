@@ -7,6 +7,7 @@ import Toast from "../components/Toast";
 
 const WEEKDAY_OPTIONS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MAX_PREFERRED_WEEKNIGHTS = 3;
+const MAX_RIVALRY_MATCHUPS = 12;
 const SLOT_TYPE_OPTIONS = [
   { value: "practice", label: "Practice" },
   { value: "game", label: "Game" },
@@ -362,6 +363,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [noDoubleHeaders, setNoDoubleHeaders] = useState(true);
   const [balanceHomeAway, setBalanceHomeAway] = useState(true);
   const [teamCount, setTeamCount] = useState(0);
+  const [divisionTeams, setDivisionTeams] = useState([]);
+  const [rivalryMatchups, setRivalryMatchups] = useState([]);
 
   const [step, setStep] = useState(0);
   const [preview, setPreview] = useState(null);
@@ -418,6 +421,64 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const springBreakRange = useMemo(
     () => buildSpringBreakRange(seasonStart, seasonEnd),
     [seasonStart, seasonEnd]
+  );
+
+  const normalizedDivisionTeams = useMemo(
+    () =>
+      (divisionTeams || [])
+        .map((team) => ({
+          teamId: String(team?.teamId || "").trim(),
+          name: String(team?.name || "").trim(),
+        }))
+        .filter((team) => team.teamId),
+    [divisionTeams]
+  );
+
+  const rivalryRowIssues = useMemo(() => {
+    const issues = [];
+    const seen = new Set();
+    (rivalryMatchups || []).forEach((row, idx) => {
+      const teamA = String(row?.teamA || "").trim();
+      const teamB = String(row?.teamB || "").trim();
+      const hasAnyTeam = teamA || teamB;
+      if (!hasAnyTeam) return;
+
+      if (!teamA || !teamB) {
+        issues.push(`Rivalry row ${idx + 1}: select both teams.`);
+        return;
+      }
+      if (teamA === teamB) {
+        issues.push(`Rivalry row ${idx + 1}: teams must be different.`);
+        return;
+      }
+
+      const key = [teamA, teamB].sort().join("|");
+      if (seen.has(key)) {
+        issues.push(`Rivalry row ${idx + 1}: duplicate pairing (${teamA}/${teamB}).`);
+        return;
+      }
+      seen.add(key);
+
+      const rawWeight = Number(row?.weight);
+      if (!Number.isFinite(rawWeight) || rawWeight <= 0) {
+        issues.push(`Rivalry row ${idx + 1}: weight must be greater than 0.`);
+      }
+    });
+    return issues;
+  }, [rivalryMatchups]);
+
+  const rivalryPayload = useMemo(
+    () =>
+      (rivalryMatchups || [])
+        .map((row) => ({
+          teamA: String(row?.teamA || "").trim(),
+          teamB: String(row?.teamB || "").trim(),
+          weight: Number(row?.weight),
+        }))
+        .filter((row) => row.teamA && row.teamB && row.teamA !== row.teamB && Number.isFinite(row.weight) && row.weight > 0)
+        .slice(0, MAX_RIVALRY_MATCHUPS)
+        .map((row) => ({ ...row, weight: Math.max(1, Math.min(10, Math.round(row.weight)))})),
+    [rivalryMatchups]
   );
 
   const activeBlockedRanges = useMemo(
@@ -860,11 +921,13 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     setSlotPlan([]);
     setGuestAnchorPrimarySlotId("");
     setGuestAnchorSecondarySlotId("");
+    setRivalryMatchups([]);
   }, [division]);
 
   useEffect(() => {
     if (!leagueId || !division) {
       setTeamCount(0);
+      setDivisionTeams([]);
       return;
     }
     (async () => {
@@ -873,9 +936,18 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         qs.set("division", division);
         const data = await apiFetch(`/api/teams?${qs.toString()}`);
         const list = Array.isArray(data) ? data : [];
+        const normalizedTeams = list
+          .map((team) => ({
+            teamId: String(team?.teamId || "").trim(),
+            name: String(team?.name || "").trim(),
+          }))
+          .filter((team) => team.teamId)
+          .sort((a, b) => (a.name || a.teamId).localeCompare(b.name || b.teamId));
+        setDivisionTeams(normalizedTeams);
         setTeamCount(list.length);
       } catch {
         setTeamCount(0);
+        setDivisionTeams([]);
       }
     })();
   }, [leagueId, division]);
@@ -1045,6 +1117,27 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     };
   }
 
+  function addRivalryMatchupRow() {
+    setRivalryMatchups((prev) => {
+      const list = Array.isArray(prev) ? prev : [];
+      if (list.length >= MAX_RIVALRY_MATCHUPS) return list;
+      return [...list, { teamA: "", teamB: "", weight: 3 }];
+    });
+    setPreview(null);
+  }
+
+  function updateRivalryMatchupRow(index, patch) {
+    setRivalryMatchups((prev) =>
+      (Array.isArray(prev) ? prev : []).map((row, idx) => (idx === index ? { ...row, ...patch } : row))
+    );
+    setPreview(null);
+  }
+
+  function removeRivalryMatchupRow(index) {
+    setRivalryMatchups((prev) => (Array.isArray(prev) ? prev : []).filter((_, idx) => idx !== index));
+    setPreview(null);
+  }
+
   function buildWizardPayload() {
     const slotPlanPayload = slotPlan.map((slot) => {
       const rank = Number(slot.priorityRank);
@@ -1077,6 +1170,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       slotPlan: slotPlanPayload,
     };
     if (blockedDateRanges.length) payload.blockedDateRanges = blockedDateRanges;
+    if (rivalryPayload.length) payload.rivalryMatchups = rivalryPayload;
 
     const primaryAnchor = guestAnchorPayloadFromSlotId(guestAnchorPrimarySlotId);
     const secondaryAnchor = guestAnchorPayloadFromSlotId(guestAnchorSecondarySlotId);
@@ -1124,6 +1218,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     if (guestAnchorPrimarySlotId && guestAnchorSecondarySlotId && guestAnchorPrimarySlotId === guestAnchorSecondarySlotId) {
       return setErr("Guest anchor option 1 and option 2 must be different slots.");
     }
+    if (rivalryRowIssues.length > 0) {
+      return setErr(rivalryRowIssues[0]);
+    }
     setLoading(true);
     try {
       const payload = buildWizardPayload();
@@ -1160,6 +1257,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     }
     if (guestAnchorPrimarySlotId && guestAnchorSecondarySlotId && guestAnchorPrimarySlotId === guestAnchorSecondarySlotId) {
       return setErr("Guest anchor option 1 and option 2 must be different slots.");
+    }
+    if (rivalryRowIssues.length > 0) {
+      return setErr(rivalryRowIssues[0]);
     }
     setLoading(true);
     try {
@@ -3251,6 +3351,106 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                 Only use preferred nights (ignore other days)
               </label>
             </div>
+            </div>
+            <div className="card mt-3">
+              <div className="row items-center justify-between gap-2 mb-2">
+                <div>
+                  <div className="font-bold">Priority matchups (late-season preference)</div>
+                  <div className="subtle">
+                    Mark rivalry/high-stakes pairs to bias them toward later regular-season slots. Repeated pairings are already prioritized automatically.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={addRivalryMatchupRow}
+                  disabled={rivalryMatchups.length >= MAX_RIVALRY_MATCHUPS || normalizedDivisionTeams.length < 2}
+                  title={normalizedDivisionTeams.length < 2 ? "Need at least two teams in the division." : "Add a priority matchup row"}
+                >
+                  Add pair
+                </button>
+              </div>
+              {rivalryRowIssues.length ? (
+                <div className="callout callout--warning mb-2">
+                  <div className="font-bold mb-1">Priority matchup issues</div>
+                  {rivalryRowIssues.slice(0, 4).map((issue, idx) => (
+                    <div key={`rivalry-issue-${idx}`} className="subtle">{issue}</div>
+                  ))}
+                  {rivalryRowIssues.length > 4 ? <div className="subtle">Showing first 4 issues.</div> : null}
+                </div>
+              ) : null}
+              {rivalryMatchups.length === 0 ? (
+                <div className="subtle">
+                  No manual priority matchups configured. Backward scheduling and repeat-pair priority still apply automatically.
+                </div>
+              ) : (
+                <div className="tableWrap">
+                  <table className="table table--compact">
+                    <thead>
+                      <tr>
+                        <th>Team A</th>
+                        <th>Team B</th>
+                        <th>Weight</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rivalryMatchups.map((row, idx) => (
+                        <tr key={`rivalry-row-${idx}`}>
+                          <td>
+                            <select
+                              value={row?.teamA || ""}
+                              onChange={(e) => updateRivalryMatchupRow(idx, { teamA: e.target.value })}
+                            >
+                              <option value="">Select team</option>
+                              {normalizedDivisionTeams.map((team) => (
+                                <option key={`rivalry-a-${idx}-${team.teamId}`} value={team.teamId}>
+                                  {team.name && team.name !== team.teamId ? `${team.name} (${team.teamId})` : team.teamId}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td>
+                            <select
+                              value={row?.teamB || ""}
+                              onChange={(e) => updateRivalryMatchupRow(idx, { teamB: e.target.value })}
+                            >
+                              <option value="">Select team</option>
+                              {normalizedDivisionTeams.map((team) => (
+                                <option key={`rivalry-b-${idx}-${team.teamId}`} value={team.teamId}>
+                                  {team.name && team.name !== team.teamId ? `${team.name} (${team.teamId})` : team.teamId}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td style={{ width: 120 }}>
+                            <input
+                              type="number"
+                              min="1"
+                              max="10"
+                              step="1"
+                              value={row?.weight ?? 3}
+                              onChange={(e) => updateRivalryMatchupRow(idx, { weight: e.target.value })}
+                            />
+                          </td>
+                          <td style={{ width: 80 }}>
+                            <button
+                              type="button"
+                              className="btn btn--ghost"
+                              onClick={() => removeRivalryMatchupRow(idx)}
+                            >
+                              Remove
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <div className="subtle mt-2">
+                Weight 1-10: higher values increase the penalty for placing that matchup early in the regular season.
+              </div>
             </div>
             <div className={`callout ${planningIntel.totalShortfall > 0 ? "callout--error" : "callout--ok"}`}>
               <div className="font-bold mb-2">Capacity planner</div>
