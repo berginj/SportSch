@@ -166,4 +166,46 @@ public class ScheduleEngineTests
         Assert.Equal(0, trace.SelectedScoreBreakdown!.PairRepeatPenalty);
         Assert.Contains(trace.TopFeasibleAlternatives, c => c.HomeTeamId == "A" && c.AwayTeamId == "B" && (c.ScoreBreakdown?.PairRepeatPenalty ?? 0) > 0);
     }
+
+    [Fact]
+    public void AssignMatchups_DoesNotCreateExternalOffer_WhenNoTeamIsFeasibleForSlotConstraints()
+    {
+        var teams = new List<string> { "A", "B" };
+        var matchups = new List<MatchupPair> { new("A", "B") };
+        var slots = new List<ScheduleSlot>
+        {
+            new("slot-1", "2026-05-03", "10:00", "12:00", "Field-1", ""),
+            new("slot-2", "2026-05-03", "13:00", "15:00", "Field-1", ""),
+        };
+        var constraints = new ScheduleConstraints(MaxGamesPerWeek: 1, NoDoubleHeaders: true, BalanceHomeAway: false, ExternalOfferPerWeek: 1);
+
+        var result = ScheduleEngine.AssignMatchups(slots, matchups, teams, constraints);
+
+        Assert.Single(result.Assignments);
+        Assert.DoesNotContain(result.Assignments, a => a.IsExternalOffer);
+        Assert.Single(result.UnassignedSlots);
+        Assert.Equal("slot-2", result.UnassignedSlots[0].SlotId);
+    }
+
+    [Fact]
+    public void AssignMatchups_SpreadsExternalOffersAcrossTeams_BeforeRepeatingWhenCapacityAllows()
+    {
+        var teams = new List<string> { "A", "B", "C", "D" };
+        var matchups = new List<MatchupPair>();
+        var slots = new List<ScheduleSlot>
+        {
+            new("slot-1", "2026-05-03", "10:00", "12:00", "Field-1", ""),
+            new("slot-2", "2026-05-10", "10:00", "12:00", "Field-1", ""),
+            new("slot-3", "2026-05-17", "10:00", "12:00", "Field-1", ""),
+            new("slot-4", "2026-05-24", "10:00", "12:00", "Field-1", ""),
+        };
+        var constraints = new ScheduleConstraints(MaxGamesPerWeek: 1, NoDoubleHeaders: true, BalanceHomeAway: false, ExternalOfferPerWeek: 1);
+
+        var result = ScheduleEngine.AssignMatchups(slots, matchups, teams, constraints);
+
+        Assert.Equal(4, result.Assignments.Count);
+        Assert.All(result.Assignments, a => Assert.True(a.IsExternalOffer));
+        var externalHomes = new HashSet<string>(result.Assignments.ConvertAll(a => a.HomeTeamId), StringComparer.OrdinalIgnoreCase);
+        Assert.Equal(4, externalHomes.Count);
+    }
 }

@@ -129,6 +129,7 @@ public static class ScheduleEngine
         var gamesByDate = teams.ToDictionary(t => t, _ => new HashSet<string>(StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase);
         var gamesByWeek = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var pairCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var externalOfferCounts = teams.ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
 
         var assignments = new List<ScheduleAssignment>();
         var remainingMatchups = new List<MatchupPair>(matchups);
@@ -244,15 +245,38 @@ public static class ScheduleEngine
                     continue;
                 }
 
-                var picks = group.Take(constraints.ExternalOfferPerWeek).ToList();
-                foreach (var slot in picks)
+                var externalOffersAssignedThisWeek = 0;
+                foreach (var slot in group)
                 {
-                    var home = PickExternalHome(teams, homeCounts, awayCounts);
-                    ApplyCounts(home, "", slot.GameDate, homeCounts, awayCounts, gamesByDate, gamesByWeek, pairCounts);
-                    assignments.Add(new ScheduleAssignment(slot.SlotId, slot.GameDate, slot.StartTime, slot.EndTime, slot.FieldKey, home, "", true));
-                }
+                    if (externalOffersAssignedThisWeek >= constraints.ExternalOfferPerWeek)
+                    {
+                        remaining.Add(slot);
+                        continue;
+                    }
 
-                remaining.AddRange(group.Skip(constraints.ExternalOfferPerWeek));
+                    var home = PickExternalHome(
+                        teams,
+                        slot.SlotId,
+                        slot.GameDate,
+                        homeCounts,
+                        awayCounts,
+                        gamesByDate,
+                        gamesByWeek,
+                        externalOfferCounts,
+                        constraints.MaxGamesPerWeek,
+                        constraints.NoDoubleHeaders,
+                        tieBreakSeed);
+                    if (string.IsNullOrWhiteSpace(home))
+                    {
+                        remaining.Add(slot);
+                        continue;
+                    }
+
+                    ApplyCounts(home, "", slot.GameDate, homeCounts, awayCounts, gamesByDate, gamesByWeek, pairCounts);
+                    externalOfferCounts[home] = externalOfferCounts.TryGetValue(home, out var externalCount) ? externalCount + 1 : 1;
+                    assignments.Add(new ScheduleAssignment(slot.SlotId, slot.GameDate, slot.StartTime, slot.EndTime, slot.FieldKey, home, "", true));
+                    externalOffersAssignedThisWeek += 1;
+                }
             }
 
             unassignedSlots = remaining;
@@ -668,13 +692,97 @@ public static class ScheduleEngine
         }
     }
 
-    private static string PickExternalHome(IReadOnlyList<string> teams, Dictionary<string, int> homeCounts, Dictionary<string, int> awayCounts)
+    private static string PickExternalHome(
+        IReadOnlyList<string> teams,
+        string slotId,
+        string gameDate,
+        Dictionary<string, int> homeCounts,
+        Dictionary<string, int> awayCounts,
+        Dictionary<string, HashSet<string>> gamesByDate,
+        Dictionary<string, int> gamesByWeek,
+        Dictionary<string, int> externalOfferCounts,
+        int? maxGamesPerWeek,
+        bool noDoubleHeaders,
+        int? tieBreakSeed)
     {
-        return teams
-            .OrderBy(t => homeCounts[t] + awayCounts[t])
-            .ThenBy(t => homeCounts[t])
-            .ThenBy(t => t)
-            .First();
+        string bestTeam = "";
+        var bestScore = int.MaxValue;
+        var bestTieBreak = int.MaxValue;
+
+        foreach (var team in teams)
+        {
+            if (!CanAssignExternalHome(team, gameDate, gamesByDate, gamesByWeek, maxGamesPerWeek, noDoubleHeaders))
+                continue;
+
+            var score = ScoreExternalOfferCandidate(team, gameDate, homeCounts, awayCounts, gamesByWeek, externalOfferCounts);
+            var tieBreakValue = tieBreakSeed.HasValue
+                ? ComputeSeededTieBreak(tieBreakSeed.Value, slotId, gameDate, team, "__EXTERNAL__")
+                : int.MaxValue;
+
+            if (score < bestScore)
+            {
+                bestTeam = team;
+                bestScore = score;
+                bestTieBreak = tieBreakValue;
+            }
+            else if (score == bestScore)
+            {
+                if (tieBreakSeed.HasValue)
+                {
+                    if (tieBreakValue < bestTieBreak)
+                    {
+                        bestTeam = team;
+                        bestTieBreak = tieBreakValue;
+                    }
+                }
+                else if (string.Compare(team, bestTeam, StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    bestTeam = team;
+                }
+            }
+        }
+
+        return bestTeam;
+    }
+
+    private static bool CanAssignExternalHome(
+        string home,
+        string gameDate,
+        Dictionary<string, HashSet<string>> gamesByDate,
+        Dictionary<string, int> gamesByWeek,
+        int? maxGamesPerWeek,
+        bool noDoubleHeaders)
+    {
+        if (noDoubleHeaders && gamesByDate[home].Contains(gameDate)) return false;
+
+        if (maxGamesPerWeek.HasValue)
+        {
+            var weekKey = WeekKey(gameDate);
+            if (!string.IsNullOrWhiteSpace(weekKey) && GetWeekCount(gamesByWeek, home, weekKey) >= maxGamesPerWeek.Value)
+                return false;
+        }
+
+        return true;
+    }
+
+    private static int ScoreExternalOfferCandidate(
+        string home,
+        string gameDate,
+        Dictionary<string, int> homeCounts,
+        Dictionary<string, int> awayCounts,
+        Dictionary<string, int> gamesByWeek,
+        Dictionary<string, int> externalOfferCounts)
+    {
+        var totalGames = homeCounts[home] + awayCounts[home];
+        var weekKey = WeekKey(gameDate);
+        var weekCount = string.IsNullOrWhiteSpace(weekKey) ? 0 : GetWeekCount(gamesByWeek, home, weekKey);
+        var existingExternalOffers = externalOfferCounts.TryGetValue(home, out var count) ? count : 0;
+
+        // Prefer teams with lighter overall load and avoid concentrating external/guest offers on one team.
+        var teamVolumePenalty = totalGames * 20;
+        var weeklyParticipationPenalty = weekCount * weekCount * 40;
+        var externalOfferRepeatPenalty = existingExternalOffers * existingExternalOffers * 80;
+        return teamVolumePenalty + weeklyParticipationPenalty + externalOfferRepeatPenalty;
     }
 
     private static string WeekKey(string gameDate)
