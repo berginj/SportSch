@@ -108,6 +108,118 @@ function estimateRoundRobinMatchups(teamCount) {
   return Math.floor((teamCount * (teamCount - 1)) / 2);
 }
 
+function normalizeTeamPairKey(teamA, teamB) {
+  const left = String(teamA || "").trim();
+  const right = String(teamB || "").trim();
+  if (!left || !right) return "";
+  return left.localeCompare(right) <= 0 ? `${left}|${right}` : `${right}|${left}`;
+}
+
+function buildRoundRobinPairsForTeams(teamIds) {
+  const teams = Array.isArray(teamIds) ? teamIds.map((v) => String(v || "").trim()).filter(Boolean) : [];
+  if (teams.length < 2) return [];
+  const list = [...teams];
+  if (list.length % 2 === 1) list.push("BYE");
+  const rounds = list.length - 1;
+  const half = list.length / 2;
+  const matchups = [];
+
+  for (let round = 0; round < rounds; round += 1) {
+    for (let i = 0; i < half; i += 1) {
+      const teamA = list[i];
+      const teamB = list[list.length - 1 - i];
+      if (teamA === "BYE" || teamB === "BYE") continue;
+      const homeTeamId = round % 2 === 0 ? teamA : teamB;
+      const awayTeamId = round % 2 === 0 ? teamB : teamA;
+      matchups.push({ homeTeamId, awayTeamId });
+    }
+    const last = list[list.length - 1];
+    list.splice(list.length - 1, 1);
+    list.splice(1, 0, last);
+  }
+
+  return matchups;
+}
+
+function buildTargetMatchupsForTeams(teamIds, gamesPerTeam) {
+  const teams = Array.isArray(teamIds) ? teamIds.map((v) => String(v || "").trim()).filter(Boolean) : [];
+  const targetGames = Math.max(0, Number(gamesPerTeam) || 0);
+  if (teams.length < 2 || targetGames <= 0) return [];
+
+  const counts = new Map(teams.map((teamId) => [teamId, 0]));
+  const matchups = [];
+  const rounds = Math.max(1, targetGames);
+
+  for (let round = 0; round < rounds; round += 1) {
+    let roundMatchups = buildRoundRobinPairsForTeams(teams);
+    if (round % 2 === 1) {
+      roundMatchups = roundMatchups.map((m) => ({ homeTeamId: m.awayTeamId, awayTeamId: m.homeTeamId }));
+    }
+
+    for (const matchup of roundMatchups) {
+      const homeCount = counts.get(matchup.homeTeamId) || 0;
+      const awayCount = counts.get(matchup.awayTeamId) || 0;
+      if (homeCount >= targetGames || awayCount >= targetGames) continue;
+      matchups.push(matchup);
+      counts.set(matchup.homeTeamId, homeCount + 1);
+      counts.set(matchup.awayTeamId, awayCount + 1);
+      if ([...counts.values()].every((value) => value >= targetGames)) {
+        return matchups;
+      }
+    }
+  }
+
+  return matchups;
+}
+
+function buildRepeatedMatchupsForTeams(teamIds, gamesPerTeam) {
+  const teams = Array.isArray(teamIds) ? teamIds.map((v) => String(v || "").trim()).filter(Boolean) : [];
+  const targetGames = Math.max(0, Number(gamesPerTeam) || 0);
+  if (teams.length < 2 || targetGames <= 0) return [];
+
+  const roundGames = Math.max(1, teams.length - 1);
+  const fullRounds = Math.floor(targetGames / roundGames);
+  const remainderGames = targetGames % roundGames;
+  if (remainderGames > 0) return buildTargetMatchupsForTeams(teams, targetGames);
+
+  const result = [];
+  for (let round = 0; round < fullRounds; round += 1) {
+    let matchups = buildRoundRobinPairsForTeams(teams);
+    if (round % 2 === 1) {
+      matchups = matchups.map((m) => ({ homeTeamId: m.awayTeamId, awayTeamId: m.homeTeamId }));
+    }
+    result.push(...matchups);
+  }
+  return result;
+}
+
+function suggestPriorityMatchupsFromDemand(teamIds, gamesPerTeam, maxSuggestions = MAX_RIVALRY_MATCHUPS) {
+  const matchups = buildRepeatedMatchupsForTeams(teamIds, gamesPerTeam);
+  const pairCounts = new Map();
+  for (const matchup of matchups) {
+    const key = normalizeTeamPairKey(matchup.homeTeamId, matchup.awayTeamId);
+    if (!key) continue;
+    const current = pairCounts.get(key) || { teamA: key.split("|")[0], teamB: key.split("|")[1], count: 0 };
+    current.count += 1;
+    pairCounts.set(key, current);
+  }
+
+  return [...pairCounts.values()]
+    .filter((row) => row.count > 1)
+    .sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count;
+      const left = `${a.teamA}|${a.teamB}`;
+      const right = `${b.teamA}|${b.teamB}`;
+      return left.localeCompare(right);
+    })
+    .slice(0, Math.max(1, Number(maxSuggestions) || MAX_RIVALRY_MATCHUPS))
+    .map((row) => {
+      const overage = Math.max(1, row.count - 1);
+      const weight = Math.max(1, Math.min(10, 2 + overage * 2));
+      return { teamA: row.teamA, teamB: row.teamB, weight, suggestedCount: row.count };
+    });
+}
+
 function buildSpringBreakRange(seasonStart, seasonEnd) {
   if (!isIsoDate(seasonStart) || !isIsoDate(seasonEnd)) return null;
   const from = seasonStart;
@@ -1136,6 +1248,42 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   function removeRivalryMatchupRow(index) {
     setRivalryMatchups((prev) => (Array.isArray(prev) ? prev : []).filter((_, idx) => idx !== index));
     setPreview(null);
+  }
+
+  function suggestRivalryMatchups() {
+    const teamIds = normalizedDivisionTeams.map((team) => team.teamId).filter(Boolean);
+    if (teamIds.length < 2) {
+      setErr("Need at least two teams in the selected division to suggest priority matchups.");
+      return;
+    }
+
+    const targetGames = Math.max(0, Number(minGamesPerTeam) || 0);
+    if (targetGames <= 0) {
+      setErr("Set Min games per team above 0 before auto-suggesting priority matchups.");
+      return;
+    }
+
+    const suggestions = suggestPriorityMatchupsFromDemand(teamIds, targetGames, MAX_RIVALRY_MATCHUPS);
+    if (!suggestions.length) {
+      setToast({
+        tone: "info",
+        message: "No repeated regular-season pairings in the current target. Add priority matchups manually if you still want late-season bias.",
+      });
+      return;
+    }
+
+    if (rivalryMatchups.length > 0) {
+      const confirmed = window.confirm("Replace current priority matchups with suggested repeated pairs?");
+      if (!confirmed) return;
+    }
+
+    setRivalryMatchups(suggestions.map((row) => ({ teamA: row.teamA, teamB: row.teamB, weight: row.weight })));
+    setPreview(null);
+    setErr("");
+    setToast({
+      tone: "success",
+      message: `Suggested ${suggestions.length} priority matchup${suggestions.length === 1 ? "" : "s"} from repeated pair demand.`,
+    });
   }
 
   function buildWizardPayload() {
@@ -3360,15 +3508,32 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                     Mark rivalry/high-stakes pairs to bias them toward later regular-season slots. Repeated pairings are already prioritized automatically.
                   </div>
                 </div>
-                <button
-                  type="button"
-                  className="btn btn--ghost"
-                  onClick={addRivalryMatchupRow}
-                  disabled={rivalryMatchups.length >= MAX_RIVALRY_MATCHUPS || normalizedDivisionTeams.length < 2}
-                  title={normalizedDivisionTeams.length < 2 ? "Need at least two teams in the division." : "Add a priority matchup row"}
-                >
-                  Add pair
-                </button>
+                <div className="row gap-2">
+                  <button
+                    type="button"
+                    className="btn btn--ghost"
+                    onClick={suggestRivalryMatchups}
+                    disabled={normalizedDivisionTeams.length < 2 || (Number(minGamesPerTeam) || 0) <= 0}
+                    title={
+                      normalizedDivisionTeams.length < 2
+                        ? "Need at least two teams in the division."
+                        : (Number(minGamesPerTeam) || 0) <= 0
+                          ? "Set Min games per team above 0 to auto-suggest."
+                          : "Suggest priority matchups from repeated regular-season pair demand"
+                    }
+                  >
+                    Suggest rivalries
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--ghost"
+                    onClick={addRivalryMatchupRow}
+                    disabled={rivalryMatchups.length >= MAX_RIVALRY_MATCHUPS || normalizedDivisionTeams.length < 2}
+                    title={normalizedDivisionTeams.length < 2 ? "Need at least two teams in the division." : "Add a priority matchup row"}
+                  >
+                    Add pair
+                  </button>
+                </div>
               </div>
               {rivalryRowIssues.length ? (
                 <div className="callout callout--warning mb-2">
