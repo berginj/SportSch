@@ -179,6 +179,16 @@ function dayOrderIndex(weekday) {
   return idx >= 0 ? idx : 999;
 }
 
+function assignmentExplainKey(assignment) {
+  const phase = String(assignment?.phase || "").trim();
+  const slotId = String(assignment?.slotId || "").trim();
+  const gameDate = String(assignment?.gameDate || "").trim();
+  const startTime = String(assignment?.startTime || "").trim();
+  const homeTeamId = String(assignment?.homeTeamId || "").trim();
+  const awayTeamId = String(assignment?.awayTeamId || "").trim();
+  return [phase, slotId, gameDate, startTime, homeTeamId, awayTeamId].join("|");
+}
+
 function StepButton({ active, status = "neutral", onClick, children }) {
   const stylesByStatus = {
     complete: {
@@ -244,6 +254,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [repairApplyingId, setRepairApplyingId] = useState("");
+  const [selectedExplainGameKey, setSelectedExplainGameKey] = useState("");
   const [err, setErr] = useState("");
   const [toast, setToast] = useState(null);
   const [slotPlan, setSlotPlan] = useState([]);
@@ -1233,6 +1244,20 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const previewApplyBlocked = !!preview?.applyBlocked;
   const previewRepairProposals = Array.isArray(preview?.repairProposals) ? preview.repairProposals : [];
 
+  useEffect(() => {
+    if (!preview) {
+      setSelectedExplainGameKey("");
+      return;
+    }
+    const keys = new Set(
+      (Array.isArray(preview.assignments) ? preview.assignments : []).map((assignment) => assignmentExplainKey(assignment))
+    );
+    if (!selectedExplainGameKey) return;
+    if (!keys.has(selectedExplainGameKey)) {
+      setSelectedExplainGameKey("");
+    }
+  }, [preview, selectedExplainGameKey]);
+
   const unassignedRegularReport = useMemo(() => {
     if (!preview) {
       return {
@@ -1753,6 +1778,240 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       shownFields: shownRows.length,
     };
   }, [preview, regularBalanceReport]);
+
+  const selectedGameExplain = useMemo(() => {
+    if (!preview || !selectedExplainGameKey) return null;
+
+    const assignments = Array.isArray(preview.assignments) ? preview.assignments : [];
+    const unassignedSlots = Array.isArray(preview.unassignedSlots) ? preview.unassignedSlots : [];
+    const selected = assignments.find((assignment) => assignmentExplainKey(assignment) === selectedExplainGameKey);
+    if (!selected) return null;
+
+    const selectedPhase = String(selected?.phase || "").trim();
+    const selectedWeekKey = weekStartIso(selected?.gameDate);
+    const selectedSlotId = String(selected?.slotId || "").trim();
+    const selectedHomeTeamId = String(selected?.homeTeamId || "").trim();
+    const selectedAwayTeamId = String(selected?.awayTeamId || "").trim();
+    const selectedTeamIds = [selectedHomeTeamId, selectedAwayTeamId].filter(Boolean);
+    const constructionStrategy = String(preview?.constructionStrategy || "").trim();
+    const seed = Number(preview?.seed);
+
+    const regularAssignments = assignments.filter((a) => a?.phase === "Regular Season");
+    const regularWeekKeys = Array.isArray(regularBalanceReport.weekKeys) ? regularBalanceReport.weekKeys : [];
+    const weekIndex = selectedPhase === "Regular Season" && selectedWeekKey
+      ? regularWeekKeys.indexOf(selectedWeekKey)
+      : -1;
+    const weekCount = regularWeekKeys.length;
+    const weekNumber = weekIndex >= 0 ? weekIndex + 1 : null;
+    const lateSeasonFactor = weekIndex >= 0 && weekCount > 1 ? (weekIndex / (weekCount - 1)) : null;
+
+    const teamWeekCounts = new Map();
+    const addTeamWeekCount = (teamIdRaw, weekKey, bucket) => {
+      const teamId = String(teamIdRaw || "").trim();
+      if (!teamId || !weekKey) return;
+      let weekMap = teamWeekCounts.get(teamId);
+      if (!weekMap) {
+        weekMap = new Map();
+        teamWeekCounts.set(teamId, weekMap);
+      }
+      if (!weekMap.has(weekKey)) {
+        weekMap.set(weekKey, { regular: 0, guest: 0 });
+      }
+      const cell = weekMap.get(weekKey);
+      cell[bucket] += 1;
+    };
+
+    regularAssignments.forEach((assignment) => {
+      const weekKey = weekStartIso(assignment?.gameDate);
+      if (!weekKey) return;
+      if (assignment?.isExternalOffer) {
+        addTeamWeekCount(assignment?.homeTeamId, weekKey, "guest");
+        return;
+      }
+      addTeamWeekCount(assignment?.homeTeamId, weekKey, "regular");
+      addTeamWeekCount(assignment?.awayTeamId, weekKey, "regular");
+    });
+
+    const buildTeamWeekSummary = (teamId) => {
+      if (!teamId || !selectedWeekKey || selectedPhase !== "Regular Season") return null;
+      const weekMap = teamWeekCounts.get(teamId) || new Map();
+      const counts = weekMap.get(selectedWeekKey) || { regular: 0, guest: 0 };
+      const total = Number(counts.regular || 0) + Number(counts.guest || 0);
+      return {
+        teamId,
+        regular: Number(counts.regular || 0),
+        guest: Number(counts.guest || 0),
+        total,
+        status: total <= 0 ? "gap" : (total === 1 ? "single" : "multi"),
+      };
+    };
+
+    const fieldWeekMap = new Map();
+    const ensureFieldWeek = (fieldKeyRaw, weekKey) => {
+      const fieldKey = String(fieldKeyRaw || "").trim() || "(Unknown field)";
+      if (!weekKey) return null;
+      let weekMap = fieldWeekMap.get(fieldKey);
+      if (!weekMap) {
+        weekMap = new Map();
+        fieldWeekMap.set(fieldKey, weekMap);
+      }
+      if (!weekMap.has(weekKey)) {
+        weekMap.set(weekKey, { used: 0, capacity: 0, regular: 0, guest: 0 });
+      }
+      return weekMap.get(weekKey);
+    };
+
+    regularAssignments.forEach((assignment) => {
+      const weekKey = weekStartIso(assignment?.gameDate);
+      const cell = ensureFieldWeek(assignment?.fieldKey, weekKey);
+      if (!cell) return;
+      cell.capacity += 1;
+      cell.used += 1;
+      if (assignment?.isExternalOffer) cell.guest += 1;
+      else cell.regular += 1;
+    });
+    unassignedSlots
+      .filter((slot) => slot?.phase === "Regular Season")
+      .forEach((slot) => {
+        const weekKey = weekStartIso(slot?.gameDate);
+        const cell = ensureFieldWeek(slot?.fieldKey, weekKey);
+        if (!cell) return;
+        cell.capacity += 1;
+      });
+
+    const selectedFieldUsage = selectedPhase === "Regular Season" && selectedWeekKey
+      ? (() => {
+          const byWeek = fieldWeekMap.get(String(selected?.fieldKey || "").trim() || "(Unknown field)");
+          const cell = byWeek?.get(selectedWeekKey) || null;
+          if (!cell) return null;
+          const utilizationPct = cell.capacity > 0 ? Math.round((cell.used / cell.capacity) * 100) : 0;
+          return { ...cell, utilizationPct };
+        })()
+      : null;
+
+    const pairRows = Array.isArray(regularBalanceReport.pairRows) ? regularBalanceReport.pairRows : [];
+    const pairKey = selectedHomeTeamId && selectedAwayTeamId
+      ? [selectedHomeTeamId, selectedAwayTeamId].sort((a, b) => a.localeCompare(b)).join("|")
+      : "";
+    const pairBalance = selectedPhase === "Regular Season" && !selected?.isExternalOffer && pairKey
+      ? pairRows.find((row) => row?.key === pairKey) || null
+      : null;
+
+    const ruleGroups = Array.isArray(previewRuleHealth?.groups) ? previewRuleHealth.groups : [];
+    const relatedRuleGroups = ruleGroups
+      .map((group) => {
+        const violations = Array.isArray(group?.violations) ? group.violations : [];
+        const matchedViolations = violations.filter((violation) => {
+          const slotIds = new Set((Array.isArray(violation?.slotIds) ? violation.slotIds : []).map((v) => String(v || "").trim()).filter(Boolean));
+          const teamIds = new Set((Array.isArray(violation?.teamIds) ? violation.teamIds : []).map((v) => String(v || "").trim()).filter(Boolean));
+          const weekKeys = new Set((Array.isArray(violation?.weekKeys) ? violation.weekKeys : []).map((v) => String(v || "").trim()).filter(Boolean));
+          const slotMatch = selectedSlotId && slotIds.has(selectedSlotId);
+          const teamMatch = selectedTeamIds.some((teamId) => teamIds.has(teamId));
+          const weekMatch = selectedWeekKey && weekKeys.has(selectedWeekKey);
+          return slotMatch || teamMatch || weekMatch;
+        });
+        if (!matchedViolations.length) return null;
+        return {
+          ruleId: group?.ruleId || "",
+          severity: String(group?.severity || "").toLowerCase(),
+          summary: group?.summary || "",
+          matchedViolations,
+        };
+      })
+      .filter(Boolean)
+      .sort((left, right) => {
+        const sev = (left.severity === "hard" ? 0 : 1) - (right.severity === "hard" ? 0 : 1);
+        if (sev !== 0) return sev;
+        return (left.ruleId || "").localeCompare(right.ruleId || "");
+      });
+
+    const homeWeek = buildTeamWeekSummary(selectedHomeTeamId);
+    const awayWeek = buildTeamWeekSummary(selectedAwayTeamId);
+
+    const scoringFactors = [];
+    if (selectedPhase === "Regular Season" && constructionStrategy.startsWith("backward_") && weekNumber && weekCount > 0) {
+      scoringFactors.push({
+        key: "backward-priority",
+        label: "Backward allocation priority",
+        tone: "good",
+        detail:
+          lateSeasonFactor == null
+            ? `Regular-season slot scheduled with backward strategy (${constructionStrategy}).`
+            : `Regular-season week W${weekNumber} of ${weekCount} (later weeks prioritized first; this sits at ~${Math.round(lateSeasonFactor * 100)}% toward season end).`,
+      });
+    }
+    if (homeWeek || awayWeek) {
+      const parts = [homeWeek, awayWeek]
+        .filter(Boolean)
+        .map((row) => `${row.teamId}: ${row.total} game${row.total === 1 ? "" : "s"} this week (${row.regular} reg, ${row.guest} guest)`);
+      const bothSingle = [homeWeek, awayWeek].filter(Boolean).every((row) => row.total === 1);
+      scoringFactors.push({
+        key: "weekly-participation",
+        label: "Weekly participation coverage",
+        tone: bothSingle ? "good" : ([homeWeek, awayWeek].some((row) => row && row.total > 1) ? "warn" : "neutral"),
+        detail: parts.join(" | ") || "No weekly participation data available.",
+      });
+    }
+    if (pairBalance) {
+      scoringFactors.push({
+        key: "pair-balance",
+        label: "Opponent balance",
+        tone: Number(pairBalance?.assigned || 0) < Number(pairBalance?.target || 0) ? "good" : "neutral",
+        detail: `${pairBalance.teamA} vs ${pairBalance.teamB}: assigned ${pairBalance.assigned}/${pairBalance.target}, unassigned ${pairBalance.unassigned}, home split ${pairBalance.homeForA}-${pairBalance.homeForB}.`,
+      });
+    }
+    if (selectedFieldUsage) {
+      scoringFactors.push({
+        key: "field-utilization",
+        label: "Field-week utilization",
+        tone: selectedFieldUsage.utilizationPct >= 85 ? "good" : (selectedFieldUsage.utilizationPct <= 35 ? "neutral" : "warn"),
+        detail: `${selected?.fieldKey || "(Unknown field)"} in ${selectedWeekKey}: used ${selectedFieldUsage.used}/${selectedFieldUsage.capacity} slots (${selectedFieldUsage.utilizationPct}% utilized).`,
+      });
+    }
+    if (selected?.isExternalOffer) {
+      scoringFactors.push({
+        key: "external-offer",
+        label: "External / guest game",
+        tone: "neutral",
+        detail: "This assignment is marked as an external offer (guest game), so opponent balance metrics differ from intra-division games.",
+      });
+    }
+    if (!scoringFactors.length) {
+      scoringFactors.push({
+        key: "fallback",
+        label: "Placement context",
+        tone: "neutral",
+        detail: "No detailed placement factors were derived for this assignment yet.",
+      });
+    }
+
+    const hardRuleTouches = relatedRuleGroups.reduce(
+      (count, group) => count + (group.severity === "hard" ? group.matchedViolations.length : 0),
+      0
+    );
+    const softRuleTouches = relatedRuleGroups.reduce(
+      (count, group) => count + (group.severity !== "hard" ? group.matchedViolations.length : 0),
+      0
+    );
+
+    return {
+      selected,
+      selectedWeekKey,
+      weekNumber,
+      weekCount,
+      lateSeasonFactor,
+      constructionStrategy,
+      seed: Number.isFinite(seed) ? seed : null,
+      homeWeek,
+      awayWeek,
+      pairBalance,
+      selectedFieldUsage,
+      relatedRuleGroups,
+      hardRuleTouches,
+      softRuleTouches,
+      scoringFactors,
+    };
+  }, [preview, previewRuleHealth, regularBalanceReport, selectedExplainGameKey]);
 
   const previewRecommendations = useMemo(() => {
     if (!preview) return [];
@@ -3310,25 +3569,158 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                         <th>Field</th>
                         <th>Home</th>
                         <th>Away</th>
+                        <th>Explain</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {(preview.assignments || []).slice(0, 250).map((a) => (
-                        <tr key={`${a.phase}-${a.slotId}`}>
-                          <td>{a.phase}</td>
-                          <td>{isoDayShort(a.gameDate) || "-"}</td>
-                          <td>{a.gameDate}</td>
-                          <td>{a.startTime}-{a.endTime}</td>
-                          <td>{a.fieldKey}</td>
-                          <td>{a.homeTeamId || "-"}</td>
-                          <td>{a.awayTeamId || "-"}</td>
-                        </tr>
-                      ))}
+                      {(preview.assignments || []).slice(0, 250).map((a) => {
+                        const rowKey = assignmentExplainKey(a);
+                        const isSelected = selectedGameExplain && assignmentExplainKey(selectedGameExplain.selected) === rowKey;
+                        return (
+                          <tr
+                            key={rowKey}
+                            style={isSelected ? { backgroundColor: "#ecfeff", outline: "1px solid #99f6e4" } : undefined}
+                          >
+                            <td>{a.phase}</td>
+                            <td>{isoDayShort(a.gameDate) || "-"}</td>
+                            <td>{a.gameDate}</td>
+                            <td>{a.startTime}-{a.endTime}</td>
+                            <td>{a.fieldKey}</td>
+                            <td>{a.homeTeamId || "-"}</td>
+                            <td>{a.awayTeamId || "-"}</td>
+                            <td>
+                              <button
+                                type="button"
+                                className="btn btn--ghost"
+                                onClick={() => setSelectedExplainGameKey(rowKey)}
+                                aria-pressed={isSelected ? "true" : "false"}
+                                title="Show placement rationale and rule impacts for this game"
+                              >
+                                {isSelected ? "Selected" : "Explain"}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                   {(preview.assignments || []).length > 250 ? (
                     <div className="subtle mt-2">Showing first 250 assignments.</div>
                   ) : null}
+                </div>
+                <div className={`callout mt-2 ${
+                  selectedGameExplain?.hardRuleTouches > 0 ? "callout--error" : "callout--ok"
+                }`}>
+                  <div className="row row--between gap-2" style={{ alignItems: "center" }}>
+                    <div className="font-bold">Game explainability (preview)</div>
+                    {selectedGameExplain ? (
+                      <button
+                        type="button"
+                        className="btn btn--ghost"
+                        onClick={() => setSelectedExplainGameKey("")}
+                      >
+                        Clear selection
+                      </button>
+                    ) : null}
+                  </div>
+                  {!selectedGameExplain ? (
+                    <div className="subtle mt-2">
+                      Click <b>Explain</b> on any assignment to inspect placement context, weekly team load, field utilization, and rule-health touchpoints.
+                    </div>
+                  ) : (
+                    <>
+                      <div className="subtle mt-2">
+                        <b>{selectedGameExplain.selected.homeTeamId || "-"}</b>
+                        {selectedGameExplain.selected.isExternalOffer ? " vs Guest" : ` vs ${selectedGameExplain.selected.awayTeamId || "-"}`}
+                        {" • "}
+                        {selectedGameExplain.selected.phase}
+                        {" • "}
+                        {selectedGameExplain.selected.gameDate} {selectedGameExplain.selected.startTime}-{selectedGameExplain.selected.endTime}
+                        {" • "}
+                        {selectedGameExplain.selected.fieldKey || "(Unknown field)"}
+                      </div>
+                      <div className="subtle">
+                        Strategy: <b>{selectedGameExplain.constructionStrategy || "legacy"}</b>
+                        {selectedGameExplain.seed != null ? <> • Seed: <b>{selectedGameExplain.seed}</b></> : null}
+                        {selectedGameExplain.weekNumber && selectedGameExplain.weekCount ? (
+                          <> • Regular season week: <b>W{selectedGameExplain.weekNumber}</b> of {selectedGameExplain.weekCount}</>
+                        ) : null}
+                        {selectedGameExplain.lateSeasonFactor != null ? (
+                          <> • Late-season position: <b>{Math.round(selectedGameExplain.lateSeasonFactor * 100)}%</b></>
+                        ) : null}
+                      </div>
+
+                      <div className="grid2 mt-2">
+                        <div className="callout">
+                          <div className="font-bold mb-1">Placement factors (heuristic)</div>
+                          <div className="stack gap-1">
+                            {selectedGameExplain.scoringFactors.map((factor) => (
+                              <div
+                                key={`explain-factor-${factor.key}`}
+                                style={{
+                                  border: "1px solid #e2e8f0",
+                                  borderLeftWidth: 4,
+                                  borderLeftColor:
+                                    factor.tone === "good" ? "#16a34a" :
+                                      factor.tone === "warn" ? "#d97706" :
+                                        "#64748b",
+                                  borderRadius: 8,
+                                  padding: "0.5rem 0.65rem",
+                                  background: "#fff",
+                                }}
+                              >
+                                <div style={{ fontWeight: 600 }}>{factor.label}</div>
+                                <div className="subtle">{factor.detail}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <div className={`callout ${selectedGameExplain.hardRuleTouches > 0 ? "callout--error" : ""}`}>
+                          <div className="font-bold mb-1">Rule touchpoints</div>
+                          <div className="subtle mb-2">
+                            Hard matches: <b>{selectedGameExplain.hardRuleTouches}</b> • Soft matches: <b>{selectedGameExplain.softRuleTouches}</b>
+                          </div>
+                          {selectedGameExplain.relatedRuleGroups.length ? (
+                            <div className="stack gap-1">
+                              {selectedGameExplain.relatedRuleGroups.slice(0, 8).map((group) => (
+                                <div
+                                  key={`explain-group-${group.ruleId}`}
+                                  style={{
+                                    border: "1px solid #e2e8f0",
+                                    borderRadius: 8,
+                                    padding: "0.5rem 0.65rem",
+                                    background: "#fff",
+                                  }}
+                                >
+                                  <div className="row gap-2" style={{ alignItems: "center" }}>
+                                    <span
+                                      className="pill"
+                                      style={group.severity === "hard"
+                                        ? { backgroundColor: "#fee2e2", color: "#991b1b", borderColor: "#fecaca" }
+                                        : undefined}
+                                    >
+                                      {group.severity || "soft"}
+                                    </span>
+                                    <b>{group.ruleId}</b>
+                                    <span className="subtle">({group.matchedViolations.length} match{group.matchedViolations.length === 1 ? "" : "es"})</span>
+                                  </div>
+                                  <div className="subtle mt-1">{group.summary || ISSUE_HINTS[group.ruleId] || "Rule impact detected for this game."}</div>
+                                  <div className="subtle mt-1">
+                                    {group.matchedViolations.slice(0, 3).map((violation) => violation?.message).filter(Boolean).join(" | ")}
+                                  </div>
+                                </div>
+                              ))}
+                              {selectedGameExplain.relatedRuleGroups.length > 8 ? (
+                                <div className="subtle">Showing first 8 related rule groups.</div>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <div className="subtle">No direct rule-health matches for this game in the current preview.</div>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </>
             )}
