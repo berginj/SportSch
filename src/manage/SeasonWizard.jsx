@@ -2583,6 +2583,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     const regularAssignments = assignments.filter((a) => a?.phase === "Regular Season");
     const weekKeys = Array.isArray(regularBalanceReport.weekKeys) ? regularBalanceReport.weekKeys : [];
     const byTeamWeek = new Map();
+    const byTeamWeekRegularAssignments = new Map();
 
     const ensureTeamWeek = (teamId, weekKey) => {
       const normalizedTeam = String(teamId || "").trim();
@@ -2597,6 +2598,21 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         weekMap.set(normalizedWeek, { regular: 0, guest: 0 });
       }
       return weekMap.get(normalizedWeek);
+    };
+
+    const addTeamWeekRegularAssignment = (teamId, weekKey, assignment) => {
+      const normalizedTeam = String(teamId || "").trim();
+      const normalizedWeek = String(weekKey || "").trim();
+      if (!normalizedTeam || !normalizedWeek || !assignment) return;
+      let weekMap = byTeamWeekRegularAssignments.get(normalizedTeam);
+      if (!weekMap) {
+        weekMap = new Map();
+        byTeamWeekRegularAssignments.set(normalizedTeam, weekMap);
+      }
+      if (!weekMap.has(normalizedWeek)) {
+        weekMap.set(normalizedWeek, []);
+      }
+      weekMap.get(normalizedWeek).push(assignment);
     };
 
     regularAssignments.forEach((a) => {
@@ -2614,6 +2630,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       const awayCell = ensureTeamWeek(away, weekKey);
       if (homeCell) homeCell.regular += 1;
       if (awayCell) awayCell.regular += 1;
+      addTeamWeekRegularAssignment(home, weekKey, a);
+      addTeamWeekRegularAssignment(away, weekKey, a);
     });
 
     const laneSource = Array.isArray(regularBalanceReport.teamRows) ? regularBalanceReport.teamRows : [];
@@ -2621,6 +2639,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       .map((teamRow) => {
         const teamId = String(teamRow?.teamId || "").trim();
         const weekMap = byTeamWeek.get(teamId) || new Map();
+        const weekAssignments = byTeamWeekRegularAssignments.get(teamId) || new Map();
         let zeroWeeks = 0;
         let singleWeeks = 0;
         let multiWeeks = 0;
@@ -2639,12 +2658,16 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
             else multiWeeks += 1;
           }
           const status = total <= 0 ? "gap" : (total === 1 ? "single" : "multi");
+          const regularGames = Array.isArray(weekAssignments.get(weekKey)) ? weekAssignments.get(weekKey) : [];
+          const dragAssignment = regularGames.length === 1 ? regularGames[0] : null;
           return {
             weekKey,
             regular: Number(counts.regular || 0),
             guest: Number(counts.guest || 0),
             total,
             status,
+            dragAssignment,
+            draggable: !!dragAssignment,
           };
         });
         return {
@@ -2823,6 +2846,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
           open: 0,
           firstDate: "",
           lastDate: "",
+          regularAssignments: [],
         }]));
         byWeek.set(weekKey, {
           weekKey,
@@ -2856,6 +2880,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       touchCell(row, day, a?.gameDate, (cell) => {
         cell.games += 1;
         if (a?.isExternalOffer) cell.guest += 1;
+        else if (Array.isArray(cell.regularAssignments)) cell.regularAssignments.push(a);
       });
     });
 
@@ -2918,7 +2943,16 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         softRuleTouches: softRuleByWeek.get(weekKey) || 0,
         cells: WEEKDAY_OPTIONS.map((day) => ({
           day,
-          ...(row?.cells?.[day] || { games: 0, guest: 0, open: 0, firstDate: "", lastDate: "" }),
+          ...(() => {
+            const base = row?.cells?.[day] || { games: 0, guest: 0, open: 0, firstDate: "", lastDate: "", regularAssignments: [] };
+            const regularAssignmentsForCell = Array.isArray(base?.regularAssignments) ? base.regularAssignments : [];
+            return {
+              ...base,
+              regularGameCount: regularAssignmentsForCell.length,
+              dragAssignment: regularAssignmentsForCell.length === 1 ? regularAssignmentsForCell[0] : null,
+              draggable: regularAssignmentsForCell.length === 1,
+            };
+          })(),
         })),
       };
     });
@@ -4897,6 +4931,11 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                             {lane.cells.map((cell, idx) => {
                               const lateFactor = teamLanesReport.weekKeys.length > 1 ? (idx / (teamLanesReport.weekKeys.length - 1)) : 0;
                               const isRepairHighlighted = isTeamWeekHighlightedByRepair(lane.teamId, cell.weekKey);
+                              const dragAssignment = cell?.dragAssignment || null;
+                              const dragKey = dragAssignment ? assignmentExplainKey(dragAssignment) : "";
+                              const isDragEligible = !!dragAssignment && canDragSwapAssignment(dragAssignment);
+                              const isDragSource = !!dragKey && dragSwapSourceKey === dragKey;
+                              const isDragTarget = !!dragKey && dragSwapTargetKey === dragKey && dragSwapSourceKey && dragSwapSourceKey !== dragKey;
                               const base =
                                 cell.status === "gap"
                                   ? { bg: `rgba(239,68,68,${0.12 + (lateFactor * 0.08)})`, border: "#fecaca", text: "#991b1b" }
@@ -4909,18 +4948,30 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                                 <td
                                   key={`lane-cell-${lane.teamId}-${cell.weekKey}`}
                                   title={detail}
+                                  draggable={isDragEligible}
+                                  onDragStart={isDragEligible ? (event) => handleAssignmentDragStart(event, dragAssignment) : undefined}
+                                  onDragOver={isDragEligible ? (event) => handleAssignmentDragOver(event, dragAssignment) : undefined}
+                                  onDrop={isDragEligible ? (event) => handleAssignmentDrop(event, dragAssignment) : undefined}
+                                  onDragEnd={isDragEligible ? clearAssignmentDragSwap : undefined}
                                   style={{
                                     textAlign: "center",
                                     minWidth: 42,
                                     background: base.bg,
-                                    borderColor: isRepairHighlighted ? "#f59e0b" : base.border,
-                                    boxShadow: isRepairHighlighted ? "inset 0 0 0 2px rgba(245,158,11,0.45)" : "none",
+                                    borderColor: isDragTarget ? "#7c3aed" : (isRepairHighlighted ? "#f59e0b" : base.border),
+                                    boxShadow:
+                                      isDragSource
+                                        ? "inset 0 0 0 2px rgba(37,99,235,0.45)"
+                                        : (isDragTarget
+                                          ? "inset 0 0 0 2px rgba(124,58,237,0.45)"
+                                          : (isRepairHighlighted ? "inset 0 0 0 2px rgba(245,158,11,0.45)" : "none")),
                                     color: base.text,
                                     fontWeight: 700,
+                                    cursor: isDragEligible ? "move" : "default",
                                   }}
                                 >
                                   {label}
                                   {cell.guest > 0 ? <div className="subtle" style={{ fontSize: "0.7rem" }}>G{cell.guest}</div> : null}
+                                  {isDragEligible ? <div className="subtle" style={{ fontSize: "0.65rem" }}>swap</div> : null}
                                 </td>
                               );
                             })}
@@ -5014,6 +5065,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                   <div className="subtle mb-2">
                     Timeline cards emphasize late-season weeks (weather reliability weighting) and show week-level utilization/rule pressure. Calendar grid shows games/open slots by day.
                   </div>
+                  <div className="subtle mb-2">
+                    Calendar day cells marked with a single regular game can be dragged onto another single-game day cell to try a preview swap.
+                  </div>
                   <div className="row row--wrap gap-2">
                     {regularCalendarTimelineReport.weekRows.map((week) => {
                       const isRepairWeek = isWeekHighlightedByRepair(week.weekKey);
@@ -5101,6 +5155,11 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                             </td>
                             {week.cells.map((cell) => {
                               const isRepairWeek = isWeekHighlightedByRepair(week.weekKey);
+                              const dragAssignment = cell?.dragAssignment || null;
+                              const dragKey = dragAssignment ? assignmentExplainKey(dragAssignment) : "";
+                              const isDragEligible = !!dragAssignment && canDragSwapAssignment(dragAssignment);
+                              const isDragSource = !!dragKey && dragSwapSourceKey === dragKey;
+                              const isDragTarget = !!dragKey && dragSwapTargetKey === dragKey && dragSwapSourceKey && dragSwapSourceKey !== dragKey;
                               const totalLoad = Number(cell.games || 0) + Number(cell.open || 0);
                               const bg = totalLoad <= 0
                                 ? "rgba(148,163,184,0.06)"
@@ -5112,10 +5171,21 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                               return (
                                 <td
                                   key={`calendar-cell-${week.weekKey}-${cell.day}`}
+                                  draggable={isDragEligible}
+                                  onDragStart={isDragEligible ? (event) => handleAssignmentDragStart(event, dragAssignment) : undefined}
+                                  onDragOver={isDragEligible ? (event) => handleAssignmentDragOver(event, dragAssignment) : undefined}
+                                  onDrop={isDragEligible ? (event) => handleAssignmentDrop(event, dragAssignment) : undefined}
+                                  onDragEnd={isDragEligible ? clearAssignmentDragSwap : undefined}
                                   style={{
                                     background: bg,
                                     minWidth: 66,
-                                    boxShadow: isRepairWeek ? "inset 0 0 0 1px rgba(245,158,11,0.35)" : "none",
+                                    boxShadow:
+                                      isDragSource
+                                        ? "inset 0 0 0 2px rgba(37,99,235,0.45)"
+                                        : (isDragTarget
+                                          ? "inset 0 0 0 2px rgba(124,58,237,0.45)"
+                                          : (isRepairWeek ? "inset 0 0 0 1px rgba(245,158,11,0.35)" : "none")),
+                                    cursor: isDragEligible ? "move" : "default",
                                   }}
                                   title={`${cell.day} | ${cell.firstDate || week.weekKey} | games ${cell.games} | open ${cell.open}`}
                                 >
@@ -5125,6 +5195,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                                     {cell.guest > 0 ? ` | Guest ${cell.guest}` : ""}
                                   </div>
                                   {cell.firstDate ? <div className="subtle">{cell.firstDate}</div> : null}
+                                  {isDragEligible ? <div className="subtle" style={{ fontSize: "0.65rem" }}>swap</div> : null}
                                 </td>
                               );
                             })}
