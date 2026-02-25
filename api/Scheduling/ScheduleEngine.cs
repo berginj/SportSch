@@ -305,6 +305,127 @@ public static class ScheduleEngine
         return new ScheduleResult(summary, assignments, unassignedSlots, unassignedMatchups, placementTraces);
     }
 
+    public static List<SchedulePlacementTrace> ReplayPlacementTracesForSnapshot(
+        IReadOnlyList<ScheduleSlot> slots,
+        IReadOnlyList<MatchupPair> targetMatchups,
+        IReadOnlyList<ScheduleAssignment> snapshotAssignments,
+        IReadOnlyList<string> teams,
+        ScheduleConstraints constraints,
+        int? tieBreakSeed = null,
+        IReadOnlyDictionary<string, int>? matchupPriorityByPair = null)
+    {
+        var teamSet = new HashSet<string>(teams, StringComparer.OrdinalIgnoreCase);
+        var homeCounts = teams.ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
+        var awayCounts = teams.ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
+        var gamesByDate = teams.ToDictionary(t => t, _ => new HashSet<string>(StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase);
+        var gamesByWeek = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var pairCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var gamesByTeamDates = teams.ToDictionary(t => t, _ => new List<DateTime>(), StringComparer.OrdinalIgnoreCase);
+        var remainingMatchups = new List<MatchupPair>(targetMatchups ?? Array.Empty<MatchupPair>());
+        var slotDateRange = BuildSlotDateRange(slots);
+
+        var assignmentBySlot = (snapshotAssignments ?? Array.Empty<ScheduleAssignment>())
+            .Where(a => !string.IsNullOrWhiteSpace(a.SlotId))
+            .GroupBy(a => a.SlotId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+        var traces = new List<SchedulePlacementTrace>(slots.Count);
+        var slotOrderIndex = 0;
+
+        foreach (var slot in slots)
+        {
+            var fixedHome = teamSet.Contains(slot.OfferingTeamId) ? slot.OfferingTeamId : "";
+            if (!assignmentBySlot.TryGetValue(slot.SlotId, out var assigned))
+            {
+                traces.Add(new SchedulePlacementTrace(
+                    SlotId: slot.SlotId,
+                    GameDate: slot.GameDate,
+                    StartTime: slot.StartTime,
+                    EndTime: slot.EndTime,
+                    FieldKey: slot.FieldKey,
+                    SlotOrderIndex: slotOrderIndex,
+                    Outcome: "open",
+                    FixedHomeTeamId: string.IsNullOrWhiteSpace(fixedHome) ? null : fixedHome,
+                    SelectedHomeTeamId: null,
+                    SelectedAwayTeamId: null,
+                    SelectedScoreBreakdown: null,
+                    CandidateCount: 0,
+                    FeasibleCandidateCount: 0,
+                    TopFeasibleAlternatives: new List<ScheduleCandidateTrace>(),
+                    TopRejectedAlternatives: new List<ScheduleCandidateTrace>()));
+                slotOrderIndex += 1;
+                continue;
+            }
+
+            if (assigned.IsExternalOffer)
+            {
+                ApplyCounts(assigned.HomeTeamId, "", slot.GameDate, homeCounts, awayCounts, gamesByDate, gamesByWeek, pairCounts, gamesByTeamDates);
+                traces.Add(new SchedulePlacementTrace(
+                    SlotId: slot.SlotId,
+                    GameDate: slot.GameDate,
+                    StartTime: slot.StartTime,
+                    EndTime: slot.EndTime,
+                    FieldKey: slot.FieldKey,
+                    SlotOrderIndex: slotOrderIndex,
+                    Outcome: "external-offer",
+                    FixedHomeTeamId: string.IsNullOrWhiteSpace(fixedHome) ? null : fixedHome,
+                    SelectedHomeTeamId: assigned.HomeTeamId,
+                    SelectedAwayTeamId: null,
+                    SelectedScoreBreakdown: null,
+                    CandidateCount: 0,
+                    FeasibleCandidateCount: 0,
+                    TopFeasibleAlternatives: new List<ScheduleCandidateTrace>(),
+                    TopRejectedAlternatives: new List<ScheduleCandidateTrace>()));
+                slotOrderIndex += 1;
+                continue;
+            }
+
+            var forced = new MatchupPair(assigned.HomeTeamId, assigned.AwayTeamId);
+            var traced = TraceForcedMatchupWithTrace(
+                slot.GameDate,
+                slot.SlotId,
+                fixedHome,
+                remainingMatchups,
+                forced,
+                teams,
+                homeCounts,
+                awayCounts,
+                gamesByDate,
+                gamesByWeek,
+                pairCounts,
+                gamesByTeamDates,
+                matchupPriorityByPair,
+                slotDateRange,
+                constraints.MaxGamesPerWeek,
+                constraints.NoDoubleHeaders,
+                constraints.BalanceHomeAway,
+                tieBreakSeed);
+
+            traces.Add(new SchedulePlacementTrace(
+                SlotId: slot.SlotId,
+                GameDate: slot.GameDate,
+                StartTime: slot.StartTime,
+                EndTime: slot.EndTime,
+                FieldKey: slot.FieldKey,
+                SlotOrderIndex: slotOrderIndex,
+                Outcome: "assigned",
+                FixedHomeTeamId: string.IsNullOrWhiteSpace(fixedHome) ? null : fixedHome,
+                SelectedHomeTeamId: assigned.HomeTeamId,
+                SelectedAwayTeamId: assigned.AwayTeamId,
+                SelectedScoreBreakdown: traced.SelectedScoreBreakdown,
+                CandidateCount: traced.CandidateCount,
+                FeasibleCandidateCount: traced.FeasibleCandidateCount,
+                TopFeasibleAlternatives: traced.TopFeasibleAlternatives,
+                TopRejectedAlternatives: traced.TopRejectedAlternatives));
+
+            RemoveRemainingMatchup(remainingMatchups, assigned.HomeTeamId, assigned.AwayTeamId);
+            ApplyCounts(assigned.HomeTeamId, assigned.AwayTeamId, slot.GameDate, homeCounts, awayCounts, gamesByDate, gamesByWeek, pairCounts, gamesByTeamDates);
+            slotOrderIndex += 1;
+        }
+
+        return traces;
+    }
+
     private static MatchupPair? PickMatchup(
         string gameDate,
         string slotId,
@@ -483,6 +604,133 @@ public static class ScheduleEngine
         {
             Pick = best,
             SelectedScoreBreakdown = bestBreakdown,
+            TopFeasibleAlternatives = topFeasible,
+            TopRejectedAlternatives = topRejected,
+            CandidateCount = candidates.Count,
+            FeasibleCandidateCount = feasibleCount
+        };
+    }
+
+    private static MatchupPickTraceResult TraceForcedMatchupWithTrace(
+        string gameDate,
+        string slotId,
+        string fixedHome,
+        List<MatchupPair> remainingMatchups,
+        MatchupPair forcedPick,
+        IReadOnlyList<string> teams,
+        Dictionary<string, int> homeCounts,
+        Dictionary<string, int> awayCounts,
+        Dictionary<string, HashSet<string>> gamesByDate,
+        Dictionary<string, int> gamesByWeek,
+        Dictionary<string, int> pairCounts,
+        Dictionary<string, List<DateTime>> gamesByTeamDates,
+        IReadOnlyDictionary<string, int>? matchupPriorityByPair,
+        SlotDateRange? slotDateRange,
+        int? maxGamesPerWeek,
+        bool noDoubleHeaders,
+        bool balanceHomeAway,
+        int? tieBreakSeed)
+    {
+        MatchupPair? best = null;
+        ScheduleScoreBreakdown? bestBreakdown = null;
+        var bestScore = int.MaxValue;
+        var bestTieBreak = int.MaxValue;
+        var candidates = new List<ScheduleCandidateTrace>(remainingMatchups.Count);
+        var feasibleCount = 0;
+        ScheduleScoreBreakdown? forcedBreakdown = null;
+
+        foreach (var m in remainingMatchups)
+        {
+            var home = m.HomeTeamId;
+            var away = m.AwayTeamId;
+
+            if (!string.IsNullOrWhiteSpace(fixedHome))
+            {
+                if (!string.Equals(home, fixedHome, StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(away, fixedHome, StringComparison.OrdinalIgnoreCase))
+                {
+                    candidates.Add(new ScheduleCandidateTrace(
+                        HomeTeamId: home,
+                        AwayTeamId: away,
+                        Feasible: false,
+                        RejectReason: $"does-not-include-fixed-home:{fixedHome}",
+                        ScoreBreakdown: null));
+                    continue;
+                }
+
+                if (!string.Equals(home, fixedHome, StringComparison.OrdinalIgnoreCase))
+                {
+                    home = fixedHome;
+                    away = m.HomeTeamId;
+                }
+            }
+
+            var rejectReason = GetConstraintRejectReason(home, away, gameDate, gamesByDate, gamesByWeek, maxGamesPerWeek, noDoubleHeaders);
+            if (!string.IsNullOrWhiteSpace(rejectReason))
+            {
+                candidates.Add(new ScheduleCandidateTrace(
+                    HomeTeamId: home,
+                    AwayTeamId: away,
+                    Feasible: false,
+                    RejectReason: rejectReason,
+                    ScoreBreakdown: null));
+                continue;
+            }
+
+            feasibleCount += 1;
+            var breakdown = ScoreCandidateBreakdown(home, away, gameDate, teams, homeCounts, awayCounts, gamesByWeek, pairCounts, gamesByTeamDates, matchupPriorityByPair, slotDateRange, balanceHomeAway);
+            candidates.Add(new ScheduleCandidateTrace(
+                HomeTeamId: home,
+                AwayTeamId: away,
+                Feasible: true,
+                RejectReason: null,
+                ScoreBreakdown: breakdown));
+
+            if (string.Equals(home, forcedPick.HomeTeamId, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(away, forcedPick.AwayTeamId, StringComparison.OrdinalIgnoreCase))
+            {
+                forcedBreakdown = breakdown;
+            }
+
+            var tieBreakValue = tieBreakSeed.HasValue
+                ? ComputeSeededTieBreak(tieBreakSeed.Value, slotId, gameDate, home, away)
+                : int.MaxValue;
+
+            if (breakdown.TotalScore < bestScore)
+            {
+                bestScore = breakdown.TotalScore;
+                bestTieBreak = tieBreakValue;
+                bestBreakdown = breakdown;
+                best = new MatchupPair(home, away);
+            }
+            else if (breakdown.TotalScore == bestScore && tieBreakSeed.HasValue && tieBreakValue < bestTieBreak)
+            {
+                bestTieBreak = tieBreakValue;
+                bestBreakdown = breakdown;
+                best = new MatchupPair(home, away);
+            }
+        }
+
+        var topFeasible = candidates
+            .Where(c => c.Feasible && c.ScoreBreakdown is not null)
+            .OrderBy(c => c.ScoreBreakdown!.TotalScore)
+            .ThenBy(c => c.HomeTeamId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(c => c.AwayTeamId, StringComparer.OrdinalIgnoreCase)
+            .Take(3)
+            .ToList();
+
+        var topRejected = candidates
+            .Where(c => !c.Feasible)
+            .OrderBy(c => c.RejectReason, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(c => c.HomeTeamId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(c => c.AwayTeamId, StringComparer.OrdinalIgnoreCase)
+            .Take(3)
+            .ToList();
+
+        return new MatchupPickTraceResult
+        {
+            Pick = best,
+            SelectedScoreBreakdown = forcedBreakdown ?? bestBreakdown,
             TopFeasibleAlternatives = topFeasible,
             TopRejectedAlternatives = topRejected,
             CandidateCount = candidates.Count,
@@ -969,4 +1217,23 @@ public static class ScheduleEngine
     }
 
     private readonly record struct SlotDateRange(DateTime MinDate, DateTime MaxDate);
+
+    private static void RemoveRemainingMatchup(List<MatchupPair> remainingMatchups, string homeTeamId, string awayTeamId)
+    {
+        if (remainingMatchups.Count == 0) return;
+        var exactIndex = remainingMatchups.FindIndex(m =>
+            string.Equals(m.HomeTeamId, homeTeamId, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(m.AwayTeamId, awayTeamId, StringComparison.OrdinalIgnoreCase));
+        if (exactIndex >= 0)
+        {
+            remainingMatchups.RemoveAt(exactIndex);
+            return;
+        }
+
+        var pairKey = PairKey(homeTeamId, awayTeamId);
+        if (string.IsNullOrWhiteSpace(pairKey)) return;
+        var pairIndex = remainingMatchups.FindIndex(m => string.Equals(PairKey(m.HomeTeamId, m.AwayTeamId), pairKey, StringComparison.OrdinalIgnoreCase));
+        if (pairIndex >= 0)
+            remainingMatchups.RemoveAt(pairIndex);
+    }
 }

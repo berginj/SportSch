@@ -299,4 +299,44 @@ public class ScheduleEngineTests
         Assert.NotNull(lateTrace.SelectedScoreBreakdown);
         Assert.True(earlyTrace.SelectedScoreBreakdown!.WeatherReliabilityPenalty > lateTrace.SelectedScoreBreakdown!.WeatherReliabilityPenalty);
     }
+
+    [Fact]
+    public void ReplayPlacementTracesForSnapshot_UsesForcedSnapshotAssignments()
+    {
+        var teams = new List<string> { "A", "B", "C", "D" };
+        var matchups = new List<MatchupPair>
+        {
+            new("A", "B"),
+            new("C", "D")
+        };
+        var slots = new List<ScheduleSlot>
+        {
+            new("slot-early", "2026-04-05", "10:00", "12:00", "Field-1", ""),
+            new("slot-late", "2026-05-31", "10:00", "12:00", "Field-1", "")
+        };
+        var constraints = new ScheduleConstraints(MaxGamesPerWeek: 1, NoDoubleHeaders: true, BalanceHomeAway: false, ExternalOfferPerWeek: 0);
+
+        // Snapshot intentionally differs from the engine's preferred late-priority placement.
+        var snapshotAssignments = new List<ScheduleAssignment>
+        {
+            new("slot-early", "2026-04-05", "10:00", "12:00", "Field-1", "A", "B", false),
+            new("slot-late", "2026-05-31", "10:00", "12:00", "Field-1", "C", "D", false),
+        };
+
+        var traces = ScheduleEngine.ReplayPlacementTracesForSnapshot(
+            slots,
+            matchups,
+            snapshotAssignments,
+            teams,
+            constraints,
+            matchupPriorityByPair: new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["A|B"] = 5 });
+
+        Assert.Equal(2, traces.Count);
+        var earlyTrace = Assert.Single(traces.FindAll(t => t.SlotId == "slot-early"));
+        Assert.Equal("A", earlyTrace.SelectedHomeTeamId);
+        Assert.Equal("B", earlyTrace.SelectedAwayTeamId);
+        Assert.NotNull(earlyTrace.SelectedScoreBreakdown);
+        Assert.Contains(earlyTrace.TopFeasibleAlternatives, c => c.HomeTeamId == "C" && c.AwayTeamId == "D");
+        Assert.True(earlyTrace.SelectedScoreBreakdown!.LatePriorityPenalty > 0);
+    }
 }

@@ -284,6 +284,18 @@ public class ScheduleWizardFunctions
                 matchupPriorityByPair: BuildRegularSeasonMatchupPriorityMap(previewRegularMatchups, body.wizard.rivalryMatchups));
 
             var updatedPreview = ApplyRepairProposalToPreviewSnapshot(body.preview, body.proposal, teams, validationConfig);
+            var replayExplanations = await TryRecomputePreviewRepairExplanationsAsync(
+                leagueId,
+                body.wizard,
+                updatedPreview,
+                teams,
+                blockedRanges,
+                seed: body.wizard.seed.HasValue ? Math.Abs(body.wizard.seed.Value) : (int?)null,
+                matchupPriorityByPair: BuildRegularSeasonMatchupPriorityMap(previewRegularMatchups, body.wizard.rivalryMatchups));
+            if (replayExplanations is not null)
+            {
+                updatedPreview = updatedPreview with { explanations = replayExplanations };
+            }
 
             try
             {
@@ -817,7 +829,8 @@ public class ScheduleWizardFunctions
     private static Dictionary<string, object> BuildWizardPlacementExplanations(
         PhaseAssignments regularAssignments,
         string normalizedConstructionStrategy,
-        int seed)
+        int seed,
+        string traceSource = "schedule_engine_trace_v1")
     {
         var result = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
         var traces = regularAssignments.PlacementTraces ?? new List<SchedulePlacementTrace>();
@@ -839,7 +852,7 @@ public class ScheduleWizardFunctions
 
             result[key] = new
             {
-                source = "schedule_engine_trace_v1",
+                source = traceSource,
                 phase = "Regular Season",
                 outcome = trace.Outcome,
                 placementRank = trace.SlotOrderIndex + 1,
@@ -887,6 +900,98 @@ public class ScheduleWizardFunctions
         }
 
         return result;
+    }
+
+    private async Task<Dictionary<string, object>?> TryRecomputePreviewRepairExplanationsAsync(
+        string leagueId,
+        WizardRequest wizard,
+        WizardPreviewDto repairedPreview,
+        IReadOnlyList<string> teams,
+        List<BlockedDateRange> blockedRanges,
+        int? seed,
+        IReadOnlyDictionary<string, int>? matchupPriorityByPair)
+    {
+        try
+        {
+            var division = (wizard.division ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(division)) return null;
+
+            var seasonStart = RequireDate(wizard.seasonStart, "seasonStart");
+            var seasonEnd = RequireDate(wizard.seasonEnd, "seasonEnd");
+            var poolStart = OptionalDate(wizard.poolStart);
+            var poolEnd = OptionalDate(wizard.poolEnd);
+            var bracketEnd = OptionalDate(wizard.bracketEnd);
+            var regularRangeEnd = poolStart.HasValue ? poolStart.Value.AddDays(-1) : seasonEnd;
+            if (regularRangeEnd < seasonStart) return null;
+
+            var rawSlots = await LoadAvailabilitySlotsAsync(leagueId, division, seasonStart, bracketEnd ?? seasonEnd);
+            if (rawSlots.Count == 0) return null;
+
+            var slotPlanLookup = BuildSlotPlanLookup(wizard.slotPlan);
+            var hasSlotPlan = wizard.slotPlan is not null && wizard.slotPlan.Count > 0;
+            var allSlots = ApplySlotPlan(rawSlots, slotPlanLookup, hasSlotPlan);
+            var filteredAllSlots = ApplyDateBlackouts(allSlots, blockedRanges);
+            var gameCapableSlots = filteredAllSlots.Where(IsGameCapableSlotType).ToList();
+            var regularSlots = FilterSlots(gameCapableSlots, seasonStart, regularRangeEnd);
+
+            var preferredDays = NormalizePreferredDays(wizard.preferredWeeknights);
+            var strictPreferredWeeknights = wizard.strictPreferredWeeknights ?? false;
+            if (strictPreferredWeeknights && preferredDays.Count > 0)
+            {
+                regularSlots = regularSlots.Where(s => IsPreferredDay(s.gameDate, preferredDays)).ToList();
+            }
+
+            var externalOfferPerWeek = Math.Max(0, wizard.externalOfferPerWeek ?? 0);
+            var guestAnchors = NormalizeGuestAnchors(wizard.guestAnchorPrimary, wizard.guestAnchorSecondary);
+            var anchoredExternalSlots = SelectAnchoredExternalSlots(regularSlots, externalOfferPerWeek, guestAnchors);
+            if (anchoredExternalSlots.Count > 0)
+            {
+                var reservedIds = new HashSet<string>(anchoredExternalSlots.Select(s => s.slotId), StringComparer.OrdinalIgnoreCase);
+                regularSlots = regularSlots.Where(s => !reservedIds.Contains(s.slotId)).ToList();
+            }
+
+            var normalizedStrategy = NormalizeConstructionStrategy(wizard.constructionStrategy);
+            var scheduleBackward = string.Equals(normalizedStrategy, "backward_greedy_v1", StringComparison.OrdinalIgnoreCase);
+            var orderedSlots = OrderSlotsByPreference(regularSlots, preferredDays, scheduleBackward);
+
+            var regularAssignments = (repairedPreview.assignments ?? new List<WizardSlotDto>())
+                .Where(a => string.Equals(a.phase, "Regular Season", StringComparison.OrdinalIgnoreCase))
+                .Select(ToScheduleAssignment)
+                .ToList();
+            var regularMatchups = BuildRepeatedMatchups(teams, Math.Max(0, wizard.minGamesPerTeam ?? 0));
+            var constraints = new ScheduleConstraints(
+                MaxGamesPerWeek: (wizard.maxGamesPerWeek ?? 0) <= 0 ? null : wizard.maxGamesPerWeek,
+                NoDoubleHeaders: wizard.noDoubleHeaders ?? true,
+                BalanceHomeAway: wizard.balanceHomeAway ?? true,
+                ExternalOfferPerWeek: 0);
+            var resolvedSeed = seed ?? StableWizardSeed(division, seasonStart, seasonEnd);
+
+            var replayTraces = ScheduleEngine.ReplayPlacementTracesForSnapshot(
+                orderedSlots,
+                regularMatchups,
+                regularAssignments,
+                teams,
+                constraints,
+                tieBreakSeed: resolvedSeed,
+                matchupPriorityByPair: matchupPriorityByPair);
+
+            var replayPhase = new PhaseAssignments(
+                Assignments: regularAssignments,
+                UnassignedSlots: new List<ScheduleAssignment>(),
+                UnassignedMatchups: new List<MatchupPair>(),
+                PlacementTraces: replayTraces);
+
+            return BuildWizardPlacementExplanations(
+                replayPhase,
+                normalizedStrategy,
+                resolvedSeed,
+                traceSource: "schedule_engine_replay_trace_v1");
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed to recompute replay traces for wizard preview repair");
+            return null;
+        }
     }
 
     private static object? ToExplainScoreBreakdown(ScheduleScoreBreakdown? score)
