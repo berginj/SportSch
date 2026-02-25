@@ -314,6 +314,104 @@ function parseMinutes(raw) {
   return h * 60 + m;
 }
 
+function normalizeClockInput(raw) {
+  const minutes = parseMinutes(raw);
+  if (minutes == null || minutes < 0 || minutes >= 24 * 60) return "";
+  const h = String(Math.floor(minutes / 60)).padStart(2, "0");
+  const m = String(minutes % 60).padStart(2, "0");
+  return `${h}:${m}`;
+}
+
+function parseNoGamesDateText(raw) {
+  const values = String(raw || "")
+    .split(/[\s,;]+/)
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  const unique = [];
+  const seen = new Set();
+  const invalid = [];
+  values.forEach((value) => {
+    if (!isIsoDate(value)) {
+      invalid.push(value);
+      return;
+    }
+    if (seen.has(value)) return;
+    seen.add(value);
+    unique.push(value);
+  });
+  unique.sort((a, b) => a.localeCompare(b));
+  return { values: unique, invalid };
+}
+
+function isEngineTraceSource(source) {
+  const value = String(source || "").trim().toLowerCase();
+  return value === "schedule_engine_trace_v1" || value === "schedule_engine_replay_trace_v1";
+}
+
+function buildPreviewSwapRepairProposal(sourceAssignment, targetAssignment) {
+  const source = sourceAssignment || {};
+  const target = targetAssignment || {};
+  const sourceSlotId = String(source.slotId || "").trim();
+  const targetSlotId = String(target.slotId || "").trim();
+  if (!sourceSlotId || !targetSlotId || sourceSlotId === targetSlotId) return null;
+
+  const sourceGame = {
+    slotId: sourceSlotId,
+    gameDate: String(source.gameDate || "").trim(),
+    startTime: String(source.startTime || "").trim(),
+    endTime: String(source.endTime || "").trim(),
+    fieldKey: String(source.fieldKey || "").trim(),
+    homeTeamId: String(source.homeTeamId || "").trim(),
+    awayTeamId: String(source.awayTeamId || "").trim(),
+  };
+  const targetGame = {
+    slotId: targetSlotId,
+    gameDate: String(target.gameDate || "").trim(),
+    startTime: String(target.startTime || "").trim(),
+    endTime: String(target.endTime || "").trim(),
+    fieldKey: String(target.fieldKey || "").trim(),
+    homeTeamId: String(target.homeTeamId || "").trim(),
+    awayTeamId: String(target.awayTeamId || "").trim(),
+  };
+  if (!sourceGame.homeTeamId || !sourceGame.awayTeamId || !targetGame.homeTeamId || !targetGame.awayTeamId) return null;
+
+  return {
+    proposalId: `drag-swap-${sourceSlotId}-${targetSlotId}`,
+    title: "Drag-and-drop swap (preview)",
+    rationale: "Swap two regular-season games and revalidate the preview.",
+    fixesRuleIds: [],
+    requiresUserAction: false,
+    changes: [
+      {
+        changeType: "move",
+        fromSlotId: sourceSlotId,
+        toSlotId: targetSlotId,
+        before: sourceGame,
+        after: {
+          ...targetGame,
+          homeTeamId: sourceGame.homeTeamId,
+          awayTeamId: sourceGame.awayTeamId,
+        },
+      },
+      {
+        changeType: "move",
+        fromSlotId: targetSlotId,
+        toSlotId: sourceSlotId,
+        before: targetGame,
+        after: {
+          ...sourceGame,
+          homeTeamId: targetGame.homeTeamId,
+          awayTeamId: targetGame.awayTeamId,
+        },
+      },
+    ],
+    beforeAfterSummary: {
+      repairMoveType: "swap",
+      source: "wizard_drag_drop_preview_v1",
+    },
+  };
+}
+
 function readObjectString(obj, key) {
   if (!obj || typeof obj !== "object") return "";
   const value = obj[key];
@@ -710,10 +808,14 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [preferredWeeknights, setPreferredWeeknights] = useState([]);
   const [strictPreferredWeeknights, setStrictPreferredWeeknights] = useState(false);
   const [guestGamesPerWeek, setGuestGamesPerWeek] = useState(0);
+  const [maxExternalOffersPerTeamSeason, setMaxExternalOffersPerTeamSeason] = useState(0);
   const [blockSpringBreak, setBlockSpringBreak] = useState(false);
   const [maxGamesPerWeek, setMaxGamesPerWeek] = useState(2);
   const [noDoubleHeaders, setNoDoubleHeaders] = useState(true);
   const [balanceHomeAway, setBalanceHomeAway] = useState(true);
+  const [noGamesOnDatesText, setNoGamesOnDatesText] = useState("");
+  const [noGamesBeforeTime, setNoGamesBeforeTime] = useState("");
+  const [noGamesAfterTime, setNoGamesAfterTime] = useState("");
   const [teamCount, setTeamCount] = useState(0);
   const [divisionTeams, setDivisionTeams] = useState([]);
   const [rivalryMatchups, setRivalryMatchups] = useState([]);
@@ -725,6 +827,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [selectedRepairProposalId, setSelectedRepairProposalId] = useState("");
   const [selectedRuleFocusKey, setSelectedRuleFocusKey] = useState("");
   const [selectedExplainGameKey, setSelectedExplainGameKey] = useState("");
+  const [dragSwapSourceKey, setDragSwapSourceKey] = useState("");
+  const [dragSwapTargetKey, setDragSwapTargetKey] = useState("");
   const [err, setErr] = useState("");
   const [toast, setToast] = useState(null);
   const [slotPlan, setSlotPlan] = useState([]);
@@ -833,6 +937,34 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     [rivalryMatchups]
   );
 
+  const parsedNoGamesOnDates = useMemo(
+    () => parseNoGamesDateText(noGamesOnDatesText),
+    [noGamesOnDatesText]
+  );
+
+  const leagueRuleIssues = useMemo(() => {
+    const issues = [];
+    if (parsedNoGamesOnDates.invalid.length) {
+      issues.push(`No-games dates must be YYYY-MM-DD. Invalid: ${parsedNoGamesOnDates.invalid.slice(0, 4).join(", ")}${parsedNoGamesOnDates.invalid.length > 4 ? "..." : ""}`);
+    }
+    const before = noGamesBeforeTime ? normalizeClockInput(noGamesBeforeTime) : "";
+    const after = noGamesAfterTime ? normalizeClockInput(noGamesAfterTime) : "";
+    if (noGamesBeforeTime && !before) {
+      issues.push("No games before time must use HH:MM.");
+    }
+    if (noGamesAfterTime && !after) {
+      issues.push("No games after time must use HH:MM.");
+    }
+    if (before && after) {
+      const beforeMin = parseMinutes(before);
+      const afterMin = parseMinutes(after);
+      if (beforeMin != null && afterMin != null && beforeMin >= afterMin) {
+        issues.push("No games before time must be earlier than no games after time.");
+      }
+    }
+    return issues;
+  }, [parsedNoGamesOnDates, noGamesBeforeTime, noGamesAfterTime]);
+
   const activeBlockedRanges = useMemo(
     () => (blockSpringBreak && springBreakRange ? [springBreakRange] : []),
     [blockSpringBreak, springBreakRange]
@@ -924,9 +1056,22 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     const hasBracketRange = isIsoDate(bracketStart) && isIsoDate(bracketEnd) && bracketStart <= bracketEnd;
     const regularRangeEnd = hasPoolRange ? addIsoDays(poolStart, -1) : seasonEnd;
     const hasRegularRange = hasSeasonRange && isIsoDate(regularRangeEnd) && seasonStart <= regularRangeEnd;
+    const blockedDateSet = new Set(parsedNoGamesOnDates.values);
+    const noGamesBeforeMin = normalizeClockInput(noGamesBeforeTime) ? parseMinutes(normalizeClockInput(noGamesBeforeTime)) : null;
+    const noGamesAfterMin = normalizeClockInput(noGamesAfterTime) ? parseMinutes(normalizeClockInput(noGamesAfterTime)) : null;
 
     const isBlocked = (gameDate) =>
       activeBlockedRanges.some((range) => isIsoDateInRange(gameDate, range.startDate, range.endDate));
+
+    const violatesLeagueRuleWindow = (slot) => {
+      if (!slot) return false;
+      if (blockedDateSet.has(String(slot.gameDate || "").trim())) return true;
+      const startMin = parseMinutes(slot.startTime);
+      const endMin = parseMinutes(slot.endTime);
+      if (noGamesBeforeMin != null && startMin != null && startMin < noGamesBeforeMin) return true;
+      if (noGamesAfterMin != null && endMin != null && endMin > noGamesAfterMin) return true;
+      return false;
+    };
 
     const datedSlots = (slotPlan || []).filter((slot) => isIsoDate(slot?.gameDate));
     const gameOnlySlots = datedSlots.filter((slot) => slot?.slotType === "game");
@@ -934,9 +1079,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     const practiceOnlySlots = datedSlots.filter((slot) => slot?.slotType === "practice");
 
     const gameCapableSlots = [...gameOnlySlots, ...bothSlots];
-    const availableAllSlots = datedSlots.filter((slot) => !isBlocked(slot.gameDate));
-    const availableGameCapableSlots = gameCapableSlots.filter((slot) => !isBlocked(slot.gameDate));
-    const practiceSlotsAvailable = practiceOnlySlots.filter((slot) => !isBlocked(slot.gameDate));
+    const availableAllSlots = datedSlots.filter((slot) => !isBlocked(slot.gameDate) && !violatesLeagueRuleWindow(slot));
+    const availableGameCapableSlots = gameCapableSlots.filter((slot) => !isBlocked(slot.gameDate) && !violatesLeagueRuleWindow(slot));
+    const practiceSlotsAvailable = practiceOnlySlots.filter((slot) => !isBlocked(slot.gameDate) && !violatesLeagueRuleWindow(slot));
     const blockedOutSlots = Math.max(0, datedSlots.length - availableAllSlots.length);
 
     const regularGameSlots = hasRegularRange
@@ -1036,6 +1181,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     bracketStart,
     maxGamesPerWeek,
     minGamesPerTeam,
+    noGamesAfterTime,
+    noGamesBeforeTime,
+    parsedNoGamesOnDates,
     poolEnd,
     poolGamesPerTeam,
     poolStart,
@@ -1541,6 +1689,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       };
     });
     const blockedDateRanges = activeBlockedRanges;
+    const noGamesOnDates = parsedNoGamesOnDates.values;
+    const normalizedNoGamesBeforeTime = normalizeClockInput(noGamesBeforeTime);
+    const normalizedNoGamesAfterTime = normalizeClockInput(noGamesAfterTime);
 
     const payload = {
       division,
@@ -1555,12 +1706,16 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       preferredWeeknights: preferredWeeknights.slice(0, MAX_PREFERRED_WEEKNIGHTS),
       strictPreferredWeeknights,
       externalOfferPerWeek: Number(guestGamesPerWeek) || 0,
+      maxExternalOffersPerTeamSeason: Number(maxExternalOffersPerTeamSeason) || 0,
       maxGamesPerWeek: Number(maxGamesPerWeek) || 0,
       noDoubleHeaders,
       balanceHomeAway,
       slotPlan: slotPlanPayload,
     };
     if (blockedDateRanges.length) payload.blockedDateRanges = blockedDateRanges;
+    if (noGamesOnDates.length) payload.noGamesOnDates = noGamesOnDates;
+    if (normalizedNoGamesBeforeTime) payload.noGamesBeforeTime = normalizedNoGamesBeforeTime;
+    if (normalizedNoGamesAfterTime) payload.noGamesAfterTime = normalizedNoGamesAfterTime;
     if (rivalryPayload.length) payload.rivalryMatchups = rivalryPayload;
 
     const primaryAnchor = guestAnchorPayloadFromSlotId(guestAnchorPrimarySlotId);
@@ -1612,6 +1767,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     if (rivalryRowIssues.length > 0) {
       return setErr(rivalryRowIssues[0]);
     }
+    if (leagueRuleIssues.length > 0) {
+      return setErr(leagueRuleIssues[0]);
+    }
     setLoading(true);
     try {
       const payload = buildWizardPayload();
@@ -1651,6 +1809,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     }
     if (rivalryRowIssues.length > 0) {
       return setErr(rivalryRowIssues[0]);
+    }
+    if (leagueRuleIssues.length > 0) {
+      return setErr(leagueRuleIssues[0]);
     }
     setLoading(true);
     try {
@@ -1694,6 +1855,63 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       setErr(e?.message || "Failed to apply preview repair.");
     } finally {
       setRepairApplyingId("");
+    }
+  }
+
+  function canDragSwapAssignment(assignment) {
+    if (!assignment || repairApplyingId) return false;
+    if (String(assignment.phase || "") !== "Regular Season") return false;
+    if (assignment.isExternalOffer) return false;
+    if (!String(assignment.slotId || "").trim()) return false;
+    if (!String(assignment.homeTeamId || "").trim() || !String(assignment.awayTeamId || "").trim()) return false;
+    return true;
+  }
+
+  function clearAssignmentDragSwap() {
+    setDragSwapSourceKey("");
+    setDragSwapTargetKey("");
+  }
+
+  function handleAssignmentDragStart(event, assignment) {
+    if (!canDragSwapAssignment(assignment)) return;
+    if (event?.dataTransfer) {
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", assignmentExplainKey(assignment));
+    }
+    setDragSwapSourceKey(assignmentExplainKey(assignment));
+    setDragSwapTargetKey("");
+  }
+
+  function handleAssignmentDragOver(event, assignment) {
+    if (!canDragSwapAssignment(assignment) || !dragSwapSourceKey) return;
+    const targetKey = assignmentExplainKey(assignment);
+    if (targetKey === dragSwapSourceKey) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDragSwapTargetKey(targetKey);
+  }
+
+  async function handleAssignmentDrop(event, targetAssignment) {
+    event.preventDefault();
+    try {
+      if (!preview || !dragSwapSourceKey) return;
+      if (!canDragSwapAssignment(targetAssignment)) return;
+      const targetKey = assignmentExplainKey(targetAssignment);
+      if (!targetKey || targetKey === dragSwapSourceKey) return;
+
+      const sourceAssignment = (preview.assignments || []).find((row) => assignmentExplainKey(row) === dragSwapSourceKey);
+      if (!canDragSwapAssignment(sourceAssignment)) {
+        setErr("Drag source is no longer valid. Reload preview.");
+        return;
+      }
+      const proposal = buildPreviewSwapRepairProposal(sourceAssignment, targetAssignment);
+      if (!proposal) {
+        setErr("Only regular-season assigned games can be swapped.");
+        return;
+      }
+      await applyPreviewRepairProposal(proposal);
+    } finally {
+      clearAssignmentDragSwap();
     }
   }
 
@@ -1833,12 +2051,15 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     const minGames = Number(minGamesPerTeam);
     const poolGames = Number(poolGamesPerTeam);
     const guestGames = Number(guestGamesPerWeek);
+    const externalCap = Number(maxExternalOffersPerTeamSeason);
     if (!Number.isFinite(maxGames) || maxGames < 0) return "Max games/week must be 0 or greater.";
     if (!Number.isFinite(minGames) || minGames < 0) return "Min games/team must be 0 or greater.";
     if (!Number.isFinite(poolGames) || poolGames < 2) return "Pool games/team must be 2 or greater.";
     if (!Number.isFinite(guestGames) || guestGames < 0) return "Guest games/week must be 0 or greater.";
+    if (!Number.isFinite(externalCap) || externalCap < 0) return "Max guest/crossover offers per team must be 0 or greater.";
+    if (leagueRuleIssues.length > 0) return leagueRuleIssues[0];
     return "";
-  }, [maxGamesPerWeek, minGamesPerTeam, poolGamesPerTeam, guestGamesPerWeek]);
+  }, [maxGamesPerWeek, minGamesPerTeam, poolGamesPerTeam, guestGamesPerWeek, maxExternalOffersPerTeamSeason, leagueRuleIssues]);
 
   const previewError = useMemo(() => {
     if (!preview) return "";
@@ -1858,6 +2079,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       setSelectedExplainGameKey("");
       setSelectedRepairProposalId("");
       setSelectedRuleFocusKey("");
+      clearAssignmentDragSwap();
       return;
     }
     const keys = new Set(
@@ -1867,7 +2089,10 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     if (!keys.has(selectedExplainGameKey)) {
       setSelectedExplainGameKey("");
     }
-  }, [preview, selectedExplainGameKey]);
+    if (dragSwapSourceKey && !keys.has(dragSwapSourceKey)) {
+      clearAssignmentDragSwap();
+    }
+  }, [preview, selectedExplainGameKey, dragSwapSourceKey]);
 
   useEffect(() => {
     if (!previewRepairProposals.length) {
@@ -2860,7 +3085,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     const awayWeek = buildTeamWeekSummary(selectedAwayTeamId);
 
     const scoringFactors = [];
-    if (backendExplanation?.source === "schedule_engine_trace_v1") {
+    if (isEngineTraceSource(backendExplanation?.source)) {
       scoringFactors.push({
         key: "scheduler-trace",
         label: "Scheduler score trace",
@@ -3237,7 +3462,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     }
 
     return checks;
-  }, [preview, maxGamesPerWeek, noDoubleHeaders, guestGamesPerWeek, unassignedRegularReport]);
+  }, [preview, maxGamesPerWeek, noDoubleHeaders, guestGamesPerWeek, unassignedRegularReport, parsedNoGamesOnDates, noGamesBeforeTime, noGamesAfterTime, activeBlockedRanges, seasonStart, seasonEnd, poolStart, poolEnd, bracketStart, bracketEnd, slotPlan, teamCount, minGamesPerTeam, poolGamesPerTeam, preferredWeeknights]);
 
   const stepStatuses = useMemo(() => {
     const errors = [basicsError, postseasonError, slotPlanError, rulesError, previewError];
@@ -3731,6 +3956,18 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
               ) : null}
             </label>
             <label>
+              Max guest/crossover offers per team (season)
+              <input
+                type="number"
+                min="0"
+                value={maxExternalOffersPerTeamSeason}
+                onChange={(e) => setMaxExternalOffersPerTeamSeason(e.target.value)}
+              />
+              <div className="subtle text-sm mt-1">
+                0 = no cap. Hard rule for external/guest offers in regular season.
+              </div>
+            </label>
+            <label>
               Max games per team per week
               <input
                 type="number"
@@ -3762,6 +3999,50 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                   Slots in this range will be excluded from schedule preview and apply.
                 </div>
               ) : null}
+            </div>
+            <div className="stack gap-2">
+              <div className="font-bold" style={{ fontSize: "0.95rem" }}>League-specific hard stops</div>
+              <label>
+                No games on specific dates (YYYY-MM-DD, comma or newline separated)
+                <textarea
+                  rows={3}
+                  value={noGamesOnDatesText}
+                  onChange={(e) => setNoGamesOnDatesText(e.target.value)}
+                  placeholder={"2026-05-24\n2026-05-31"}
+                />
+                <div className="subtle text-sm mt-1">
+                  {parsedNoGamesOnDates.values.length} valid date(s) configured.
+                </div>
+              </label>
+              <div className="grid2">
+                <label>
+                  No games before (HH:MM)
+                  <input
+                    type="time"
+                    value={normalizeClockInput(noGamesBeforeTime) || noGamesBeforeTime}
+                    onChange={(e) => setNoGamesBeforeTime(e.target.value)}
+                  />
+                </label>
+                <label>
+                  No games after (HH:MM)
+                  <input
+                    type="time"
+                    value={normalizeClockInput(noGamesAfterTime) || noGamesAfterTime}
+                    onChange={(e) => setNoGamesAfterTime(e.target.value)}
+                  />
+                </label>
+              </div>
+              {leagueRuleIssues.length ? (
+                <div className="callout callout--warning">
+                  {leagueRuleIssues.slice(0, 2).map((issue, idx) => (
+                    <div key={`league-rule-issue-${idx}`} className="subtle">{issue}</div>
+                  ))}
+                </div>
+              ) : (
+                <div className="subtle text-sm">
+                  These rules are enforced as hard stops in Preview/Apply and filter slots before construction.
+                </div>
+              )}
             </div>
             <div className="stack gap-2">
               <div className="muted text-sm">Preferred weeknights (pick up to three; other nights can still be used)</div>
@@ -4923,7 +5204,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                   <div className="subtle">All regular-season matchups were assigned.</div>
                 )}
               </div>
-
+                <div className="subtle mt-2">
+                  Tip: drag one <b>Regular Season</b> game row onto another to try a preview-only swap. The drop is revalidated immediately and illegal swaps are rejected.
+                </div>
                 <div className={`tableWrap ${tableView === "B" ? "tableWrap--sticky" : ""}`}>
                   <table className={`table ${tableView === "B" ? "table--compact table--sticky" : ""}`}>
                     <thead>
@@ -4943,12 +5226,26 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                         const rowKey = assignmentExplainKey(a);
                         const isSelected = selectedGameExplain && assignmentExplainKey(selectedGameExplain.selected) === rowKey;
                         const isRepairHighlighted = isAssignmentHighlightedByRepair(a);
+                        const isDragEligible = canDragSwapAssignment(a);
+                        const isDragSource = dragSwapSourceKey === rowKey;
+                        const isDragTarget = dragSwapTargetKey === rowKey && dragSwapSourceKey && dragSwapSourceKey !== rowKey;
+                        const rowStyle = isSelected
+                          ? { backgroundColor: "#ecfeff", outline: "1px solid #99f6e4" }
+                          : (isDragSource
+                            ? { backgroundColor: "#dbeafe", outline: "1px dashed #2563eb" }
+                            : (isDragTarget
+                              ? { backgroundColor: "#ede9fe", outline: "1px dashed #7c3aed" }
+                              : (isRepairHighlighted ? { backgroundColor: "#fffbeb" } : undefined)));
                         return (
                           <tr
                             key={rowKey}
-                            style={isSelected
-                              ? { backgroundColor: "#ecfeff", outline: "1px solid #99f6e4" }
-                              : (isRepairHighlighted ? { backgroundColor: "#fffbeb" } : undefined)}
+                            style={rowStyle}
+                            draggable={isDragEligible}
+                            onDragStart={(event) => handleAssignmentDragStart(event, a)}
+                            onDragOver={(event) => handleAssignmentDragOver(event, a)}
+                            onDrop={(event) => handleAssignmentDrop(event, a)}
+                            onDragEnd={clearAssignmentDragSwap}
+                            title={isDragEligible ? "Drag onto another regular-season game to preview a swap." : ""}
                           >
                             <td>{a.phase}</td>
                             <td>{isoDayShort(a.gameDate) || "-"}</td>
@@ -5088,7 +5385,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                           )}
                         </div>
                       </div>
-                      {selectedGameExplain.backendExplanation?.source === "schedule_engine_trace_v1" ? (
+                      {isEngineTraceSource(selectedGameExplain.backendExplanation?.source) ? (
                         <div className="callout mt-2">
                           <div className="font-bold mb-1">Scheduler trace details (engine)</div>
                           <div className="subtle mb-2">
