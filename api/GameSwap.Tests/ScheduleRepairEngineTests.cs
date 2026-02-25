@@ -121,6 +121,44 @@ public class ScheduleRepairEngineTests
         Assert.Equal(1, Convert.ToInt32(laterRaw));
     }
 
+    [Fact]
+    public void Propose_ReturnsThreeGameRotationProposal_ForDoubleHeaderRepair()
+    {
+        var assignments = new List<ScheduleAssignment>
+        {
+            A("slot-1", "2026-04-12", "09:00", "10:30", "Field-1", "A", "B"), // source to move off date
+            A("slot-a2", "2026-04-12", "11:00", "12:30", "Field-2", "A", "J"), // causes A double-header
+            A("slot-2", "2026-04-19", "09:00", "10:30", "Field-1", "C", "D"), // second rotation leg
+            A("slot-3", "2026-04-26", "09:00", "10:30", "Field-1", "E", "F"), // third rotation leg
+            A("slot-c1", "2026-04-12", "13:00", "14:30", "Field-3", "C", "H"), // blocks some direct swaps
+            A("slot-b1", "2026-04-26", "13:00", "14:30", "Field-3", "B", "I"),
+        };
+        var result = BuildResult(assignments, new List<ScheduleAssignment>(), new List<MatchupPair>());
+        var config = new ScheduleValidationV2Config(MaxGamesPerWeek: 2, NoDoubleHeaders: true, BalanceHomeAway: false);
+        var baseline = ScheduleValidationV2.Validate(result, config, new[] { "A", "B", "C", "D", "E", "F", "H", "I", "J" }).RuleHealth;
+
+        Assert.Contains(baseline.Groups, g => g.RuleId == "double-header" && g.Severity == "hard");
+
+        var proposals = ScheduleRepairEngine.Propose(
+            result,
+            baseline,
+            config,
+            new[] { "A", "B", "C", "D", "E", "F", "H", "I", "J" },
+            maxProposals: 200);
+
+        var rotation = proposals.FirstOrDefault(p =>
+            !p.RequiresUserAction &&
+            p.GamesMoved == 3 &&
+            p.Changes.Count == 3 &&
+            p.Changes.All(c => c.ChangeType == "move") &&
+            p.BeforeAfterSummary.TryGetValue("repairMoveType", out var kind) &&
+            string.Equals(Convert.ToString(kind), "rotate3", StringComparison.OrdinalIgnoreCase));
+
+        Assert.NotNull(rotation);
+        Assert.Contains(rotation!.FixesRuleIds, r => r == "double-header");
+        Assert.True(rotation.HardViolationsResolved >= 1);
+    }
+
     private static ScheduleAssignment A(string slotId, string date, string start, string end, string field, string home, string away)
         => new(slotId, date, start, end, field, home, away, false);
 

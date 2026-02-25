@@ -55,6 +55,7 @@ public static class ScheduleRepairEngine
         {
             proposals.AddRange(GenerateMoveProposalsForGroup(result, ruleHealth, group, validationConfig, teams, assignmentsBySlot, unusedSlots));
             proposals.AddRange(GenerateSwapProposalsForGroup(result, ruleHealth, group, validationConfig, teams));
+            proposals.AddRange(GenerateRotationProposalsForGroup(result, ruleHealth, group, validationConfig, teams));
             proposals.AddRange(GenerateSuggestionProposalsForGroup(result, ruleHealth, group, validationConfig, unusedSlots));
         }
 
@@ -146,6 +147,55 @@ public static class ScheduleRepairEngine
                 var proposal = TryBuildSwapProposal(result, baseline, group, validationConfig, teams, source, candidate);
                 if (proposal is not null)
                     yield return proposal;
+            }
+        }
+    }
+
+    private static IEnumerable<ScheduleRepairProposal> GenerateRotationProposalsForGroup(
+        ScheduleResult result,
+        ScheduleRuleHealthReport baseline,
+        ScheduleRuleGroupReport group,
+        ScheduleValidationV2Config validationConfig,
+        IReadOnlyList<string> teams)
+    {
+        var assignmentsBySlot = result.Assignments
+            .Where(a => !string.IsNullOrWhiteSpace(a.SlotId))
+            .GroupBy(a => a.SlotId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+        var sourceAssignments = GetSourceAssignmentsForGroup(result.Assignments, group, assignmentsBySlot)
+            .Take(3)
+            .ToList();
+        if (sourceAssignments.Count == 0) yield break;
+
+        var allAssignments = result.Assignments
+            .Where(a => !string.IsNullOrWhiteSpace(a.SlotId))
+            .OrderBy(a => a.GameDate, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(a => a.StartTime, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(a => a.FieldKey, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        foreach (var first in sourceAssignments)
+        {
+            var secondCandidates = RankSwapCandidates(first, allAssignments, validationConfig)
+                .Where(a => !string.Equals(a.SlotId, first.SlotId, StringComparison.OrdinalIgnoreCase))
+                .Take(10)
+                .ToList();
+
+            foreach (var second in secondCandidates)
+            {
+                var thirdCandidates = RankSwapCandidates(second, allAssignments, validationConfig)
+                    .Where(a => !string.Equals(a.SlotId, first.SlotId, StringComparison.OrdinalIgnoreCase))
+                    .Where(a => !string.Equals(a.SlotId, second.SlotId, StringComparison.OrdinalIgnoreCase))
+                    .Take(10)
+                    .ToList();
+
+                foreach (var third in thirdCandidates)
+                {
+                    var proposal = TryBuildThreeGameRotationProposal(result, baseline, group, validationConfig, teams, first, second, third);
+                    if (proposal is not null)
+                        yield return proposal;
+                }
             }
         }
     }
@@ -355,6 +405,147 @@ public static class ScheduleRepairEngine
                 ["afterSoftScore"] = after.SoftScore,
                 ["targetRuleBefore"] = beforeGroupCount,
                 ["targetRuleAfter"] = afterGroupCount
+            });
+    }
+
+    private static ScheduleRepairProposal? TryBuildThreeGameRotationProposal(
+        ScheduleResult result,
+        ScheduleRuleHealthReport baseline,
+        ScheduleRuleGroupReport targetGroup,
+        ScheduleValidationV2Config validationConfig,
+        IReadOnlyList<string> teams,
+        ScheduleAssignment first,
+        ScheduleAssignment second,
+        ScheduleAssignment third)
+    {
+        if (string.Equals(first.SlotId, second.SlotId, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(first.SlotId, third.SlotId, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(second.SlotId, third.SlotId, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var rotatedAssignments = new List<ScheduleAssignment>(result.Assignments.Count);
+        foreach (var a in result.Assignments)
+        {
+            if (string.Equals(a.SlotId, first.SlotId, StringComparison.OrdinalIgnoreCase))
+            {
+                rotatedAssignments.Add(a with
+                {
+                    SlotId = second.SlotId,
+                    GameDate = second.GameDate,
+                    StartTime = second.StartTime,
+                    EndTime = second.EndTime,
+                    FieldKey = second.FieldKey
+                });
+            }
+            else if (string.Equals(a.SlotId, second.SlotId, StringComparison.OrdinalIgnoreCase))
+            {
+                rotatedAssignments.Add(a with
+                {
+                    SlotId = third.SlotId,
+                    GameDate = third.GameDate,
+                    StartTime = third.StartTime,
+                    EndTime = third.EndTime,
+                    FieldKey = third.FieldKey
+                });
+            }
+            else if (string.Equals(a.SlotId, third.SlotId, StringComparison.OrdinalIgnoreCase))
+            {
+                rotatedAssignments.Add(a with
+                {
+                    SlotId = first.SlotId,
+                    GameDate = first.GameDate,
+                    StartTime = first.StartTime,
+                    EndTime = first.EndTime,
+                    FieldKey = first.FieldKey
+                });
+            }
+            else
+            {
+                rotatedAssignments.Add(a);
+            }
+        }
+
+        var rotatedResult = new ScheduleResult(
+            result.Summary,
+            rotatedAssignments,
+            new List<ScheduleAssignment>(result.UnassignedSlots),
+            new List<MatchupPair>(result.UnassignedMatchups));
+        var after = ScheduleValidationV2.Validate(rotatedResult, validationConfig, teams).RuleHealth;
+        if (after.HardViolationCount >= baseline.HardViolationCount) return null;
+
+        var beforeGroupCount = targetGroup.Count;
+        var afterGroup = after.Groups.FirstOrDefault(g =>
+            string.Equals(g.RuleId, targetGroup.RuleId, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(g.Severity, targetGroup.Severity, StringComparison.OrdinalIgnoreCase));
+        var afterGroupCount = afterGroup?.Count ?? 0;
+        if (afterGroupCount >= beforeGroupCount && after.HardViolationCount >= baseline.HardViolationCount)
+            return null;
+
+        var teamIdsTouched = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        AddTeams(teamIdsTouched, first);
+        AddTeams(teamIdsTouched, second);
+        AddTeams(teamIdsTouched, third);
+        var weekKeysTouched = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        AddWeek(weekKeysTouched, first.GameDate);
+        AddWeek(weekKeysTouched, second.GameDate);
+        AddWeek(weekKeysTouched, third.GameDate);
+        var hardResolved = Math.Max(0, baseline.HardViolationCount - after.HardViolationCount);
+
+        var rotationPairs = new[]
+        {
+            $"{first.SlotId}->{second.SlotId}",
+            $"{second.SlotId}->{third.SlotId}",
+            $"{third.SlotId}->{first.SlotId}"
+        };
+        Array.Sort(rotationPairs, StringComparer.OrdinalIgnoreCase);
+        var proposalId = $"rotate3:{targetGroup.RuleId}:{string.Join(",", rotationPairs)}";
+
+        return new ScheduleRepairProposal(
+            ProposalId: proposalId,
+            Title: $"Rotate 3 games across slots to reduce {targetGroup.RuleId}",
+            Rationale: $"Rotates three games in a minimal cycle to reduce hard rule violations ({targetGroup.RuleId}) when single moves or swaps are not enough.",
+            FixesRuleIds: new[] { targetGroup.RuleId },
+            Changes: new[]
+            {
+                new ScheduleDiffChange(
+                    ChangeType: "move",
+                    GameId: BuildGameId(first),
+                    FromSlotId: first.SlotId,
+                    ToSlotId: second.SlotId,
+                    Before: new { slotId = first.SlotId, gameDate = first.GameDate, startTime = first.StartTime, endTime = first.EndTime, fieldKey = first.FieldKey, homeTeamId = first.HomeTeamId, awayTeamId = first.AwayTeamId },
+                    After: new { slotId = second.SlotId, gameDate = second.GameDate, startTime = second.StartTime, endTime = second.EndTime, fieldKey = second.FieldKey, homeTeamId = first.HomeTeamId, awayTeamId = first.AwayTeamId }),
+                new ScheduleDiffChange(
+                    ChangeType: "move",
+                    GameId: BuildGameId(second),
+                    FromSlotId: second.SlotId,
+                    ToSlotId: third.SlotId,
+                    Before: new { slotId = second.SlotId, gameDate = second.GameDate, startTime = second.StartTime, endTime = second.EndTime, fieldKey = second.FieldKey, homeTeamId = second.HomeTeamId, awayTeamId = second.AwayTeamId },
+                    After: new { slotId = third.SlotId, gameDate = third.GameDate, startTime = third.StartTime, endTime = third.EndTime, fieldKey = third.FieldKey, homeTeamId = second.HomeTeamId, awayTeamId = second.AwayTeamId }),
+                new ScheduleDiffChange(
+                    ChangeType: "move",
+                    GameId: BuildGameId(third),
+                    FromSlotId: third.SlotId,
+                    ToSlotId: first.SlotId,
+                    Before: new { slotId = third.SlotId, gameDate = third.GameDate, startTime = third.StartTime, endTime = third.EndTime, fieldKey = third.FieldKey, homeTeamId = third.HomeTeamId, awayTeamId = third.AwayTeamId },
+                    After: new { slotId = first.SlotId, gameDate = first.GameDate, startTime = first.StartTime, endTime = first.EndTime, fieldKey = first.FieldKey, homeTeamId = third.HomeTeamId, awayTeamId = third.AwayTeamId })
+            },
+            GamesMoved: 3,
+            TeamsTouched: teamIdsTouched.Count,
+            WeeksTouched: weekKeysTouched.Count,
+            HardViolationsResolved: hardResolved,
+            HardViolationsRemaining: after.HardViolationCount,
+            SoftScoreDelta: after.SoftScore - baseline.SoftScore,
+            UtilizationDelta: 0,
+            RequiresUserAction: false,
+            BeforeAfterSummary: new Dictionary<string, object?>
+            {
+                ["beforeHardViolations"] = baseline.HardViolationCount,
+                ["afterHardViolations"] = after.HardViolationCount,
+                ["beforeSoftScore"] = baseline.SoftScore,
+                ["afterSoftScore"] = after.SoftScore,
+                ["targetRuleBefore"] = beforeGroupCount,
+                ["targetRuleAfter"] = afterGroupCount,
+                ["repairMoveType"] = "rotate3"
             });
     }
 
