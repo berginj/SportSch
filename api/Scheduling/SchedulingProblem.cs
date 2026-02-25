@@ -20,4 +20,8 @@ public record SchedulingProblem(
     IReadOnlyList<MatchupPair> Matchups,
     ScheduleConstraints Constraints,
     IReadOnlyList<ScheduleBlackoutWindow> BlackoutWindows,
-    IReadOnlyList<ScheduleSeasonPhaseWeight> PhaseWeights);
+    IReadOnlyList<ScheduleSeasonPhaseWeight> PhaseWeights,
+    IReadOnlyDictionary<string, int>? MatchupPriorityByPair = null,
+    IReadOnlyCollection<string>? NoGamesOnDates = null,
+    int? NoGamesBeforeMinute = null,
+    int? NoGamesAfterMinute = null);

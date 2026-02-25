@@ -210,6 +210,35 @@ public class ScheduleEngineTests
     }
 
     [Fact]
+    public void AssignMatchups_RespectsExternalOfferSeasonCap_PerTeam()
+    {
+        var teams = new List<string> { "A", "B" };
+        var matchups = new List<MatchupPair>();
+        var slots = new List<ScheduleSlot>
+        {
+            new("slot-1", "2026-05-03", "10:00", "12:00", "Field-1", ""),
+            new("slot-2", "2026-05-10", "10:00", "12:00", "Field-1", ""),
+            new("slot-3", "2026-05-17", "10:00", "12:00", "Field-1", ""),
+        };
+        var constraints = new ScheduleConstraints(
+            MaxGamesPerWeek: 1,
+            NoDoubleHeaders: true,
+            BalanceHomeAway: false,
+            ExternalOfferPerWeek: 1,
+            MaxExternalOffersPerTeamSeason: 1);
+
+        var result = ScheduleEngine.AssignMatchups(slots, matchups, teams, constraints);
+
+        Assert.Equal(2, result.Assignments.Count);
+        Assert.All(result.Assignments, a => Assert.True(a.IsExternalOffer));
+        var homes = result.Assignments.ConvertAll(a => a.HomeTeamId);
+        Assert.Contains("A", homes);
+        Assert.Contains("B", homes);
+        Assert.Single(result.UnassignedSlots);
+        Assert.Equal("slot-3", result.UnassignedSlots[0].SlotId);
+    }
+
+    [Fact]
     public void AssignMatchups_PrefersFillingLongerIdleGap_WhenOtherwiseComparable()
     {
         var teams = new List<string> { "A", "B", "C", "D" };

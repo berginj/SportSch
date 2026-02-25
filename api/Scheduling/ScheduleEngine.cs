@@ -2,7 +2,12 @@ using System.Globalization;
 
 namespace GameSwap.Functions.Scheduling;
 
-public record ScheduleConstraints(int? MaxGamesPerWeek, bool NoDoubleHeaders, bool BalanceHomeAway, int ExternalOfferPerWeek);
+public record ScheduleConstraints(
+    int? MaxGamesPerWeek,
+    bool NoDoubleHeaders,
+    bool BalanceHomeAway,
+    int ExternalOfferPerWeek,
+    int? MaxExternalOffersPerTeamSeason = null);
 
 public record ScheduleSlot(
     string SlotId,
@@ -274,6 +279,7 @@ public static class ScheduleEngine
                         externalOfferCounts,
                         constraints.MaxGamesPerWeek,
                         constraints.NoDoubleHeaders,
+                        constraints.MaxExternalOffersPerTeamSeason,
                         tieBreakSeed);
                     if (string.IsNullOrWhiteSpace(home))
                     {
@@ -1062,6 +1068,7 @@ public static class ScheduleEngine
         Dictionary<string, int> externalOfferCounts,
         int? maxGamesPerWeek,
         bool noDoubleHeaders,
+        int? maxExternalOffersPerTeamSeason,
         int? tieBreakSeed)
     {
         string bestTeam = "";
@@ -1070,7 +1077,7 @@ public static class ScheduleEngine
 
         foreach (var team in teams)
         {
-            if (!CanAssignExternalHome(team, gameDate, gamesByDate, gamesByWeek, maxGamesPerWeek, noDoubleHeaders))
+            if (!CanAssignExternalHome(team, gameDate, gamesByDate, gamesByWeek, externalOfferCounts, maxGamesPerWeek, noDoubleHeaders, maxExternalOffersPerTeamSeason))
                 continue;
 
             var score = ScoreExternalOfferCandidate(team, gameDate, homeCounts, awayCounts, gamesByWeek, externalOfferCounts);
@@ -1109,8 +1116,10 @@ public static class ScheduleEngine
         string gameDate,
         Dictionary<string, HashSet<string>> gamesByDate,
         Dictionary<string, int> gamesByWeek,
+        Dictionary<string, int> externalOfferCounts,
         int? maxGamesPerWeek,
-        bool noDoubleHeaders)
+        bool noDoubleHeaders,
+        int? maxExternalOffersPerTeamSeason)
     {
         if (noDoubleHeaders && gamesByDate[home].Contains(gameDate)) return false;
 
@@ -1119,6 +1128,13 @@ public static class ScheduleEngine
             var weekKey = WeekKey(gameDate);
             if (!string.IsNullOrWhiteSpace(weekKey) && GetWeekCount(gamesByWeek, home, weekKey) >= maxGamesPerWeek.Value)
                 return false;
+        }
+
+        if (maxExternalOffersPerTeamSeason.HasValue &&
+            externalOfferCounts.TryGetValue(home, out var externalCount) &&
+            externalCount >= maxExternalOffersPerTeamSeason.Value)
+        {
+            return false;
         }
 
         return true;
