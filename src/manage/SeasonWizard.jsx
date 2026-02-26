@@ -870,7 +870,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   }, [leagueId]);
 
   const steps = useMemo(
-    () => ["Basics", "Postseason", "Slot plan (all phases)", "Rules", "Preview"],
+    () => ["Basics", "Postseason", "Rules", "Slot plan (all phases)", "Preview"],
     []
   );
 
@@ -1791,6 +1791,19 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
   async function applySchedule() {
     if (!preview) return;
+
+    // Warn user that this will overwrite existing schedule
+    const confirmed = window.confirm(
+      "⚠️ WARNING: Applying this schedule will OVERWRITE all existing game assignments in this division.\n\n" +
+      "This action:\n" +
+      "• Replaces all current slot assignments\n" +
+      "• Cannot be undone\n" +
+      "• Should only be done when setting up a new season or completely rebuilding a schedule\n\n" +
+      "Are you sure you want to continue?"
+    );
+
+    if (!confirmed) return;
+
     setErr("");
     const dateError = validateIsoDates([
       { label: "Season start", value: seasonStart, required: true },
@@ -3518,8 +3531,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     const completed = [
       !basicsError,
       !postseasonError && step > 1,
-      !slotPlanError && slotPlanSummary.gameCapable > 0 && step > 2,
-      !rulesError && step > 3,
+      !rulesError && step > 2,
+      !slotPlanError && slotPlanSummary.gameCapable > 0 && step > 3,
       !!preview && !previewError,
     ];
     return steps.map((_, idx) => {
@@ -3545,6 +3558,11 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     <div className="stack gap-3">
       {toast ? <Toast {...toast} onClose={() => setToast(null)} /> : null}
       {err ? <div className="callout callout--error">{err}</div> : null}
+
+      <div className="callout callout--warning">
+        <strong>⚠️ Important:</strong> This wizard will <strong>OVERWRITE all existing game assignments</strong> in the selected division when you click "Apply schedule" at the end.
+        Use this tool only when setting up a new season or completely rebuilding a schedule.
+      </div>
 
       <div className="row row--wrap gap-2">
         {steps.map((label, idx) => (
@@ -3627,7 +3645,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       {step === 2 ? (
         <div className="card">
           <div className="card__header">
-            <div className="h3">Slot planning</div>
+            <div className="h3">Scheduling rules</div>
             <div className="subtle">
               Mark each availability as practice/game/both (defaults to practice), set priority rank, and pick guest game anchor options for all phases.
             </div>
@@ -3921,7 +3939,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       {step === 3 ? (
         <div className="card">
           <div className="card__header">
-            <div className="h3">Scheduling rules</div>
+            <div className="h3">Slot planning</div>
             <div className="subtle">Set regular season and pool play constraints with live feasibility checking.</div>
           </div>
           <div className="card__body stack gap-3">
