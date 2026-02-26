@@ -2755,7 +2755,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         fieldMap.set(field, byWeek);
       }
       if (!byWeek.has(week)) {
-        byWeek.set(week, { capacity: 0, used: 0, guest: 0, regular: 0 });
+        byWeek.set(week, { capacity: 0, used: 0, guest: 0, regular: 0, regularAssignments: [] });
       }
       return byWeek.get(week);
     };
@@ -2767,7 +2767,11 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       cell.capacity += 1;
       cell.used += 1;
       if (slot?.isExternalOffer) cell.guest += 1;
-      else cell.regular += 1;
+      else
+      {
+        cell.regular += 1;
+        if (Array.isArray(cell.regularAssignments)) cell.regularAssignments.push(slot);
+      }
     });
 
     regularOpenSlots.forEach((slot) => {
@@ -2782,11 +2786,19 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         let totalCapacity = 0;
         let totalUsed = 0;
         const cells = weekKeys.map((weekKey) => {
-          const data = byWeek.get(weekKey) || { capacity: 0, used: 0, guest: 0, regular: 0 };
+          const data = byWeek.get(weekKey) || { capacity: 0, used: 0, guest: 0, regular: 0, regularAssignments: [] };
           totalCapacity += data.capacity;
           totalUsed += data.used;
           const utilizationPct = data.capacity > 0 ? Math.round((data.used / data.capacity) * 100) : null;
-          return { weekKey, ...data, utilizationPct };
+          const regularAssignmentsForCell = Array.isArray(data?.regularAssignments) ? data.regularAssignments : [];
+          return {
+            weekKey,
+            ...data,
+            utilizationPct,
+            regularGameCount: regularAssignmentsForCell.length,
+            dragAssignment: regularAssignmentsForCell.length === 1 ? regularAssignmentsForCell[0] : null,
+            draggable: regularAssignmentsForCell.length === 1,
+          };
         });
         return {
           fieldKey,
@@ -4993,6 +5005,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                   <div className="subtle mb-2">
                     Field x week capacity. Cells show <b>used/capacity</b>; darker cells indicate higher utilization. Late-season weeks are on the right.
                   </div>
+                  <div className="subtle mb-2">
+                    Heatmap cells with exactly one regular game can be dragged onto another single-game heatmap cell to try a preview swap.
+                  </div>
                   <div className={`tableWrap ${tableView === "B" ? "tableWrap--sticky" : ""}`}>
                     <table className={`table ${tableView === "B" ? "table--compact table--sticky" : ""}`}>
                       <thead>
@@ -5016,6 +5031,11 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                             {row.cells.map((cell, idx) => {
                               const lateFactor = fieldHeatmapReport.weekKeys.length > 1 ? (idx / (fieldHeatmapReport.weekKeys.length - 1)) : 0;
                               const isRepairHighlighted = isFieldWeekHighlightedByRepair(row.fieldKey, cell.weekKey);
+                              const dragAssignment = cell?.dragAssignment || null;
+                              const dragKey = dragAssignment ? assignmentExplainKey(dragAssignment) : "";
+                              const isDragEligible = !!dragAssignment && canDragSwapAssignment(dragAssignment);
+                              const isDragSource = !!dragKey && dragSwapSourceKey === dragKey;
+                              const isDragTarget = !!dragKey && dragSwapTargetKey === dragKey && dragSwapSourceKey && dragSwapSourceKey !== dragKey;
                               const util = cell.capacity > 0 ? (cell.used / cell.capacity) : 0;
                               const alpha = cell.capacity > 0 ? (0.08 + (util * 0.38) + (lateFactor * 0.08)) : 0.03;
                               const hueColor = cell.capacity === 0
@@ -5033,17 +5053,29 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                                 <td
                                   key={`heat-cell-${row.fieldKey}-${cell.weekKey}`}
                                   title={detail}
+                                  draggable={isDragEligible}
+                                  onDragStart={isDragEligible ? (event) => handleAssignmentDragStart(event, dragAssignment) : undefined}
+                                  onDragOver={isDragEligible ? (event) => handleAssignmentDragOver(event, dragAssignment) : undefined}
+                                  onDrop={isDragEligible ? (event) => handleAssignmentDrop(event, dragAssignment) : undefined}
+                                  onDragEnd={isDragEligible ? clearAssignmentDragSwap : undefined}
                                   style={{
                                     textAlign: "center",
                                     minWidth: 46,
                                     background: hueColor,
-                                    boxShadow: isRepairHighlighted ? "inset 0 0 0 2px rgba(245,158,11,0.6)" : "none",
+                                    boxShadow:
+                                      isDragSource
+                                        ? "inset 0 0 0 2px rgba(37,99,235,0.45)"
+                                        : (isDragTarget
+                                          ? "inset 0 0 0 2px rgba(124,58,237,0.45)"
+                                          : (isRepairHighlighted ? "inset 0 0 0 2px rgba(245,158,11,0.6)" : "none")),
                                     color: cell.capacity > 0 && util >= 0.75 ? "#ffffff" : "inherit",
                                     fontWeight: cell.capacity > 0 ? 600 : 400,
+                                    cursor: isDragEligible ? "move" : "default",
                                   }}
                                 >
                                   {label}
                                   {cell.guest > 0 ? <div className="subtle" style={{ fontSize: "0.7rem", color: "inherit" }}>G{cell.guest}</div> : null}
+                                  {isDragEligible ? <div className="subtle" style={{ fontSize: "0.65rem", color: "inherit" }}>swap</div> : null}
                                 </td>
                               );
                             })}
