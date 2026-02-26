@@ -1223,6 +1223,45 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
   function updatePatternSlotType(patternKey, currentPriorityRank, nextTypeRaw) {
     const nextType = normalizeSlotType(nextTypeRaw);
+    const representative = slotPatterns.find((p) => p.key === patternKey);
+
+    if (!representative) {
+      updatePatternPlan(patternKey, {
+        slotType: nextType,
+        priorityRank: nextType === "practice" ? "" : normalizePriorityRank(currentPriorityRank),
+      });
+      return;
+    }
+
+    // Auto-refactor duration when changing slot type
+    const startMin = parseMinutes(representative.startTime);
+    if (startMin != null) {
+      let targetDuration;
+      if (nextType === "practice") {
+        targetDuration = 90; // Practice slots: 90 minutes
+      } else if (nextType === "both" || nextType === "game") {
+        targetDuration = 120; // Both/Game slots: 120 minutes
+      }
+
+      if (targetDuration) {
+        const newEndTime = formatMinutesAsTime(startMin + targetDuration);
+        if (newEndTime) {
+          updatePatternPlan(patternKey, {
+            slotType: nextType,
+            endTime: newEndTime,
+            priorityRank: nextType === "practice" ? "" : normalizePriorityRank(currentPriorityRank),
+          });
+          setToast({
+            tone: "success",
+            duration: 2500,
+            message: `${representative.weekday} ${representative.fieldKey}: set to ${nextType.toUpperCase()} (${targetDuration}m). Updated ${representative.count || 1} slot(s).`,
+          });
+          return;
+        }
+      }
+    }
+
+    // Fallback if duration calculation failed
     updatePatternPlan(patternKey, {
       slotType: nextType,
       priorityRank: nextType === "practice" ? "" : normalizePriorityRank(currentPriorityRank),
