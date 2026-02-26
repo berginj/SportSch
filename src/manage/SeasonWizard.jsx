@@ -1515,7 +1515,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
             const basePatternKey = patternKeyFromParts(weekday, baseStartTime, baseEndTime, slot.fieldKey || "");
             const nextStartTime = prior?.startTime || baseStartTime;
             const nextEndTime = prior?.endTime || baseEndTime;
-            const allocationSlotType = normalizeSlotType(slot.allocationSlotType || "practice");
+            const allocationSlotType = normalizeSlotType(slot.allocationSlotType || "game");
             const allocationPriority = normalizePriorityRank(slot.allocationPriorityRank ?? "");
             const baselinePriority = allocationSlotType === "practice" ? "" : allocationPriority;
             const nextSlotType = normalizeSlotType(prior?.slotType || allocationSlotType);
