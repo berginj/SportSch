@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { validateIsoDates } from "../lib/date";
 import { buildAvailabilityInsights } from "../lib/availabilityInsights";
 import { trackEvent } from "../lib/telemetry";
 import CollapsibleSection from "../components/CollapsibleSection";
 import Toast from "../components/Toast";
+import { useCollapsibleSectionControl } from "../lib/useCollapsibleSectionControl";
 
 const WEEKDAY_OPTIONS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MAX_PREFERRED_WEEKNIGHTS = 3;
@@ -49,6 +50,7 @@ const PREVIEW_SECTION_STORAGE_KEYS = {
   coverage: "season-wizard-preview-coverage",
   assignments: "season-wizard-preview-assignments",
 };
+const PREVIEW_SECTION_IDS = ["health", "coverage", "assignments"];
 
 function isoDayShort(value) {
   if (!value) return "";
@@ -868,12 +870,14 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [availabilityErr, setAvailabilityErr] = useState("");
   const [preferredTouched, setPreferredTouched] = useState(false);
-  const [previewSectionRefreshKey, setPreviewSectionRefreshKey] = useState(0);
 
   // Feasibility state
   const [feasibility, setFeasibility] = useState(null);
   const [feasibilityLoading, setFeasibilityLoading] = useState(false);
   const [hasAutoApplied, setHasAutoApplied] = useState(false);
+  const availabilityCacheRef = useRef(new Map());
+  const availabilityRequestIdRef = useRef(0);
+  const previewSectionControl = useCollapsibleSectionControl(PREVIEW_SECTION_IDS);
   const steps = WIZARD_STEPS;
   const currentStepMeta = steps[step] || steps[0];
 
@@ -1521,11 +1525,78 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   useEffect(() => {
     if (!leagueId || !division) return;
     if (!seasonStart || !seasonEnd) return;
+    let cancelled = false;
+    const requestId = availabilityRequestIdRef.current + 1;
+    availabilityRequestIdRef.current = requestId;
+    const planningDateTo = maxIsoDate(seasonEnd, bracketEnd) || seasonEnd;
+    const cacheKey = [leagueId, division, seasonStart, seasonEnd, planningDateTo].join("|");
+
+    const applyAvailabilityPayload = (payload) => {
+      if (cancelled || requestId !== availabilityRequestIdRef.current) return false;
+      const availability = Array.isArray(payload?.availability) ? payload.availability : [];
+      const insights = payload?.insights || null;
+      const dayCounts = new Map(
+        (insights?.dayStats || []).map((day) => [day.day, day.slots])
+      );
+      const patternCounts = new Map();
+      for (const slot of availability) {
+        const weekday = isoDayShort(slot.gameDate || "");
+        const patternKey = `${weekday}|${slot.startTime || ""}|${slot.endTime || ""}|${slot.fieldKey || ""}`;
+        patternCounts.set(patternKey, (patternCounts.get(patternKey) || 0) + 1);
+      }
+
+      setSlotPlan((prev) => {
+        const previousById = new Map((prev || []).map((item) => [item.slotId, item]));
+        return availability.map((slot) => {
+          const prior = previousById.get(slot.slotId);
+          const weekday = isoDayShort(slot.gameDate || "");
+          const baseStartTime = slot.startTime || "";
+          const baseEndTime = slot.endTime || "";
+          const basePatternKey = patternKeyFromParts(weekday, baseStartTime, baseEndTime, slot.fieldKey || "");
+          const nextStartTime = prior?.startTime || baseStartTime;
+          const nextEndTime = prior?.endTime || baseEndTime;
+          const allocationSlotType = normalizeSlotType(slot.allocationSlotType || "game");
+          const allocationPriority = normalizePriorityRank(slot.allocationPriorityRank ?? "");
+          const baselinePriority = allocationSlotType === "practice" ? "" : allocationPriority;
+          const nextSlotType = normalizeSlotType(prior?.slotType || allocationSlotType);
+          const nextPriority = normalizePriorityRank(prior?.priorityRank || baselinePriority);
+          return {
+            slotId: slot.slotId,
+            gameDate: slot.gameDate || "",
+            startTime: nextStartTime,
+            endTime: nextEndTime,
+            fieldKey: slot.fieldKey || "",
+            weekday,
+            baseStartTime,
+            baseEndTime,
+            basePatternKey,
+            slotType: nextSlotType,
+            priorityRank: nextSlotType === "practice" ? "" : nextPriority,
+            score: computeSlotScore(slot, weekday, patternCounts, dayCounts),
+          };
+        });
+      });
+
+      setAvailabilityInsights(insights);
+      if (!preferredTouched && (insights?.suggested || []).length) {
+        setPreferredWeeknights(insights.suggested);
+        setAutoAppliedPreferred(true);
+      }
+      return true;
+    };
+
     (async () => {
       setAvailabilityErr("");
       setAvailabilityLoading(true);
+      const cachedPayload = availabilityCacheRef.current.get(cacheKey);
+      if (cachedPayload) {
+        applyAvailabilityPayload(cachedPayload);
+        if (!cancelled && requestId === availabilityRequestIdRef.current) {
+          setAvailabilityLoading(false);
+        }
+        return;
+      }
       try {
-        const planningDateTo = maxIsoDate(seasonEnd, bracketEnd) || seasonEnd;
         const list = [];
         const seenSlotIds = new Set();
         let continuationToken = "";
@@ -1561,63 +1632,25 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
           });
 
         const insights = buildAvailabilityInsights(availability);
-        const dayCounts = new Map(
-          (insights?.dayStats || []).map((day) => [day.day, day.slots])
-        );
-        const patternCounts = new Map();
-        for (const slot of availability) {
-          const weekday = isoDayShort(slot.gameDate || "");
-          const patternKey = `${weekday}|${slot.startTime || ""}|${slot.endTime || ""}|${slot.fieldKey || ""}`;
-          patternCounts.set(patternKey, (patternCounts.get(patternKey) || 0) + 1);
-        }
-
-        setSlotPlan((prev) => {
-          const previousById = new Map((prev || []).map((item) => [item.slotId, item]));
-          return availability.map((slot) => {
-            const prior = previousById.get(slot.slotId);
-            const weekday = isoDayShort(slot.gameDate || "");
-            const baseStartTime = slot.startTime || "";
-            const baseEndTime = slot.endTime || "";
-            const basePatternKey = patternKeyFromParts(weekday, baseStartTime, baseEndTime, slot.fieldKey || "");
-            const nextStartTime = prior?.startTime || baseStartTime;
-            const nextEndTime = prior?.endTime || baseEndTime;
-            const allocationSlotType = normalizeSlotType(slot.allocationSlotType || "game");
-            const allocationPriority = normalizePriorityRank(slot.allocationPriorityRank ?? "");
-            const baselinePriority = allocationSlotType === "practice" ? "" : allocationPriority;
-            const nextSlotType = normalizeSlotType(prior?.slotType || allocationSlotType);
-            const nextPriority = normalizePriorityRank(prior?.priorityRank || baselinePriority);
-            return {
-              slotId: slot.slotId,
-              gameDate: slot.gameDate || "",
-              startTime: nextStartTime,
-              endTime: nextEndTime,
-              fieldKey: slot.fieldKey || "",
-              weekday,
-              baseStartTime,
-              baseEndTime,
-              basePatternKey,
-              slotType: nextSlotType,
-              priorityRank: nextSlotType === "practice" ? "" : nextPriority,
-              score: computeSlotScore(slot, weekday, patternCounts, dayCounts),
-            };
-          });
-        });
-
-        setAvailabilityInsights(insights);
-        if (!preferredTouched && insights.suggested.length) {
-          setPreferredWeeknights(insights.suggested);
-          setAutoAppliedPreferred(true);
-        }
+        const payload = { availability, insights };
+        availabilityCacheRef.current.set(cacheKey, payload);
+        applyAvailabilityPayload(payload);
       } catch (e) {
+        if (cancelled || requestId !== availabilityRequestIdRef.current) return;
         setAvailabilityErr(e?.message || "Failed to load availability insights.");
         setAvailabilityInsights(null);
         setSlotPlan([]);
         setGuestAnchorPrimarySlotId("");
         setGuestAnchorSecondarySlotId("");
       } finally {
-        setAvailabilityLoading(false);
+        if (!cancelled && requestId === availabilityRequestIdRef.current) {
+          setAvailabilityLoading(false);
+        }
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [leagueId, division, seasonStart, seasonEnd, bracketEnd, preferredTouched]);
 
   useEffect(() => {
@@ -2156,11 +2189,31 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const previewExplainMap = preview?.explanations && typeof preview.explanations === "object"
     ? preview.explanations
     : null;
-  const previewAssignmentCount = Array.isArray(preview?.assignments) ? preview.assignments.length : 0;
-  const previewWarningCount = Array.isArray(preview?.warnings) ? preview.warnings.length : 0;
+  const previewCollections = useMemo(() => {
+    const assignments = Array.isArray(preview?.assignments) ? preview.assignments : [];
+    const unassignedSlots = Array.isArray(preview?.unassignedSlots) ? preview.unassignedSlots : [];
+    const unassignedMatchups = Array.isArray(preview?.unassignedMatchups) ? preview.unassignedMatchups : [];
+    const issues = Array.isArray(preview?.issues) ? preview.issues : [];
+    const warnings = Array.isArray(preview?.warnings) ? preview.warnings : [];
+    const regularAssignments = assignments.filter((assignment) => assignment?.phase === "Regular Season");
+    return {
+      assignments,
+      unassignedSlots,
+      unassignedMatchups,
+      issues,
+      warnings,
+      regularAssignments,
+      regularScheduledAssignments: regularAssignments.filter((assignment) => !assignment?.isExternalOffer),
+      regularGuestAssignments: regularAssignments.filter((assignment) => assignment?.isExternalOffer && assignment?.homeTeamId),
+      regularUnassignedSlots: unassignedSlots.filter((slot) => slot?.phase === "Regular Season"),
+      regularUnassignedMatchups: unassignedMatchups.filter((matchup) => getIssuePhase(matchup) === "Regular Season"),
+    };
+  }, [preview]);
+  const previewAssignmentCount = previewCollections.assignments.length;
+  const previewWarningCount = previewCollections.warnings.length;
   const previewIssueCount = Number(preview?.totalIssues || 0) > 0
     ? Number(preview?.totalIssues || 0)
-    : (Array.isArray(preview?.issues) ? preview.issues.length : 0);
+    : previewCollections.issues.length;
   const stepErrors = useMemo(
     () => [basicsError, postseasonError, slotPlanError, rulesError, previewError],
     [basicsError, postseasonError, slotPlanError, rulesError, previewError]
@@ -2194,7 +2247,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       return;
     }
     const keys = new Set(
-      (Array.isArray(preview.assignments) ? preview.assignments : []).map((assignment) => assignmentExplainKey(assignment))
+      previewCollections.assignments.map((assignment) => assignmentExplainKey(assignment))
     );
     if (!selectedExplainGameKey) return;
     if (!keys.has(selectedExplainGameKey)) {
@@ -2203,7 +2256,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     if (dragSwapSourceKey && !keys.has(dragSwapSourceKey)) {
       clearAssignmentDragSwap();
     }
-  }, [preview, selectedExplainGameKey, dragSwapSourceKey]);
+  }, [preview, previewCollections.assignments, selectedExplainGameKey, dragSwapSourceKey]);
 
   useEffect(() => {
     if (!previewRepairProposals.length) {
@@ -2264,8 +2317,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     const weekKeys = new Set(selectedRuleFocusScope.weekKeys || []);
     const fieldKeys = new Set(selectedRuleFocusScope.fieldKeys || []);
     const slotRows = [
-      ...(Array.isArray(preview.assignments) ? preview.assignments : []),
-      ...(Array.isArray(preview.unassignedSlots) ? preview.unassignedSlots : []),
+      ...previewCollections.assignments,
+      ...previewCollections.unassignedSlots,
     ];
     slotRows.forEach((row) => {
       const slotId = String(row?.slotId || "").trim();
@@ -2287,7 +2340,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       scope: selectedRuleFocusScope,
       source: "rule-health",
     };
-  }, [preview, selectedRuleFocusScope]);
+  }, [preview, previewCollections.assignments, previewCollections.unassignedSlots, selectedRuleFocusScope]);
 
   const activeHighlightLookup = selectedRepairLookup || selectedRuleLookup || null;
 
@@ -2332,12 +2385,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       };
     }
 
-    const assignments = Array.isArray(preview.assignments) ? preview.assignments : [];
-    const unassignedMatchups = Array.isArray(preview.unassignedMatchups) ? preview.unassignedMatchups : [];
-    const unassignedSlots = Array.isArray(preview.unassignedSlots) ? preview.unassignedSlots : [];
-    const regularAssignments = assignments.filter((a) => a?.phase === "Regular Season" && !a?.isExternalOffer);
-    const regularUnassignedMatchups = unassignedMatchups.filter((m) => getIssuePhase(m) === "Regular Season");
-    const regularOpenSlots = unassignedSlots.filter((s) => s?.phase === "Regular Season");
+    const regularAssignments = previewCollections.regularScheduledAssignments;
+    const regularUnassignedMatchups = previewCollections.regularUnassignedMatchups;
+    const regularOpenSlots = previewCollections.regularUnassignedSlots;
 
     const assignedByTeam = new Map();
     const unassignedByTeam = new Map();
@@ -2410,7 +2460,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       totalMatchups: regularUnassignedMatchups.length,
       openSlots: regularOpenSlots.length,
     };
-  }, [preview]);
+  }, [preview, previewCollections]);
 
   const regularBalanceReport = useMemo(() => {
     if (!preview) {
@@ -2426,15 +2476,11 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       };
     }
 
-    const assignments = Array.isArray(preview.assignments) ? preview.assignments : [];
-    const unassignedSlots = Array.isArray(preview.unassignedSlots) ? preview.unassignedSlots : [];
-    const unassignedMatchups = Array.isArray(preview.unassignedMatchups) ? preview.unassignedMatchups : [];
-
-    const regularAssignments = assignments.filter((a) => a?.phase === "Regular Season");
-    const regularGames = regularAssignments.filter((a) => !a?.isExternalOffer && a?.homeTeamId && a?.awayTeamId);
-    const regularGuestGames = regularAssignments.filter((a) => a?.isExternalOffer && a?.homeTeamId);
-    const regularUnassignedSlots = unassignedSlots.filter((s) => s?.phase === "Regular Season");
-    const regularUnassignedMatchups = unassignedMatchups.filter((m) => getIssuePhase(m) === "Regular Season");
+    const regularAssignments = previewCollections.regularAssignments;
+    const regularGames = previewCollections.regularScheduledAssignments.filter((a) => a?.homeTeamId && a?.awayTeamId);
+    const regularGuestGames = previewCollections.regularGuestAssignments;
+    const regularUnassignedSlots = previewCollections.regularUnassignedSlots;
+    const regularUnassignedMatchups = previewCollections.regularUnassignedMatchups;
     const manualPriorityByPair = new Map(
       (rivalryPayload || [])
         .map((row) => {
@@ -2683,15 +2729,14 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       manualPriorityPairCount: manualPriorityByPair.size,
       autoRepeatPriorityPairCount: [...pairMap.values()].filter((p) => (p.assigned + p.unassigned) > 1).length,
     };
-  }, [preview, seasonStart, seasonEnd, poolStart, minGamesPerTeam, rivalryPayload]);
+  }, [preview, previewCollections, seasonStart, seasonEnd, poolStart, minGamesPerTeam, rivalryPayload]);
 
   const teamLanesReport = useMemo(() => {
     if (!preview) {
       return { weekKeys: [], lanes: [], totalTeams: 0, shownTeams: 0 };
     }
 
-    const assignments = Array.isArray(preview.assignments) ? preview.assignments : [];
-    const regularAssignments = assignments.filter((a) => a?.phase === "Regular Season");
+    const regularAssignments = previewCollections.regularAssignments;
     const weekKeys = Array.isArray(regularBalanceReport.weekKeys) ? regularBalanceReport.weekKeys : [];
     const byTeamWeek = new Map();
     const byTeamWeekRegularAssignments = new Map();
@@ -2808,7 +2853,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       totalTeams: lanes.length,
       shownTeams: shownLanes.length,
     };
-  }, [preview, regularBalanceReport]);
+  }, [preview, previewCollections.regularAssignments, regularBalanceReport]);
 
   const priorityPairInfoByKey = useMemo(() => {
     const pairRows = Array.isArray(regularBalanceReport?.pairRows) ? regularBalanceReport.pairRows : [];
@@ -2842,10 +2887,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       return { weekKeys: [], rows: [], totalFields: 0, shownFields: 0 };
     }
 
-    const assignments = Array.isArray(preview.assignments) ? preview.assignments : [];
-    const unassignedSlots = Array.isArray(preview.unassignedSlots) ? preview.unassignedSlots : [];
-    const regularAssignments = assignments.filter((a) => a?.phase === "Regular Season");
-    const regularOpenSlots = unassignedSlots.filter((s) => s?.phase === "Regular Season");
+    const regularAssignments = previewCollections.regularAssignments;
+    const regularOpenSlots = previewCollections.regularUnassignedSlots;
     const weekKeysSet = new Set(Array.isArray(regularBalanceReport.weekKeys) ? regularBalanceReport.weekKeys : []);
 
     [...regularAssignments, ...regularOpenSlots].forEach((slot) => {
@@ -2935,7 +2978,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       totalFields: rows.length,
       shownFields: shownRows.length,
     };
-  }, [preview, regularBalanceReport]);
+  }, [preview, previewCollections.regularAssignments, previewCollections.regularUnassignedSlots, regularBalanceReport]);
 
   const regularCalendarTimelineReport = useMemo(() => {
     if (!preview) {
@@ -2947,10 +2990,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       };
     }
 
-    const assignments = Array.isArray(preview.assignments) ? preview.assignments : [];
-    const unassignedSlots = Array.isArray(preview.unassignedSlots) ? preview.unassignedSlots : [];
-    const regularAssignments = assignments.filter((a) => a?.phase === "Regular Season");
-    const regularOpenSlots = unassignedSlots.filter((s) => s?.phase === "Regular Season");
+    const regularAssignments = previewCollections.regularAssignments;
+    const regularOpenSlots = previewCollections.regularUnassignedSlots;
     const weekKeysSet = new Set(Array.isArray(regularBalanceReport.weekKeys) ? regularBalanceReport.weekKeys : []);
 
     [...regularAssignments, ...regularOpenSlots].forEach((row) => {
@@ -3087,13 +3128,13 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       totalWeeks: weekRows.length,
       weekdayColumns: WEEKDAY_OPTIONS,
     };
-  }, [preview, previewRuleHealth, regularBalanceReport, activeBlockedRanges]);
+  }, [preview, previewCollections.regularAssignments, previewCollections.regularUnassignedSlots, previewRuleHealth, regularBalanceReport, activeBlockedRanges]);
 
   const selectedGameExplain = useMemo(() => {
     if (!preview || !selectedExplainGameKey) return null;
 
-    const assignments = Array.isArray(preview.assignments) ? preview.assignments : [];
-    const unassignedSlots = Array.isArray(preview.unassignedSlots) ? preview.unassignedSlots : [];
+    const assignments = previewCollections.assignments;
+    const unassignedSlots = previewCollections.unassignedSlots;
     const selected = assignments.find((assignment) => assignmentExplainKey(assignment) === selectedExplainGameKey);
     if (!selected) return null;
 
@@ -3356,7 +3397,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       softRuleTouches,
       scoringFactors,
     };
-  }, [preview, previewExplainMap, previewRuleHealth, regularBalanceReport, selectedExplainGameKey]);
+  }, [preview, previewCollections.assignments, previewCollections.unassignedSlots, previewExplainMap, previewRuleHealth, regularBalanceReport, selectedExplainGameKey]);
 
   const previewRecommendations = useMemo(() => {
     if (!preview) return [];
@@ -3458,7 +3499,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     if (!preview) return [];
 
     const checks = [];
-    const issues = Array.isArray(preview.issues) ? preview.issues : [];
+    const issues = previewCollections.issues;
     const regularIssues = issues.filter((issue) => getIssuePhase(issue) === "Regular Season");
 
     const maxGamesLimit = Number(maxGamesPerWeek) || 0;
@@ -3519,22 +3560,18 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         details: "Guest games are disabled.",
       });
     } else {
-      const assignments = Array.isArray(preview.assignments) ? preview.assignments : [];
-      const regularAssignments = assignments.filter((a) => a?.phase === "Regular Season");
-      const guestAssignments = regularAssignments.filter((a) => a?.isExternalOffer && a?.homeTeamId);
-      const unassignedMatchups = Array.isArray(preview.unassignedMatchups) ? preview.unassignedMatchups : [];
+      const regularAssignments = previewCollections.regularAssignments;
+      const guestAssignments = previewCollections.regularGuestAssignments;
 
       const teamIds = new Set();
       regularAssignments.forEach((a) => {
         if (a?.homeTeamId) teamIds.add(a.homeTeamId);
         if (a?.awayTeamId) teamIds.add(a.awayTeamId);
       });
-      unassignedMatchups
-        .filter((m) => m?.phase === "Regular Season")
-        .forEach((m) => {
-          if (m?.homeTeamId) teamIds.add(m.homeTeamId);
-          if (m?.awayTeamId) teamIds.add(m.awayTeamId);
-        });
+      previewCollections.regularUnassignedMatchups.forEach((m) => {
+        if (m?.homeTeamId) teamIds.add(m.homeTeamId);
+        if (m?.awayTeamId) teamIds.add(m.awayTeamId);
+      });
       guestAssignments.forEach((a) => {
         if (a?.homeTeamId) teamIds.add(a.homeTeamId);
       });
@@ -3619,7 +3656,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     }
 
     return checks;
-  }, [preview, maxGamesPerWeek, noDoubleHeaders, guestGamesPerWeek, unassignedRegularReport]);
+  }, [preview, previewCollections, maxGamesPerWeek, noDoubleHeaders, guestGamesPerWeek, unassignedRegularReport]);
 
   const stepStatuses = useMemo(() => {
     const errors = [...stepErrors];
@@ -3688,10 +3725,20 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   }
 
   function setAllPreviewSectionsExpanded(isExpanded) {
-    Object.values(PREVIEW_SECTION_STORAGE_KEYS).forEach((storageKey) => {
+    PREVIEW_SECTION_IDS.forEach((sectionId) => {
+      const storageKey = PREVIEW_SECTION_STORAGE_KEYS[sectionId];
       setPreviewSectionStoredState(storageKey, isExpanded);
     });
-    setPreviewSectionRefreshKey((prev) => prev + 1);
+    if (isExpanded) {
+      previewSectionControl.expandAll();
+      return;
+    }
+    previewSectionControl.collapseAll();
+  }
+
+  function handlePreviewSectionToggle(sectionId, isExpanded) {
+    previewSectionControl.setExpanded(sectionId, isExpanded);
+    setPreviewSectionStoredState(PREVIEW_SECTION_STORAGE_KEYS[sectionId], isExpanded);
   }
 
   return (
@@ -4655,11 +4702,12 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                 </div>
 
                 <CollapsibleSection
-                  key={`preview-section-health-${previewSectionRefreshKey}`}
                   title="Health & fixes"
                   subtitle="Use this section to triage rule conflicts, repairs, and preview diagnostics."
                   defaultExpanded={previewApplyBlocked || previewIssueCount > 0 || previewRepairProposals.length > 0}
                   storageKey={PREVIEW_SECTION_STORAGE_KEYS.health}
+                  isExpanded={previewSectionControl.expanded.health}
+                  onChange={(isExpanded) => handlePreviewSectionToggle("health", isExpanded)}
                 >
                   <div className="stack gap-3">
 
@@ -5021,11 +5069,12 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                 </CollapsibleSection>
 
                 <CollapsibleSection
-                  key={`preview-section-coverage-${previewSectionRefreshKey}`}
                   title="Coverage & balance"
                   subtitle="Review phase coverage, matchup balance, and where the schedule is still thin."
                   defaultExpanded={!previewApplyBlocked && previewIssueCount === 0}
                   storageKey={PREVIEW_SECTION_STORAGE_KEYS.coverage}
+                  isExpanded={previewSectionControl.expanded.coverage}
+                  onChange={(isExpanded) => handlePreviewSectionToggle("coverage", isExpanded)}
                 >
                   <div className="stack gap-3">
               {preview.summary ? (
@@ -5598,11 +5647,12 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                 </CollapsibleSection>
 
                 <CollapsibleSection
-                  key={`preview-section-assignments-${previewSectionRefreshKey}`}
                   title="Assignments & explainability"
                   subtitle="Inspect the actual placements, try preview-only swaps, and drill into one game at a time."
                   defaultExpanded={!!selectedGameExplain}
                   storageKey={PREVIEW_SECTION_STORAGE_KEYS.assignments}
+                  isExpanded={previewSectionControl.expanded.assignments}
+                  onChange={(isExpanded) => handlePreviewSectionToggle("assignments", isExpanded)}
                 >
                   <div className="stack gap-3">
                 <div className="subtle">
