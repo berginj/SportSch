@@ -3,6 +3,7 @@ import { apiFetch } from "../lib/api";
 import { validateIsoDates } from "../lib/date";
 import { buildAvailabilityInsights } from "../lib/availabilityInsights";
 import { trackEvent } from "../lib/telemetry";
+import CollapsibleSection from "../components/CollapsibleSection";
 import Toast from "../components/Toast";
 
 const WEEKDAY_OPTIONS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -20,6 +21,33 @@ const ISSUE_HINTS = {
   "double-header-balance": "Doubleheaders are not evenly distributed. Shift slot priorities/times to spread same-day load across teams.",
   "max-games-per-week": "Max games/week is a hard cap. Add slots or widen the season window if assignments are short.",
   "missing-opponent": "A slot is missing an opponent. Check team count or external/guest game settings.",
+};
+const WIZARD_STEPS = [
+  {
+    label: "Basics",
+    description: "Choose the division and season window before building anything else.",
+  },
+  {
+    label: "Postseason",
+    description: "Reserve pool-play and bracket dates so the regular season is planned around them.",
+  },
+  {
+    label: "Slot plan (all phases)",
+    description: "Mark which availability slots can host games across the regular season and postseason.",
+  },
+  {
+    label: "Rules",
+    description: "Set matchup targets, weekly limits, and league rules for schedule construction.",
+  },
+  {
+    label: "Preview",
+    description: "Inspect the generated schedule, rule health, and apply only when it looks right.",
+  },
+];
+const PREVIEW_SECTION_STORAGE_KEYS = {
+  health: "season-wizard-preview-health",
+  coverage: "season-wizard-preview-coverage",
+  assignments: "season-wizard-preview-assignments",
 };
 
 function isoDayShort(value) {
@@ -753,7 +781,7 @@ function assignmentExplainKey(assignment) {
   return [phase, slotId, gameDate, startTime, homeTeamId, awayTeamId].join("|");
 }
 
-function StepButton({ active, status = "neutral", onClick, children }) {
+function StepButton({ active, status = "neutral", onClick, children, title = "" }) {
   const stylesByStatus = {
     complete: {
       backgroundColor: "#1f7a43",
@@ -782,6 +810,7 @@ function StepButton({ active, status = "neutral", onClick, children }) {
       className={`btn btn--ghost ${active ? "is-active" : ""}`}
       type="button"
       onClick={onClick}
+      title={title}
       style={{
         ...style,
         boxShadow: active ? "0 0 0 2px rgba(15,23,42,0.25)" : "none",
@@ -839,11 +868,14 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [availabilityErr, setAvailabilityErr] = useState("");
   const [preferredTouched, setPreferredTouched] = useState(false);
+  const [previewSectionRefreshKey, setPreviewSectionRefreshKey] = useState(0);
 
   // Feasibility state
   const [feasibility, setFeasibility] = useState(null);
   const [feasibilityLoading, setFeasibilityLoading] = useState(false);
   const [hasAutoApplied, setHasAutoApplied] = useState(false);
+  const steps = WIZARD_STEPS;
+  const currentStepMeta = steps[step] || steps[0];
 
   useEffect(() => {
     if (!leagueId) return;
@@ -868,11 +900,6 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       }
     })();
   }, [leagueId]);
-
-  const steps = useMemo(
-    () => ["Basics", "Postseason", "Rules", "Slot plan (all phases)", "Preview"],
-    []
-  );
 
   const springBreakRange = useMemo(
     () => buildSpringBreakRange(seasonStart, seasonEnd),
@@ -1607,9 +1634,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     }
   }, [slotPatterns, guestAnchorPrimarySlotId, guestAnchorSecondarySlotId]);
 
-  // Feasibility check with debouncing (triggered when rules change in Step 4)
+  // Feasibility check with debouncing (triggered when rule inputs change on the Rules step)
   useEffect(() => {
-    if (step !== 3) return; // Only run on Step 4 (Rules)
+    if (step !== 3) return; // Only run on the Rules step.
     if (!division || !seasonStart || !seasonEnd) return;
     if (slotPlan.length === 0) return;
 
@@ -2110,8 +2137,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     if (!Number.isFinite(guestGames) || guestGames < 0) return "Guest games/week must be 0 or greater.";
     if (!Number.isFinite(externalCap) || externalCap < 0) return "Max guest/crossover offers per team must be 0 or greater.";
     if (leagueRuleIssues.length > 0) return leagueRuleIssues[0];
+    if (rivalryRowIssues.length > 0) return rivalryRowIssues[0];
     return "";
-  }, [maxGamesPerWeek, minGamesPerTeam, poolGamesPerTeam, guestGamesPerWeek, maxExternalOffersPerTeamSeason, leagueRuleIssues]);
+  }, [maxGamesPerWeek, minGamesPerTeam, poolGamesPerTeam, guestGamesPerWeek, maxExternalOffersPerTeamSeason, leagueRuleIssues, rivalryRowIssues]);
 
   const previewError = useMemo(() => {
     if (!preview) return "";
@@ -2121,10 +2149,41 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
   const previewRuleHealth = preview && typeof preview.ruleHealth === "object" ? preview.ruleHealth : null;
   const previewApplyBlocked = !!preview?.applyBlocked;
-  const previewRepairProposals = Array.isArray(preview?.repairProposals) ? preview.repairProposals : [];
+  const previewRepairProposals = useMemo(
+    () => (Array.isArray(preview?.repairProposals) ? preview.repairProposals : []),
+    [preview]
+  );
   const previewExplainMap = preview?.explanations && typeof preview.explanations === "object"
     ? preview.explanations
     : null;
+  const previewAssignmentCount = Array.isArray(preview?.assignments) ? preview.assignments.length : 0;
+  const previewWarningCount = Array.isArray(preview?.warnings) ? preview.warnings.length : 0;
+  const previewIssueCount = Number(preview?.totalIssues || 0) > 0
+    ? Number(preview?.totalIssues || 0)
+    : (Array.isArray(preview?.issues) ? preview.issues.length : 0);
+  const stepErrors = useMemo(
+    () => [basicsError, postseasonError, slotPlanError, rulesError, previewError],
+    [basicsError, postseasonError, slotPlanError, rulesError, previewError]
+  );
+  const forwardStepErrors = useMemo(
+    () => [basicsError, postseasonError, slotPlanError, rulesError],
+    [basicsError, postseasonError, slotPlanError, rulesError]
+  );
+  const firstBlockedForwardStep = useMemo(
+    () => forwardStepErrors.findIndex(Boolean),
+    [forwardStepErrors]
+  );
+  const furthestUnlockedStep = useMemo(() => {
+    if (firstBlockedForwardStep >= 0) return firstBlockedForwardStep;
+    return preview ? 4 : 3;
+  }, [firstBlockedForwardStep, preview]);
+  const forwardBlockMessage = useMemo(() => {
+    if (firstBlockedForwardStep >= 0) {
+      return `${steps[firstBlockedForwardStep].label}: ${forwardStepErrors[firstBlockedForwardStep]}`;
+    }
+    if (!preview) return 'Run "Preview schedule" to unlock Preview.';
+    return "";
+  }, [firstBlockedForwardStep, forwardStepErrors, preview, steps]);
 
   useEffect(() => {
     if (!preview) {
@@ -3560,18 +3619,18 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     }
 
     return checks;
-  }, [preview, maxGamesPerWeek, noDoubleHeaders, guestGamesPerWeek, unassignedRegularReport, parsedNoGamesOnDates, noGamesBeforeTime, noGamesAfterTime, activeBlockedRanges, seasonStart, seasonEnd, poolStart, poolEnd, bracketStart, bracketEnd, slotPlan, teamCount, minGamesPerTeam, poolGamesPerTeam, preferredWeeknights]);
+  }, [preview, maxGamesPerWeek, noDoubleHeaders, guestGamesPerWeek, unassignedRegularReport]);
 
   const stepStatuses = useMemo(() => {
-    const errors = [basicsError, postseasonError, slotPlanError, rulesError, previewError];
+    const errors = [...stepErrors];
     if (err && step >= 0 && step < errors.length) {
       errors[step] = errors[step] || err;
     }
     const completed = [
       !basicsError,
       !postseasonError && step > 1,
-      !rulesError && step > 2,
-      !slotPlanError && slotPlanSummary.gameCapable > 0 && step > 3,
+      !slotPlanError && slotPlanSummary.gameCapable > 0 && step > 2,
+      !rulesError && step > 3,
       !!preview && !previewError,
     ];
     return steps.map((_, idx) => {
@@ -3581,6 +3640,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       return "neutral";
     });
   }, [
+    stepErrors,
     basicsError,
     postseasonError,
     slotPlanError,
@@ -3592,6 +3652,47 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     preview,
     steps,
   ]);
+  const completedStepCount = useMemo(
+    () => stepStatuses.filter((status) => status === "complete").length,
+    [stepStatuses]
+  );
+  const currentStepIssue = (stepErrors[step] || err || "").trim();
+  const currentStepMessage = useMemo(() => {
+    if (currentStepIssue) return currentStepIssue;
+    if (step === 4 && !preview) return 'Run "Preview schedule" in the previous step to see results here.';
+    if (step === 4) return "Review the preview details below before applying the schedule.";
+    return "No blocking issues detected for this step.";
+  }, [currentStepIssue, step, preview]);
+
+  function goToStep(targetStep) {
+    const nextStep = Math.max(0, Math.min(steps.length - 1, Number(targetStep)));
+    if (Number.isNaN(nextStep) || nextStep === step) return;
+    if (nextStep < step || nextStep <= furthestUnlockedStep) {
+      setStep(nextStep);
+      return;
+    }
+    setToast({
+      tone: "warning",
+      duration: 3200,
+      message: `Finish the current requirements before moving ahead. ${forwardBlockMessage || "A previous step still needs attention."}`,
+    });
+  }
+
+  function setPreviewSectionStoredState(storageKey, isExpanded) {
+    if (!storageKey || typeof window === "undefined") return;
+    try {
+      localStorage.setItem(`collapsible-${storageKey}`, JSON.stringify(!!isExpanded));
+    } catch {
+      // Ignore localStorage errors so the UI still responds.
+    }
+  }
+
+  function setAllPreviewSectionsExpanded(isExpanded) {
+    Object.values(PREVIEW_SECTION_STORAGE_KEYS).forEach((storageKey) => {
+      setPreviewSectionStoredState(storageKey, isExpanded);
+    });
+    setPreviewSectionRefreshKey((prev) => prev + 1);
+  }
 
   return (
     <div className="stack gap-3">
@@ -3604,13 +3705,35 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       </div>
 
       <div className="row row--wrap gap-2">
-        {steps.map((label, idx) => (
-          <StepButton key={label} active={step === idx} status={stepStatuses[idx]} onClick={() => setStep(idx)}>
-            {label}
+        {steps.map((meta, idx) => (
+          <StepButton
+            key={meta.label}
+            active={step === idx}
+            status={stepStatuses[idx]}
+            onClick={() => goToStep(idx)}
+            title={idx > furthestUnlockedStep ? `${meta.description} Locked: ${forwardBlockMessage}` : meta.description}
+          >
+            {idx + 1}. {meta.label}
           </StepButton>
         ))}
       </div>
       <div className="subtle">Step state: green = complete, red = needs attention, neutral = pending.</div>
+      <div className={currentStepIssue ? "callout callout--error" : "callout"}>
+        <div className="row row--between gap-2" style={{ alignItems: "center" }}>
+          <div>
+            <div className="font-bold">
+              Step {Math.min(step + 1, steps.length)} of {steps.length}: {currentStepMeta?.label || "Wizard"}
+            </div>
+            <div className="subtle">{currentStepMeta?.description || ""}</div>
+          </div>
+          <div className="subtle">
+            Completed: <b>{completedStepCount}</b> / {Math.max(steps.length - 1, 0)}
+          </div>
+        </div>
+        <div className="subtle mt-2">
+          {currentStepIssue ? `Needs attention: ${currentStepMessage}` : currentStepMessage}
+        </div>
+      </div>
 
       {step === 0 ? (
         <div className="card">
@@ -3639,7 +3762,13 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
             </label>
           </div>
           <div className="row row--end">
-            <button className="btn btn--primary" type="button" onClick={() => setStep(1)}>
+            <button
+              className="btn btn--primary"
+              type="button"
+              onClick={() => goToStep(1)}
+              disabled={!!basicsError}
+              title={basicsError || "Continue to Postseason"}
+            >
               Next
             </button>
           </div>
@@ -3674,7 +3803,13 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
             <button className="btn btn--ghost" type="button" onClick={() => setStep(0)}>
               Back
             </button>
-            <button className="btn btn--primary" type="button" onClick={() => setStep(2)}>
+            <button
+              className="btn btn--primary"
+              type="button"
+              onClick={() => goToStep(2)}
+              disabled={!!postseasonError}
+              title={postseasonError || "Continue to Slot plan"}
+            >
               Next
             </button>
           </div>
@@ -3684,9 +3819,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       {step === 2 ? (
         <div className="card">
           <div className="card__header">
-            <div className="h3">Scheduling rules</div>
+            <div className="h3">Slot plan (all phases)</div>
             <div className="subtle">
-              Mark each availability as practice/game/both (defaults to practice), set priority rank, and pick guest game anchor options for all phases.
+              Mark each availability pattern as practice, game, or both; adjust timing; and reserve guest anchors before rule tuning.
             </div>
           </div>
           <div className="card__body stack gap-3">
@@ -3968,7 +4103,13 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
             <button className="btn btn--ghost" type="button" onClick={() => setStep(1)}>
               Back
             </button>
-            <button className="btn btn--primary" type="button" onClick={() => setStep(3)}>
+            <button
+              className="btn btn--primary"
+              type="button"
+              onClick={() => goToStep(3)}
+              disabled={!!slotPlanError}
+              title={slotPlanError || "Continue to Rules"}
+            >
               Next
             </button>
           </div>
@@ -3978,8 +4119,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       {step === 3 ? (
         <div className="card">
           <div className="card__header">
-            <div className="h3">Slot planning</div>
-            <div className="subtle">Set regular season and pool play constraints with live feasibility checking.</div>
+            <div className="h3">Scheduling rules</div>
+            <div className="subtle">Set targets, hard stops, and matchup priorities with live feasibility checking.</div>
           </div>
           <div className="card__body stack gap-3">
 
@@ -4020,173 +4161,192 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
               </div>
             ) : null}
 
-            <div className="grid2">
-            <label>
-              Min games per team (regular season)
-              <input
-                type="number"
-                min="0"
-                value={minGamesPerTeam}
-                onChange={(e) => setMinGamesPerTeam(e.target.value)}
-              />
-              {feasibility && feasibility.recommendations ? (
-                <div className="subtle text-sm mt-1">
-                  Recommended: {feasibility.recommendations.minGamesPerTeam}-{feasibility.recommendations.maxGamesPerTeam}
-                </div>
-              ) : null}
-            </label>
-            <label>
-              Pool games per team (pool week, min 2)
-              <input
-                type="number"
-                min="2"
-                value={poolGamesPerTeam}
-                onChange={(e) => setPoolGamesPerTeam(e.target.value)}
-              />
-            </label>
-            <label>
-              Guest games per week
-              <input
-                type="number"
-                min="0"
-                value={guestGamesPerWeek}
-                onChange={(e) => setGuestGamesPerWeek(e.target.value)}
-              />
-              {feasibility && feasibility.recommendations && feasibility.recommendations.optimalGuestGamesPerWeek > 0 ? (
-                <div className="subtle text-sm mt-1">
-                  Recommended: {feasibility.recommendations.optimalGuestGamesPerWeek} (helps balance odd team count)
-                </div>
-              ) : null}
-            </label>
-            <label>
-              Max guest/crossover offers per team (season)
-              <input
-                type="number"
-                min="0"
-                value={maxExternalOffersPerTeamSeason}
-                onChange={(e) => setMaxExternalOffersPerTeamSeason(e.target.value)}
-              />
-              <div className="subtle text-sm mt-1">
-                0 = no cap. Hard rule for external/guest offers in regular season.
+            <div className="card">
+              <div className="card__header">
+                <div className="h4">Game targets & weekly limits</div>
+                <div className="subtle">Define how many games to build and the caps that keep weeks balanced.</div>
               </div>
-            </label>
-            <label>
-              Max games per team per week
-              <input
-                type="number"
-                min="0"
-                value={maxGamesPerWeek}
-                onChange={(e) => setMaxGamesPerWeek(e.target.value)}
-              />
-            </label>
-            <label className="inlineCheck">
-              <input type="checkbox" checked={noDoubleHeaders} onChange={(e) => setNoDoubleHeaders(e.target.checked)} />
-              No doubleheaders
-            </label>
-            <label className="inlineCheck">
-              <input type="checkbox" checked={balanceHomeAway} onChange={(e) => setBalanceHomeAway(e.target.checked)} />
-              Balance home/away
-            </label>
-            <div className="stack gap-1">
-              <label className="inlineCheck">
-                <input
-                  type="checkbox"
-                  checked={blockSpringBreak}
-                  onChange={(e) => setBlockSpringBreak(e.target.checked)}
-                  disabled={!springBreakRange}
-                />
-                Block Spring Break games {springBreakRange ? `(${springBreakRange.startDate} to ${springBreakRange.endDate})` : "(set season dates first)"}
-              </label>
-              {blockSpringBreak && springBreakRange ? (
-                <div className="subtle text-sm">
-                  Slots in this range will be excluded from schedule preview and apply.
+              <div className="card__body grid2">
+                <label>
+                  Min games per team (regular season)
+                  <input
+                    type="number"
+                    min="0"
+                    value={minGamesPerTeam}
+                    onChange={(e) => setMinGamesPerTeam(e.target.value)}
+                  />
+                  {feasibility && feasibility.recommendations ? (
+                    <div className="subtle text-sm mt-1">
+                      Recommended: {feasibility.recommendations.minGamesPerTeam}-{feasibility.recommendations.maxGamesPerTeam}
+                    </div>
+                  ) : null}
+                </label>
+                <label>
+                  Pool games per team (pool week, min 2)
+                  <input
+                    type="number"
+                    min="2"
+                    value={poolGamesPerTeam}
+                    onChange={(e) => setPoolGamesPerTeam(e.target.value)}
+                  />
+                </label>
+                <label>
+                  Guest games per week
+                  <input
+                    type="number"
+                    min="0"
+                    value={guestGamesPerWeek}
+                    onChange={(e) => setGuestGamesPerWeek(e.target.value)}
+                  />
+                  {feasibility && feasibility.recommendations && feasibility.recommendations.optimalGuestGamesPerWeek > 0 ? (
+                    <div className="subtle text-sm mt-1">
+                      Recommended: {feasibility.recommendations.optimalGuestGamesPerWeek} (helps balance odd team count)
+                    </div>
+                  ) : null}
+                </label>
+                <label>
+                  Max guest/crossover offers per team (season)
+                  <input
+                    type="number"
+                    min="0"
+                    value={maxExternalOffersPerTeamSeason}
+                    onChange={(e) => setMaxExternalOffersPerTeamSeason(e.target.value)}
+                  />
+                  <div className="subtle text-sm mt-1">
+                    0 = no cap. Hard rule for external/guest offers in regular season.
+                  </div>
+                </label>
+                <label>
+                  Max games per team per week
+                  <input
+                    type="number"
+                    min="0"
+                    value={maxGamesPerWeek}
+                    onChange={(e) => setMaxGamesPerWeek(e.target.value)}
+                  />
+                </label>
+                <div className="stack gap-2">
+                  <label className="inlineCheck">
+                    <input type="checkbox" checked={noDoubleHeaders} onChange={(e) => setNoDoubleHeaders(e.target.checked)} />
+                    No doubleheaders
+                  </label>
+                  <label className="inlineCheck">
+                    <input type="checkbox" checked={balanceHomeAway} onChange={(e) => setBalanceHomeAway(e.target.checked)} />
+                    Balance home/away
+                  </label>
+                  <div className="stack gap-1">
+                    <label className="inlineCheck">
+                      <input
+                        type="checkbox"
+                        checked={blockSpringBreak}
+                        onChange={(e) => setBlockSpringBreak(e.target.checked)}
+                        disabled={!springBreakRange}
+                      />
+                      Block Spring Break games {springBreakRange ? `(${springBreakRange.startDate} to ${springBreakRange.endDate})` : "(set season dates first)"}
+                    </label>
+                    {blockSpringBreak && springBreakRange ? (
+                      <div className="subtle text-sm">
+                        Slots in this range will be excluded from schedule preview and apply.
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
-              ) : null}
+              </div>
             </div>
-            <div className="stack gap-2">
-              <div className="font-bold" style={{ fontSize: "0.95rem" }}>League-specific hard stops</div>
-              <label>
-                No games on specific dates (YYYY-MM-DD, comma or newline separated)
-                <textarea
-                  rows={3}
-                  value={noGamesOnDatesText}
-                  onChange={(e) => setNoGamesOnDatesText(e.target.value)}
-                  placeholder={"2026-05-24\n2026-05-31"}
-                />
-                <div className="subtle text-sm mt-1">
-                  {parsedNoGamesOnDates.values.length} valid date(s) configured.
-                </div>
-              </label>
-              <div className="grid2">
-                <label>
-                  No games before (HH:MM)
-                  <input
-                    type="time"
-                    value={normalizeClockInput(noGamesBeforeTime) || noGamesBeforeTime}
-                    onChange={(e) => setNoGamesBeforeTime(e.target.value)}
-                  />
-                </label>
-                <label>
-                  No games after (HH:MM)
-                  <input
-                    type="time"
-                    value={normalizeClockInput(noGamesAfterTime) || noGamesAfterTime}
-                    onChange={(e) => setNoGamesAfterTime(e.target.value)}
-                  />
-                </label>
+            <div className="card">
+              <div className="card__header">
+                <div className="h4">League hard stops</div>
+                <div className="subtle">Filter out blocked dates and times before the scheduler starts assigning games.</div>
               </div>
-              {leagueRuleIssues.length ? (
-                <div className="callout callout--warning">
-                  {leagueRuleIssues.slice(0, 2).map((issue, idx) => (
-                    <div key={`league-rule-issue-${idx}`} className="subtle">{issue}</div>
+              <div className="card__body stack gap-2">
+                <label>
+                  No games on specific dates (YYYY-MM-DD, comma or newline separated)
+                  <textarea
+                    rows={3}
+                    value={noGamesOnDatesText}
+                    onChange={(e) => setNoGamesOnDatesText(e.target.value)}
+                    placeholder={"2026-05-24\n2026-05-31"}
+                  />
+                  <div className="subtle text-sm mt-1">
+                    {parsedNoGamesOnDates.values.length} valid date(s) configured.
+                  </div>
+                </label>
+                <div className="grid2">
+                  <label>
+                    No games before (HH:MM)
+                    <input
+                      type="time"
+                      value={normalizeClockInput(noGamesBeforeTime) || noGamesBeforeTime}
+                      onChange={(e) => setNoGamesBeforeTime(e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    No games after (HH:MM)
+                    <input
+                      type="time"
+                      value={normalizeClockInput(noGamesAfterTime) || noGamesAfterTime}
+                      onChange={(e) => setNoGamesAfterTime(e.target.value)}
+                    />
+                  </label>
+                </div>
+                {leagueRuleIssues.length ? (
+                  <div className="callout callout--warning">
+                    {leagueRuleIssues.slice(0, 2).map((issue, idx) => (
+                      <div key={`league-rule-issue-${idx}`} className="subtle">{issue}</div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="subtle text-sm">
+                    These rules are enforced as hard stops in Preview/Apply and filter slots before construction.
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="card">
+              <div className="card__header">
+                <div className="h4">Preferred weeknights</div>
+                <div className="subtle">Bias the regular season toward the nights with the strongest availability.</div>
+              </div>
+              <div className="card__body stack gap-2">
+                <div className="muted text-sm">Pick up to three nights. Other nights can still be used unless strict mode is on.</div>
+                {availabilityLoading ? (
+                  <div className="muted text-sm">Analyzing availability for recommended nights...</div>
+                ) : availabilityInsights?.suggested?.length ? (
+                  <div className="callout">
+                    Recommended nights based on availability: <b>{availabilityInsights.suggested.join(", ")}</b>
+                    {autoAppliedPreferred ? (
+                      <span className="pill ml-2">Auto-selected</span>
+                    ) : null}
+                  </div>
+                ) : availabilityErr ? (
+                  <div className="callout callout--error">{availabilityErr}</div>
+                ) : null}
+                <div className="row row--wrap gap-2">
+                  {WEEKDAY_OPTIONS.map((day) => (
+                    <button
+                      key={day}
+                      className={`pill ${preferredWeeknights.includes(day) ? "is-active" : ""}`}
+                      type="button"
+                      onClick={() => toggleWeeknight(day)}
+                    >
+                      {day}
+                    </button>
                   ))}
                 </div>
-              ) : (
-                <div className="subtle text-sm">
-                  These rules are enforced as hard stops in Preview/Apply and filter slots before construction.
+                <div className="muted text-sm">
+                  Selected: {preferredWeeknights.length}/{MAX_PREFERRED_WEEKNIGHTS}
                 </div>
-              )}
-            </div>
-            <div className="stack gap-2">
-              <div className="muted text-sm">Preferred weeknights (pick up to three; other nights can still be used)</div>
-              {availabilityLoading ? (
-                <div className="muted text-sm">Analyzing availability for recommended nights...</div>
-              ) : availabilityInsights?.suggested?.length ? (
-                <div className="callout">
-                  Recommended nights based on availability: <b>{availabilityInsights.suggested.join(", ")}</b>
-                  {autoAppliedPreferred ? (
-                    <span className="pill ml-2">Auto-selected</span>
-                  ) : null}
-                </div>
-              ) : availabilityErr ? (
-                <div className="callout callout--error">{availabilityErr}</div>
-              ) : null}
-              <div className="row row--wrap gap-2">
-                {WEEKDAY_OPTIONS.map((day) => (
-                  <button
-                    key={day}
-                    className={`pill ${preferredWeeknights.includes(day) ? "is-active" : ""}`}
-                    type="button"
-                    onClick={() => toggleWeeknight(day)}
-                  >
-                    {day}
-                  </button>
-                ))}
+                <label className="inlineCheck">
+                  <input
+                    type="checkbox"
+                    checked={strictPreferredWeeknights}
+                    onChange={(e) => setStrictPreferredWeeknights(e.target.checked)}
+                  />
+                  Only use preferred nights (ignore other days)
+                </label>
               </div>
-              <div className="muted text-sm">
-                Selected: {preferredWeeknights.length}/{MAX_PREFERRED_WEEKNIGHTS}
-              </div>
-              <label className="inlineCheck">
-                <input
-                  type="checkbox"
-                  checked={strictPreferredWeeknights}
-                  onChange={(e) => setStrictPreferredWeeknights(e.target.checked)}
-                />
-                Only use preferred nights (ignore other days)
-              </label>
             </div>
-            </div>
-            <div className="card mt-3">
+            <div className="card">
               <div className="row items-center justify-between gap-2 mb-2">
                 <div>
                   <div className="font-bold">Priority matchups (late-season preference)</div>
@@ -4407,7 +4567,13 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
             <button className="btn btn--ghost" type="button" onClick={() => setStep(2)}>
               Back
             </button>
-            <button className="btn btn--primary" type="button" onClick={runPreview} disabled={loading}>
+            <button
+              className="btn btn--primary"
+              type="button"
+              onClick={runPreview}
+              disabled={loading || !!rulesError}
+              title={rulesError || 'Generate a preview to unlock the final step.'}
+            >
               {loading ? "Previewing..." : "Preview schedule"}
             </button>
           </div>
@@ -4425,24 +4591,77 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
               <div className="muted">Run a preview to see results.</div>
             ) : (
               <>
-                <div className="layoutStatRow">
-                  <div className="layoutStat">
-                    <div className="layoutStat__value">{preview.summary?.regularSeason?.slotsAssigned ?? 0}</div>
-                    <div className="layoutStat__label">Regular season games</div>
+                <div className="card">
+                  <div className="card__header">
+                    <div className="h4">Preview overview</div>
+                    <div className="subtle">Start here. Check readiness, then move through fixes, coverage, and assignments below.</div>
                   </div>
-                  <div className="layoutStat">
-                    <div className="layoutStat__value">{preview.summary?.poolPlay?.slotsAssigned ?? 0}</div>
-                    <div className="layoutStat__label">Pool play games</div>
-                  </div>
-                  <div className="layoutStat">
-                    <div className="layoutStat__value">{preview.summary?.bracket?.slotsAssigned ?? 0}</div>
-                    <div className="layoutStat__label">Bracket games</div>
-                  </div>
-                  <div className="layoutStat">
-                    <div className="layoutStat__value">{preview.summary?.totalSlots ?? 0}</div>
-                    <div className="layoutStat__label">Game-capable slots</div>
+                  <div className="card__body stack gap-3">
+                    <div className="layoutStatRow">
+                      <div className="layoutStat">
+                        <div className="layoutStat__value">{preview.summary?.regularSeason?.slotsAssigned ?? 0}</div>
+                        <div className="layoutStat__label">Regular season games</div>
+                      </div>
+                      <div className="layoutStat">
+                        <div className="layoutStat__value">{preview.summary?.poolPlay?.slotsAssigned ?? 0}</div>
+                        <div className="layoutStat__label">Pool play games</div>
+                      </div>
+                      <div className="layoutStat">
+                        <div className="layoutStat__value">{preview.summary?.bracket?.slotsAssigned ?? 0}</div>
+                        <div className="layoutStat__label">Bracket games</div>
+                      </div>
+                      <div className="layoutStat">
+                        <div className="layoutStat__value">{preview.summary?.totalSlots ?? 0}</div>
+                        <div className="layoutStat__label">Game-capable slots</div>
+                      </div>
+                    </div>
+                    <div className={(previewApplyBlocked || previewIssueCount > 0) ? "callout callout--warning" : "callout callout--ok"}>
+                      <div className="font-bold mb-2">At a glance</div>
+                      <div className="row row--wrap gap-2">
+                        <span className="pill">{previewApplyBlocked ? "Apply blocked" : "Apply ready"}</span>
+                        <span className="pill">Issues: {previewIssueCount}</span>
+                        <span className="pill">Warnings: {previewWarningCount}</span>
+                        <span className="pill">Repairs: {previewRepairProposals.length}</span>
+                        <span className="pill">Recommendations: {previewRecommendations.length}</span>
+                        <span className="pill">Assignments: {previewAssignmentCount}</span>
+                      </div>
+                      <div className="subtle mt-2">
+                        {previewApplyBlocked || previewIssueCount > 0
+                          ? "Start with Health & fixes, then review the coverage sections before applying."
+                          : "No blocking issues are currently reported. Review coverage and assignments, then apply if the schedule looks right."}
+                      </div>
+                      <div className="subtle mt-1">
+                        The sections below are collapsible so you can focus on one review track at a time.
+                      </div>
+                    </div>
                   </div>
                 </div>
+
+                <div className="row row--wrap gap-2">
+                  <button
+                    className="btn btn--ghost"
+                    type="button"
+                    onClick={() => setAllPreviewSectionsExpanded(true)}
+                  >
+                    Expand all
+                  </button>
+                  <button
+                    className="btn btn--ghost"
+                    type="button"
+                    onClick={() => setAllPreviewSectionsExpanded(false)}
+                  >
+                    Collapse all
+                  </button>
+                </div>
+
+                <CollapsibleSection
+                  key={`preview-section-health-${previewSectionRefreshKey}`}
+                  title="Health & fixes"
+                  subtitle="Use this section to triage rule conflicts, repairs, and preview diagnostics."
+                  defaultExpanded={previewApplyBlocked || previewIssueCount > 0 || previewRepairProposals.length > 0}
+                  storageKey={PREVIEW_SECTION_STORAGE_KEYS.health}
+                >
+                  <div className="stack gap-3">
 
               {previewRuleHealth ? (
                 <div
@@ -4798,6 +5017,17 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                   )}
                 </div>
               ) : null}
+                  </div>
+                </CollapsibleSection>
+
+                <CollapsibleSection
+                  key={`preview-section-coverage-${previewSectionRefreshKey}`}
+                  title="Coverage & balance"
+                  subtitle="Review phase coverage, matchup balance, and where the schedule is still thin."
+                  defaultExpanded={!previewApplyBlocked && previewIssueCount === 0}
+                  storageKey={PREVIEW_SECTION_STORAGE_KEYS.coverage}
+                >
+                  <div className="stack gap-3">
               {preview.summary ? (
                 <div className="callout">
                   <div className="font-bold mb-2">Scheduling context</div>
@@ -5364,7 +5594,18 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                   <div className="subtle">All regular-season matchups were assigned.</div>
                 )}
               </div>
-                <div className="subtle mt-2">
+                  </div>
+                </CollapsibleSection>
+
+                <CollapsibleSection
+                  key={`preview-section-assignments-${previewSectionRefreshKey}`}
+                  title="Assignments & explainability"
+                  subtitle="Inspect the actual placements, try preview-only swaps, and drill into one game at a time."
+                  defaultExpanded={!!selectedGameExplain}
+                  storageKey={PREVIEW_SECTION_STORAGE_KEYS.assignments}
+                >
+                  <div className="stack gap-3">
+                <div className="subtle">
                   Tip: drag one <b>Regular Season</b> game row onto another to try a preview-only swap. The drop is revalidated immediately and illegal swaps are rejected.
                 </div>
                 <div className={`tableWrap ${tableView === "B" ? "tableWrap--sticky" : ""}`}>
@@ -5706,6 +5947,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                     </>
                   )}
                 </div>
+                  </div>
+                </CollapsibleSection>
               </>
             )}
           </div>

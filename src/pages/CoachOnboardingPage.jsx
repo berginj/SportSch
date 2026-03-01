@@ -774,51 +774,6 @@ export default function CoachOnboardingPage({ me, leagueId }) {
               </table>
             </div>
           )}
-          {false && (
-            <>
-          <h3 className="font-semibold mb-3">Available Practice Slots</h3>
-          {availableSlots.length === 0 ? (
-            <div className="text-sm text-gray-600">No available practice slots at this time</div>
-          ) : (
-            <div className="grid gap-2 max-h-96 overflow-y-auto">
-              {availableSlots.slice(0, 20).map((slot) => {
-                const alreadyRequested = practiceRequests.some(
-                  r => r.slotId === slot.slotId && (r.status === 'Pending' || r.status === 'Approved')
-                );
-                const maxRequests = practiceRequests.filter(r => r.status === 'Pending' || r.status === 'Approved').length >= 3;
-
-                return (
-                  <div
-                    key={slot.slotId}
-                    className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 bg-white border border-gray-200 rounded hover:bg-gray-50"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold">
-                        {slot.gameDate} • {slot.startTime}-{slot.endTime}
-                      </div>
-                      <div className="text-sm text-gray-600 truncate">
-                        {slot.displayName || slot.fieldKey || 'Field TBD'}
-                      </div>
-                    </div>
-                    <button
-                      className="btn btn--sm btn--primary sm:flex-shrink-0"
-                      onClick={() => requestPracticeSlot(slot)}
-                      disabled={alreadyRequested || maxRequests || requestingSlot === slot.slotId}
-                      title={
-                        alreadyRequested ? 'Already requested' :
-                        maxRequests ? 'Maximum 3 requests' :
-                        'Request this slot'
-                      }
-                    >
-                      {alreadyRequested ? 'Requested' : requestingSlot === slot.slotId ? 'Requesting...' : 'Request'}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-            </>
-          )}
         </div>
       </div>
 
