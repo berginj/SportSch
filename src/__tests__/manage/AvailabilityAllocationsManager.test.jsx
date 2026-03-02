@@ -38,6 +38,41 @@ function installApiMock() {
       isActive: true,
     },
   ];
+  let previewState = {
+    slots: [],
+    conflicts: [
+      {
+        gameDate: "2026-04-07",
+        startTime: "18:00",
+        endTime: "20:00",
+        fieldKey: "PARK1/F1",
+        division: "10U",
+        reason: "overlaps_existing_slot",
+        overlapCount: 1,
+        slotType: "both",
+        priorityRank: 12,
+        overlaps: [
+          {
+            source: "existing_slot",
+            slotId: "conflict-slot-1",
+            startTime: "18:30",
+            endTime: "20:00",
+            status: "Confirmed",
+            gameType: "Practice",
+            isAvailability: false,
+            division: "10U",
+            offeringTeamId: "BlueWaves",
+            homeTeamId: "",
+            awayTeamId: "",
+          },
+        ],
+      },
+    ],
+    slotCount: 0,
+    conflictCount: 1,
+    failed: [],
+    failedCount: 0,
+  };
 
   api.apiFetch.mockImplementation((url, options = {}) => {
     if (url === "/api/divisions") return Promise.resolve(DIVISIONS);
@@ -68,6 +103,24 @@ function installApiMock() {
           : row
       );
       return Promise.resolve(currentAllocations[0]);
+    }
+    if (url === "/api/availability/allocations/slots/preview" && options?.method === "POST") {
+      return Promise.resolve({
+        slots: previewState.slots,
+        conflicts: previewState.conflicts,
+        slotCount: previewState.slotCount,
+        conflictCount: previewState.conflictCount,
+        failed: previewState.failed,
+        failedCount: previewState.failedCount,
+      });
+    }
+    if (url === "/api/slots/10U/conflict-slot-1/cancel" && options?.method === "PATCH") {
+      previewState = {
+        ...previewState,
+        conflicts: [],
+        conflictCount: 0,
+      };
+      return Promise.resolve({ ok: true });
     }
     throw new Error(`Unexpected apiFetch call: ${url}`);
   });
@@ -115,5 +168,31 @@ describe("AvailabilityAllocationsManager", () => {
     expect(patchBody.notes).toBe("Updated note");
     expect(await screen.findByText("Updated note")).toBeInTheDocument();
     expect(screen.getAllByText("Allocation updated.").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("cancels a conflicting slot directly from the preview table", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    try {
+      render(<AvailabilityAllocationsManager leagueId="league-1" />);
+
+      await screen.findByText("Generate availability slots from allocations");
+      fireEvent.click(screen.getByRole("button", { name: "Preview slots" }));
+
+      await screen.findByText("Overlaps an existing slot");
+      fireEvent.click(screen.getByRole("button", { name: "View" }));
+      fireEvent.click(screen.getByRole("button", { name: "Cancel slot" }));
+
+      await waitFor(() => {
+        expect(api.apiFetch).toHaveBeenCalledWith(
+          "/api/slots/10U/conflict-slot-1/cancel",
+          expect.objectContaining({ method: "PATCH" })
+        );
+      });
+
+      expect(await screen.findByText("Preview ready: 0 candidate slots, 0 conflicts.")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Cancel slot" })).not.toBeInTheDocument();
+    } finally {
+      confirmSpy.mockRestore();
+    }
   });
 });

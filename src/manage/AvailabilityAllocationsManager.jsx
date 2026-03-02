@@ -174,6 +174,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
   const [genLoading, setGenLoading] = useState(false);
   const [genStatus, setGenStatus] = useState("");
   const [selectedConflictKey, setSelectedConflictKey] = useState("");
+  const [conflictActionSlotId, setConflictActionSlotId] = useState("");
 
   useEffect(() => {
     if (!leagueId) return;
@@ -762,6 +763,34 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
       setGenStatus(message);
     } finally {
       setGenLoading(false);
+    }
+  }
+
+  async function removeConflictSlot(conflict) {
+    const slotId = String(conflict?.slotId || "").trim();
+    const division = String(conflict?.division || "").trim();
+    if (!slotId || !division) return;
+
+    const typeLabel = String(conflict?.gameType || "").trim() || (conflict?.isAvailability ? "Availability" : "slot");
+    const teamLabel = formatConflictTeams(conflict);
+    const confirmMessage =
+      `Cancel this conflicting ${typeLabel.toLowerCase()} on ${conflict.startTime}-${conflict.endTime}` +
+      `${teamLabel && teamLabel !== "-" ? ` for ${teamLabel}` : ""}?`;
+    if (!window.confirm(confirmMessage)) return;
+
+    setConflictActionSlotId(slotId);
+    setAllocErr("");
+    try {
+      await apiFetch(`/api/slots/${encodeURIComponent(division)}/${encodeURIComponent(slotId)}/cancel`, {
+        method: "PATCH",
+      });
+      setToast({ tone: "success", message: `Cancelled conflicting slot ${slotId}.` });
+      setSelectedConflictKey("");
+      await previewAllocations();
+    } catch (e) {
+      setAllocErr(formatApiError(e, "Failed to cancel conflicting slot."));
+    } finally {
+      setConflictActionSlotId("");
     }
   }
 
@@ -1444,6 +1473,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
                                           <th>Status</th>
                                           <th>Teams</th>
                                           <th>Slot Id</th>
+                                          <th>Actions</th>
                                         </tr>
                                       </thead>
                                       <tbody>
@@ -1455,6 +1485,20 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
                                             <td>{o.status || "-"}</td>
                                             <td>{formatConflictTeams(o)}</td>
                                             <td>{o.slotId || "-"}</td>
+                                            <td>
+                                              {o.source === "existing_slot" && o.slotId && o.division ? (
+                                                <button
+                                                  type="button"
+                                                  className="btn btn--ghost"
+                                                  onClick={() => removeConflictSlot(o)}
+                                                  disabled={conflictActionSlotId === o.slotId}
+                                                >
+                                                  {conflictActionSlotId === o.slotId ? "Cancelling..." : "Cancel slot"}
+                                                </button>
+                                              ) : (
+                                                <span className="subtle">-</span>
+                                              )}
+                                            </td>
                                           </tr>
                                         ))}
                                       </tbody>
