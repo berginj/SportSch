@@ -74,15 +74,8 @@ public class NotificationPreferencesService : INotificationPreferencesService
         _logger.LogInformation("Updating notification preferences for user {UserId} in league {LeagueId}", userId, leagueId);
 
         // Get existing preferences or create new entity
-        var prefs = await _preferencesRepo.GetPreferencesAsync(userId, leagueId);
-        var isNew = prefs == null;
-
-        if (isNew)
-        {
-            var pk = Constants.Pk.NotificationPreferences(userId);
-            var rk = leagueId;
-            prefs = new TableEntity(pk, rk);
-        }
+        var prefs = await _preferencesRepo.GetPreferencesAsync(userId, leagueId)
+            ?? new TableEntity(Constants.Pk.NotificationPreferences(userId), leagueId);
 
         // Update fields (only update non-null values)
         if (update.EnableInAppNotifications.HasValue)

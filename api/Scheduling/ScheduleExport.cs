@@ -175,7 +175,7 @@ public static class ScheduleExport
         return e.Value - s.Value;
     }
 
-    private static int? ParseMinutes(string value)
+    private static int? ParseMinutes(string? value)
     {
         var parts = (value ?? "").Split(':');
         if (parts.Length < 2) return null;

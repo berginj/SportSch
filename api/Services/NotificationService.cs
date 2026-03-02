@@ -141,7 +141,7 @@ public class NotificationService : INotificationService
             entities.Count, userId, leagueId);
     }
 
-    public async Task DeleteOldNotificationsAsync(int daysOld = 30)
+    public Task DeleteOldNotificationsAsync(int daysOld = 30)
     {
         // This would typically be called by a timer function for all users
         // For now, it's a placeholder that would need to be enhanced
@@ -149,5 +149,6 @@ public class NotificationService : INotificationService
 
         // TODO: Implement user iteration or make this per-user via timer function
         // await _notificationRepo.DeleteOldNotificationsAsync(userId, daysOld);
+        return Task.CompletedTask;
     }
 }

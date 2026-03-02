@@ -25,7 +25,7 @@ public static class DateTimeUtil
     /// </summary>
     public static bool IsValidTime(string? time)
     {
-        return TimeUtil.TryParseMinutes(time, out _);
+        return !string.IsNullOrWhiteSpace(time) && TimeUtil.TryParseMinutes(time, out _);
     }
 
     /// <summary>
