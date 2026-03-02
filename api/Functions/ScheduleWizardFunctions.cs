@@ -396,8 +396,8 @@ public class ScheduleWizardFunctions
             var maxGamesPerWeek = (body.maxGamesPerWeek ?? 0) <= 0 ? (int?)null : body.maxGamesPerWeek;
             var noDoubleHeaders = body.noDoubleHeaders ?? true;
             var balanceHomeAway = body.balanceHomeAway ?? true;
-            var preferredDays = NormalizePreferredDays(body.preferredWeeknights);
-            var strictPreferredWeeknights = body.strictPreferredWeeknights ?? false;
+            var preferredDays = new List<DayOfWeek>();
+            var strictPreferredWeeknights = false;
             var blockedRanges = NormalizeBlockedDateRanges(body.blockedDateRanges);
             var hardLeagueRules = NormalizeHardLeagueRules(body);
             var normalizedConstructionStrategy = NormalizeConstructionStrategy(body.constructionStrategy);
@@ -956,12 +956,7 @@ public class ScheduleWizardFunctions
             var gameCapableSlots = filteredAllSlots.Where(IsGameCapableSlotType).ToList();
             var regularSlots = FilterSlots(gameCapableSlots, seasonStart, regularRangeEnd);
 
-            var preferredDays = NormalizePreferredDays(wizard.preferredWeeknights);
-            var strictPreferredWeeknights = wizard.strictPreferredWeeknights ?? false;
-            if (strictPreferredWeeknights && preferredDays.Count > 0)
-            {
-                regularSlots = regularSlots.Where(s => IsPreferredDay(s.gameDate, preferredDays)).ToList();
-            }
+            var preferredDays = new List<DayOfWeek>();
 
             var externalOfferPerWeek = Math.Max(0, wizard.externalOfferPerWeek ?? 0);
             var guestAnchors = NormalizeGuestAnchors(wizard.guestAnchorPrimary, wizard.guestAnchorSecondary);

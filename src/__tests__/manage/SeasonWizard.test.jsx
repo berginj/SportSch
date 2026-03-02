@@ -143,7 +143,7 @@ function installLocalStorageMock() {
   return store;
 }
 
-function installApiMock({ previewResponse = BASE_PREVIEW, slotsResponse } = {}) {
+function installApiMock({ previewResponse = BASE_PREVIEW, previewError = null, slotsResponse } = {}) {
   api.apiFetch.mockImplementation((path) => {
     const url = String(path || "");
     if (url === "/api/divisions") {
@@ -196,6 +196,9 @@ function installApiMock({ previewResponse = BASE_PREVIEW, slotsResponse } = {}) 
       });
     }
     if (url === "/api/schedule/wizard/preview") {
+      if (previewError) {
+        return Promise.reject(previewError);
+      }
       return Promise.resolve(previewResponse);
     }
     throw new Error(`Unexpected apiFetch call: ${url}`);
@@ -313,6 +316,8 @@ describe("SeasonWizard", () => {
   it("applies rule presets to the rules inputs", async () => {
     await advanceToRules();
 
+    expect(screen.queryByText("Preferred weeknights")).not.toBeInTheDocument();
+
     fireEvent.click(screen.getByRole("button", { name: "Max games" }));
 
     expect(screen.getByLabelText(/No doubleheaders/i)).not.toBeChecked();
@@ -347,6 +352,20 @@ describe("SeasonWizard", () => {
 
     expect(within(assignmentsTable).getByText("2026-04-07")).toBeInTheDocument();
     expect(within(assignmentsTable).getByText("2026-05-01")).toBeInTheDocument();
+  });
+
+  it("keeps rules step unblocked when preview fetch fails", async () => {
+    installApiMock({ previewError: new Error("Failed to fetch") });
+
+    await advanceToRules();
+    fireEvent.click(screen.getByRole("button", { name: "Preview schedule" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Preview request failed. The scheduler service did not respond.")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("No blocking issues detected for this step.")).toBeInTheDocument();
+    expect(screen.getByText("In progress")).toBeInTheDocument();
   });
 
   it("pushes later slot times when a pattern is expanded to game length", async () => {

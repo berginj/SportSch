@@ -1,14 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { validateIsoDates } from "../lib/date";
-import { buildAvailabilityInsights } from "../lib/availabilityInsights";
 import { trackEvent } from "../lib/telemetry";
 import CollapsibleSection from "../components/CollapsibleSection";
 import Toast from "../components/Toast";
 import { useCollapsibleSectionControl } from "../lib/useCollapsibleSectionControl";
 
 const WEEKDAY_OPTIONS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const MAX_PREFERRED_WEEKNIGHTS = 3;
 const MAX_RIVALRY_MATCHUPS = 12;
 const SLOT_TYPE_OPTIONS = [
   { value: "practice", label: "Practice", shortLabel: "P" },
@@ -128,6 +126,15 @@ function slotTypeSelectTitle(value) {
 function getSlotTypeAppearance(value) {
   const normalizedValue = normalizeSlotType(value);
   return SLOT_TYPE_APPEARANCE[normalizedValue] || SLOT_TYPE_APPEARANCE.practice;
+}
+
+function normalizeRequestErrorMessage(error, fallbackMessage) {
+  const rawMessage = String(error?.message || "").trim();
+  if (!rawMessage) return fallbackMessage;
+  if (rawMessage === "Failed to fetch") {
+    return `${fallbackMessage} The scheduler service did not respond.`;
+  }
+  return rawMessage;
 }
 
 function normalizePriorityRank(value) {
@@ -938,8 +945,6 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
   const [minGamesPerTeam, setMinGamesPerTeam] = useState(0);
   const [poolGamesPerTeam, setPoolGamesPerTeam] = useState(2);
-  const [preferredWeeknights, setPreferredWeeknights] = useState([]);
-  const [strictPreferredWeeknights, setStrictPreferredWeeknights] = useState(false);
   const [guestGamesPerWeek, setGuestGamesPerWeek] = useState(0);
   const [maxExternalOffersPerTeamSeason, setMaxExternalOffersPerTeamSeason] = useState(0);
   const [blockSpringBreak, setBlockSpringBreak] = useState(false);
@@ -967,11 +972,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [slotPlan, setSlotPlan] = useState([]);
   const [guestAnchorPrimarySlotId, setGuestAnchorPrimarySlotId] = useState("");
   const [guestAnchorSecondarySlotId, setGuestAnchorSecondarySlotId] = useState("");
-  const [availabilityInsights, setAvailabilityInsights] = useState(null);
-  const [autoAppliedPreferred, setAutoAppliedPreferred] = useState(false);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [availabilityErr, setAvailabilityErr] = useState("");
-  const [preferredTouched, setPreferredTouched] = useState(false);
 
   // Feasibility state
   const [feasibility, setFeasibility] = useState(null);
@@ -1257,11 +1259,6 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     const poolPracticeFallbackSlots = poolSlotsAllTypes.filter((slot) => slot?.slotType === "practice").length;
     const bracketPracticeFallbackSlots = bracketSlotsAllTypes.filter((slot) => slot?.slotType === "practice").length;
 
-    const preferredSet = new Set(preferredWeeknights);
-    const preferredRegularSlotsAvailable = regularGameSlots.filter(
-      (slot) => preferredSet.size === 0 || preferredSet.has(isoDayShort(slot.gameDate))
-    ).length;
-
     const regularWeekKeys = hasRegularRange ? buildIsoWeekKeys(seasonStart, regularRangeEnd) : [];
     const regularWeeklyCounts = new Map(regularWeekKeys.map((key) => [key, 0]));
     regularGameSlots.forEach((slot) => {
@@ -1306,7 +1303,6 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       bracketSlotsAvailable,
       poolPracticeFallbackSlots,
       bracketPracticeFallbackSlots,
-      preferredRegularSlotsAvailable,
       regularWeeksCount,
       avgGameSlotsPerWeek,
       maxGameSlotsPerWeek,
@@ -1328,9 +1324,6 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       bracketShortfall: Math.max(0, bracketRequiredSlots - bracketSlotsAvailable),
       totalShortfall: Math.max(0, totalRequiredSlotsMinimum - totalPhaseSlotsAvailable),
       totalCycleShortfall: Math.max(0, totalRequiredSlotsCycle - totalPhaseSlotsAvailable),
-      strictCapacityShortfall: strictPreferredWeeknights
-        ? Math.max(0, regularRequiredMinimum - preferredRegularSlotsAvailable)
-        : 0,
     };
   }, [
     activeBlockedRanges,
@@ -1344,11 +1337,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     poolEnd,
     poolGamesPerTeam,
     poolStart,
-    preferredWeeknights,
     seasonEnd,
     seasonStart,
     slotPlan,
-    strictPreferredWeeknights,
     teamCount,
   ]);
 
@@ -1362,14 +1353,6 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         })),
     [slotPatterns]
   );
-
-  function toggleWeeknight(day) {
-    setPreferredTouched(true);
-    setPreferredWeeknights((prev) => {
-      if (prev.includes(day)) return prev.filter((d) => d !== day);
-      return [...prev, day].slice(0, MAX_PREFERRED_WEEKNIGHTS);
-    });
-  }
 
   function updatePatternPlan(patternKey, patch) {
     setSlotPlan((prev) =>
@@ -1686,9 +1669,6 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
   useEffect(() => {
     if (!division) return;
-    setPreferredTouched(false);
-    setPreferredWeeknights([]);
-    setAutoAppliedPreferred(false);
     setSlotPlan([]);
     setGuestAnchorPrimarySlotId("");
     setGuestAnchorSecondarySlotId("");
@@ -1735,13 +1715,13 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     const applyAvailabilityPayload = (payload) => {
       if (cancelled || requestId !== availabilityRequestIdRef.current) return false;
       const availability = Array.isArray(payload?.availability) ? payload.availability : [];
-      const insights = payload?.insights || null;
-      const dayCounts = new Map(
-        (insights?.dayStats || []).map((day) => [day.day, day.slots])
-      );
+      const dayCounts = new Map();
       const patternCounts = new Map();
       for (const slot of availability) {
         const weekday = isoDayShort(slot.gameDate || "");
+        if (weekday) {
+          dayCounts.set(weekday, (dayCounts.get(weekday) || 0) + 1);
+        }
         const patternKey = `${weekday}|${slot.startTime || ""}|${slot.endTime || ""}|${slot.fieldKey || ""}`;
         patternCounts.set(patternKey, (patternCounts.get(patternKey) || 0) + 1);
       }
@@ -1777,12 +1757,6 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
           };
         });
       });
-
-      setAvailabilityInsights(insights);
-      if (!preferredTouched && (insights?.suggested || []).length) {
-        setPreferredWeeknights(insights.suggested);
-        setAutoAppliedPreferred(true);
-      }
       return true;
     };
 
@@ -1832,14 +1806,12 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
             return ad.localeCompare(bd);
           });
 
-        const insights = buildAvailabilityInsights(availability);
-        const payload = { availability, insights };
+        const payload = { availability };
         availabilityCacheRef.current.set(cacheKey, payload);
         applyAvailabilityPayload(payload);
       } catch (e) {
         if (cancelled || requestId !== availabilityRequestIdRef.current) return;
-        setAvailabilityErr(e?.message || "Failed to load availability insights.");
-        setAvailabilityInsights(null);
+        setAvailabilityErr(normalizeRequestErrorMessage(e, "Failed to load availability slots."));
         setSlotPlan([]);
         setGuestAnchorPrimarySlotId("");
         setGuestAnchorSecondarySlotId("");
@@ -1852,7 +1824,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     return () => {
       cancelled = true;
     };
-  }, [leagueId, division, seasonStart, seasonEnd, bracketEnd, preferredTouched]);
+  }, [leagueId, division, seasonStart, seasonEnd, bracketEnd]);
 
   useEffect(() => {
     const allowed = new Set(
@@ -1915,9 +1887,6 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       0,
       Number(feasibility?.recommendations?.optimalGuestGamesPerWeek || guestGamesPerWeek || 0)
     );
-    const suggestedWeeknights = Array.isArray(availabilityInsights?.suggested)
-      ? availabilityInsights.suggested.slice(0, MAX_PREFERRED_WEEKNIGHTS)
-      : [];
 
     if (presetId === "balanced") {
       setMinGamesPerTeam(recommendedMin);
@@ -1925,26 +1894,18 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       setMaxGamesPerWeek(Math.max(1, Math.min(2, recommendedMax)));
       setNoDoubleHeaders(true);
       setBalanceHomeAway(true);
-      setStrictPreferredWeeknights(false);
     } else if (presetId === "max_games") {
       setMinGamesPerTeam(recommendedMax);
       setGuestGamesPerWeek(Math.max(recommendedGuestGames, 1));
       setMaxGamesPerWeek(Math.max(2, Number(maxGamesPerWeek) || 0));
       setNoDoubleHeaders(false);
       setBalanceHomeAway(false);
-      setStrictPreferredWeeknights(false);
     } else if (presetId === "conservative") {
       setMinGamesPerTeam(Math.max(1, recommendedMin - 1));
       setGuestGamesPerWeek(0);
       setMaxGamesPerWeek(1);
       setNoDoubleHeaders(true);
       setBalanceHomeAway(true);
-      setStrictPreferredWeeknights(suggestedWeeknights.length > 0);
-      if (suggestedWeeknights.length) {
-        setPreferredTouched(true);
-        setPreferredWeeknights(suggestedWeeknights);
-        setAutoAppliedPreferred(false);
-      }
     } else {
       return;
     }
@@ -2055,8 +2016,6 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       bracketEnd: bracketEnd || undefined,
       minGamesPerTeam: Number(minGamesPerTeam) || 0,
       poolGamesPerTeam: Math.max(2, Number(poolGamesPerTeam) || 2),
-      preferredWeeknights: preferredWeeknights.slice(0, MAX_PREFERRED_WEEKNIGHTS),
-      strictPreferredWeeknights,
       externalOfferPerWeek: Number(guestGamesPerWeek) || 0,
       maxExternalOffersPerTeamSeason: Number(maxExternalOffersPerTeamSeason) || 0,
       maxGamesPerWeek: Number(maxGamesPerWeek) || 0,
@@ -2081,6 +2040,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     if (!division || !seasonStart || !seasonEnd) return;
     if (slotPlan.length === 0) return;
 
+    if (err === "Failed to fetch" || err.startsWith("Preview request failed.") || err.startsWith("Repair request failed.")) {
+      setErr("");
+    }
     setFeasibilityLoading(true);
     try {
       const payload = buildWizardPayload();
@@ -2134,7 +2096,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       setStep(4);
       trackEvent("ui_season_wizard_preview", { leagueId, division });
     } catch (e) {
-      setErr(e?.message || "Preview failed.");
+      setErr(normalizeRequestErrorMessage(e, "Preview request failed."));
       setPreview(null);
     } finally {
       setLoading(false);
@@ -2189,7 +2151,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       setToast({ tone: "success", message: "Wizard schedule applied." });
       trackEvent("ui_season_wizard_apply", { leagueId, division });
     } catch (e) {
-      setErr(e?.message || "Apply failed.");
+      setErr(normalizeRequestErrorMessage(e, "Apply request failed."));
     } finally {
       setLoading(false);
     }
@@ -2217,7 +2179,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       setPreview(data || null);
       setToast({ tone: "success", message: "Preview repair applied and revalidated." });
     } catch (e) {
-      setErr(e?.message || "Failed to apply preview repair.");
+      setErr(normalizeRequestErrorMessage(e, "Repair request failed."));
     } finally {
       setRepairApplyingId("");
     }
@@ -4006,10 +3968,6 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   }, [preview, previewCollections, maxGamesPerWeek, noDoubleHeaders, guestGamesPerWeek, unassignedRegularReport]);
 
   const stepStatuses = useMemo(() => {
-    const errors = [...stepErrors];
-    if (err && step >= 0 && step < errors.length) {
-      errors[step] = errors[step] || err;
-    }
     const completed = [
       !basicsError,
       !postseasonError && step > 1,
@@ -4018,7 +3976,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       !!preview && !previewError,
     ];
     return steps.map((_, idx) => {
-      if (errors[idx]) return "error";
+      if (stepErrors[idx]) return "error";
       if (idx === step) return "active";
       if (completed[idx]) return "complete";
       return "neutral";
@@ -4030,7 +3988,6 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     slotPlanError,
     rulesError,
     previewError,
-    err,
     step,
     slotPlanSummary.gameCapable,
     preview,
@@ -4040,7 +3997,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     () => stepStatuses.filter((status) => status === "complete").length,
     [stepStatuses]
   );
-  const currentStepIssue = (stepErrors[step] || err || "").trim();
+  const currentStepIssue = (stepErrors[step] || "").trim();
   const currentStepMessage = useMemo(() => {
     if (currentStepIssue) return currentStepIssue;
     if (step === 4 && !preview) return 'Run "Preview schedule" in the previous step to see results here.';
@@ -4840,50 +4797,6 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
               </div>
             </div>
             <div className="card">
-              <div className="card__header">
-                <div className="h4">Preferred weeknights</div>
-                <div className="subtle">Bias the regular season toward the nights with the strongest availability.</div>
-              </div>
-              <div className="card__body stack gap-2">
-                <div className="muted text-sm">Pick up to three nights. Other nights can still be used unless strict mode is on.</div>
-                {availabilityLoading ? (
-                  <div className="muted text-sm">Analyzing availability for recommended nights...</div>
-                ) : availabilityInsights?.suggested?.length ? (
-                  <div className="callout">
-                    Recommended nights based on availability: <b>{availabilityInsights.suggested.join(", ")}</b>
-                    {autoAppliedPreferred ? (
-                      <span className="pill ml-2">Auto-selected</span>
-                    ) : null}
-                  </div>
-                ) : availabilityErr ? (
-                  <div className="callout callout--error">{availabilityErr}</div>
-                ) : null}
-                <div className="row row--wrap gap-2">
-                  {WEEKDAY_OPTIONS.map((day) => (
-                    <button
-                      key={day}
-                      className={`pill ${preferredWeeknights.includes(day) ? "is-active" : ""}`}
-                      type="button"
-                      onClick={() => toggleWeeknight(day)}
-                    >
-                      {day}
-                    </button>
-                  ))}
-                </div>
-                <div className="muted text-sm">
-                  Selected: {preferredWeeknights.length}/{MAX_PREFERRED_WEEKNIGHTS}
-                </div>
-                <label className="inlineCheck">
-                  <input
-                    type="checkbox"
-                    checked={strictPreferredWeeknights}
-                    onChange={(e) => setStrictPreferredWeeknights(e.target.checked)}
-                  />
-                  Only use preferred nights (ignore other days)
-                </label>
-              </div>
-            </div>
-            <div className="card">
               <div className="row items-center justify-between gap-2 mb-2">
                 <div>
                   <div className="font-bold">Priority matchups (late-season preference)</div>
@@ -5085,12 +4998,6 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
               {planningIntel.blockedOutSlots > 0 ? (
                 <div className="subtle">
                   {planningIntel.blockedOutSlots} slot(s) excluded by blocked date ranges.
-                </div>
-              ) : null}
-              {strictPreferredWeeknights ? (
-                <div className="subtle">
-                  Preferred-night capacity: {planningIntel.preferredRegularSlotsAvailable} regular-season slot(s) on selected nights.
-                  {planningIntel.strictCapacityShortfall > 0 ? ` Short by ${planningIntel.strictCapacityShortfall}.` : ""}
                 </div>
               ) : null}
             </div>
@@ -6078,7 +5985,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                     </div>
                     <div className="subtle">
                       {unassignedRegularReport.openSlots > 0
-                        ? `${unassignedRegularReport.openSlots} open regular slot(s) remain. Try relaxing rules (max games/week, no-doubleheaders, preferred nights) to fit more games.`
+                        ? `${unassignedRegularReport.openSlots} open regular slot(s) remain. Try relaxing rules (max games/week or no-doubleheaders) to fit more games.`
                         : "No open regular slots remain; add or reclassify game-capable slots to place the remaining matchups."}
                     </div>
                     <div className="tableWrap mt-2">
