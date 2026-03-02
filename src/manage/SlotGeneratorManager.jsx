@@ -144,6 +144,67 @@ const DEFAULT_DAYS = {
   Sun: false,
 };
 
+const WEEKDAY_OPTIONS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+function isIsoDate(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "").trim());
+}
+
+function isoToUtcDate(value) {
+  if (!isIsoDate(value)) return null;
+  const [year, month, day] = String(value).split("-").map((part) => Number(part));
+  const dt = new Date(Date.UTC(year, month - 1, day));
+  if (Number.isNaN(dt.getTime())) return null;
+  return dt;
+}
+
+function addIsoDays(value, days) {
+  const dt = isoToUtcDate(value);
+  if (!dt) return "";
+  dt.setUTCDate(dt.getUTCDate() + Number(days || 0));
+  const year = dt.getUTCFullYear();
+  const month = String(dt.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(dt.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function weekdayFromIso(value) {
+  const dt = isoToUtcDate(value);
+  if (!dt) return "Other";
+  return WEEKDAY_OPTIONS[(dt.getUTCDay() + 6) % 7] || "Other";
+}
+
+function parseMinutes(value) {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(String(value || "").trim());
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (!Number.isInteger(hours) || hours < 0 || hours > 23) return null;
+  if (!Number.isInteger(minutes) || minutes < 0 || minutes > 59) return null;
+  return hours * 60 + minutes;
+}
+
+function formatDurationMinutes(startTime, endTime) {
+  const start = parseMinutes(startTime);
+  const end = parseMinutes(endTime);
+  if (start == null || end == null || end <= start) return "";
+  return end - start;
+}
+
+function collectInterruptionDates(firstDate, lastDate, weekday, existingDates) {
+  if (!isIsoDate(firstDate) || !isIsoDate(lastDate) || firstDate > lastDate) return [];
+  if (!WEEKDAY_OPTIONS.includes(weekday)) return [];
+  const missing = [];
+  let cursor = firstDate;
+  while (cursor && cursor <= lastDate) {
+    if (weekdayFromIso(cursor) === weekday && !existingDates.has(cursor)) {
+      missing.push(cursor);
+    }
+    cursor = addIsoDays(cursor, 1);
+  }
+  return missing;
+}
+
 export default function SlotGeneratorManager({ leagueId }) {
   const [divisions, setDivisions] = useState([]);
   const [fields, setFields] = useState([]);
@@ -172,6 +233,11 @@ export default function SlotGeneratorManager({ leagueId }) {
   const [availDateTo, setAvailDateTo] = useState("");
   const [availSlots, setAvailSlots] = useState([]);
   const [availListLoading, setAvailListLoading] = useState(false);
+  const [availPatternDrafts, setAvailPatternDrafts] = useState({});
+  const [availExpandedPatternKey, setAvailExpandedPatternKey] = useState("");
+  const [availPatternSavingKey, setAvailPatternSavingKey] = useState("");
+  const [availPatternRemovingKey, setAvailPatternRemovingKey] = useState("");
+  const [availOccurrenceSavingKey, setAvailOccurrenceSavingKey] = useState("");
   const [availImportUnknowns, setAvailImportUnknowns] = useState([]);
   const [availImportRows, setAvailImportRows] = useState([]);
   const [availImportFixes, setAvailImportFixes] = useState({});
@@ -256,6 +322,96 @@ export default function SlotGeneratorManager({ leagueId }) {
     return slotGenFieldKey ? [slotGenFieldKey] : [];
   }, [fields, slotGenFieldKey]);
 
+  const fieldLabelMap = useMemo(() => {
+    const map = new Map();
+    (fields || []).forEach((field) => {
+      const fieldKey = String(field?.fieldKey || "").trim();
+      if (!fieldKey) return;
+      map.set(fieldKey, String(field?.displayName || field?.fieldKey || "").trim() || fieldKey);
+    });
+    return map;
+  }, [fields]);
+
+  const availSlotPatterns = useMemo(() => {
+    const patterns = new Map();
+    (availSlots || []).forEach((slot) => {
+      const division = String(slot?.division || "").trim();
+      const fieldKey = String(slot?.fieldKey || "").trim();
+      const startTime = String(slot?.startTime || "").trim();
+      const endTime = String(slot?.endTime || "").trim();
+      const gameDate = String(slot?.gameDate || "").trim();
+      const weekday = weekdayFromIso(gameDate);
+      const key = [division, weekday, startTime, endTime, fieldKey].join("|");
+      if (!patterns.has(key)) {
+        patterns.set(key, {
+          key,
+          division,
+          weekday,
+          fieldKey,
+          startTime,
+          endTime,
+          fieldLabel: String(slot?.displayName || "").trim() || fieldLabelMap.get(fieldKey) || fieldKey,
+          count: 0,
+          firstDate: gameDate,
+          lastDate: gameDate,
+          slots: [],
+        });
+      }
+      const pattern = patterns.get(key);
+      pattern.count += 1;
+      pattern.slots.push(slot);
+      if (!pattern.firstDate || (gameDate && gameDate < pattern.firstDate)) pattern.firstDate = gameDate;
+      if (!pattern.lastDate || (gameDate && gameDate > pattern.lastDate)) pattern.lastDate = gameDate;
+      if (!pattern.fieldLabel) {
+        pattern.fieldLabel = String(slot?.displayName || "").trim() || fieldLabelMap.get(fieldKey) || fieldKey;
+      }
+    });
+
+    return Array.from(patterns.values())
+      .map((pattern) => {
+        const slots = [...pattern.slots].sort((a, b) => {
+          const dateCompare = String(a?.gameDate || "").localeCompare(String(b?.gameDate || ""));
+          if (dateCompare !== 0) return dateCompare;
+          return String(a?.slotId || "").localeCompare(String(b?.slotId || ""));
+        });
+        const existingDates = new Set(
+          slots
+            .map((slot) => String(slot?.gameDate || "").trim())
+            .filter((value) => isIsoDate(value))
+        );
+        const interruptionDates = collectInterruptionDates(pattern.firstDate, pattern.lastDate, pattern.weekday, existingDates);
+        return {
+          ...pattern,
+          slots,
+          interruptionDates,
+          interruptionCount: interruptionDates.length,
+          durationMinutes: formatDurationMinutes(pattern.startTime, pattern.endTime),
+        };
+      })
+      .sort((left, right) => {
+        const leftDay = WEEKDAY_OPTIONS.indexOf(left.weekday);
+        const rightDay = WEEKDAY_OPTIONS.indexOf(right.weekday);
+        const weekdayIndex = (leftDay === -1 ? WEEKDAY_OPTIONS.length : leftDay) - (rightDay === -1 ? WEEKDAY_OPTIONS.length : rightDay);
+        if (weekdayIndex !== 0) return weekdayIndex;
+        const startCompare = left.startTime.localeCompare(right.startTime);
+        if (startCompare !== 0) return startCompare;
+        const fieldCompare = left.fieldLabel.localeCompare(right.fieldLabel);
+        if (fieldCompare !== 0) return fieldCompare;
+        return left.division.localeCompare(right.division);
+      });
+  }, [availSlots, fieldLabelMap]);
+
+  const availPatternSummary = useMemo(() => ({
+    slotCount: availSlots.length,
+    patternCount: availSlotPatterns.length,
+    interruptionCount: availSlotPatterns.reduce((total, pattern) => total + pattern.interruptionCount, 0),
+  }), [availSlotPatterns, availSlots]);
+
+  const availWeekdayColumns = useMemo(() => {
+    const hasOther = availSlotPatterns.some((pattern) => pattern.weekday === "Other");
+    return hasOther ? [...WEEKDAY_OPTIONS, "Other"] : WEEKDAY_OPTIONS;
+  }, [availSlotPatterns]);
+
   const loadAvailabilitySlots = useCallback(async () => {
     setAvailListLoading(true);
     setAvailListErr("");
@@ -292,6 +448,24 @@ export default function SlotGeneratorManager({ leagueId }) {
     if (!leagueId || !availDateFrom || !availDateTo) return;
     loadAvailabilitySlots().catch(() => {});
   }, [leagueId, availDateFrom, availDateTo, loadAvailabilitySlots]);
+
+  useEffect(() => {
+    setAvailPatternDrafts((prev) => {
+      const next = {};
+      availSlotPatterns.forEach((pattern) => {
+        const current = prev[pattern.key];
+        next[pattern.key] = {
+          startTime: current?.startTime ?? pattern.startTime,
+          endTime: current?.endTime ?? pattern.endTime,
+          fieldKey: current?.fieldKey ?? pattern.fieldKey,
+        };
+      });
+      return next;
+    });
+    if (availExpandedPatternKey && !availSlotPatterns.some((pattern) => pattern.key === availExpandedPatternKey)) {
+      setAvailExpandedPatternKey("");
+    }
+  }, [availSlotPatterns, availExpandedPatternKey]);
 
   function toggleDay(day) {
     setSlotGenDays((prev) => ({ ...prev, [day]: !prev[day] }));
@@ -632,6 +806,141 @@ export default function SlotGeneratorManager({ leagueId }) {
     }
   }
 
+  function updateAvailPatternDraft(patternKey, patch) {
+    setAvailPatternDrafts((prev) => ({
+      ...prev,
+      [patternKey]: {
+        ...(prev[patternKey] || {}),
+        ...patch,
+      },
+    }));
+  }
+
+  async function saveAvailabilityPattern(pattern) {
+    const draft = availPatternDrafts[pattern.key] || {
+      startTime: pattern.startTime,
+      endTime: pattern.endTime,
+      fieldKey: pattern.fieldKey,
+    };
+    const startMinutes = parseMinutes(draft.startTime);
+    const endMinutes = parseMinutes(draft.endTime);
+    if (startMinutes == null || endMinutes == null) {
+      return setAvailListErr("Recurring availability changes require valid HH:MM start and end times.");
+    }
+    if (endMinutes <= startMinutes) {
+      return setAvailListErr("Recurring availability end time must be later than the start time.");
+    }
+    if (!draft.fieldKey) {
+      return setAvailListErr("Select a field before saving recurring availability changes.");
+    }
+
+    const isUnchanged =
+      draft.startTime === pattern.startTime &&
+      draft.endTime === pattern.endTime &&
+      draft.fieldKey === pattern.fieldKey;
+    if (isUnchanged) {
+      return setAvailListMsg("No recurring changes to save for this pattern.");
+    }
+
+    setAvailPatternSavingKey(pattern.key);
+    setAvailListErr("");
+    setAvailListMsg("");
+    let updatedCount = 0;
+    try {
+      for (const slot of pattern.slots) {
+        await apiFetch(`/api/slots/${encodeURIComponent(slot.division)}/${encodeURIComponent(slot.slotId)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            gameDate: slot.gameDate,
+            startTime: draft.startTime,
+            endTime: draft.endTime,
+            fieldKey: draft.fieldKey,
+          }),
+        });
+        updatedCount += 1;
+      }
+      trackEvent("ui_availability_slots_pattern_update", {
+        leagueId,
+        division: pattern.division,
+        fieldKey: pattern.fieldKey,
+        slotCount: updatedCount,
+      });
+      await loadAvailabilitySlots();
+      setAvailListMsg(`Updated ${updatedCount} recurring availability slot(s).`);
+      setToast({ tone: "success", message: `Updated ${updatedCount} recurring availability slot(s).` });
+    } catch (e) {
+      const prefix = updatedCount > 0 ? `Updated ${updatedCount} slot(s) before the save stopped. ` : "";
+      await loadAvailabilitySlots();
+      setAvailListErr(`${prefix}${formatApiError(e, "Failed to update recurring availability.")}`);
+    } finally {
+      setAvailPatternSavingKey("");
+    }
+  }
+
+  async function removeAvailabilityOccurrence(slot) {
+    if (!slot?.slotId || !slot?.division) return;
+    const confirmMessage = `Remove availability on ${slot.gameDate} at ${slot.startTime}-${slot.endTime}?`;
+    if (!window.confirm(confirmMessage)) return;
+
+    setAvailOccurrenceSavingKey(slot.slotId);
+    setAvailListErr("");
+    setAvailListMsg("");
+    try {
+      await apiFetch(`/api/slots/${encodeURIComponent(slot.division)}/${encodeURIComponent(slot.slotId)}/cancel`, {
+        method: "PATCH",
+      });
+      trackEvent("ui_availability_slots_occurrence_remove", {
+        leagueId,
+        division: slot.division,
+        slotId: slot.slotId,
+      });
+      await loadAvailabilitySlots();
+      setAvailListMsg(`Removed availability on ${slot.gameDate}.`);
+      setToast({ tone: "success", message: `Removed availability on ${slot.gameDate}.` });
+    } catch (e) {
+      setAvailListErr(formatApiError(e, "Failed to remove availability occurrence."));
+    } finally {
+      setAvailOccurrenceSavingKey("");
+    }
+  }
+
+  async function removeAvailabilityPattern(pattern) {
+    if (!pattern?.slots?.length) return;
+    const confirmMessage =
+      `Remove this recurring pattern for ${pattern.weekday} ${pattern.startTime}-${pattern.endTime} ` +
+      `on ${pattern.fieldLabel} (${pattern.count} occurrence${pattern.count === 1 ? "" : "s"})?`;
+    if (!window.confirm(confirmMessage)) return;
+
+    setAvailPatternRemovingKey(pattern.key);
+    setAvailListErr("");
+    setAvailListMsg("");
+    let removedCount = 0;
+    try {
+      for (const slot of pattern.slots) {
+        await apiFetch(`/api/slots/${encodeURIComponent(slot.division)}/${encodeURIComponent(slot.slotId)}/cancel`, {
+          method: "PATCH",
+        });
+        removedCount += 1;
+      }
+      trackEvent("ui_availability_slots_pattern_remove", {
+        leagueId,
+        division: pattern.division,
+        fieldKey: pattern.fieldKey,
+        slotCount: removedCount,
+      });
+      await loadAvailabilitySlots();
+      setAvailListMsg(`Removed ${removedCount} recurring availability slot(s).`);
+      setToast({ tone: "success", message: `Removed ${removedCount} recurring availability slot(s).` });
+    } catch (e) {
+      const prefix = removedCount > 0 ? `Removed ${removedCount} slot(s) before the delete stopped. ` : "";
+      await loadAvailabilitySlots();
+      setAvailListErr(`${prefix}${formatApiError(e, "Failed to remove recurring availability.")}`);
+    } finally {
+      setAvailPatternRemovingKey("");
+    }
+  }
+
   return (
     <div className="stack">
       <Toast
@@ -799,7 +1108,7 @@ export default function SlotGeneratorManager({ leagueId }) {
       <div className="card">
         <div className="card__header">
           <div className="h2">Availability slots</div>
-          <div className="subtle">Review and bulk delete availability slots.</div>
+          <div className="subtle">Review recurring patterns, make bulk edits, and remove one-off interruptions.</div>
         </div>
         <div className="card__body">
           {availListErr ? <div className="callout callout--error">{availListErr}</div> : null}
@@ -830,11 +1139,11 @@ export default function SlotGeneratorManager({ leagueId }) {
           </label>
           <label>
             Date from
-            <input value={availDateFrom} onChange={(e) => setAvailDateFrom(e.target.value)} placeholder="YYYY-MM-DD" />
+            <input type="date" value={availDateFrom} onChange={(e) => setAvailDateFrom(e.target.value)} />
           </label>
           <label>
             Date to
-            <input value={availDateTo} onChange={(e) => setAvailDateTo(e.target.value)} placeholder="YYYY-MM-DD" />
+            <input type="date" value={availDateTo} onChange={(e) => setAvailDateTo(e.target.value)} />
           </label>
         </div>
         <div className="card__body row gap-2">
@@ -849,29 +1158,198 @@ export default function SlotGeneratorManager({ leagueId }) {
           </button>
         </div>
         {availSlots.length ? (
-          <div className="card__body tableWrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Time</th>
-                  <th>Field</th>
-                  <th>Division</th>
-                </tr>
-              </thead>
-              <tbody>
-                {availSlots.slice(0, 200).map((s) => (
-                  <tr key={s.slotId}>
-                    <td>{s.gameDate}</td>
-                    <td>{s.startTime}-{s.endTime}</td>
-                    <td>{s.displayName || s.fieldKey}</td>
-                    <td>{s.division}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {availSlots.length > 200 ? <div className="subtle">Showing first 200.</div> : null}
-          </div>
+          <>
+            <div className="card__body">
+              <div className="callout">
+                <div className="font-bold mb-1">Recurring availability view</div>
+                <div className="subtle">
+                  Slots are grouped by division, weekday, time, and field. Missing dates between the first and last occurrence are treated as
+                  interruptions, so recurring patterns stay easy to adjust while one-off gaps stay visible.
+                </div>
+              </div>
+            </div>
+            <div className="card__body row row--wrap gap-3">
+              <div className="layoutStat">
+                <div className="layoutStat__value">{availPatternSummary.slotCount}</div>
+                <div className="layoutStat__label">Slots</div>
+              </div>
+              <div className="layoutStat">
+                <div className="layoutStat__value">{availPatternSummary.patternCount}</div>
+                <div className="layoutStat__label">Recurring patterns</div>
+              </div>
+              <div className="layoutStat">
+                <div className="layoutStat__value">{availPatternSummary.interruptionCount}</div>
+                <div className="layoutStat__label">Interruptions</div>
+              </div>
+            </div>
+            <div className="card__body seasonWeekGrid">
+              {availWeekdayColumns.map((day) => {
+                const dayPatterns = availSlotPatterns.filter((pattern) => pattern.weekday === day);
+                return (
+                  <div key={day} className="card" style={{ border: "1px solid #cbd5e1" }}>
+                    <div className="card__header" style={{ paddingBottom: "0.25rem" }}>
+                      <div className="h4">{day}</div>
+                    </div>
+                    <div className="card__body stack gap-2" style={{ paddingTop: 0 }}>
+                      {!dayPatterns.length ? (
+                        <div className="subtle">No recurring patterns</div>
+                      ) : (
+                        dayPatterns.map((pattern) => {
+                          const draft = availPatternDrafts[pattern.key] || {
+                            startTime: pattern.startTime,
+                            endTime: pattern.endTime,
+                            fieldKey: pattern.fieldKey,
+                          };
+                          const isExpanded = availExpandedPatternKey === pattern.key;
+                          const isPatternBusy =
+                            availPatternSavingKey === pattern.key || availPatternRemovingKey === pattern.key;
+                          return (
+                            <div
+                              key={pattern.key}
+                              className="callout"
+                              style={{
+                                marginBottom: 0,
+                                borderLeft: pattern.interruptionCount > 0 ? "6px solid #c2410c" : "6px solid #0f766e",
+                              }}
+                            >
+                              <div className="row row--between gap-2">
+                                <div>
+                                  <b>{pattern.startTime}-{pattern.endTime}</b>
+                                </div>
+                                <div className="row row--wrap gap-1">
+                                  <span className="pill">Count: {pattern.count}</span>
+                                  <span className="pill">Interruptions: {pattern.interruptionCount}</span>
+                                  {pattern.durationMinutes ? <span className="pill">{pattern.durationMinutes} min</span> : null}
+                                </div>
+                              </div>
+                              <div className="subtle">{pattern.fieldLabel}</div>
+                              <div className="subtle">Division: {pattern.division || "-"}</div>
+                              <div className="grid2 mt-2">
+                                <label>
+                                  Start time
+                                  <input
+                                    type="time"
+                                    aria-label={`Start time for ${pattern.weekday} ${pattern.fieldKey} ${pattern.division}`}
+                                    value={draft.startTime}
+                                    onChange={(e) => updateAvailPatternDraft(pattern.key, { startTime: e.target.value })}
+                                    disabled={isPatternBusy}
+                                  />
+                                </label>
+                                <label>
+                                  End time
+                                  <input
+                                    type="time"
+                                    aria-label={`End time for ${pattern.weekday} ${pattern.fieldKey} ${pattern.division}`}
+                                    value={draft.endTime}
+                                    onChange={(e) => updateAvailPatternDraft(pattern.key, { endTime: e.target.value })}
+                                    disabled={isPatternBusy}
+                                  />
+                                </label>
+                                <label className="col-span-2">
+                                  Field
+                                  <select
+                                    aria-label={`Field for ${pattern.weekday} ${pattern.fieldKey} ${pattern.division}`}
+                                    value={draft.fieldKey}
+                                    onChange={(e) => updateAvailPatternDraft(pattern.key, { fieldKey: e.target.value })}
+                                    disabled={isPatternBusy}
+                                  >
+                                    {fields.map((field) => (
+                                      <option key={field.fieldKey} value={field.fieldKey}>
+                                        {field.displayName || field.fieldKey}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              </div>
+                              <div className="row row--wrap gap-2 mt-2">
+                                <button
+                                  className="btn btn--primary"
+                                  type="button"
+                                  onClick={() => saveAvailabilityPattern(pattern)}
+                                  disabled={isPatternBusy}
+                                >
+                                  {availPatternSavingKey === pattern.key ? "Saving..." : "Save recurring changes"}
+                                </button>
+                                <button
+                                  className="btn btn--danger"
+                                  type="button"
+                                  onClick={() => removeAvailabilityPattern(pattern)}
+                                  disabled={isPatternBusy}
+                                >
+                                  {availPatternRemovingKey === pattern.key ? "Removing..." : "Remove recurring pattern"}
+                                </button>
+                                <button
+                                  className="btn btn--ghost"
+                                  type="button"
+                                  onClick={() => setAvailExpandedPatternKey(isExpanded ? "" : pattern.key)}
+                                  disabled={availPatternRemovingKey === pattern.key}
+                                >
+                                  {isExpanded ? "Hide details" : "Occurrences & interruptions"}
+                                </button>
+                              </div>
+                              {isExpanded ? (
+                                <div className="mt-2 stack gap-2">
+                                  <div>
+                                    <div className="font-bold mb-1">Interruption dates</div>
+                                    {pattern.interruptionDates.length ? (
+                                      <div className="row row--wrap gap-1">
+                                        {pattern.interruptionDates.map((date) => (
+                                          <span key={date} className="pill">{date}</span>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <div className="subtle">No interruptions between {pattern.firstDate} and {pattern.lastDate}.</div>
+                                    )}
+                                  </div>
+                                  <div>
+                                    <div className="font-bold mb-1">Occurrences</div>
+                                    <div className="tableWrap">
+                                      <table className="table">
+                                        <thead>
+                                          <tr>
+                                            <th>Date</th>
+                                            <th>Time</th>
+                                            <th>Actions</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {pattern.slots.slice(0, 12).map((slot) => (
+                                            <tr key={slot.slotId}>
+                                              <td>{slot.gameDate}</td>
+                                              <td>{slot.startTime}-{slot.endTime}</td>
+                                              <td>
+                                                <button
+                                                  className="btn btn--ghost"
+                                                  type="button"
+                                                  onClick={() => removeAvailabilityOccurrence(slot)}
+                                                  disabled={availOccurrenceSavingKey === slot.slotId}
+                                                >
+                                                  {availOccurrenceSavingKey === slot.slotId ? "Removing..." : `Remove ${slot.gameDate}`}
+                                                </button>
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                      {pattern.slots.length > 12 ? (
+                                        <div className="subtle">Showing first 12 occurrences. Adjust the filter range to work in smaller windows.</div>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        ) : !availListLoading ? (
+          <div className="card__body muted">No availability slots loaded for this filter.</div>
         ) : null}
       </div>
 
