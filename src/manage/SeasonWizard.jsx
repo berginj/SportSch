@@ -96,6 +96,38 @@ const EMPTY_POSTSEASON_DATES = {
   bracketEnd: "",
 };
 
+function getCommonHolidays(year) {
+  const holidays = [];
+  holidays.push({ label: "New Year's Day", startDate: `${year}-01-01`, endDate: `${year}-01-01` });
+
+  const memorialDay = new Date(Date.UTC(year, 4, 31));
+  while (memorialDay.getUTCDay() !== 1) memorialDay.setUTCDate(memorialDay.getUTCDate() - 1);
+  const memMM = String(memorialDay.getUTCMonth() + 1).padStart(2, "0");
+  const memDD = String(memorialDay.getUTCDate()).padStart(2, "0");
+  holidays.push({ label: "Memorial Day", startDate: `${year}-${memMM}-${memDD}`, endDate: `${year}-${memMM}-${memDD}` });
+
+  holidays.push({ label: "Independence Day", startDate: `${year}-07-04`, endDate: `${year}-07-04` });
+
+  const laborDay = new Date(Date.UTC(year, 8, 1));
+  while (laborDay.getUTCDay() !== 1) laborDay.setUTCDate(laborDay.getUTCDate() + 1);
+  const labMM = String(laborDay.getUTCMonth() + 1).padStart(2, "0");
+  const labDD = String(laborDay.getUTCDate()).padStart(2, "0");
+  holidays.push({ label: "Labor Day", startDate: `${year}-${labMM}-${labDD}`, endDate: `${year}-${labMM}-${labDD}` });
+
+  const thanksgiving = new Date(Date.UTC(year, 10, 1));
+  let thursdayCount = 0;
+  while (thursdayCount < 4) {
+    if (thanksgiving.getUTCDay() === 4) thursdayCount++;
+    if (thursdayCount < 4) thanksgiving.setUTCDate(thanksgiving.getUTCDate() + 1);
+  }
+  const thkMM = String(thanksgiving.getUTCMonth() + 1).padStart(2, "0");
+  const thkDD = String(thanksgiving.getUTCDate()).padStart(2, "0");
+  holidays.push({ label: "Thanksgiving", startDate: `${year}-${thkMM}-${thkDD}`, endDate: `${year}-${thkMM}-${thkDD}` });
+
+  holidays.push({ label: "Christmas", startDate: `${year}-12-25`, endDate: `${year}-12-25` });
+  return holidays;
+}
+
 function isoDayShort(value) {
   if (!value) return "";
   const parts = value.split("-");
@@ -948,6 +980,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [guestGamesPerWeek, setGuestGamesPerWeek] = useState(0);
   const [maxExternalOffersPerTeamSeason, setMaxExternalOffersPerTeamSeason] = useState(0);
   const [blockSpringBreak, setBlockSpringBreak] = useState(false);
+  const [blockedHolidays, setBlockedHolidays] = useState(new Set());
   const [maxGamesPerWeek, setMaxGamesPerWeek] = useState(2);
   const [noDoubleHeaders, setNoDoubleHeaders] = useState(true);
   const [balanceHomeAway, setBalanceHomeAway] = useState(true);
@@ -1124,10 +1157,35 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     return issues;
   }, [parsedNoGamesOnDates, noGamesBeforeTime, noGamesAfterTime]);
 
-  const activeBlockedRanges = useMemo(
-    () => (blockSpringBreak && springBreakRange ? [springBreakRange] : []),
-    [blockSpringBreak, springBreakRange]
-  );
+  const activeBlockedRanges = useMemo(() => {
+    const ranges = [];
+    if (blockSpringBreak && springBreakRange) ranges.push(springBreakRange);
+
+    if (seasonStart) {
+      const year = Number(seasonStart.split("-")[0]);
+      if (!isNaN(year)) {
+        const holidays = getCommonHolidays(year);
+        holidays.forEach((h) => {
+          if (blockedHolidays.has(h.label)) {
+            ranges.push(h);
+          }
+        });
+        if (seasonEnd) {
+          const endYear = Number(seasonEnd.split("-")[0]);
+          if (endYear > year) {
+            const nextYearHolidays = getCommonHolidays(endYear);
+            nextYearHolidays.forEach((h) => {
+              if (blockedHolidays.has(h.label)) {
+                ranges.push(h);
+              }
+            });
+          }
+        }
+      }
+    }
+
+    return ranges;
+  }, [blockSpringBreak, springBreakRange, blockedHolidays, seasonStart, seasonEnd]);
 
   const slotPlanSummary = useMemo(() => {
     const total = slotPlan.length;
@@ -4775,6 +4833,35 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                         Slots in this range will be excluded from schedule preview and apply.
                       </div>
                     ) : null}
+                  </div>
+
+                  <div className="stack gap-1 mt-2">
+                    <div className="font-bold" style={{ fontSize: "0.9rem" }}>Block Common Holidays</div>
+                    <div className="subtle mb-1">Automatically exclude these holidays from the schedule</div>
+                    {seasonStart ? (
+                      <>
+                        {getCommonHolidays(Number(seasonStart.split("-")[0])).map((holiday) => (
+                          <label key={holiday.label} className="inlineCheck">
+                            <input
+                              type="checkbox"
+                              checked={blockedHolidays.has(holiday.label)}
+                              onChange={(e) => {
+                                const newSet = new Set(blockedHolidays);
+                                if (e.target.checked) {
+                                  newSet.add(holiday.label);
+                                } else {
+                                  newSet.delete(holiday.label);
+                                }
+                                setBlockedHolidays(newSet);
+                              }}
+                            />
+                            {holiday.label} ({holiday.startDate})
+                          </label>
+                        ))}
+                      </>
+                    ) : (
+                      <div className="subtle">Set season start date to see available holidays</div>
+                    )}
                   </div>
                 </div>
               </div>
