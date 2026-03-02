@@ -241,6 +241,7 @@ async function advanceToPreview() {
 describe("SeasonWizard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.history.replaceState({}, "", "/");
     installLocalStorageMock();
     installApiMock();
   });
@@ -366,6 +367,29 @@ describe("SeasonWizard", () => {
 
     expect(screen.getByText("No blocking issues detected for this step.")).toBeInTheDocument();
     expect(screen.getByText("In progress")).toBeInTheDocument();
+  });
+
+  it("shows pattern and field totals and links to availability setup", async () => {
+    installApiMock({ slotsResponse: SEQUENTIAL_SLOT_AVAILABILITY });
+
+    await advanceToSlotPlan();
+
+    expect(screen.getAllByText("Pattern: 1").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("Field total: 2").length).toBeGreaterThanOrEqual(2);
+
+    const replaceStateSpy = vi.spyOn(window.history, "replaceState");
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Open availability setup" }));
+
+      expect(replaceStateSpy).toHaveBeenCalled();
+      const nextPath = replaceStateSpy.mock.calls.at(-1)?.[2];
+      expect(nextPath).toContain("manageTab=fields");
+      expect(nextPath).toContain("#main-content");
+      expect(localStorage.getItem("collapsible-manage-availability-setup")).toBe("true");
+      expect(localStorage.getItem("collapsible-manage-fields-import")).toBe("false");
+    } finally {
+      replaceStateSpy.mockRestore();
+    }
   });
 
   it("pushes later slot times when a pattern is expanded to game length", async () => {

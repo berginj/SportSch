@@ -1138,6 +1138,15 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     const uniqueRankedPatterns = new Set(ranked.map((s) => s.basePatternKey)).size;
     return { total, practice, game, both, ranked: uniqueRankedPatterns, gameCapable: game + both };
   }, [slotPlan]);
+  const slotFieldTotals = useMemo(() => {
+    const totals = new Map();
+    (slotPlan || []).forEach((slot) => {
+      const fieldKey = String(slot?.fieldKey || "").trim();
+      if (!fieldKey) return;
+      totals.set(fieldKey, (totals.get(fieldKey) || 0) + 1);
+    });
+    return totals;
+  }, [slotPlan]);
 
   const slotPatterns = useMemo(() => {
     const map = new Map();
@@ -4057,6 +4066,23 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     setPreviewSectionStoredState(PREVIEW_SECTION_STORAGE_KEYS[sectionId], isExpanded);
   }
 
+  function openAvailabilitySetup() {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem("collapsible-manage-availability-setup", JSON.stringify(true));
+      localStorage.setItem("collapsible-manage-fields-import", JSON.stringify(false));
+    } catch {
+      // Ignore localStorage errors so navigation still works.
+    }
+
+    const nextSearch = new URLSearchParams(window.location.search);
+    nextSearch.set("manageTab", "fields");
+    const pathname = window.location.pathname || "/";
+    const search = nextSearch.toString();
+    window.history.replaceState({}, "", `${pathname}${search ? `?${search}` : ""}#main-content`);
+    window.dispatchEvent(new Event("popstate"));
+  }
+
   return (
     <div className="stack gap-3">
       {toast ? <Toast {...toast} onClose={() => setToast(null)} /> : null}
@@ -4236,12 +4262,15 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
           </div>
           <div className="card__body stack gap-3">
             <div className="callout">
-              <div className="row row--wrap gap-2">
+              <div className="row row--wrap gap-2" style={{ alignItems: "center" }}>
                 <span className="pill">Total: {slotPlanSummary.total}</span>
                 <span className="pill">Practice: {slotPlanSummary.practice}</span>
                 <span className="pill">Game: {slotPlanSummary.game}</span>
                 <span className="pill">Both: {slotPlanSummary.both}</span>
                 <span className="pill">Ranked: {slotPlanSummary.ranked}</span>
+                <button className="btn btn--ghost" type="button" onClick={openAvailabilitySetup}>
+                  Open availability setup
+                </button>
               </div>
               <div className="subtle mt-2">
                 Regular season uses <b>Game</b> and <b>Both</b>. Pool play and bracket prioritize <b>Game</b>/<b>Both</b> first, then can consume remaining <b>Practice</b> slots as fallback game space.
@@ -4253,7 +4282,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                 These actions immediately update the slot plan <b>Type</b> and <b>End / Dur</b> values (you will also see a confirmation toast).
               </div>
               <div className="subtle">
-                Score is based on how consistently the same weekday/time/field pattern appears in the queried window.
+                Pattern count is for the exact weekday/time/field pattern. Field total is all availability openings for that field in the queried window.
               </div>
             </div>
 
@@ -4353,7 +4382,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                                     const activeType = SLOT_TYPE_OPTIONS.find((opt) => opt.value === normalizeSlotType(p.slotType));
                                     return (
                                       <>
-                                  <div className="row row--between gap-2">
+                                    <div className="row row--between gap-2">
                                     <div><b>{p.startTime}-{p.endTime}</b></div>
                                     <div className="row row--wrap gap-1">
                                       <span
@@ -4368,7 +4397,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                                       >
                                         {activeType?.shortLabel || "P"} {activeType?.label || "Practice"}
                                       </span>
-                                      <span className="pill">Openings: {p.count}</span>
+                                      <span className="pill">Pattern: {p.count}</span>
+                                      <span className="pill">Field total: {slotFieldTotals.get(p.fieldKey) || 0}</span>
                                     </div>
                                   </div>
                                   <div className="subtle">{p.fieldKey}</div>
@@ -4450,7 +4480,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                         <th>End</th>
                         <th>Dur (min)</th>
                         <th>Field</th>
-                        <th>Openings</th>
+                        <th>Pattern</th>
+                        <th>Field total</th>
                         <th>Score</th>
                         <th title="P = Practice, G = Game, B = Both">P/G/B</th>
                         <th>Priority</th>
@@ -4508,6 +4539,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                           </td>
                           <td>{pattern.fieldKey}</td>
                           <td>{pattern.count}</td>
+                          <td>{slotFieldTotals.get(pattern.fieldKey) || 0}</td>
                           <td title="Higher score means this pattern appears more consistently in the season window.">
                             {pattern.score ?? 0}
                           </td>
