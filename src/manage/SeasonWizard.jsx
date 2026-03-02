@@ -11,10 +11,33 @@ const WEEKDAY_OPTIONS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MAX_PREFERRED_WEEKNIGHTS = 3;
 const MAX_RIVALRY_MATCHUPS = 12;
 const SLOT_TYPE_OPTIONS = [
-  { value: "practice", label: "Practice" },
-  { value: "game", label: "Game" },
-  { value: "both", label: "Both" },
+  { value: "practice", label: "Practice", shortLabel: "P" },
+  { value: "game", label: "Game", shortLabel: "G" },
+  { value: "both", label: "Both", shortLabel: "B" },
 ];
+const SLOT_TYPE_APPEARANCE = {
+  practice: {
+    accentColor: "#9a3412",
+    borderColor: "#fdba74",
+    surfaceColor: "#fff7ed",
+    selectSurfaceColor: "#ffedd5",
+    textColor: "#7c2d12",
+  },
+  game: {
+    accentColor: "#1d4ed8",
+    borderColor: "#93c5fd",
+    surfaceColor: "#eff6ff",
+    selectSurfaceColor: "#dbeafe",
+    textColor: "#1e3a8a",
+  },
+  both: {
+    accentColor: "#0f766e",
+    borderColor: "#99f6e4",
+    surfaceColor: "#f0fdfa",
+    selectSurfaceColor: "#ccfbf1",
+    textColor: "#134e4a",
+  },
+};
 const ISSUE_HINTS = {
   "unassigned-matchups": "Not enough availability slots, or constraints are too tight for the slot pool.",
   "unassigned-slots": "More availability than matchups. These can become extra offers or remain unused.",
@@ -68,6 +91,12 @@ const RULE_PRESETS = [
     description: "Reduce weekly load, tighten guardrails, and lean on the strongest weeknights.",
   },
 ];
+const EMPTY_POSTSEASON_DATES = {
+  poolStart: "",
+  poolEnd: "",
+  bracketStart: "",
+  bracketEnd: "",
+};
 
 function isoDayShort(value) {
   if (!value) return "";
@@ -85,6 +114,20 @@ function normalizeSlotType(value) {
   const raw = String(value || "").trim().toLowerCase();
   if (raw === "game" || raw === "both") return raw;
   return "practice";
+}
+
+function slotTypeSelectTitle(value) {
+  const normalizedValue = normalizeSlotType(value);
+  const activeOption = SLOT_TYPE_OPTIONS.find((option) => option.value === normalizedValue);
+  const activeText = activeOption ? `${activeOption.shortLabel} = ${activeOption.label}` : "";
+  return [activeText, "P = Practice", "G = Game", "B = Both"]
+    .filter(Boolean)
+    .join(" | ");
+}
+
+function getSlotTypeAppearance(value) {
+  const normalizedValue = normalizeSlotType(value);
+  return SLOT_TYPE_APPEARANCE[normalizedValue] || SLOT_TYPE_APPEARANCE.practice;
 }
 
 function normalizePriorityRank(value) {
@@ -121,6 +164,48 @@ function addIsoDays(value, days) {
   const mm = String(dt.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(dt.getUTCDate()).padStart(2, "0");
   return `${yy}-${mm}-${dd}`;
+}
+
+function isoUtcWeekday(value) {
+  if (!isIsoDate(value)) return null;
+  const [y, m, d] = value.split("-").map((part) => Number(part));
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (Number.isNaN(dt.getTime())) return null;
+  return dt.getUTCDay();
+}
+
+function buildDefaultPostseasonDates(seasonStart, seasonEnd) {
+  if (!isIsoDate(seasonStart) || !isIsoDate(seasonEnd) || seasonStart > seasonEnd) {
+    return { ...EMPTY_POSTSEASON_DATES };
+  }
+
+  const seasonEndWeekday = isoUtcWeekday(seasonEnd);
+  if (seasonEndWeekday == null) {
+    return { ...EMPTY_POSTSEASON_DATES };
+  }
+
+  const lastWeekendStart = addIsoDays(seasonEnd, -((seasonEndWeekday + 1) % 7));
+  if (!lastWeekendStart) {
+    return { ...EMPTY_POSTSEASON_DATES };
+  }
+
+  const championshipStart = lastWeekendStart < seasonStart ? seasonStart : lastWeekendStart;
+  const idealChampionshipEnd = addIsoDays(lastWeekendStart, 1);
+  const championshipEnd =
+    idealChampionshipEnd && idealChampionshipEnd <= seasonEnd ? idealChampionshipEnd : seasonEnd;
+
+  const idealPoolStart = addIsoDays(lastWeekendStart, -6);
+  const idealPoolEnd = addIsoDays(lastWeekendStart, -1);
+  const poolStart = idealPoolStart && idealPoolStart >= seasonStart ? idealPoolStart : seasonStart;
+  const poolEnd = idealPoolEnd && idealPoolEnd <= seasonEnd ? idealPoolEnd : seasonEnd;
+  const hasPoolWindow = poolStart && poolEnd && poolStart <= poolEnd;
+
+  return {
+    poolStart: hasPoolWindow ? poolStart : "",
+    poolEnd: hasPoolWindow ? poolEnd : "",
+    bracketStart: championshipStart,
+    bracketEnd: championshipEnd >= championshipStart ? championshipEnd : championshipStart,
+  };
 }
 
 function weekStartIso(value) {
@@ -898,6 +983,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [showHighlightedAssignmentsOnly, setShowHighlightedAssignmentsOnly] = useState(false);
   const availabilityCacheRef = useRef(new Map());
   const availabilityRequestIdRef = useRef(0);
+  const autoPostseasonDefaultsRef = useRef({ ...EMPTY_POSTSEASON_DATES });
   const previewSectionControl = useCollapsibleSectionControl(PREVIEW_SECTION_IDS);
   const steps = WIZARD_STEPS;
   const currentStepMeta = steps[step] || steps[0];
@@ -925,6 +1011,18 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       }
     })();
   }, [leagueId]);
+
+  useEffect(() => {
+    const previousDefaults = autoPostseasonDefaultsRef.current;
+    const nextDefaults = buildDefaultPostseasonDates(seasonStart, seasonEnd);
+
+    setPoolStart((prev) => (!prev || prev === previousDefaults.poolStart ? nextDefaults.poolStart : prev));
+    setPoolEnd((prev) => (!prev || prev === previousDefaults.poolEnd ? nextDefaults.poolEnd : prev));
+    setBracketStart((prev) => (!prev || prev === previousDefaults.bracketStart ? nextDefaults.bracketStart : prev));
+    setBracketEnd((prev) => (!prev || prev === previousDefaults.bracketEnd ? nextDefaults.bracketEnd : prev));
+
+    autoPostseasonDefaultsRef.current = nextDefaults;
+  }, [seasonStart, seasonEnd]);
 
   const springBreakRange = useMemo(
     () => buildSpringBreakRange(seasonStart, seasonEnd),
@@ -1280,6 +1378,78 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     setPreview(null);
   }
 
+  function updatePatternPlanWithLaneShift(patternKey, patch) {
+    const representative = slotPatterns.find((pattern) => pattern.key === patternKey);
+    if (!representative) {
+      setErr("");
+      updatePatternPlan(patternKey, patch);
+      return { shiftedPatternCount: 0 };
+    }
+
+    const nextEndTime = patch.endTime != null ? patch.endTime : representative.endTime;
+    const priorEndMinutes = parseMinutes(representative.endTime);
+    const nextEndMinutes = parseMinutes(nextEndTime);
+    const deltaMinutes =
+      priorEndMinutes != null && nextEndMinutes != null ? nextEndMinutes - priorEndMinutes : 0;
+    const shiftedTimingByPattern = new Map();
+
+    if (deltaMinutes !== 0) {
+      const lanePatterns = slotPatterns
+        .filter(
+          (pattern) =>
+            pattern.weekday === representative.weekday &&
+            String(pattern.fieldKey || "") === String(representative.fieldKey || "")
+        )
+        .sort((left, right) => {
+          const start = String(left.startTime || "").localeCompare(String(right.startTime || ""));
+          if (start !== 0) return start;
+          const end = String(left.endTime || "").localeCompare(String(right.endTime || ""));
+          if (end !== 0) return end;
+          return String(left.key || "").localeCompare(String(right.key || ""));
+        });
+      const patternIndex = lanePatterns.findIndex((pattern) => pattern.key === patternKey);
+
+      if (patternIndex >= 0) {
+        for (let index = patternIndex + 1; index < lanePatterns.length; index += 1) {
+          const lanePattern = lanePatterns[index];
+          const currentStartMinutes = parseMinutes(lanePattern.startTime);
+          const currentEndMinutes = parseMinutes(lanePattern.endTime);
+          if (currentStartMinutes == null || currentEndMinutes == null) {
+            setErr(
+              `Could not shift later slots for ${representative.weekday} ${representative.fieldKey}: one of the following slots has an invalid time.`
+            );
+            return null;
+          }
+          const shiftedStartTime = formatMinutesAsTime(currentStartMinutes + deltaMinutes);
+          const shiftedEndTime = formatMinutesAsTime(currentEndMinutes + deltaMinutes);
+          if (!shiftedStartTime || !shiftedEndTime) {
+            setErr(
+              `Updating ${representative.weekday} ${representative.fieldKey} would push later slots past midnight.`
+            );
+            return null;
+          }
+          shiftedTimingByPattern.set(lanePattern.key, {
+            startTime: shiftedStartTime,
+            endTime: shiftedEndTime,
+          });
+        }
+      }
+    }
+
+    setErr("");
+    setSlotPlan((prev) =>
+      prev.map((item) => {
+        if (item.basePatternKey === patternKey) {
+          return { ...item, ...patch };
+        }
+        const shiftedPatch = shiftedTimingByPattern.get(item.basePatternKey);
+        return shiftedPatch ? { ...item, ...shiftedPatch } : item;
+      })
+    );
+    setPreview(null);
+    return { shiftedPatternCount: shiftedTimingByPattern.size };
+  }
+
   function updatePatternSlotType(patternKey, currentPriorityRank, nextTypeRaw) {
     const nextType = normalizeSlotType(nextTypeRaw);
     const representative = slotPatterns.find((p) => p.key === patternKey);
@@ -1305,15 +1475,18 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       if (targetDuration) {
         const newEndTime = formatMinutesAsTime(startMin + targetDuration);
         if (newEndTime) {
-          updatePatternPlan(patternKey, {
+          const updateResult = updatePatternPlanWithLaneShift(patternKey, {
             slotType: nextType,
             endTime: newEndTime,
             priorityRank: nextType === "practice" ? "" : normalizePriorityRank(currentPriorityRank),
           });
+          if (!updateResult) {
+            return;
+          }
           setToast({
             tone: "success",
             duration: 2500,
-            message: `${representative.weekday} ${representative.fieldKey}: set to ${nextType.toUpperCase()} (${targetDuration}m). Updated ${representative.count || 1} slot(s).`,
+            message: `${representative.weekday} ${representative.fieldKey}: set to ${nextType.toUpperCase()} (${targetDuration}m). Updated ${representative.count || 1} slot(s)${updateResult.shiftedPatternCount ? ` and shifted ${updateResult.shiftedPatternCount} later pattern(s).` : "."}`,
           });
           return;
         }
@@ -1361,8 +1534,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       setErr(`End time must be later than ${representative.startTime} for ${representative.weekday} ${representative.fieldKey}.`);
       return;
     }
-    setErr("");
-    updatePatternPlan(patternKey, { endTime: end });
+    updatePatternPlanWithLaneShift(patternKey, { endTime: end });
   }
 
   function updatePatternDurationMinutes(patternKey, nextDurationRaw) {
@@ -1383,8 +1555,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       setErr(`Duration pushes end time past midnight for ${representative.weekday} ${representative.fieldKey}.`);
       return;
     }
-    setErr("");
-    updatePatternPlan(patternKey, { endTime: end });
+    updatePatternPlanWithLaneShift(patternKey, { endTime: end });
   }
 
   function quickConvertPattern(patternKey, nextTypeRaw, durationMinutes) {
@@ -1405,12 +1576,14 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     const priorEndTime = representative.endTime || "";
     const priorPriority = representative.priorityRank || "";
     const nextPriority = nextType === "practice" ? "" : normalizePriorityRank(representative.priorityRank);
-    setErr("");
-    updatePatternPlan(patternKey, {
+    const updateResult = updatePatternPlanWithLaneShift(patternKey, {
       slotType: nextType,
       priorityRank: nextPriority,
       endTime,
     });
+    if (!updateResult) {
+      return;
+    }
     const changed =
       priorType !== nextType ||
       priorEndTime !== endTime ||
@@ -1419,7 +1592,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       tone: changed ? "success" : "info",
       duration: 2800,
       message: changed
-        ? `${representative.weekday} ${representative.fieldKey}: set to ${nextType.toUpperCase()} (${Number(durationMinutes || 0)}m). Updated ${representative.count || 1} opening(s).`
+        ? `${representative.weekday} ${representative.fieldKey}: set to ${nextType.toUpperCase()} (${Number(durationMinutes || 0)}m). Updated ${representative.count || 1} opening(s)${updateResult.shiftedPatternCount ? ` and shifted ${updateResult.shiftedPatternCount} later pattern(s).` : "."}`
         : `${representative.weekday} ${representative.fieldKey} is already ${nextType.toUpperCase()} at ${Number(durationMinutes || 0)}m.`,
     });
   }
@@ -2203,13 +2376,13 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const postseasonError = useMemo(() => {
     if (!poolStart && !poolEnd && !bracketStart && !bracketEnd) return "";
     if ((poolStart && !poolEnd) || (!poolStart && poolEnd)) return "Pool play start and end must both be set.";
-    if ((bracketStart && !bracketEnd) || (!bracketStart && bracketEnd)) return "Bracket start and end must both be set.";
+    if ((bracketStart && !bracketEnd) || (!bracketStart && bracketEnd)) return "Championship start and end must both be set.";
     if (poolStart && (!isIsoDate(poolStart) || !isIsoDate(poolEnd))) return "Pool play dates must be YYYY-MM-DD.";
-    if (bracketStart && (!isIsoDate(bracketStart) || !isIsoDate(bracketEnd))) return "Bracket dates must be YYYY-MM-DD.";
+    if (bracketStart && (!isIsoDate(bracketStart) || !isIsoDate(bracketEnd))) return "Championship dates must be YYYY-MM-DD.";
     if (poolStart && poolEnd && poolStart > poolEnd) return "Pool play start must be before pool play end.";
-    if (bracketStart && bracketEnd && bracketStart > bracketEnd) return "Bracket start must be before bracket end.";
+    if (bracketStart && bracketEnd && bracketStart > bracketEnd) return "Championship start must be before championship end.";
     if (poolStart && poolEnd && (poolStart < seasonStart || poolEnd > seasonEnd)) return "Pool play must stay within the season range.";
-    if (bracketStart && bracketStart < seasonStart) return "Bracket must start on or after season start.";
+    if (bracketStart && bracketStart < seasonStart) return "Championship must start on or after season start.";
     return "";
   }, [poolStart, poolEnd, bracketStart, bracketEnd, seasonStart, seasonEnd]);
 
@@ -4000,11 +4173,21 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
             </label>
             <label>
               Season start
-              <input value={seasonStart} onChange={(e) => setSeasonStart(e.target.value)} placeholder="YYYY-MM-DD" />
+              <input
+                type="date"
+                value={seasonStart}
+                max={seasonEnd || undefined}
+                onChange={(e) => setSeasonStart(e.target.value)}
+              />
             </label>
             <label>
               Season end
-              <input value={seasonEnd} onChange={(e) => setSeasonEnd(e.target.value)} placeholder="YYYY-MM-DD" />
+              <input
+                type="date"
+                value={seasonEnd}
+                min={seasonStart || undefined}
+                onChange={(e) => setSeasonEnd(e.target.value)}
+              />
             </label>
           </div>
           <div className="row row--end">
@@ -4025,24 +4208,48 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         <div className="card">
           <div className="card__header">
             <div className="h3">Postseason windows</div>
-            <div className="subtle">Reserve the last week for pool play and the following week for the bracket.</div>
+            <div className="subtle">Pool play defaults to the Sunday-Friday before championship weekend. Championship defaults to the last weekend. You can still edit any date.</div>
           </div>
           <div className="card__body grid2">
             <label>
               Pool play start
-              <input value={poolStart} onChange={(e) => setPoolStart(e.target.value)} placeholder="YYYY-MM-DD" />
+              <input
+                type="date"
+                value={poolStart}
+                min={seasonStart || undefined}
+                max={seasonEnd || undefined}
+                onChange={(e) => setPoolStart(e.target.value)}
+              />
             </label>
             <label>
               Pool play end
-              <input value={poolEnd} onChange={(e) => setPoolEnd(e.target.value)} placeholder="YYYY-MM-DD" />
+              <input
+                type="date"
+                value={poolEnd}
+                min={poolStart || seasonStart || undefined}
+                max={seasonEnd || undefined}
+                onChange={(e) => setPoolEnd(e.target.value)}
+              />
             </label>
             <label>
-              Bracket start
-              <input value={bracketStart} onChange={(e) => setBracketStart(e.target.value)} placeholder="YYYY-MM-DD" />
+              Championship start
+              <input
+                type="date"
+                value={bracketStart}
+                min={seasonStart || undefined}
+                max={seasonEnd || undefined}
+                onChange={(e) => setBracketStart(e.target.value)}
+              />
             </label>
             <label>
-              Bracket end
-              <input value={bracketEnd} onChange={(e) => setBracketEnd(e.target.value)} placeholder="YYYY-MM-DD" />
+              Championship end
+              <input
+                type="date"
+                value={bracketEnd}
+                min={bracketStart || seasonStart || undefined}
+                max={seasonEnd || undefined}
+                onChange={(e) => setBracketEnd(e.target.value)}
+              />
             </label>
           </div>
           <div className="row row--end gap-2">
@@ -4166,16 +4373,46 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                               <div className="subtle">No openings</div>
                             ) : (
                               dayPatterns.map((p) => (
-                                <div key={p.key} className="callout" style={{ marginBottom: 0 }}>
+                                <div
+                                  key={p.key}
+                                  className="callout"
+                                  style={{
+                                    marginBottom: 0,
+                                    ...(() => {
+                                      const typeAppearance = getSlotTypeAppearance(p.slotType);
+                                      return {
+                                        backgroundColor: typeAppearance.surfaceColor,
+                                        border: `1px solid ${typeAppearance.borderColor}`,
+                                        borderLeft: `6px solid ${typeAppearance.accentColor}`,
+                                      };
+                                    })(),
+                                  }}
+                                >
                                   {(() => {
                                     const startMin = parseMinutes(p.startTime);
                                     const endMin = parseMinutes(p.endTime);
                                     const duration = startMin != null && endMin != null && endMin > startMin ? endMin - startMin : null;
+                                    const typeAppearance = getSlotTypeAppearance(p.slotType);
+                                    const activeType = SLOT_TYPE_OPTIONS.find((opt) => opt.value === normalizeSlotType(p.slotType));
                                     return (
                                       <>
                                   <div className="row row--between gap-2">
                                     <div><b>{p.startTime}-{p.endTime}</b></div>
-                                    <span className="pill">Openings: {p.count}</span>
+                                    <div className="row row--wrap gap-1">
+                                      <span
+                                        className="pill"
+                                        title={slotTypeSelectTitle(p.slotType)}
+                                        style={{
+                                          backgroundColor: typeAppearance.selectSurfaceColor,
+                                          borderColor: typeAppearance.borderColor,
+                                          color: typeAppearance.textColor,
+                                          fontWeight: 700,
+                                        }}
+                                      >
+                                        {activeType?.shortLabel || "P"} {activeType?.label || "Practice"}
+                                      </span>
+                                      <span className="pill">Openings: {p.count}</span>
+                                    </div>
                                   </div>
                                   <div className="subtle">{p.fieldKey}</div>
                                   <div className="subtle">Duration: {duration ?? "?"} min</div>
@@ -4185,10 +4422,18 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                                       <select
                                         value={p.slotType}
                                         onChange={(e) => updatePatternSlotType(p.key, p.priorityRank, e.target.value)}
+                                        title={slotTypeSelectTitle(p.slotType)}
+                                        style={{
+                                          width: 68,
+                                          backgroundColor: typeAppearance.selectSurfaceColor,
+                                          borderColor: typeAppearance.borderColor,
+                                          color: typeAppearance.textColor,
+                                          fontWeight: 700,
+                                        }}
                                       >
                                         {SLOT_TYPE_OPTIONS.map((opt) => (
                                           <option key={opt.value} value={opt.value}>
-                                            {opt.label}
+                                            {opt.shortLabel}
                                           </option>
                                         ))}
                                       </select>
@@ -4250,20 +4495,33 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                         <th>Field</th>
                         <th>Openings</th>
                         <th>Score</th>
-                        <th>Type</th>
+                        <th title="P = Practice, G = Game, B = Both">P/G/B</th>
                         <th>Priority</th>
                       </tr>
                     </thead>
                     <tbody>
                       {slotPatterns.map((pattern) => (
-                        <tr key={pattern.key}>
+                        <tr
+                          key={pattern.key}
+                          style={{
+                            backgroundColor: getSlotTypeAppearance(pattern.slotType).surfaceColor,
+                          }}
+                        >
                           {(() => {
                             const startMin = parseMinutes(pattern.startTime);
                             const endMin = parseMinutes(pattern.endTime);
                             const duration = startMin != null && endMin != null && endMin > startMin ? endMin - startMin : "";
+                            const typeAppearance = getSlotTypeAppearance(pattern.slotType);
                             return (
                               <>
-                          <td>{pattern.weekday}</td>
+                          <td
+                            style={{
+                              borderLeft: `4px solid ${typeAppearance.accentColor}`,
+                              fontWeight: 600,
+                            }}
+                          >
+                            {pattern.weekday}
+                          </td>
                           <td>
                             <input
                               type="time"
@@ -4300,10 +4558,18 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                             <select
                               value={pattern.slotType}
                               onChange={(e) => updatePatternSlotType(pattern.key, pattern.priorityRank, e.target.value)}
+                              title={slotTypeSelectTitle(pattern.slotType)}
+                              style={{
+                                width: 68,
+                                backgroundColor: typeAppearance.selectSurfaceColor,
+                                borderColor: typeAppearance.borderColor,
+                                color: typeAppearance.textColor,
+                                fontWeight: 700,
+                              }}
                             >
                               {SLOT_TYPE_OPTIONS.map((opt) => (
                                 <option key={opt.value} value={opt.value}>
-                                  {opt.label}
+                                  {opt.shortLabel}
                                 </option>
                               ))}
                             </select>

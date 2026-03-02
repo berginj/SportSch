@@ -105,6 +105,28 @@ const MULTI_ASSIGNMENT_PREVIEW = {
     },
   ],
 };
+const SEQUENTIAL_SLOT_AVAILABILITY = [
+  {
+    slotId: "avail-1",
+    isAvailability: true,
+    gameDate: "2026-04-06",
+    startTime: "18:00",
+    endTime: "19:30",
+    fieldKey: "FIELD-1",
+    allocationSlotType: "practice",
+    allocationPriorityRank: "",
+  },
+  {
+    slotId: "avail-2",
+    isAvailability: true,
+    gameDate: "2026-04-06",
+    startTime: "19:30",
+    endTime: "21:00",
+    fieldKey: "FIELD-1",
+    allocationSlotType: "practice",
+    allocationPriorityRank: "",
+  },
+];
 
 function installLocalStorageMock() {
   const store = new Map();
@@ -121,7 +143,7 @@ function installLocalStorageMock() {
   return store;
 }
 
-function installApiMock({ previewResponse = BASE_PREVIEW } = {}) {
+function installApiMock({ previewResponse = BASE_PREVIEW, slotsResponse } = {}) {
   api.apiFetch.mockImplementation((path) => {
     const url = String(path || "");
     if (url === "/api/divisions") {
@@ -142,7 +164,7 @@ function installApiMock({ previewResponse = BASE_PREVIEW } = {}) {
       ]);
     }
     if (url.startsWith("/api/slots?")) {
-      return Promise.resolve([
+      return Promise.resolve(slotsResponse || [
         {
           slotId: "avail-1",
           isAvailability: true,
@@ -187,7 +209,7 @@ async function renderWizard() {
   return { seasonStartInput };
 }
 
-async function advanceToRules() {
+async function advanceToSlotPlan() {
   await renderWizard();
 
   fireEvent.click(screen.getByRole("button", { name: "Next" }));
@@ -195,8 +217,12 @@ async function advanceToRules() {
 
   fireEvent.click(screen.getByRole("button", { name: "Next" }));
   await waitFor(() => expect(screen.getByText("Weekly availability view")).toBeInTheDocument());
-  await waitFor(() => expect(screen.getByRole("button", { name: "Next" })).not.toBeDisabled());
+}
 
+async function advanceToRules() {
+  await advanceToSlotPlan();
+
+  await waitFor(() => expect(screen.getByRole("button", { name: "Next" })).not.toBeDisabled());
   fireEvent.click(screen.getByRole("button", { name: "Next" }));
   await waitFor(() => expect(screen.getByText("Game targets & weekly limits")).toBeInTheDocument());
   await waitFor(() => expect(screen.getByRole("button", { name: "Preview schedule" })).not.toBeDisabled());
@@ -225,6 +251,31 @@ describe("SeasonWizard", () => {
     expect(screen.getByText("Season basics")).toBeInTheDocument();
     expect(screen.getByText(/Finish the current requirements before moving ahead\./)).toBeInTheDocument();
     expect(screen.getByText(/Basics: Season start\/end must be YYYY-MM-DD\./)).toBeInTheDocument();
+  });
+
+  it("defaults postseason dates from the season range and uses date pickers", async () => {
+    const { seasonStartInput } = await renderWizard();
+    const seasonEndInput = screen.getByLabelText(/Season end/i);
+
+    expect(seasonStartInput).toHaveAttribute("type", "date");
+    expect(seasonEndInput).toHaveAttribute("type", "date");
+
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    const poolStartInput = await screen.findByLabelText(/Pool play start/i);
+    const poolEndInput = screen.getByLabelText(/Pool play end/i);
+    const championshipStartInput = screen.getByLabelText(/Championship start/i);
+    const championshipEndInput = screen.getByLabelText(/Championship end/i);
+
+    expect(poolStartInput).toHaveAttribute("type", "date");
+    expect(poolEndInput).toHaveAttribute("type", "date");
+    expect(championshipStartInput).toHaveAttribute("type", "date");
+    expect(championshipEndInput).toHaveAttribute("type", "date");
+
+    expect(poolStartInput).toHaveValue("2026-06-21");
+    expect(poolEndInput).toHaveValue("2026-06-26");
+    expect(championshipStartInput).toHaveValue("2026-06-27");
+    expect(championshipEndInput).toHaveValue("2026-06-28");
   });
 
   it("supports expanding and collapsing all preview review sections", async () => {
@@ -296,5 +347,21 @@ describe("SeasonWizard", () => {
 
     expect(within(assignmentsTable).getByText("2026-04-07")).toBeInTheDocument();
     expect(within(assignmentsTable).getByText("2026-05-01")).toBeInTheDocument();
+  });
+
+  it("pushes later slot times when a pattern is expanded to game length", async () => {
+    installApiMock({ slotsResponse: SEQUENTIAL_SLOT_AVAILABILITY });
+
+    await advanceToSlotPlan();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Game 120m" })[0]);
+
+    await waitFor(() => {
+      expect(screen.queryByDisplayValue("21:00")).not.toBeInTheDocument();
+      expect(screen.getByDisplayValue("21:30")).toBeInTheDocument();
+    });
+
+    expect(screen.getAllByDisplayValue("20:00").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText(/shifted 1 later pattern/i)).toBeInTheDocument();
   });
 });
