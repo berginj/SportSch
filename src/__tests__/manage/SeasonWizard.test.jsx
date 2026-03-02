@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import SeasonWizard from "../../manage/SeasonWizard";
 import * as api from "../../lib/api";
 
@@ -63,6 +63,47 @@ const BASE_PREVIEW = {
   },
   constructionStrategy: "test_strategy_v1",
   seed: 7,
+};
+const MULTI_ASSIGNMENT_PREVIEW = {
+  ...BASE_PREVIEW,
+  summary: {
+    teamCount: 2,
+    totalSlots: 2,
+    regularSeason: {
+      phase: "Regular Season",
+      slotsTotal: 1,
+      matchupsTotal: 1,
+      slotsAssigned: 1,
+      unassignedMatchups: 0,
+    },
+    poolPlay: {
+      phase: "Pool Play",
+      slotsTotal: 1,
+      matchupsTotal: 1,
+      slotsAssigned: 1,
+      unassignedMatchups: 0,
+    },
+    bracket: {
+      phase: "Bracket",
+      slotsTotal: 0,
+      matchupsTotal: 0,
+      slotsAssigned: 0,
+      unassignedMatchups: 0,
+    },
+  },
+  assignments: [
+    ...BASE_PREVIEW.assignments,
+    {
+      phase: "Pool Play",
+      slotId: "slot-2",
+      gameDate: "2026-05-01",
+      startTime: "17:30",
+      endTime: "19:00",
+      fieldKey: "FIELD-2",
+      homeTeamId: "TEAM-2",
+      awayTeamId: "TEAM-1",
+    },
+  ],
 };
 
 function installLocalStorageMock() {
@@ -146,7 +187,7 @@ async function renderWizard() {
   return { seasonStartInput };
 }
 
-async function advanceToPreview() {
+async function advanceToRules() {
   await renderWizard();
 
   fireEvent.click(screen.getByRole("button", { name: "Next" }));
@@ -159,6 +200,10 @@ async function advanceToPreview() {
   fireEvent.click(screen.getByRole("button", { name: "Next" }));
   await waitFor(() => expect(screen.getByText("Game targets & weekly limits")).toBeInTheDocument());
   await waitFor(() => expect(screen.getByRole("button", { name: "Preview schedule" })).not.toBeDisabled());
+}
+
+async function advanceToPreview() {
+  await advanceToRules();
 
   fireEvent.click(screen.getByRole("button", { name: "Preview schedule" }));
   await waitFor(() => expect(screen.getByText("Preview overview")).toBeInTheDocument());
@@ -212,5 +257,44 @@ describe("SeasonWizard", () => {
     expect(localStorage.getItem("collapsible-season-wizard-preview-health")).toBe("true");
     expect(localStorage.getItem("collapsible-season-wizard-preview-coverage")).toBe("true");
     expect(localStorage.getItem("collapsible-season-wizard-preview-assignments")).toBe("true");
+  });
+
+  it("applies rule presets to the rules inputs", async () => {
+    await advanceToRules();
+
+    fireEvent.click(screen.getByRole("button", { name: "Max games" }));
+
+    expect(screen.getByLabelText(/No doubleheaders/i)).not.toBeChecked();
+    expect(screen.getByLabelText(/Balance home\/away/i)).not.toBeChecked();
+
+    fireEvent.click(screen.getByRole("button", { name: "Conservative" }));
+
+    expect(screen.getByLabelText(/Max games per team per week/i)).toHaveValue(1);
+    expect(screen.getByLabelText(/No doubleheaders/i)).toBeChecked();
+    expect(screen.getByLabelText(/Balance home\/away/i)).toBeChecked();
+  });
+
+  it("filters preview assignments by phase and field", async () => {
+    installApiMock({ previewResponse: MULTI_ASSIGNMENT_PREVIEW });
+
+    await advanceToPreview();
+    fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
+
+    await waitFor(() => expect(screen.getByText("Game explainability (preview)")).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText("Phase filter"), { target: { value: "Pool Play" } });
+    const assignmentsTable = screen.getByRole("table", { name: "Preview assignments" });
+
+    expect(within(assignmentsTable).queryByText("2026-04-07")).not.toBeInTheDocument();
+    expect(within(assignmentsTable).getByText("2026-05-01")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Field filter"), { target: { value: "FIELD-1" } });
+
+    expect(within(assignmentsTable).getByText("No assignments match the current filters.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+
+    expect(within(assignmentsTable).getByText("2026-04-07")).toBeInTheDocument();
+    expect(within(assignmentsTable).getByText("2026-05-01")).toBeInTheDocument();
   });
 });

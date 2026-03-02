@@ -51,6 +51,23 @@ const PREVIEW_SECTION_STORAGE_KEYS = {
   assignments: "season-wizard-preview-assignments",
 };
 const PREVIEW_SECTION_IDS = ["health", "coverage", "assignments"];
+const RULE_PRESETS = [
+  {
+    id: "balanced",
+    label: "Balanced",
+    description: "Stay close to the live feasibility recommendation and keep fairness rules on.",
+  },
+  {
+    id: "max_games",
+    label: "Max games",
+    description: "Push for more games by relaxing balance constraints and allowing doubleheaders.",
+  },
+  {
+    id: "conservative",
+    label: "Conservative",
+    description: "Reduce weekly load, tighten guardrails, and lean on the strongest weeknights.",
+  },
+];
 
 function isoDayShort(value) {
   if (!value) return "";
@@ -875,6 +892,10 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [feasibility, setFeasibility] = useState(null);
   const [feasibilityLoading, setFeasibilityLoading] = useState(false);
   const [hasAutoApplied, setHasAutoApplied] = useState(false);
+  const [assignmentPhaseFilter, setAssignmentPhaseFilter] = useState("");
+  const [assignmentTeamFilter, setAssignmentTeamFilter] = useState("");
+  const [assignmentFieldFilter, setAssignmentFieldFilter] = useState("");
+  const [showHighlightedAssignmentsOnly, setShowHighlightedAssignmentsOnly] = useState(false);
   const availabilityCacheRef = useRef(new Map());
   const availabilityRequestIdRef = useRef(0);
   const previewSectionControl = useCollapsibleSectionControl(PREVIEW_SECTION_IDS);
@@ -919,6 +940,13 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         }))
         .filter((team) => team.teamId),
     [divisionTeams]
+  );
+  const teamNameById = useMemo(
+    () =>
+      new Map(
+        normalizedDivisionTeams.map((team) => [team.teamId, team.name || team.teamId])
+      ),
+    [normalizedDivisionTeams]
   );
 
   const rivalryRowIssues = useMemo(() => {
@@ -1704,6 +1732,58 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     setHasAutoApplied(true);
   }, [feasibility, hasAutoApplied, minGamesPerTeam]);
 
+  function applyRulePreset(presetId) {
+    const recommendedMin = Math.max(1, Number(feasibility?.recommendations?.minGamesPerTeam || minGamesPerTeam || 1));
+    const recommendedMax = Math.max(
+      recommendedMin,
+      Number(feasibility?.recommendations?.maxGamesPerTeam || recommendedMin)
+    );
+    const recommendedGuestGames = Math.max(
+      0,
+      Number(feasibility?.recommendations?.optimalGuestGamesPerWeek || guestGamesPerWeek || 0)
+    );
+    const suggestedWeeknights = Array.isArray(availabilityInsights?.suggested)
+      ? availabilityInsights.suggested.slice(0, MAX_PREFERRED_WEEKNIGHTS)
+      : [];
+
+    if (presetId === "balanced") {
+      setMinGamesPerTeam(recommendedMin);
+      setGuestGamesPerWeek(recommendedGuestGames);
+      setMaxGamesPerWeek(Math.max(1, Math.min(2, recommendedMax)));
+      setNoDoubleHeaders(true);
+      setBalanceHomeAway(true);
+      setStrictPreferredWeeknights(false);
+    } else if (presetId === "max_games") {
+      setMinGamesPerTeam(recommendedMax);
+      setGuestGamesPerWeek(Math.max(recommendedGuestGames, 1));
+      setMaxGamesPerWeek(Math.max(2, Number(maxGamesPerWeek) || 0));
+      setNoDoubleHeaders(false);
+      setBalanceHomeAway(false);
+      setStrictPreferredWeeknights(false);
+    } else if (presetId === "conservative") {
+      setMinGamesPerTeam(Math.max(1, recommendedMin - 1));
+      setGuestGamesPerWeek(0);
+      setMaxGamesPerWeek(1);
+      setNoDoubleHeaders(true);
+      setBalanceHomeAway(true);
+      setStrictPreferredWeeknights(suggestedWeeknights.length > 0);
+      if (suggestedWeeknights.length) {
+        setPreferredTouched(true);
+        setPreferredWeeknights(suggestedWeeknights);
+        setAutoAppliedPreferred(false);
+      }
+    } else {
+      return;
+    }
+
+    setPreview(null);
+    setToast({
+      tone: "success",
+      duration: 2600,
+      message: `Applied the ${RULE_PRESETS.find((preset) => preset.id === presetId)?.label || "selected"} rule preset.`,
+    });
+  }
+
   function guestAnchorPayloadFromSlotId(slotId) {
     if (!slotId) return null;
     const slot = slotPatterns.find((s) => s.key === slotId);
@@ -2373,6 +2453,100 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     weekKey &&
     activeHighlightLookup.fieldKeys.has(String(fieldKey).trim()) &&
     activeHighlightLookup.weekKeys.has(String(weekKey).trim())
+  );
+  const assignmentPhaseOptions = useMemo(
+    () =>
+      [...new Set(
+        previewCollections.assignments
+          .map((assignment) => String(assignment?.phase || "").trim())
+          .filter(Boolean)
+      )].sort(),
+    [previewCollections.assignments]
+  );
+  const assignmentTeamOptions = useMemo(() => {
+    const teamIds = new Set();
+    previewCollections.assignments.forEach((assignment) => {
+      const homeTeamId = String(assignment?.homeTeamId || "").trim();
+      const awayTeamId = String(assignment?.awayTeamId || "").trim();
+      if (homeTeamId) teamIds.add(homeTeamId);
+      if (awayTeamId) teamIds.add(awayTeamId);
+    });
+    return [...teamIds]
+      .map((teamId) => ({
+        teamId,
+        label: teamNameById.get(teamId) || teamId,
+      }))
+      .sort((left, right) => left.label.localeCompare(right.label));
+  }, [previewCollections.assignments, teamNameById]);
+  const assignmentFieldOptions = useMemo(
+    () =>
+      [...new Set(
+        previewCollections.assignments
+          .map((assignment) => String(assignment?.fieldKey || "").trim())
+          .filter(Boolean)
+      )].sort(),
+    [previewCollections.assignments]
+  );
+
+  useEffect(() => {
+    if (assignmentPhaseFilter && !assignmentPhaseOptions.includes(assignmentPhaseFilter)) {
+      setAssignmentPhaseFilter("");
+    }
+  }, [assignmentPhaseFilter, assignmentPhaseOptions]);
+
+  useEffect(() => {
+    if (assignmentTeamFilter && !assignmentTeamOptions.some((team) => team.teamId === assignmentTeamFilter)) {
+      setAssignmentTeamFilter("");
+    }
+  }, [assignmentTeamFilter, assignmentTeamOptions]);
+
+  useEffect(() => {
+    if (assignmentFieldFilter && !assignmentFieldOptions.includes(assignmentFieldFilter)) {
+      setAssignmentFieldFilter("");
+    }
+  }, [assignmentFieldFilter, assignmentFieldOptions]);
+
+  useEffect(() => {
+    if (!activeHighlightLookup && showHighlightedAssignmentsOnly) {
+      setShowHighlightedAssignmentsOnly(false);
+    }
+  }, [activeHighlightLookup, showHighlightedAssignmentsOnly]);
+
+  const filteredPreviewAssignments = useMemo(
+    () =>
+      previewCollections.assignments.filter((assignment) => {
+        const phase = String(assignment?.phase || "").trim();
+        const fieldKey = String(assignment?.fieldKey || "").trim();
+        const homeTeamId = String(assignment?.homeTeamId || "").trim();
+        const awayTeamId = String(assignment?.awayTeamId || "").trim();
+        const slotId = String(assignment?.slotId || "").trim();
+        const weekKey = weekStartIso(assignment?.gameDate);
+        if (assignmentPhaseFilter && phase !== assignmentPhaseFilter) return false;
+        if (assignmentTeamFilter && homeTeamId !== assignmentTeamFilter && awayTeamId !== assignmentTeamFilter) return false;
+        if (assignmentFieldFilter && fieldKey !== assignmentFieldFilter) return false;
+        if (showHighlightedAssignmentsOnly) {
+          const isHighlighted = !!(
+            activeHighlightLookup &&
+            (
+              (slotId && activeHighlightLookup.slotIds.has(slotId)) ||
+              (weekKey && activeHighlightLookup.weekKeys.has(weekKey)) ||
+              (fieldKey && weekKey && activeHighlightLookup.fieldKeys.has(fieldKey) && activeHighlightLookup.weekKeys.has(weekKey)) ||
+              (homeTeamId && activeHighlightLookup.teamIds.has(homeTeamId)) ||
+              (awayTeamId && activeHighlightLookup.teamIds.has(awayTeamId))
+            )
+          );
+          if (!isHighlighted) return false;
+        }
+        return true;
+      }),
+    [
+      previewCollections.assignments,
+      assignmentPhaseFilter,
+      assignmentTeamFilter,
+      assignmentFieldFilter,
+      showHighlightedAssignmentsOnly,
+      activeHighlightLookup,
+    ]
   );
 
   const unassignedRegularReport = useMemo(() => {
@@ -3700,6 +3874,18 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     if (step === 4) return "Review the preview details below before applying the schedule.";
     return "No blocking issues detected for this step.";
   }, [currentStepIssue, step, preview]);
+  const currentStepNextAction = useMemo(() => {
+    if (currentStepIssue) return "Resolve the blocking issue in this step before moving on.";
+    if (step === 3) return 'Next checkpoint: run "Preview schedule" to validate these rules.';
+    if (step === 4 && !preview) return 'Next checkpoint: go back to Rules and run "Preview schedule".';
+    if (step === 4 && (previewApplyBlocked || previewIssueCount > 0)) {
+      return "Next checkpoint: use Health & fixes to resolve the remaining blockers.";
+    }
+    if (step === 4) return 'Next checkpoint: review the preview, then use "Apply schedule" when ready.';
+    const nextMeta = steps[step + 1];
+    if (!nextMeta) return "Next checkpoint: apply the schedule once the preview looks right.";
+    return `Next checkpoint: ${nextMeta.label}.`;
+  }, [currentStepIssue, step, steps, preview, previewApplyBlocked, previewIssueCount]);
 
   function goToStep(targetStep) {
     const nextStep = Math.max(0, Math.min(steps.length - 1, Number(targetStep)));
@@ -3765,7 +3951,16 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         ))}
       </div>
       <div className="subtle">Step state: green = complete, red = needs attention, neutral = pending.</div>
-      <div className={currentStepIssue ? "callout callout--error" : "callout"}>
+      <div
+        className={currentStepIssue ? "callout callout--error" : "callout"}
+        style={{
+          position: "sticky",
+          top: "0.75rem",
+          zIndex: 3,
+          backgroundColor: "#fff",
+          boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)",
+        }}
+      >
         <div className="row row--between gap-2" style={{ alignItems: "center" }}>
           <div>
             <div className="font-bold">
@@ -3776,6 +3971,10 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
           <div className="subtle">
             Completed: <b>{completedStepCount}</b> / {Math.max(steps.length - 1, 0)}
           </div>
+        </div>
+        <div className="row row--wrap gap-2 mt-2">
+          <span className="pill">{currentStepIssue ? "Blocked" : "In progress"}</span>
+          <span className="pill">{currentStepNextAction}</span>
         </div>
         <div className="subtle mt-2">
           {currentStepIssue ? `Needs attention: ${currentStepMessage}` : currentStepMessage}
@@ -4207,6 +4406,31 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                 ) : null}
               </div>
             ) : null}
+
+            <div className="callout">
+              <div className="row row--between gap-2" style={{ alignItems: "center" }}>
+                <div>
+                  <div className="font-bold">Rule presets</div>
+                  <div className="subtle">Start from a tuned baseline, then fine-tune individual settings below.</div>
+                </div>
+                <div className="row row--wrap gap-2">
+                  {RULE_PRESETS.map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      className="btn btn--ghost"
+                      onClick={() => applyRulePreset(preset.id)}
+                      title={preset.description}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="subtle mt-2">
+                Presets give you a fast starting point. Every field below can still be adjusted manually afterward.
+              </div>
+            </div>
 
             <div className="card">
               <div className="card__header">
@@ -5658,8 +5882,87 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                 <div className="subtle">
                   Tip: drag one <b>Regular Season</b> game row onto another to try a preview-only swap. The drop is revalidated immediately and illegal swaps are rejected.
                 </div>
+                <div className="callout">
+                  <div className="row row--wrap gap-2" style={{ alignItems: "end" }}>
+                    <label>
+                      Phase filter
+                      <select
+                        aria-label="Phase filter"
+                        value={assignmentPhaseFilter}
+                        onChange={(e) => setAssignmentPhaseFilter(e.target.value)}
+                      >
+                        <option value="">All phases</option>
+                        {assignmentPhaseOptions.map((phase) => (
+                          <option key={phase} value={phase}>{phase}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Team filter
+                      <select
+                        aria-label="Team filter"
+                        value={assignmentTeamFilter}
+                        onChange={(e) => setAssignmentTeamFilter(e.target.value)}
+                      >
+                        <option value="">All teams</option>
+                        {assignmentTeamOptions.map((team) => (
+                          <option key={team.teamId} value={team.teamId}>
+                            {team.label} ({team.teamId})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Field filter
+                      <select
+                        aria-label="Field filter"
+                        value={assignmentFieldFilter}
+                        onChange={(e) => setAssignmentFieldFilter(e.target.value)}
+                      >
+                        <option value="">All fields</option>
+                        {assignmentFieldOptions.map((fieldKey) => (
+                          <option key={fieldKey} value={fieldKey}>{fieldKey}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="inlineCheck" style={{ marginBottom: "0.35rem" }}>
+                      <input
+                        type="checkbox"
+                        checked={showHighlightedAssignmentsOnly}
+                        onChange={(e) => setShowHighlightedAssignmentsOnly(e.target.checked)}
+                        disabled={!activeHighlightLookup}
+                      />
+                      Only highlighted issues
+                    </label>
+                    <button
+                      type="button"
+                      className="btn btn--ghost"
+                      onClick={() => {
+                        setAssignmentPhaseFilter("");
+                        setAssignmentTeamFilter("");
+                        setAssignmentFieldFilter("");
+                        setShowHighlightedAssignmentsOnly(false);
+                      }}
+                      disabled={!assignmentPhaseFilter && !assignmentTeamFilter && !assignmentFieldFilter && !showHighlightedAssignmentsOnly}
+                    >
+                      Clear filters
+                    </button>
+                  </div>
+                  <div className="subtle mt-2">
+                    Showing <b>{Math.min(filteredPreviewAssignments.length, 250)}</b> of <b>{filteredPreviewAssignments.length}</b> matching assignment(s)
+                    {" "}out of {previewCollections.assignments.length} total.
+                  </div>
+                  {!activeHighlightLookup ? (
+                    <div className="subtle mt-1">
+                      Select a repair proposal or rule-health item above to enable the highlighted-only filter.
+                    </div>
+                  ) : null}
+                </div>
                 <div className={`tableWrap ${tableView === "B" ? "tableWrap--sticky" : ""}`}>
-                  <table className={`table ${tableView === "B" ? "table--compact table--sticky" : ""}`}>
+                  <table
+                    aria-label="Preview assignments"
+                    className={`table ${tableView === "B" ? "table--compact table--sticky" : ""}`}
+                  >
                     <thead>
                       <tr>
                         <th>Phase</th>
@@ -5673,7 +5976,11 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {(preview.assignments || []).slice(0, 250).map((a) => {
+                      {filteredPreviewAssignments.length === 0 ? (
+                        <tr>
+                          <td colSpan="8" className="subtle">No assignments match the current filters.</td>
+                        </tr>
+                      ) : filteredPreviewAssignments.slice(0, 250).map((a) => {
                         const rowKey = assignmentExplainKey(a);
                         const isSelected = selectedGameExplain && assignmentExplainKey(selectedGameExplain.selected) === rowKey;
                         const isRepairHighlighted = isAssignmentHighlightedByRepair(a);
@@ -5721,8 +6028,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                       })}
                     </tbody>
                   </table>
-                  {(preview.assignments || []).length > 250 ? (
-                    <div className="subtle mt-2">Showing first 250 assignments.</div>
+                  {filteredPreviewAssignments.length > 250 ? (
+                    <div className="subtle mt-2">Showing first 250 matching assignments.</div>
                   ) : null}
                 </div>
                 <div className={`callout mt-2 ${
