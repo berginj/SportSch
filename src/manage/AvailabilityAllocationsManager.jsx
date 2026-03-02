@@ -150,6 +150,9 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
   const [allocDateFrom, setAllocDateFrom] = useState("");
   const [allocDateTo, setAllocDateTo] = useState("");
   const [allocListLoading, setAllocListLoading] = useState(false);
+  const [editingAllocationId, setEditingAllocationId] = useState("");
+  const [editingAllocationDraft, setEditingAllocationDraft] = useState(null);
+  const [allocationSaveBusyId, setAllocationSaveBusyId] = useState("");
 
   const [manualScope, setManualScope] = useState("LEAGUE");
   const [manualFieldKey, setManualFieldKey] = useState("");
@@ -519,6 +522,99 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
       setAllocErr(formatApiError(e, "Delete failed."));
     } finally {
       setAllocListLoading(false);
+    }
+  }
+
+  function startAllocationEdit(allocation) {
+    setAllocErr("");
+    setAllocOk("");
+    setEditingAllocationId(allocation.allocationId);
+    setEditingAllocationDraft({
+      scope: allocation.scope || "LEAGUE",
+      fieldKey: allocation.fieldKey || "",
+      startsOn: allocation.startsOn || "",
+      endsOn: allocation.endsOn || "",
+      daysOfWeek: Array.isArray(allocation.daysOfWeek) ? [...allocation.daysOfWeek] : [],
+      startTimeLocal: allocation.startTimeLocal || "",
+      endTimeLocal: allocation.endTimeLocal || "",
+      slotType: allocation.slotType || "practice",
+      priorityRank: allocation.priorityRank ? String(allocation.priorityRank) : "",
+      notes: allocation.notes || "",
+      isActive: allocation.isActive !== false,
+    });
+  }
+
+  function cancelAllocationEdit() {
+    setEditingAllocationId("");
+    setEditingAllocationDraft(null);
+    setAllocationSaveBusyId("");
+  }
+
+  function updateEditingAllocationDraft(patch) {
+    setEditingAllocationDraft((prev) => (prev ? { ...prev, ...patch } : prev));
+  }
+
+  function toggleEditingAllocationDay(day) {
+    setEditingAllocationDraft((prev) => {
+      if (!prev) return prev;
+      const next = new Set(prev.daysOfWeek || []);
+      if (next.has(day)) next.delete(day);
+      else next.add(day);
+      return { ...prev, daysOfWeek: Array.from(next) };
+    });
+  }
+
+  async function saveAllocationEdit() {
+    if (!editingAllocationId || !editingAllocationDraft) return;
+
+    const dateError = validateIsoDates([
+      { label: "Starts on", value: editingAllocationDraft.startsOn, required: true },
+      { label: "Ends on", value: editingAllocationDraft.endsOn, required: true },
+    ]);
+    if (dateError) return setAllocErr(dateError);
+    if (editingAllocationDraft.endsOn < editingAllocationDraft.startsOn) {
+      return setAllocErr("Ends on must be on or after starts on.");
+    }
+    if (!editingAllocationDraft.fieldKey) return setAllocErr("Select a field.");
+    if (!editingAllocationDraft.startTimeLocal || !editingAllocationDraft.endTimeLocal) {
+      return setAllocErr("Start and end times are required.");
+    }
+
+    const slotType = normalizeManualSlotType(editingAllocationDraft.slotType);
+    const priorityRaw = String(editingAllocationDraft.priorityRank || "").trim();
+    if (slotType !== "practice" && priorityRaw && (!/^\d+$/.test(priorityRaw) || Number(priorityRaw) <= 0)) {
+      return setAllocErr("Priority rank must be a positive whole number.");
+    }
+
+    setAllocationSaveBusyId(editingAllocationId);
+    setAllocErr("");
+    setAllocOk("");
+    try {
+      await apiFetch(`/api/availability/allocations/${encodeURIComponent(editingAllocationId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scope: editingAllocationDraft.scope || "LEAGUE",
+          fieldKey: editingAllocationDraft.fieldKey,
+          startsOn: editingAllocationDraft.startsOn,
+          endsOn: editingAllocationDraft.endsOn,
+          daysOfWeek: editingAllocationDraft.daysOfWeek || [],
+          startTimeLocal: editingAllocationDraft.startTimeLocal,
+          endTimeLocal: editingAllocationDraft.endTimeLocal,
+          slotType,
+          priorityRank: slotType === "practice" ? "" : priorityRaw,
+          notes: editingAllocationDraft.notes || "",
+          isActive: !!editingAllocationDraft.isActive,
+        }),
+      });
+      await loadAllocations();
+      setAllocOk("Allocation updated.");
+      setToast({ tone: "success", message: "Allocation updated." });
+      cancelAllocationEdit();
+    } catch (e) {
+      setAllocErr(formatApiError(e, "Failed to update allocation."));
+    } finally {
+      setAllocationSaveBusyId("");
     }
   }
 
@@ -967,7 +1063,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
       <div className="card">
         <div className="card__header">
           <div className="h2">Allocation list</div>
-          <div className="subtle">Review and bulk delete allocation rows.</div>
+          <div className="subtle">Review, edit, and bulk delete allocation rows.</div>
         </div>
         <div className="card__body grid2">
           <label>
@@ -994,11 +1090,11 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
           </label>
           <label>
             Date from
-            <input value={allocDateFrom} onChange={(e) => setAllocDateFrom(e.target.value)} placeholder="YYYY-MM-DD" />
+            <input type="date" value={allocDateFrom} onChange={(e) => setAllocDateFrom(e.target.value)} />
           </label>
           <label>
             Date to
-            <input value={allocDateTo} onChange={(e) => setAllocDateTo(e.target.value)} placeholder="YYYY-MM-DD" />
+            <input type="date" value={allocDateTo} onChange={(e) => setAllocDateTo(e.target.value)} />
           </label>
         </div>
         <div className="card__body row gap-2">
@@ -1023,22 +1119,187 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
                   <th>Priority</th>
                   <th>Active</th>
                   <th>Notes</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {allocations.map((a) => (
-                  <tr key={a.allocationId}>
-                    <td>{a.scope === "LEAGUE" ? "League-wide" : a.scope}</td>
-                    <td>{fieldLabelMap.get(a.fieldKey) || a.fieldKey}</td>
-                    <td>{a.startsOn} - {a.endsOn}</td>
-                    <td>{(a.daysOfWeek || []).join(", ") || "Any"}</td>
-                    <td>{a.startTimeLocal} - {a.endTimeLocal}</td>
-                    <td>{a.slotType || "practice"}</td>
-                    <td>{a.priorityRank || "-"}</td>
-                    <td>{a.isActive ? "Yes" : "No"}</td>
-                    <td>{a.notes || ""}</td>
-                  </tr>
-                ))}
+                {allocations.map((a) => {
+                  const isEditing = editingAllocationId === a.allocationId;
+                  const isSaving = allocationSaveBusyId === a.allocationId;
+                  return (
+                    <Fragment key={a.allocationId}>
+                      <tr>
+                        <td>{a.scope === "LEAGUE" ? "League-wide" : a.scope}</td>
+                        <td>{fieldLabelMap.get(a.fieldKey) || a.fieldKey}</td>
+                        <td>{a.startsOn} - {a.endsOn}</td>
+                        <td>{(a.daysOfWeek || []).join(", ") || "Any"}</td>
+                        <td>{a.startTimeLocal} - {a.endTimeLocal}</td>
+                        <td>{a.slotType || "practice"}</td>
+                        <td>{a.priorityRank || "-"}</td>
+                        <td>{a.isActive ? "Yes" : "No"}</td>
+                        <td>{a.notes || ""}</td>
+                        <td>
+                          <button
+                            className="btn btn--ghost"
+                            type="button"
+                            onClick={() => (isEditing ? cancelAllocationEdit() : startAllocationEdit(a))}
+                            disabled={!!allocationSaveBusyId && !isSaving}
+                          >
+                            {isEditing ? "Cancel" : "Edit"}
+                          </button>
+                        </td>
+                      </tr>
+                      {isEditing && editingAllocationDraft ? (
+                        <tr>
+                          <td colSpan={10}>
+                            <div className="callout">
+                              <div className="font-bold mb-2">Edit allocation</div>
+                              <div className="grid2">
+                                <label>
+                                  Scope
+                                  <select
+                                    value={editingAllocationDraft.scope}
+                                    onChange={(e) => updateEditingAllocationDraft({ scope: e.target.value })}
+                                    disabled={isSaving}
+                                  >
+                                    {scopes.map((s) => (
+                                      <option key={s} value={s}>
+                                        {s === "LEAGUE" ? "League-wide" : s}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label>
+                                  Field
+                                  <select
+                                    value={editingAllocationDraft.fieldKey}
+                                    onChange={(e) => updateEditingAllocationDraft({ fieldKey: e.target.value })}
+                                    disabled={isSaving}
+                                  >
+                                    {fields.map((f) => (
+                                      <option key={f.fieldKey} value={f.fieldKey}>
+                                        {f.displayName || f.fieldKey}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label>
+                                  Starts on
+                                  <input
+                                    type="date"
+                                    value={editingAllocationDraft.startsOn}
+                                    onChange={(e) => updateEditingAllocationDraft({ startsOn: e.target.value })}
+                                    disabled={isSaving}
+                                  />
+                                </label>
+                                <label>
+                                  Ends on
+                                  <input
+                                    type="date"
+                                    value={editingAllocationDraft.endsOn}
+                                    onChange={(e) => updateEditingAllocationDraft({ endsOn: e.target.value })}
+                                    disabled={isSaving}
+                                  />
+                                </label>
+                                <label>
+                                  Start time
+                                  <input
+                                    type="time"
+                                    value={editingAllocationDraft.startTimeLocal}
+                                    onChange={(e) => updateEditingAllocationDraft({ startTimeLocal: e.target.value })}
+                                    disabled={isSaving}
+                                  />
+                                </label>
+                                <label>
+                                  End time
+                                  <input
+                                    type="time"
+                                    value={editingAllocationDraft.endTimeLocal}
+                                    onChange={(e) => updateEditingAllocationDraft({ endTimeLocal: e.target.value })}
+                                    disabled={isSaving}
+                                  />
+                                </label>
+                                <label>
+                                  Slot type
+                                  <select
+                                    value={editingAllocationDraft.slotType}
+                                    onChange={(e) =>
+                                      updateEditingAllocationDraft({
+                                        slotType: normalizeManualSlotType(e.target.value),
+                                        priorityRank:
+                                          normalizeManualSlotType(e.target.value) === "practice"
+                                            ? ""
+                                            : editingAllocationDraft.priorityRank,
+                                      })}
+                                    disabled={isSaving}
+                                  >
+                                    <option value="practice">Practice</option>
+                                    <option value="game">Game</option>
+                                    <option value="both">Both</option>
+                                  </select>
+                                </label>
+                                <label>
+                                  Priority rank
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    value={editingAllocationDraft.priorityRank}
+                                    onChange={(e) => updateEditingAllocationDraft({ priorityRank: e.target.value })}
+                                    disabled={isSaving || editingAllocationDraft.slotType === "practice"}
+                                    placeholder={editingAllocationDraft.slotType === "practice" ? "-" : "1"}
+                                  />
+                                </label>
+                                <label className="inlineCheck">
+                                  <input
+                                    type="checkbox"
+                                    checked={!!editingAllocationDraft.isActive}
+                                    onChange={(e) => updateEditingAllocationDraft({ isActive: e.target.checked })}
+                                    disabled={isSaving}
+                                  />
+                                  Active
+                                </label>
+                                <div className="col-span-2">
+                                  <div className="mb-2">Days of week</div>
+                                  <div className="row row--wrap gap-2">
+                                    {DAY_OPTIONS.map((day) => (
+                                      <label key={day} className="inlineCheck">
+                                        <input
+                                          type="checkbox"
+                                          checked={(editingAllocationDraft.daysOfWeek || []).includes(day)}
+                                          onChange={() => toggleEditingAllocationDay(day)}
+                                          disabled={isSaving}
+                                        />
+                                        {day}
+                                      </label>
+                                    ))}
+                                  </div>
+                                  <div className="subtle mt-1">Leave all unchecked to allow any day in range.</div>
+                                </div>
+                                <label className="col-span-2">
+                                  Notes
+                                  <input
+                                    value={editingAllocationDraft.notes}
+                                    onChange={(e) => updateEditingAllocationDraft({ notes: e.target.value })}
+                                    disabled={isSaving}
+                                    placeholder="Optional notes"
+                                  />
+                                </label>
+                              </div>
+                              <div className="row gap-2 mt-2">
+                                <button className="btn btn--primary" type="button" onClick={saveAllocationEdit} disabled={isSaving}>
+                                  {isSaving ? "Saving..." : "Save allocation"}
+                                </button>
+                                <button className="btn btn--ghost" type="button" onClick={cancelAllocationEdit} disabled={isSaving}>
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
