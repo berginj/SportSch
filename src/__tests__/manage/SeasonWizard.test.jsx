@@ -425,6 +425,9 @@ function installApiMock({ previewResponse = BASE_PREVIEW, previewError = null, s
       }
       return Promise.resolve(previewResponse);
     }
+    if (url === "/api/schedule/wizard/apply") {
+      return Promise.resolve({ ok: true });
+    }
     throw new Error(`Unexpected apiFetch call: ${url}`);
   });
 }
@@ -485,8 +488,34 @@ describe("SeasonWizard", () => {
     await renderWizard();
 
     expect(screen.getByText(/OVERWRITE all existing game assignments/i)).toBeInTheDocument();
-    expect(document.body.textContent).toContain("does not clear availability slots, recurring allocations, or field blackouts");
-    expect(screen.getByText(/clear or edit availability first, then rerun the wizard/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Reset prior wizard-generated slots in this season window before apply/i)).toBeChecked();
+    expect(document.body.textContent).toContain("reset prior wizard-generated rows in this season window back to availability before applying the new run");
+    expect(document.body.textContent).toContain("does not clear recurring allocations or field blackouts");
+  });
+
+  it("sends the reset-before-apply toggle with the apply request", async () => {
+    await advanceToPreview();
+
+    const resetToggle = screen.getByLabelText(/Reset prior wizard-generated slots in this season window before apply/i);
+    fireEvent.click(resetToggle);
+
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Apply schedule" }));
+
+      await waitFor(() => {
+        expect(api.apiFetch).toHaveBeenCalledWith(
+          "/api/schedule/wizard/apply",
+          expect.objectContaining({ method: "POST" })
+        );
+      });
+
+      const applyCall = api.apiFetch.mock.calls.find(([path]) => path === "/api/schedule/wizard/apply");
+      const payload = JSON.parse(applyCall?.[1]?.body || "{}");
+      expect(payload.resetGeneratedSlotsBeforeApply).toBe(false);
+    } finally {
+      confirmSpy.mockRestore();
+    }
   });
 
   it("defaults postseason dates from the season range and uses date pickers", async () => {

@@ -48,6 +48,7 @@ public class ScheduleWizardFunctions
         List<RivalryMatchupOption>? rivalryMatchups,
         GuestAnchorOption? guestAnchorPrimary,
         GuestAnchorOption? guestAnchorSecondary,
+        bool? resetGeneratedSlotsBeforeApply,
         string? constructionStrategy,
         int? seed
     );
@@ -402,6 +403,7 @@ public class ScheduleWizardFunctions
             var hardLeagueRules = NormalizeHardLeagueRules(body);
             var normalizedConstructionStrategy = NormalizeConstructionStrategy(body.constructionStrategy);
             var useBackwardRegularSeason = string.Equals(normalizedConstructionStrategy, "backward_greedy_v1", StringComparison.OrdinalIgnoreCase);
+            var resetGeneratedSlotsBeforeApply = body.resetGeneratedSlotsBeforeApply ?? true;
             var requestedSeed = body.seed.HasValue ? Math.Abs(body.seed.Value) : (int?)null;
             var seed = requestedSeed ?? StableWizardSeed(division, seasonStart, seasonEnd);
 
@@ -587,6 +589,10 @@ public class ScheduleWizardFunctions
                         });
                 }
                 var runId = Guid.NewGuid().ToString("N");
+                if (resetGeneratedSlotsBeforeApply)
+                {
+                    await ResetGeneratedSlotsBeforeApplyAsync(leagueId, division, seasonStart, bracketEnd ?? seasonEnd);
+                }
                 await ApplyAssignmentsAsync(leagueId, division, runId, assignments);
                 await SaveWizardRunAsync(leagueId, division, runId, me.Email ?? me.UserId, summary, body);
             }
@@ -2827,6 +2833,24 @@ public class ScheduleWizardFunctions
         }
     }
 
+    private async Task ResetGeneratedSlotsBeforeApplyAsync(string leagueId, string division, DateOnly dateFrom, DateOnly dateTo)
+    {
+        var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Slots);
+        var pk = Constants.Pk.Slots(leagueId, division);
+        var filter = $"PartitionKey eq '{ApiGuards.EscapeOData(pk)}'";
+        filter += $" and GameDate ge '{ApiGuards.EscapeOData(dateFrom.ToString("yyyy-MM-dd"))}'";
+        filter += $" and GameDate le '{ApiGuards.EscapeOData(dateTo.ToString("yyyy-MM-dd"))}'";
+
+        await foreach (var slot in table.QueryAsync<TableEntity>(filter: filter))
+        {
+            if (SlotEntityUtil.IsPractice(slot)) continue;
+            if (string.IsNullOrWhiteSpace(SlotEntityUtil.ReadString(slot, "ScheduleRunId"))) continue;
+
+            SlotEntityUtil.ResetSchedulerSlotToAvailability(slot, DateTimeOffset.UtcNow);
+            await table.UpdateEntityAsync(slot, slot.ETag, TableUpdateMode.Merge);
+        }
+    }
+
     private async Task SaveWizardRunAsync(string leagueId, string division, string runId, string createdBy, WizardSummary summary, WizardRequest request)
     {
         var table = await TableClients.GetTableAsync(_svc, Constants.Tables.ScheduleRuns);
@@ -2847,6 +2871,7 @@ public class ScheduleWizardFunctions
             ["BalanceHomeAway"] = request.balanceHomeAway ?? true,
             ["ExternalOfferPerWeek"] = request.externalOfferPerWeek ?? 0,
             ["MaxExternalOffersPerTeamSeason"] = request.maxExternalOffersPerTeamSeason ?? 0,
+            ["ResetGeneratedSlotsBeforeApply"] = request.resetGeneratedSlotsBeforeApply ?? true,
             ["NoGamesOnDates"] = System.Text.Json.JsonSerializer.Serialize(request.noGamesOnDates ?? new List<string>()),
             ["NoGamesBeforeTime"] = request.noGamesBeforeTime ?? "",
             ["NoGamesAfterTime"] = request.noGamesAfterTime ?? "",

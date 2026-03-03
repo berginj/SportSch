@@ -952,6 +952,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [poolGamesPerTeam, setPoolGamesPerTeam] = useState(2);
   const [guestGamesPerWeek, setGuestGamesPerWeek] = useState(0);
   const [maxExternalOffersPerTeamSeason, setMaxExternalOffersPerTeamSeason] = useState(0);
+  const [resetGeneratedSlotsBeforeApply, setResetGeneratedSlotsBeforeApply] = useState(true);
   const [blockSpringBreak, setBlockSpringBreak] = useState(false);
   const [maxGamesPerWeek, setMaxGamesPerWeek] = useState(2);
   const [noDoubleHeaders, setNoDoubleHeaders] = useState(true);
@@ -2032,6 +2033,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       poolGamesPerTeam: Math.max(2, Number(poolGamesPerTeam) || 2),
       externalOfferPerWeek: Number(guestGamesPerWeek) || 0,
       maxExternalOffersPerTeamSeason: Number(maxExternalOffersPerTeamSeason) || 0,
+      resetGeneratedSlotsBeforeApply,
       maxGamesPerWeek: Number(maxGamesPerWeek) || 0,
       noDoubleHeaders,
       balanceHomeAway,
@@ -2125,9 +2127,12 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       "⚠️ WARNING: Applying this schedule will OVERWRITE all existing game assignments in this division.\n\n" +
       "This action:\n" +
       "• Replaces all current slot assignments\n" +
-      "• Does NOT remove availability slots, recurring allocations, or blackouts\n" +
+      (resetGeneratedSlotsBeforeApply
+        ? "• Resets prior wizard-generated slots in this season window back to availability first\n"
+        : "• Leaves prior wizard-generated slots untouched before writing the new assignments\n") +
+      "• Does NOT remove recurring allocations or field blackouts\n" +
       "• Cannot be undone\n" +
-      "• Requires the availability pool to be cleaned up separately if you need different open space\n\n" +
+      "• May still require allocation cleanup if you need a different underlying slot pool\n\n" +
       "Are you sure you want to continue?"
     );
 
@@ -4216,7 +4221,26 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
       <div className="callout callout--warning">
         <strong>⚠️ Important:</strong> This wizard will <strong>OVERWRITE all existing game assignments</strong> in the selected division when you click "Apply schedule" at the end.
-        It does <strong>not</strong> clear availability slots, recurring allocations, or field blackouts. If you need a different slot pool, clear or edit availability first, then rerun the wizard.
+        {resetGeneratedSlotsBeforeApply ? (
+          <>
+            {" "}
+            It will also reset prior <strong>wizard-generated</strong> rows in this season window back to availability before applying the new run.
+          </>
+        ) : (
+          <>
+            {" "}
+            It will <strong>not</strong> reset prior wizard-generated rows before applying.
+          </>
+        )}{" "}
+        It does <strong>not</strong> clear recurring allocations or field blackouts. If you need a different underlying slot pool, clear or edit availability first, then rerun the wizard.
+        <label className="inlineCheck" style={{ marginTop: "0.75rem" }}>
+          <input
+            type="checkbox"
+            checked={resetGeneratedSlotsBeforeApply}
+            onChange={(e) => setResetGeneratedSlotsBeforeApply(e.target.checked)}
+          />
+          Reset prior wizard-generated slots in this season window before apply
+        </label>
       </div>
 
       <div className="row row--wrap gap-2">
