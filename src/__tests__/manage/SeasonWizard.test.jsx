@@ -393,6 +393,14 @@ describe("SeasonWizard", () => {
     expect(screen.getByText(/Basics: Season start\/end must be YYYY-MM-DD\./)).toBeInTheDocument();
   });
 
+  it("makes clear that rerunning the wizard does not clear availability", async () => {
+    await renderWizard();
+
+    expect(screen.getByText(/OVERWRITE all existing game assignments/i)).toBeInTheDocument();
+    expect(document.body.textContent).toContain("does not clear availability slots, recurring allocations, or field blackouts");
+    expect(screen.getByText(/clear or edit availability first, then rerun the wizard/i)).toBeInTheDocument();
+  });
+
   it("defaults postseason dates from the season range and uses date pickers", async () => {
     const { seasonStartInput } = await renderWizard();
     const seasonEndInput = screen.getByLabelText(/Season end/i);

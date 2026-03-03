@@ -2121,8 +2121,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       "⚠️ WARNING: Applying this schedule will OVERWRITE all existing game assignments in this division.\n\n" +
       "This action:\n" +
       "• Replaces all current slot assignments\n" +
+      "• Does NOT remove availability slots, recurring allocations, or blackouts\n" +
       "• Cannot be undone\n" +
-      "• Should only be done when setting up a new season or completely rebuilding a schedule\n\n" +
+      "• Requires the availability pool to be cleaned up separately if you need different open space\n\n" +
       "Are you sure you want to continue?"
     );
 
@@ -4142,7 +4143,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
       <div className="callout callout--warning">
         <strong>⚠️ Important:</strong> This wizard will <strong>OVERWRITE all existing game assignments</strong> in the selected division when you click "Apply schedule" at the end.
-        Use this tool only when setting up a new season or completely rebuilding a schedule.
+        It does <strong>not</strong> clear availability slots, recurring allocations, or field blackouts. If you need a different slot pool, clear or edit availability first, then rerun the wizard.
       </div>
 
       <div className="row row--wrap gap-2">
