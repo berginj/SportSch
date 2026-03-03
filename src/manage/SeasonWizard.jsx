@@ -3790,9 +3790,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       if (guestGamesValue >= 2 && guestAnchorOptions.length >= 2 && selectedGuestAnchorCount < 2) {
         rows.push({
           code: "GUEST_ANCHOR_RECOMMENDATION",
-          tone: "info",
+          tone: "warning",
           message:
-            "Pick two guest anchor options in Slot plan. Those recurring guest matchups stay locked in preview, and Apply Fix or drag-swap will not move them.",
+            "Set the required guest anchor options in Slot plan. The selected day, time, and field are treated as exact weekly guest requirements and stay locked in preview.",
         });
       }
 
@@ -3801,14 +3801,14 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
           code: "GUEST_GAME_NOT_PLACED",
           tone: "warning",
           message:
-            `Guest games are enabled (${guestGamesValue}/week) but none were placed. Check that at least two recurring slots stay tagged Game/Both, carry usable priority, and are selected as guest anchors.`,
+            `Guest games are enabled (${guestGamesValue}/week) but none were placed. Check that enough recurring slots stay tagged Game/Both and that your required guest anchor field/time patterns exist in the slot plan.`,
         });
       } else if (regularBalanceReport.totalGuestGames > 0) {
         rows.push({
           code: "GUEST_GAME_LOCKED_NOTICE",
           tone: "info",
           message:
-            "Placed guest slots stay locked in preview. Apply Fix and drag-swap only move regular league matchups around them.",
+            "Placed guest slots stay locked in preview. The wizard reserves guest capacity first, then places regular league matchups around it.",
         });
       }
 
@@ -4383,7 +4383,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
               </label>
             </div>
             <div className="subtle">
-              Guest anchors now reserve matching weekly slots first for external/guest games (when matches exist), so regular matchups are scheduled around them.
+              Guest games/week is reserved before regular scheduling. When you set guest anchors, the selected day, time, and field are treated as exact weekly requirements for guest slots.
             </div>
 
             {availabilityLoading ? <div className="muted">Loading availability slots...</div> : null}

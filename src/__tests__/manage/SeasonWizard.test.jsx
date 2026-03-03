@@ -450,6 +450,13 @@ describe("SeasonWizard", () => {
     expect(localStorage.getItem("collapsible-season-wizard-preview-assignments")).toBe("true");
   });
 
+  it("treats guest anchor slots as exact weekly requirements", async () => {
+    await advanceToSlotPlan();
+
+    expect(screen.getByText(/Guest games\/week is reserved before regular scheduling\./i)).toBeInTheDocument();
+    expect(screen.getByText(/selected day, time, and field are treated as exact weekly requirements/i)).toBeInTheDocument();
+  });
+
   it("applies rule presets to the rules inputs", async () => {
     await advanceToRules();
 
