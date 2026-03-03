@@ -501,6 +501,7 @@ public class ScheduleWizardFunctions
             if (bracketStart.HasValue && bracketSlots.Count == 0) warnings.Add(new { code = "NO_BRACKET_SLOTS", message = "No bracket slots available." });
             if (blockedOutSlots > 0) warnings.Add(new { code = "SLOTS_BLOCKED_BY_DATES", message = $"{blockedOutSlots} slot(s) were excluded by blocked date ranges." });
             if (leagueRuleFilteredOutSlots > 0) warnings.Add(new { code = "SLOTS_FILTERED_BY_RULES", message = $"{leagueRuleFilteredOutSlots} slot(s) were excluded by no-games date/time rules." });
+            warnings.AddRange(BuildRequiredGuestAnchorWarnings(seasonStart, regularRangeEnd, regularSlots, externalOfferPerWeek, guestAnchors));
             if (externalOfferPerWeek > 0)
             {
                 var externalAssignments = regularAssignments.Assignments.Where(a => a.IsExternalOffer).ToList();
@@ -1561,6 +1562,78 @@ public class ScheduleWizardFunctions
             yield return guestAnchors.Primary;
         if (guestAnchors?.Secondary is not null)
             yield return guestAnchors.Secondary;
+    }
+
+    private static List<object> BuildRequiredGuestAnchorWarnings(
+        DateOnly seasonStart,
+        DateOnly regularRangeEnd,
+        IReadOnlyList<SlotInfo> regularSlots,
+        int externalOfferPerWeek,
+        GuestAnchorSet? guestAnchors)
+    {
+        var warnings = new List<object>();
+        if (externalOfferPerWeek <= 0 || regularRangeEnd < seasonStart)
+            return warnings;
+
+        var requiredAnchors = EnumerateGuestAnchors(guestAnchors)
+            .Take(Math.Max(0, externalOfferPerWeek))
+            .Select((anchor, idx) => new { Anchor = anchor, Ordinal = idx + 1 })
+            .ToList();
+        if (requiredAnchors.Count == 0)
+            return warnings;
+
+        var weeklySlots = regularSlots
+            .GroupBy(slot => WeekKey(slot.gameDate))
+            .Where(group => !string.IsNullOrWhiteSpace(group.Key))
+            .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
+        var weekStarts = BuildRegularSeasonWeekStarts(seasonStart, regularRangeEnd);
+
+        foreach (var required in requiredAnchors)
+        {
+            var missingWeeks = weekStarts
+                .Where(weekStart =>
+                {
+                    var weekKey = WeekKey(weekStart);
+                    return !weeklySlots.TryGetValue(weekKey, out var weekGroup) ||
+                        !weekGroup.Any(slot => MatchesGuestAnchor(slot, required.Anchor, strictField: true));
+                })
+                .ToList();
+            if (missingWeeks.Count == 0)
+                continue;
+
+            var sampleWeeks = string.Join(", ", missingWeeks.Take(4));
+            var suffix = missingWeeks.Count > 4 ? " ..." : "";
+            warnings.Add(new
+            {
+                code = $"GUEST_ANCHOR_{required.Ordinal}_MISSING",
+                message =
+                    $"Guest anchor {required.Ordinal} is required but no exact {FormatGuestAnchor(required.Anchor)} slot exists in {missingWeeks.Count} regular-season week(s): {sampleWeeks}{suffix}."
+            });
+        }
+
+        return warnings;
+    }
+
+    private static List<string> BuildRegularSeasonWeekStarts(DateOnly seasonStart, DateOnly regularRangeEnd)
+    {
+        var list = new List<string>();
+        var startDateTime = seasonStart.ToDateTime(TimeOnly.MinValue);
+        var mondayOffset = ((int)startDateTime.DayOfWeek + 6) % 7;
+        var cursor = seasonStart.AddDays(-mondayOffset);
+        var safety = 0;
+        while (cursor <= regularRangeEnd && safety < 200)
+        {
+            list.Add(cursor.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+            cursor = cursor.AddDays(7);
+            safety += 1;
+        }
+        return list;
+    }
+
+    private static string FormatGuestAnchor(GuestAnchor anchor)
+    {
+        var day = anchor.DayOfWeek.ToString();
+        return $"{day} {anchor.StartTime}-{anchor.EndTime} ({anchor.FieldKey})";
     }
 
     private static AnchoredExternalBuildResult BuildAnchoredExternalAssignments(
