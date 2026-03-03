@@ -1734,6 +1734,83 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     setPreview(null);
   }
 
+  function saveSlotPlanTemplate() {
+    const templateName = window.prompt("Enter a name for this slot plan template:");
+    if (!templateName || !templateName.trim()) return;
+
+    const template = {
+      name: templateName.trim(),
+      slotTypes: slotPlan.map((slot) => ({
+        basePatternKey: slot.basePatternKey,
+        slotType: slot.slotType,
+        priorityRank: slot.priorityRank,
+      })),
+      savedAt: new Date().toISOString(),
+    };
+
+    try {
+      const key = `slotPlanTemplates_${leagueId}`;
+      const existing = JSON.parse(localStorage.getItem(key) || "[]");
+      existing.push(template);
+      localStorage.setItem(key, JSON.stringify(existing));
+      setToast({
+        tone: "success",
+        message: `Saved template "${templateName}"`,
+      });
+    } catch (e) {
+      setErr("Failed to save template. LocalStorage may be full.");
+    }
+  }
+
+  function loadSlotPlanTemplate(template) {
+    if (!template || !template.slotTypes) return;
+
+    const typesByPattern = new Map();
+    template.slotTypes.forEach((t) => {
+      typesByPattern.set(t.basePatternKey, { slotType: t.slotType, priorityRank: t.priorityRank });
+    });
+
+    setSlotPlan((prev) =>
+      prev.map((slot) => {
+        const match = typesByPattern.get(slot.basePatternKey);
+        if (match) {
+          return { ...slot, slotType: match.slotType, priorityRank: match.priorityRank || "" };
+        }
+        return slot;
+      })
+    );
+
+    setPreview(null);
+    setToast({
+      tone: "success",
+      message: `Loaded template "${template.name}"`,
+    });
+  }
+
+  function getSlotPlanTemplates() {
+    try {
+      const key = `slotPlanTemplates_${leagueId}`;
+      return JSON.parse(localStorage.getItem(key) || "[]");
+    } catch {
+      return [];
+    }
+  }
+
+  function deleteSlotPlanTemplate(templateName) {
+    try {
+      const key = `slotPlanTemplates_${leagueId}`;
+      const existing = JSON.parse(localStorage.getItem(key) || "[]");
+      const filtered = existing.filter((t) => t.name !== templateName);
+      localStorage.setItem(key, JSON.stringify(filtered));
+      setToast({
+        tone: "info",
+        message: `Deleted template "${templateName}"`,
+      });
+    } catch (e) {
+      setErr("Failed to delete template.");
+    }
+  }
+
   useEffect(() => {
     if (!division) return;
     setSlotPlan([]);
@@ -4363,6 +4440,49 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                 Auto-rank Game/Both
               </button>
             </div>
+
+            {slotPlan.length > 0 ? (
+              <div className="callout mt-3">
+                <div className="font-bold mb-2">Slot Plan Templates</div>
+                <div className="subtle mb-2">
+                  Save the current slot type configuration as a template to reuse for future seasons.
+                </div>
+                <div className="row row--wrap gap-2">
+                  <button
+                    className="btn btn--ghost"
+                    type="button"
+                    onClick={saveSlotPlanTemplate}
+                  >
+                    Save Current as Template
+                  </button>
+                  {getSlotPlanTemplates().map((template) => (
+                    <div key={template.name} className="row gap-1" style={{ alignItems: 'center' }}>
+                      <button
+                        className="btn btn--ghost"
+                        type="button"
+                        onClick={() => loadSlotPlanTemplate(template)}
+                        title={`Saved ${new Date(template.savedAt).toLocaleDateString()}`}
+                      >
+                        Load: {template.name}
+                      </button>
+                      <button
+                        className="btn btn--ghost"
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm(`Delete template "${template.name}"?`)) {
+                            deleteSlotPlanTemplate(template.name);
+                          }
+                        }}
+                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
+                        title="Delete template"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             <div className="grid2">
               <label>
