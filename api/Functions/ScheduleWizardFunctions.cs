@@ -166,7 +166,9 @@ public class ScheduleWizardFunctions
         string fieldKey,
         string homeTeamId,
         string awayTeamId,
-        bool isExternalOffer
+        bool isExternalOffer,
+        bool isRequestGame = false,
+        string? requestGameOpponent = null
     );
 
     public record WizardPreviewDto(
@@ -547,15 +549,22 @@ public class ScheduleWizardFunctions
                 teamCount: teams.Count
             );
 
+            // Build request game lookup for preview highlighting
+            var requestGameLookup = requestGameSlots.ToDictionary(
+                s => s.slotId,
+                s => s.requestGameOpponentName ?? "",
+                StringComparer.OrdinalIgnoreCase
+            );
+
             var assignments = new List<WizardSlotDto>();
-            assignments.AddRange(regularAssignments.Assignments.Select(a => ToWizardSlot("Regular Season", a)));
-            assignments.AddRange(poolAssignments.Assignments.Select(a => ToWizardSlot("Pool Play", a)));
-            assignments.AddRange(bracketAssignments.Assignments.Select(a => ToWizardSlot("Bracket", a)));
+            assignments.AddRange(regularAssignments.Assignments.Select(a => ToWizardSlot("Regular Season", a, requestGameLookup)));
+            assignments.AddRange(poolAssignments.Assignments.Select(a => ToWizardSlot("Pool Play", a, requestGameLookup)));
+            assignments.AddRange(bracketAssignments.Assignments.Select(a => ToWizardSlot("Bracket", a, requestGameLookup)));
 
             var unassignedSlots = new List<WizardSlotDto>();
-            unassignedSlots.AddRange(regularAssignments.UnassignedSlots.Select(a => ToWizardSlot("Regular Season", a)));
-            unassignedSlots.AddRange(poolAssignments.UnassignedSlots.Select(a => ToWizardSlot("Pool Play", a)));
-            unassignedSlots.AddRange(bracketAssignments.UnassignedSlots.Select(a => ToWizardSlot("Bracket", a)));
+            unassignedSlots.AddRange(regularAssignments.UnassignedSlots.Select(a => ToWizardSlot("Regular Season", a, requestGameLookup)));
+            unassignedSlots.AddRange(poolAssignments.UnassignedSlots.Select(a => ToWizardSlot("Pool Play", a, requestGameLookup)));
+            unassignedSlots.AddRange(bracketAssignments.UnassignedSlots.Select(a => ToWizardSlot("Bracket", a, requestGameLookup)));
 
             var unassignedMatchups = new List<object>();
             unassignedMatchups.AddRange(regularAssignments.UnassignedMatchups.Select(m => (object)new { phase = "Regular Season", homeTeamId = m.HomeTeamId, awayTeamId = m.AwayTeamId }));
@@ -2300,8 +2309,12 @@ public class ScheduleWizardFunctions
             : $"{teamB}|{teamA}";
     }
 
-    private static WizardSlotDto ToWizardSlot(string phase, ScheduleAssignment assignment)
-        => new(
+    private static WizardSlotDto ToWizardSlot(string phase, ScheduleAssignment assignment, Dictionary<string, string> requestGameLookup)
+    {
+        var isRequestGame = requestGameLookup.ContainsKey(assignment.SlotId);
+        var requestGameOpponent = isRequestGame ? requestGameLookup[assignment.SlotId] : null;
+
+        return new WizardSlotDto(
             phase,
             assignment.SlotId,
             assignment.GameDate,
@@ -2310,8 +2323,11 @@ public class ScheduleWizardFunctions
             assignment.FieldKey,
             assignment.HomeTeamId,
             assignment.AwayTeamId,
-            assignment.IsExternalOffer
+            assignment.IsExternalOffer,
+            isRequestGame,
+            requestGameOpponent
         );
+    }
 
     private static List<SlotInfo> FilterSlots(List<SlotInfo> slots, DateOnly from, DateOnly to)
     {

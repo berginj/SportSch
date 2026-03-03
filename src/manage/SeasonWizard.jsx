@@ -7051,9 +7051,31 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                             <td>{isoDayShort(a.gameDate) || "-"}</td>
                             <td>{a.gameDate}</td>
                             <td>{a.startTime}-{a.endTime}</td>
-                            <td>{a.fieldKey}</td>
+                            <td>
+                              {a.fieldKey}
+                              {a.isRequestGame && (
+                                <span style={{
+                                  marginLeft: '4px',
+                                  padding: '1px 4px',
+                                  fontSize: '0.7rem',
+                                  background: 'rgba(245, 158, 11, 0.2)',
+                                  border: '1px solid rgb(245, 158, 11)',
+                                  borderRadius: '2px'
+                                }}>
+                                  REQUEST
+                                </span>
+                              )}
+                            </td>
                             <td>{a.homeTeamId || "-"}</td>
-                            <td>{a.awayTeamId || "-"}</td>
+                            <td>
+                              {a.isRequestGame && a.requestGameOpponent ? (
+                                <span title={`Away: ${a.awayTeamId} at ${a.requestGameOpponent}`}>
+                                  {a.awayTeamId} → {a.requestGameOpponent}
+                                </span>
+                              ) : (
+                                a.awayTeamId || "-"
+                              )}
+                            </td>
                             <td>
                               <button
                                 type="button"
