@@ -105,6 +105,142 @@ const MULTI_ASSIGNMENT_PREVIEW = {
     },
   ],
 };
+const ODD_TEAM_PREVIEW = {
+  ...BASE_PREVIEW,
+  summary: {
+    teamCount: 5,
+    totalSlots: 2,
+    regularSeason: {
+      phase: "Regular Season",
+      slotsTotal: 2,
+      matchupsTotal: 3,
+      slotsAssigned: 2,
+      unassignedMatchups: 1,
+    },
+    poolPlay: {
+      phase: "Pool Play",
+      slotsTotal: 0,
+      matchupsTotal: 0,
+      slotsAssigned: 0,
+      unassignedMatchups: 0,
+    },
+    bracket: {
+      phase: "Bracket",
+      slotsTotal: 0,
+      matchupsTotal: 0,
+      slotsAssigned: 0,
+      unassignedMatchups: 0,
+    },
+  },
+  assignments: [
+    {
+      phase: "Regular Season",
+      slotId: "slot-1",
+      gameDate: "2026-04-07",
+      startTime: "18:00",
+      endTime: "20:00",
+      fieldKey: "FIELD-1",
+      homeTeamId: "TEAM-1",
+      awayTeamId: "TEAM-2",
+      isExternalOffer: false,
+    },
+    {
+      phase: "Regular Season",
+      slotId: "slot-2",
+      gameDate: "2026-04-07",
+      startTime: "20:00",
+      endTime: "22:00",
+      fieldKey: "FIELD-1",
+      homeTeamId: "TEAM-3",
+      awayTeamId: "TEAM-4",
+      isExternalOffer: false,
+    },
+  ],
+  unassignedSlots: [],
+  unassignedMatchups: [
+    {
+      phase: "Regular Season",
+      homeTeamId: "TEAM-5",
+      awayTeamId: "TEAM-1",
+    },
+  ],
+};
+const ODD_TEAM_GUEST_PREVIEW = {
+  ...BASE_PREVIEW,
+  summary: {
+    teamCount: 5,
+    totalSlots: 4,
+    regularSeason: {
+      phase: "Regular Season",
+      slotsTotal: 4,
+      matchupsTotal: 2,
+      slotsAssigned: 4,
+      unassignedMatchups: 0,
+    },
+    poolPlay: {
+      phase: "Pool Play",
+      slotsTotal: 0,
+      matchupsTotal: 0,
+      slotsAssigned: 0,
+      unassignedMatchups: 0,
+    },
+    bracket: {
+      phase: "Bracket",
+      slotsTotal: 0,
+      matchupsTotal: 0,
+      slotsAssigned: 0,
+      unassignedMatchups: 0,
+    },
+  },
+  assignments: [
+    {
+      phase: "Regular Season",
+      slotId: "slot-1",
+      gameDate: "2026-04-07",
+      startTime: "18:00",
+      endTime: "20:00",
+      fieldKey: "FIELD-1",
+      homeTeamId: "TEAM-1",
+      awayTeamId: "TEAM-2",
+      isExternalOffer: false,
+    },
+    {
+      phase: "Regular Season",
+      slotId: "slot-2",
+      gameDate: "2026-04-07",
+      startTime: "20:00",
+      endTime: "22:00",
+      fieldKey: "FIELD-1",
+      homeTeamId: "TEAM-3",
+      awayTeamId: "TEAM-4",
+      isExternalOffer: false,
+    },
+    {
+      phase: "Regular Season",
+      slotId: "slot-3",
+      gameDate: "2026-04-07",
+      startTime: "18:00",
+      endTime: "20:00",
+      fieldKey: "FIELD-2",
+      homeTeamId: "TEAM-5",
+      awayTeamId: "",
+      isExternalOffer: true,
+    },
+    {
+      phase: "Regular Season",
+      slotId: "slot-4",
+      gameDate: "2026-04-07",
+      startTime: "20:00",
+      endTime: "22:00",
+      fieldKey: "FIELD-2",
+      homeTeamId: "TEAM-1",
+      awayTeamId: "",
+      isExternalOffer: true,
+    },
+  ],
+  unassignedSlots: [],
+  unassignedMatchups: [],
+};
 const SEQUENTIAL_SLOT_AVAILABILITY = [
   {
     slotId: "avail-1",
@@ -143,7 +279,7 @@ function installLocalStorageMock() {
   return store;
 }
 
-function installApiMock({ previewResponse = BASE_PREVIEW, previewError = null, slotsResponse } = {}) {
+function installApiMock({ previewResponse = BASE_PREVIEW, previewError = null, slotsResponse, teamsResponse } = {}) {
   api.apiFetch.mockImplementation((path) => {
     const url = String(path || "");
     if (url === "/api/divisions") {
@@ -158,7 +294,7 @@ function installApiMock({ previewResponse = BASE_PREVIEW, previewError = null, s
       });
     }
     if (url.startsWith("/api/teams?")) {
-      return Promise.resolve([
+      return Promise.resolve(teamsResponse || [
         { teamId: "TEAM-1", name: "Team 1" },
         { teamId: "TEAM-2", name: "Team 2" },
       ]);
@@ -367,6 +503,52 @@ describe("SeasonWizard", () => {
 
     expect(screen.getByText("No blocking issues detected for this step.")).toBeInTheDocument();
     expect(screen.getByText("In progress")).toBeInTheDocument();
+  });
+
+  it("recommends two guest slots per week for odd-team divisions before preview repairs", async () => {
+    installApiMock({
+      previewResponse: ODD_TEAM_PREVIEW,
+      teamsResponse: [
+        { teamId: "TEAM-1", name: "Team 1" },
+        { teamId: "TEAM-2", name: "Team 2" },
+        { teamId: "TEAM-3", name: "Team 3" },
+        { teamId: "TEAM-4", name: "Team 4" },
+        { teamId: "TEAM-5", name: "Team 5" },
+      ],
+    });
+
+    await advanceToRules();
+    fireEvent.click(screen.getByRole("button", { name: "Preview schedule" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Expand all" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Set Guest games/week = 2" })).toBeInTheDocument();
+    });
+    expect(screen.getByText(/odd team count \(5\) creates weekly idle-team pressure unless guest slots absorb it/i)).toBeInTheDocument();
+  });
+
+  it("explains that placed guest slots stay locked and recommends a two-game weekly cap", async () => {
+    installApiMock({
+      previewResponse: ODD_TEAM_GUEST_PREVIEW,
+      teamsResponse: [
+        { teamId: "TEAM-1", name: "Team 1" },
+        { teamId: "TEAM-2", name: "Team 2" },
+        { teamId: "TEAM-3", name: "Team 3" },
+        { teamId: "TEAM-4", name: "Team 4" },
+        { teamId: "TEAM-5", name: "Team 5" },
+      ],
+    });
+
+    await advanceToRules();
+    fireEvent.change(screen.getByLabelText(/Guest games per week/i), { target: { value: "2" } });
+    fireEvent.change(screen.getByLabelText(/Max games per team per week/i), { target: { value: "1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview schedule" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Expand all" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Set Max games/week = 2" })).toBeInTheDocument();
+    });
+    expect(screen.getByText(/placed guest slots stay locked in preview/i)).toBeInTheDocument();
   });
 
   it("shows pattern and field totals and links to availability setup", async () => {

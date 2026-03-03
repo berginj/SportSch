@@ -564,9 +564,11 @@ public class ScheduleWizardFunctions
             }
             var totalIssues = issues.Count;
             var applyBlocked = strictValidation.RuleHealth.ApplyBlocked;
-            var repairProposals = ScheduleRepairEngine.Propose(validationResult, strictValidation.RuleHealth, validationConfig, teams, maxProposals: 8)
-                .Cast<object>()
-                .ToList();
+            var lockedGuestSlotIds = BuildLockedGuestSlotIds(regularAssignments.Assignments);
+            var repairProposals = BuildFilteredRepairProposals(
+                ScheduleRepairEngine.Propose(validationResult, strictValidation.RuleHealth, validationConfig, teams, maxProposals: 8),
+                lockedGuestSlotIds,
+                warnings);
             var constructionStrategy = $"{normalizedConstructionStrategy}+strict_validation_v2";
             var explanations = BuildWizardPlacementExplanations(regularAssignments, normalizedConstructionStrategy, seed);
 
@@ -697,10 +699,13 @@ public class ScheduleWizardFunctions
         var assignments = (preview.assignments ?? new List<WizardSlotDto>()).Select(a => a with { }).ToList();
         var unassignedSlots = (preview.unassignedSlots ?? new List<WizardSlotDto>()).Select(a => a with { }).ToList();
         var unassignedMatchups = preview.unassignedMatchups ?? new List<object>();
-        var warnings = preview.warnings ?? new List<object>();
+        var warnings = (preview.warnings ?? new List<object>()).ToList();
+        var lockedGuestSlotIds = BuildLockedGuestSlotIds(assignments);
 
         if (!TryExtractMoveChanges(proposal, out var moves) || moves.Count == 0)
             throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, "Only move/swap repair proposals are supported right now.");
+        if (moves.Any(move => MoveTouchesLockedGuestSlot(move, lockedGuestSlotIds)))
+            throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, "Guest/external slots are locked in preview repairs. Adjust guest anchors or slot setup instead.");
 
         var regularAssignmentsBySlot = assignments
             .Select((a, idx) => new { a, idx })
@@ -800,9 +805,11 @@ public class ScheduleWizardFunctions
         mergedIssues.AddRange(otherIssues);
         mergedIssues.AddRange(regularIssues);
 
-        var repairProposals = ScheduleRepairEngine.Propose(regularResult, strictValidation.RuleHealth, validationConfig, teams, maxProposals: 8)
-            .Cast<object>()
-            .ToList();
+        var nextLockedGuestSlotIds = BuildLockedGuestSlotIds(regularAssignments);
+        var repairProposals = BuildFilteredRepairProposals(
+            ScheduleRepairEngine.Propose(regularResult, strictValidation.RuleHealth, validationConfig, teams, maxProposals: 8),
+            nextLockedGuestSlotIds,
+            warnings);
         var updatedExplanations = BuildPreviewRepairExplanations(preview.explanations, assignments, moves);
 
         return new WizardPreviewDto(
@@ -844,6 +851,70 @@ public class ScheduleWizardFunctions
                 }
             })
             .ToList();
+    }
+
+    private static HashSet<string> BuildLockedGuestSlotIds(IEnumerable<ScheduleAssignment> assignments)
+    {
+        return (assignments ?? Array.Empty<ScheduleAssignment>())
+            .Where(a => a.IsExternalOffer)
+            .Select(a => a.SlotId)
+            .Where(slotId => !string.IsNullOrWhiteSpace(slotId))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static HashSet<string> BuildLockedGuestSlotIds(IEnumerable<WizardSlotDto> assignments)
+    {
+        return (assignments ?? Array.Empty<WizardSlotDto>())
+            .Where(a => string.Equals(a.phase, "Regular Season", StringComparison.OrdinalIgnoreCase) && a.isExternalOffer)
+            .Select(a => a.slotId)
+            .Where(slotId => !string.IsNullOrWhiteSpace(slotId))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static List<object> BuildFilteredRepairProposals(
+        IEnumerable<ScheduleRepairProposal>? proposals,
+        ISet<string> lockedGuestSlotIds,
+        List<object>? warnings = null)
+    {
+        var results = new List<object>();
+        var filteredCount = 0;
+        foreach (var proposal in proposals ?? Array.Empty<ScheduleRepairProposal>())
+        {
+            if (ProposalTouchesLockedGuestSlots(proposal, lockedGuestSlotIds))
+            {
+                filteredCount += 1;
+                continue;
+            }
+
+            results.Add(proposal);
+        }
+
+        if (filteredCount > 0 && warnings is not null)
+        {
+            warnings.Add(new
+            {
+                code = "LOCKED_GUEST_REPAIRS",
+                message = $"{filteredCount} repair suggestion(s) were hidden because guest slots stay locked."
+            });
+        }
+
+        return results;
+    }
+
+    private static bool ProposalTouchesLockedGuestSlots(ScheduleRepairProposal proposal, ISet<string> lockedGuestSlotIds)
+    {
+        if (lockedGuestSlotIds is null || lockedGuestSlotIds.Count == 0)
+            return false;
+        if (!TryExtractMoveChanges(proposal, out var moves) || moves.Count == 0)
+            return false;
+        return moves.Any(move => MoveTouchesLockedGuestSlot(move, lockedGuestSlotIds));
+    }
+
+    private static bool MoveTouchesLockedGuestSlot(PreviewMoveChange move, ISet<string> lockedGuestSlotIds)
+    {
+        if (lockedGuestSlotIds is null || lockedGuestSlotIds.Count == 0)
+            return false;
+        return lockedGuestSlotIds.Contains(move.FromSlotId) || lockedGuestSlotIds.Contains(move.ToSlotId);
     }
 
     private static Dictionary<string, object> BuildWizardPlacementExplanations(
@@ -1820,7 +1891,9 @@ public class ScheduleWizardFunctions
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Where(t => CanAssignExternalInWeek(t, weekCounts, weekKey, maxGamesPerWeek))
             .Where(t => !maxExternalOffersPerTeamSeason.HasValue || (externalCounts.TryGetValue(t, out var ext) ? ext : 0) < maxExternalOffersPerTeamSeason.Value)
-            .OrderBy(t => externalCounts.TryGetValue(t, out var external) ? external : int.MaxValue)
+            // Fill idle teams first so guest slots remove avoidable BYEs before they create extra doubleheaders.
+            .OrderBy(t => GetTeamWeekCount(weekCounts, t, weekKey))
+            .ThenBy(t => externalCounts.TryGetValue(t, out var external) ? external : int.MaxValue)
             .ThenBy(t => totalCounts.TryGetValue(t, out var total) ? total : int.MaxValue)
             .ThenBy(t => homeCounts.TryGetValue(t, out var home) ? home : int.MaxValue)
             .ThenBy(t => t, StringComparer.OrdinalIgnoreCase)

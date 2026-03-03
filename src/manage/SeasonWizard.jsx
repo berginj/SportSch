@@ -490,6 +490,7 @@ function isEngineTraceSource(source) {
 function buildPreviewSwapRepairProposal(sourceAssignment, targetAssignment) {
   const source = sourceAssignment || {};
   const target = targetAssignment || {};
+  if (source.isExternalOffer || target.isExternalOffer) return null;
   const sourceSlotId = String(source.slotId || "").trim();
   const targetSlotId = String(target.slotId || "").trim();
   if (!sourceSlotId || !targetSlotId || sourceSlotId === targetSlotId) return null;
@@ -2240,6 +2241,10 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         setErr("Drag source is no longer valid. Reload preview.");
         return;
       }
+      if (sourceAssignment?.isExternalOffer || targetAssignment?.isExternalOffer) {
+        setErr("Guest/external slots are locked in preview and cannot be swapped.");
+        return;
+      }
       const proposal = buildPreviewSwapRepairProposal(sourceAssignment, targetAssignment);
       if (!proposal) {
         setErr("Only regular-season assigned games can be swapped.");
@@ -2288,7 +2293,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       }
     }
     if (issue.ruleId === "double-header" && summary.teamCount && summary.teamCount % 2 === 1) {
-      return `${base} With an odd team count (${summary.teamCount}), some byes help reduce doubleheaders.`;
+      return `${base} With an odd team count (${summary.teamCount}), keep two guest slots/week tagged Game/Both so the idle team can absorb a guest game before doubleheaders or BYEs stack up.`;
     }
     if (issue.ruleId === "double-header-balance") {
       const max = Number(issue?.details?.maxDoubleHeaders ?? issue?.details?.max ?? NaN);
@@ -2317,7 +2322,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       notes.push(`Bracket has ${bracket.slotsTotal} slots for ${bracket.matchupsTotal} matchups.`);
     }
     if (summary.teamCount % 2 === 1) {
-      notes.push(`Odd team count (${summary.teamCount}) adds BYEs and can create gaps.`);
+      notes.push(`Odd team count (${summary.teamCount}) creates one idle team each round; two guest slots/week plus Max games/week at 2 lets guest games absorb that instead of forcing BYEs.`);
     }
     if ((issues || []).some((i) => i.ruleId === "double-header")) {
       notes.push("Doubleheaders indicate tight slot density or too few usable dates.");
@@ -2328,7 +2333,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     if ((issues || []).some((i) => i.ruleId === "max-games-per-week")) {
       notes.push("Max games/week is a hard limit and is restricting assignments; add slots or widen date range.");
       if (summary.teamCount % 2 === 1) {
-        notes.push("Odd team count means one team will have a BYE and can have one fewer game in a given week.");
+        notes.push("If Max games/week stays below 2, guest slots cannot clear weekly BYEs for an odd-team division.");
       }
     }
     if ((issues || []).some((i) => i.ruleId === "missing-opponent")) {
@@ -3725,8 +3730,10 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     const teamCountValue = Number(summary.teamCount) || 0;
     const oddTeamCount = teamCountValue > 0 && teamCountValue % 2 === 1;
     const guestGamesValue = Math.max(0, Number(guestGamesPerWeek) || 0);
+    const maxGamesValue = Math.max(0, Number(maxGamesPerWeek) || 0);
+    const selectedGuestAnchorCount = [guestAnchorPrimarySlotId, guestAnchorSecondarySlotId].filter(Boolean).length;
     const recommendedGuestGames = Math.max(
-      1,
+      oddTeamCount ? 2 : 1,
       Number(feasibility?.recommendations?.optimalGuestGamesPerWeek) || 0
     );
 
@@ -3734,18 +3741,21 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
     if (oddTeamCount) {
       const byeCounts = regularBalanceReport.teamRows.map((row) => row.byeWeeks);
+      const maxBye = byeCounts.length ? Math.max(...byeCounts) : 0;
+      const minBye = byeCounts.length ? Math.min(...byeCounts) : 0;
+      const canCoverByesWithGuestSlots = guestGamesValue >= 2 && maxGamesValue >= 2;
       if (byeCounts.length && regularBalanceReport.weekCount > 0) {
-        const maxBye = Math.max(...byeCounts);
-        const minBye = Math.min(...byeCounts);
         const heavyByeTeams = regularBalanceReport.teamRows
           .filter((row) => row.byeWeeks === maxBye)
           .slice(0, 4)
           .map((row) => row.teamId);
         rows.push({
           code: "ODD_TEAM_BYE_CONTEXT",
-          tone: maxBye - minBye > 1 ? "warning" : "info",
+          tone: canCoverByesWithGuestSlots && maxBye > 0 ? "warning" : maxBye - minBye > 1 ? "warning" : "info",
           message:
-            `Odd team count (${teamCountValue}) means BYEs are unavoidable. ` +
+            (canCoverByesWithGuestSlots
+              ? `Odd team count (${teamCountValue}) does not require BYEs when guest slots are active. `
+              : `Odd team count (${teamCountValue}) creates weekly idle-team pressure unless guest slots absorb it. `) +
             `Estimated BYE weeks across ${regularBalanceReport.weekCount} regular-season week(s): min ${minBye}, max ${maxBye}` +
             (heavyByeTeams.length ? ` (highest: ${heavyByeTeams.join(", ")}).` : "."),
         });
@@ -3753,28 +3763,61 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         rows.push({
           code: "ODD_TEAM_BYE_CONTEXT",
           tone: "info",
-          message: `Odd team count (${teamCountValue}) means BYEs are unavoidable. Use guest games and slot priorities to spread BYEs evenly.`,
+          message: `Odd team count (${teamCountValue}) creates one idle team each round. Use two guest slots/week plus Max games/week = 2 to absorb that team instead of defaulting to BYEs.`,
         });
       }
 
-      if (
-        guestGamesValue <= 0 &&
-        ((regularSummary.unassignedSlots || 0) > 0 || unassignedRegularReport.openSlots > 0)
-      ) {
+      if (guestGamesValue < 2) {
         rows.push({
           code: "GUEST_GAME_RECOMMENDATION",
           tone: "warning",
           suggestedGuestGamesPerWeek: recommendedGuestGames,
           message:
-            `This division has an odd team count and open regular slots (${unassignedRegularReport.openSlots || regularSummary.unassignedSlots || 0}). ` +
-            `Try Guest games/week = ${recommendedGuestGames} to reduce idle weeks and use spare capacity.`,
+            `This division has an odd team count. Target Guest games/week = ${recommendedGuestGames} so the scheduler can keep two recurring guest slots available each week and avoid avoidable BYEs.`,
         });
-      } else if (guestGamesValue > 0 && regularBalanceReport.totalGuestGames === 0 && (regularSummary.unassignedSlots || 0) > 0) {
+      }
+
+      if (guestGamesValue >= 2 && maxGamesValue > 0 && maxGamesValue < 2) {
+        rows.push({
+          code: "MAX_GAMES_WEEK_RECOMMENDATION",
+          tone: "warning",
+          suggestedMaxGamesPerWeek: 2,
+          message:
+            `Guest games are set to ${guestGamesValue}/week, but Max games/week is ${maxGamesValue}. Raise Max games/week to 2 so an idle team can take a guest game instead of a BYE.`,
+        });
+      }
+
+      if (guestGamesValue >= 2 && guestAnchorOptions.length >= 2 && selectedGuestAnchorCount < 2) {
+        rows.push({
+          code: "GUEST_ANCHOR_RECOMMENDATION",
+          tone: "info",
+          message:
+            "Pick two guest anchor options in Slot plan. Those recurring guest matchups stay locked in preview, and Apply Fix or drag-swap will not move them.",
+        });
+      }
+
+      if (guestGamesValue > 0 && regularBalanceReport.totalGuestGames === 0 && (regularSummary.unassignedSlots || 0) > 0) {
         rows.push({
           code: "GUEST_GAME_NOT_PLACED",
           tone: "warning",
           message:
-            `Guest games are enabled (${guestGamesValue}/week) but none were placed. Check Slot plan game/both tags, priorities, and guest anchor options.`,
+            `Guest games are enabled (${guestGamesValue}/week) but none were placed. Check that at least two recurring slots stay tagged Game/Both, carry usable priority, and are selected as guest anchors.`,
+        });
+      } else if (regularBalanceReport.totalGuestGames > 0) {
+        rows.push({
+          code: "GUEST_GAME_LOCKED_NOTICE",
+          tone: "info",
+          message:
+            "Placed guest slots stay locked in preview. Apply Fix and drag-swap only move regular league matchups around them.",
+        });
+      }
+
+      if (canCoverByesWithGuestSlots && maxBye > 0) {
+        rows.push({
+          code: "ODD_TEAM_CONFLICT_AVOIDANCE",
+          tone: "warning",
+          message:
+            `You already have the right weekly guest capacity, so the remaining BYEs are coming from slot conflicts. Keep two weekly guest slots unblocked, tagged Game/Both, and anchored so repairs do not repurpose them.`,
         });
       }
     }
@@ -3811,7 +3854,16 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     }
 
     return rows;
-  }, [preview, guestGamesPerWeek, feasibility, regularBalanceReport, unassignedRegularReport.openSlots]);
+  }, [
+    preview,
+    guestGamesPerWeek,
+    maxGamesPerWeek,
+    feasibility,
+    regularBalanceReport,
+    guestAnchorPrimarySlotId,
+    guestAnchorSecondarySlotId,
+    guestAnchorOptions.length,
+  ]);
 
   const planningChecksReport = useMemo(() => {
     if (!preview) return [];
@@ -5416,6 +5468,21 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                             </button>
                           </div>
                         ) : null}
+                        {Number(rec.suggestedMaxGamesPerWeek) > 0 ? (
+                          <div className="row gap-2 mt-1">
+                            <button
+                              className="btn btn--ghost"
+                              type="button"
+                              onClick={() => {
+                                setMaxGamesPerWeek(String(rec.suggestedMaxGamesPerWeek));
+                                setPreview(null);
+                                setStep(3);
+                              }}
+                            >
+                              Set Max games/week = {rec.suggestedMaxGamesPerWeek}
+                            </button>
+                          </div>
+                        ) : null}
                       </div>
                     ))}
                   </div>
@@ -6085,7 +6152,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                 >
                   <div className="stack gap-3">
                 <div className="subtle">
-                  Tip: drag one <b>Regular Season</b> game row onto another to try a preview-only swap. The drop is revalidated immediately and illegal swaps are rejected.
+                  Tip: drag one <b>Regular Season</b> game row onto another to try a preview-only swap. Guest/external rows stay locked, and the drop is revalidated immediately.
                 </div>
                 <div className="callout">
                   <div className="row row--wrap gap-2" style={{ alignItems: "end" }}>
@@ -6208,7 +6275,13 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                             onDragOver={(event) => handleAssignmentDragOver(event, a)}
                             onDrop={(event) => handleAssignmentDrop(event, a)}
                             onDragEnd={clearAssignmentDragSwap}
-                            title={isDragEligible ? "Drag onto another regular-season game to preview a swap." : ""}
+                            title={
+                              isDragEligible
+                                ? "Drag onto another regular-season game to preview a swap."
+                                : a?.isExternalOffer
+                                  ? "Locked guest/external slot. Preview fixes and swaps will not move it."
+                                  : ""
+                            }
                           >
                             <td>{a.phase}</td>
                             <td>{isoDayShort(a.gameDate) || "-"}</td>
