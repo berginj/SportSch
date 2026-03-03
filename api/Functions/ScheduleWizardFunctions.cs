@@ -511,8 +511,8 @@ public class ScheduleWizardFunctions
                 externalOfferPerWeek,
                 slots: regularSlots.Select(ToScheduleSlot).ToList());
 
-            var regularAssignments = AssignPhaseSlots("Regular Season", regularSlots, regularMatchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek, hardLeagueRules.MaxExternalOffersPerTeamSeason, preferredDays, strictPreferredWeeknights, guestAnchors, scheduleBackward: useBackwardRegularSeason, tieBreakSeed: seed, matchupPriorityByPair: regularMatchupPriorityByPair);
-            var poolAssignments = AssignPhaseSlots("Pool Play", poolSlots, poolMatchups, teams, null, noDoubleHeaders, balanceHomeAway, 0, hardLeagueRules.MaxExternalOffersPerTeamSeason, preferredDays: new List<DayOfWeek>(), strictPreferredWeeknights: false, guestAnchors: null, scheduleBackward: false, tieBreakSeed: seed);
+            var regularAssignments = AssignPhaseSlots("Regular Season", regularSlots, regularMatchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek, hardLeagueRules.MaxExternalOffersPerTeamSeason, preferredDays, strictPreferredWeeknights, guestAnchors, scheduleBackward: useBackwardRegularSeason, tieBreakSeed: seed, seasonStart: seasonStart, bracketStart: bracketStart, bracketEnd: bracketEnd, matchupPriorityByPair: regularMatchupPriorityByPair);
+            var poolAssignments = AssignPhaseSlots("Pool Play", poolSlots, poolMatchups, teams, null, noDoubleHeaders, balanceHomeAway, 0, hardLeagueRules.MaxExternalOffersPerTeamSeason, preferredDays: new List<DayOfWeek>(), strictPreferredWeeknights: false, guestAnchors: null, scheduleBackward: false, tieBreakSeed: seed, seasonStart: seasonStart, bracketStart: bracketStart, bracketEnd: bracketEnd);
             var bracketAssignments = AssignBracketSlots(bracketSlots, bracketMatchups);
             var totalPhaseSlots = regularSlots
                 .Select(s => s.slotId)
@@ -1087,6 +1087,7 @@ public class ScheduleWizardFunctions
             var seasonEnd = RequireDate(wizard.seasonEnd, "seasonEnd");
             var poolStart = OptionalDate(wizard.poolStart);
             var poolEnd = OptionalDate(wizard.poolEnd);
+            var bracketStart = OptionalDate(wizard.bracketStart);
             var bracketEnd = OptionalDate(wizard.bracketEnd);
             var regularRangeEnd = poolStart.HasValue ? poolStart.Value.AddDays(-1) : seasonEnd;
             if (regularRangeEnd < seasonStart) return null;
@@ -1106,7 +1107,7 @@ public class ScheduleWizardFunctions
 
             var externalOfferPerWeek = Math.Max(0, wizard.externalOfferPerWeek ?? 0);
             var guestAnchors = NormalizeGuestAnchors(wizard.guestAnchorPrimary, wizard.guestAnchorSecondary);
-            var reservedExternalSlots = SelectReservedExternalSlots(regularSlots, externalOfferPerWeek, guestAnchors);
+            var reservedExternalSlots = SelectReservedExternalSlots(regularSlots, externalOfferPerWeek, guestAnchors, seasonStart, bracketStart, bracketEnd);
             if (reservedExternalSlots.Count > 0)
             {
                 var reservedIds = new HashSet<string>(reservedExternalSlots.Select(s => s.slotId), StringComparer.OrdinalIgnoreCase);
@@ -1527,6 +1528,9 @@ public class ScheduleWizardFunctions
         GuestAnchorSet? guestAnchors,
         bool scheduleBackward,
         int? tieBreakSeed,
+        DateOnly seasonStart,
+        DateOnly? bracketStart,
+        DateOnly? bracketEnd,
         IReadOnlyDictionary<string, int>? matchupPriorityByPair = null)
     {
         if (slots.Count == 0)
@@ -1539,7 +1543,7 @@ public class ScheduleWizardFunctions
                 return new PhaseAssignments(new List<ScheduleAssignment>(), new List<ScheduleAssignment>(), new List<MatchupPair>(matchups));
         }
 
-        var reservedExternalSlots = SelectReservedExternalSlots(slots, externalOfferPerWeek, guestAnchors);
+        var reservedExternalSlots = SelectReservedExternalSlots(slots, externalOfferPerWeek, guestAnchors, seasonStart, bracketStart, bracketEnd);
         if (reservedExternalSlots.Count > 0)
         {
             var reservedIds = new HashSet<string>(reservedExternalSlots.Select(s => s.slotId), StringComparer.OrdinalIgnoreCase);
@@ -1591,13 +1595,38 @@ public class ScheduleWizardFunctions
     private static List<SlotInfo> SelectReservedExternalSlots(
         List<SlotInfo> slots,
         int externalOfferPerWeek,
-        GuestAnchorSet? guestAnchors)
+        GuestAnchorSet? guestAnchors,
+        DateOnly seasonStart,
+        DateOnly? bracketStart,
+        DateOnly? bracketEnd)
     {
         if (externalOfferPerWeek <= 0 || slots.Count == 0)
             return new List<SlotInfo>();
 
+        // Calculate week 1 end (first 7 calendar days from season start)
+        var weekOneEnd = seasonStart.AddDays(6);
+
+        // Filter out week 1 and bracket weeks (per Little League requirements)
+        var validSlots = slots.Where(s => {
+            if (!DateOnly.TryParseExact(s.gameDate, "yyyy-MM-dd", out var date))
+                return false;
+
+            // Exclude week 1 (first 7 calendar days)
+            if (date >= seasonStart && date <= weekOneEnd)
+                return false;
+
+            // Exclude bracket weeks (all days in bracket range)
+            if (bracketStart.HasValue && bracketEnd.HasValue)
+            {
+                if (date >= bracketStart.Value && date <= bracketEnd.Value)
+                    return false;
+            }
+
+            return true;
+        }).ToList();
+
         var picked = new List<SlotInfo>();
-        foreach (var weekGroup in slots
+        foreach (var weekGroup in validSlots
             .GroupBy(s => WeekKey(s.gameDate))
             .OrderBy(g => g.Key))
         {
