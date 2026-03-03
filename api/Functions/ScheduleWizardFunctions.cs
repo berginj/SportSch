@@ -2884,6 +2884,7 @@ public class ScheduleWizardFunctions
     private async Task<int> ResetGeneratedSlotsBeforeApplyAsync(string leagueId, string division, DateOnly dateFrom, DateOnly dateTo)
     {
         var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Slots);
+        var slotRequestsTable = await TableClients.GetTableAsync(_svc, Constants.Tables.SlotRequests);
         var pk = Constants.Pk.Slots(leagueId, division);
         var filter = $"PartitionKey eq '{ApiGuards.EscapeOData(pk)}'";
         filter += $" and GameDate ge '{ApiGuards.EscapeOData(dateFrom.ToString("yyyy-MM-dd"))}'";
@@ -2893,10 +2894,21 @@ public class ScheduleWizardFunctions
         await foreach (var slot in table.QueryAsync<TableEntity>(filter: filter))
         {
             if (SlotEntityUtil.IsPractice(slot)) continue;
-            if (string.IsNullOrWhiteSpace(SlotEntityUtil.ReadString(slot, "ScheduleRunId"))) continue;
+            if (SlotEntityUtil.IsAvailability(slot)) continue;
+
+            var slotId = (SlotEntityUtil.ReadString(slot, "SlotId", slot.RowKey) ?? "").Trim();
 
             SlotEntityUtil.ResetSchedulerSlotToAvailability(slot, DateTimeOffset.UtcNow);
             await table.UpdateEntityAsync(slot, slot.ETag, TableUpdateMode.Merge);
+            if (!string.IsNullOrWhiteSpace(slotId))
+            {
+                var slotRequestPk = Constants.Pk.SlotRequests(leagueId, division, slotId);
+                var slotRequestFilter = $"PartitionKey eq '{ApiGuards.EscapeOData(slotRequestPk)}'";
+                await foreach (var slotRequest in slotRequestsTable.QueryAsync<TableEntity>(filter: slotRequestFilter))
+                {
+                    await slotRequestsTable.DeleteEntityAsync(slotRequest.PartitionKey, slotRequest.RowKey, ETag.All);
+                }
+            }
             resetCount += 1;
         }
 

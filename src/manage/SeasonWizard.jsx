@@ -1862,7 +1862,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     setPreview(null);
     setToast({
       tone: "success",
-      message: `Reset ${Number(result?.resetCount || 0)} prior wizard-generated slot${Number(result?.resetCount || 0) === 1 ? "" : "s"} and reloaded availability.`,
+      message: `Reset ${Number(result?.resetCount || 0)} existing non-practice game/guest slot${Number(result?.resetCount || 0) === 1 ? "" : "s"} and reloaded availability.`,
     });
     return refreshedSlotPlan;
   }
@@ -2163,8 +2163,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       "This action:\n" +
       "• Replaces all current slot assignments\n" +
       (resetGeneratedSlotsBeforeApply
-        ? "• Resets prior wizard-generated slots in this season window before previewing and applying\n"
-        : "• Leaves prior wizard-generated slots untouched before previewing and applying\n") +
+        ? "• Resets existing non-practice game and guest slots in this season window before previewing and applying\n"
+        : "• Leaves existing non-practice game and guest slots untouched before previewing and applying\n") +
       "• Does NOT remove recurring allocations or field blackouts\n" +
       "• Cannot be undone\n" +
       "• May still require allocation cleanup if you need a different underlying slot pool\n\n" +
@@ -4260,12 +4260,12 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         {resetGeneratedSlotsBeforeApply ? (
           <>
             {" "}
-            It will also reset prior <strong>wizard-generated</strong> rows in this season window before previewing and applying the new run.
+            It will also reset existing <strong>non-practice game and guest rows</strong> in this season window before previewing and applying the new run.
           </>
         ) : (
           <>
             {" "}
-            It will <strong>not</strong> reset prior wizard-generated rows before previewing or applying.
+            It will <strong>not</strong> reset existing non-practice game and guest rows before previewing or applying.
           </>
         )}{" "}
         It does <strong>not</strong> clear recurring allocations or field blackouts. If you need a different underlying slot pool, clear or edit availability first, then rerun the wizard.
@@ -4275,7 +4275,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
             checked={resetGeneratedSlotsBeforeApply}
             onChange={(e) => setResetGeneratedSlotsBeforeApply(e.target.checked)}
           />
-          Reset prior wizard-generated slots in this season window before preview and apply
+          Reset existing non-practice game and guest slots in this season window before preview and apply
         </label>
       </div>
 
