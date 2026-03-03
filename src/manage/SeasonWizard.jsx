@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { validateIsoDates } from "../lib/date";
 import { trackEvent } from "../lib/telemetry";
@@ -39,10 +39,14 @@ const SLOT_TYPE_APPEARANCE = {
 const ISSUE_HINTS = {
   "unassigned-matchups": "Not enough availability slots, or constraints are too tight for the slot pool.",
   "unassigned-slots": "More availability than matchups. These can become extra offers or remain unused.",
-  "double-header": "Not enough slots to spread games across dates. Add slots or relax no-doubleheaders.",
+  "double-header": "A team was scheduled twice on the same date. Open another usable date, or allow doubleheaders if that load is intentional.",
   "double-header-balance": "Doubleheaders are not evenly distributed. Shift slot priorities/times to spread same-day load across teams.",
+  "home-away-balance": "A few teams are carrying a noticeably uneven home/away split.",
+  "idle-gap-balance": "Some teams have longer idle stretches than the rest of the division.",
   "max-games-per-week": "Max games/week is a hard cap. Add slots or widen the season window if assignments are short.",
   "missing-opponent": "A slot is missing an opponent. Check team count or external/guest game settings.",
+  "opponent-repeat-balance": "A few team pairings are repeating more often than the rest of the schedule.",
+  "unused-game-capacity": "Open game-capable slots remain after the schedule was built.",
 };
 const WIZARD_STEPS = [
   {
@@ -522,6 +526,7 @@ function isEngineTraceSource(source) {
 function buildPreviewSwapRepairProposal(sourceAssignment, targetAssignment) {
   const source = sourceAssignment || {};
   const target = targetAssignment || {};
+  if (source.isExternalOffer || target.isExternalOffer) return null;
   const sourceSlotId = String(source.slotId || "").trim();
   const targetSlotId = String(target.slotId || "").trim();
   if (!sourceSlotId || !targetSlotId || sourceSlotId === targetSlotId) return null;
@@ -979,6 +984,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [poolGamesPerTeam, setPoolGamesPerTeam] = useState(2);
   const [guestGamesPerWeek, setGuestGamesPerWeek] = useState(0);
   const [maxExternalOffersPerTeamSeason, setMaxExternalOffersPerTeamSeason] = useState(0);
+  const [resetGeneratedSlotsBeforeApply, setResetGeneratedSlotsBeforeApply] = useState(true);
   const [blockSpringBreak, setBlockSpringBreak] = useState(false);
   const [blockedHolidays, setBlockedHolidays] = useState(new Set());
   const [maxGamesPerWeek, setMaxGamesPerWeek] = useState(2);
@@ -1847,128 +1853,161 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     })();
   }, [leagueId, division]);
 
-  useEffect(() => {
-    if (!leagueId || !division) return;
-    if (!seasonStart || !seasonEnd) return;
-    let cancelled = false;
+  const applyAvailabilityPayload = useCallback((payload) => {
+    const availability = Array.isArray(payload?.availability) ? payload.availability : [];
+    const dayCounts = new Map();
+    const patternCounts = new Map();
+    for (const slot of availability) {
+      const weekday = isoDayShort(slot.gameDate || "");
+      if (weekday) {
+        dayCounts.set(weekday, (dayCounts.get(weekday) || 0) + 1);
+      }
+      const patternKey = `${weekday}|${slot.startTime || ""}|${slot.endTime || ""}|${slot.fieldKey || ""}`;
+      patternCounts.set(patternKey, (patternCounts.get(patternKey) || 0) + 1);
+    }
+
+    let nextSlotPlan = [];
+    setSlotPlan((prev) => {
+      const previousById = new Map((prev || []).map((item) => [item.slotId, item]));
+      nextSlotPlan = availability.map((slot) => {
+        const prior = previousById.get(slot.slotId);
+        const weekday = isoDayShort(slot.gameDate || "");
+        const baseStartTime = slot.startTime || "";
+        const baseEndTime = slot.endTime || "";
+        const basePatternKey = patternKeyFromParts(weekday, baseStartTime, baseEndTime, slot.fieldKey || "");
+        const nextStartTime = prior?.startTime || baseStartTime;
+        const nextEndTime = prior?.endTime || baseEndTime;
+        const allocationSlotType = normalizeSlotType(slot.allocationSlotType || "game");
+        const allocationPriority = normalizePriorityRank(slot.allocationPriorityRank ?? "");
+        const baselinePriority = allocationSlotType === "practice" ? "" : allocationPriority;
+        const nextSlotType = normalizeSlotType(prior?.slotType || allocationSlotType);
+        const nextPriority = normalizePriorityRank(prior?.priorityRank || baselinePriority);
+        return {
+          slotId: slot.slotId,
+          gameDate: slot.gameDate || "",
+          startTime: nextStartTime,
+          endTime: nextEndTime,
+          fieldKey: slot.fieldKey || "",
+          weekday,
+          baseStartTime,
+          baseEndTime,
+          basePatternKey,
+          slotType: nextSlotType,
+          priorityRank: nextSlotType === "practice" ? "" : nextPriority,
+          score: computeSlotScore(slot, weekday, patternCounts, dayCounts),
+        };
+      });
+      return nextSlotPlan;
+    });
+
+    return nextSlotPlan;
+  }, []);
+
+  const loadAvailabilityIntoSlotPlan = useCallback(async ({ forceRefresh = false } = {}) => {
+    if (!leagueId || !division || !seasonStart || !seasonEnd) return null;
+
     const requestId = availabilityRequestIdRef.current + 1;
     availabilityRequestIdRef.current = requestId;
     const planningDateTo = maxIsoDate(seasonEnd, bracketEnd) || seasonEnd;
     const cacheKey = [leagueId, division, seasonStart, seasonEnd, planningDateTo].join("|");
 
-    const applyAvailabilityPayload = (payload) => {
-      if (cancelled || requestId !== availabilityRequestIdRef.current) return false;
-      const availability = Array.isArray(payload?.availability) ? payload.availability : [];
-      const dayCounts = new Map();
-      const patternCounts = new Map();
-      for (const slot of availability) {
-        const weekday = isoDayShort(slot.gameDate || "");
-        if (weekday) {
-          dayCounts.set(weekday, (dayCounts.get(weekday) || 0) + 1);
+    setAvailabilityErr("");
+    setAvailabilityLoading(true);
+    try {
+      if (!forceRefresh) {
+        const cachedPayload = availabilityCacheRef.current.get(cacheKey);
+        if (cachedPayload) {
+          if (requestId !== availabilityRequestIdRef.current) return null;
+          return applyAvailabilityPayload(cachedPayload);
         }
-        const patternKey = `${weekday}|${slot.startTime || ""}|${slot.endTime || ""}|${slot.fieldKey || ""}`;
-        patternCounts.set(patternKey, (patternCounts.get(patternKey) || 0) + 1);
       }
 
-      setSlotPlan((prev) => {
-        const previousById = new Map((prev || []).map((item) => [item.slotId, item]));
-        return availability.map((slot) => {
-          const prior = previousById.get(slot.slotId);
-          const weekday = isoDayShort(slot.gameDate || "");
-          const baseStartTime = slot.startTime || "";
-          const baseEndTime = slot.endTime || "";
-          const basePatternKey = patternKeyFromParts(weekday, baseStartTime, baseEndTime, slot.fieldKey || "");
-          const nextStartTime = prior?.startTime || baseStartTime;
-          const nextEndTime = prior?.endTime || baseEndTime;
-          const allocationSlotType = normalizeSlotType(slot.allocationSlotType || "game");
-          const allocationPriority = normalizePriorityRank(slot.allocationPriorityRank ?? "");
-          const baselinePriority = allocationSlotType === "practice" ? "" : allocationPriority;
-          const nextSlotType = normalizeSlotType(prior?.slotType || allocationSlotType);
-          const nextPriority = normalizePriorityRank(prior?.priorityRank || baselinePriority);
-          return {
-            slotId: slot.slotId,
-            gameDate: slot.gameDate || "",
-            startTime: nextStartTime,
-            endTime: nextEndTime,
-            fieldKey: slot.fieldKey || "",
-            weekday,
-            baseStartTime,
-            baseEndTime,
-            basePatternKey,
-            slotType: nextSlotType,
-            priorityRank: nextSlotType === "practice" ? "" : nextPriority,
-            score: computeSlotScore(slot, weekday, patternCounts, dayCounts),
-          };
+      const list = [];
+      const seenSlotIds = new Set();
+      let continuationToken = "";
+      for (let page = 0; page < 50; page += 1) {
+        const qs = new URLSearchParams();
+        qs.set("division", division);
+        qs.set("dateFrom", seasonStart);
+        qs.set("dateTo", planningDateTo);
+        qs.set("status", "Open");
+        qs.set("pageSize", "500");
+        if (continuationToken) qs.set("continuationToken", continuationToken);
+
+        const data = await apiFetch(`/api/slots?${qs.toString()}`);
+        const pageItems = extractSlotItems(data);
+        for (const slot of pageItems) {
+          const slotId = String(slot?.slotId || "").trim();
+          if (!slotId || seenSlotIds.has(slotId)) continue;
+          seenSlotIds.add(slotId);
+          list.push(slot);
+        }
+
+        const nextToken = extractContinuationToken(data);
+        if (!nextToken || pageItems.length === 0) break;
+        continuationToken = nextToken;
+      }
+
+      const availability = list
+        .filter((s) => s.isAvailability)
+        .sort((a, b) => {
+          const ad = `${a.gameDate || ""}|${a.startTime || ""}|${a.fieldKey || ""}|${a.slotId || ""}`;
+          const bd = `${b.gameDate || ""}|${b.startTime || ""}|${b.fieldKey || ""}|${b.slotId || ""}`;
+          return ad.localeCompare(bd);
         });
-      });
-      return true;
+
+      const payload = { availability };
+      availabilityCacheRef.current.set(cacheKey, payload);
+      if (requestId !== availabilityRequestIdRef.current) return null;
+      return applyAvailabilityPayload(payload);
+    } catch (e) {
+      if (requestId !== availabilityRequestIdRef.current) return null;
+      setAvailabilityErr(normalizeRequestErrorMessage(e, "Failed to load availability slots."));
+      setSlotPlan([]);
+      setGuestAnchorPrimarySlotId("");
+      setGuestAnchorSecondarySlotId("");
+      return null;
+    } finally {
+      if (requestId === availabilityRequestIdRef.current) {
+        setAvailabilityLoading(false);
+      }
+    }
+  }, [applyAvailabilityPayload, bracketEnd, division, leagueId, seasonEnd, seasonStart]);
+
+  async function resetGeneratedSlotsForRerun() {
+    if (!resetGeneratedSlotsBeforeApply) return undefined;
+
+    const resetPayload = {
+      division,
+      seasonStart,
+      seasonEnd,
+      bracketEnd: bracketEnd || undefined,
     };
+    const result = await apiFetch("/api/schedule/wizard/reset-generated", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(resetPayload),
+    });
 
-    (async () => {
-      setAvailabilityErr("");
-      setAvailabilityLoading(true);
-      const cachedPayload = availabilityCacheRef.current.get(cacheKey);
-      if (cachedPayload) {
-        applyAvailabilityPayload(cachedPayload);
-        if (!cancelled && requestId === availabilityRequestIdRef.current) {
-          setAvailabilityLoading(false);
-        }
-        return;
-      }
-      try {
-        const list = [];
-        const seenSlotIds = new Set();
-        let continuationToken = "";
-        for (let page = 0; page < 50; page += 1) {
-          const qs = new URLSearchParams();
-          qs.set("division", division);
-          qs.set("dateFrom", seasonStart);
-          qs.set("dateTo", planningDateTo);
-          qs.set("status", "Open");
-          qs.set("pageSize", "500");
-          if (continuationToken) qs.set("continuationToken", continuationToken);
+    availabilityCacheRef.current.clear();
+    const refreshedSlotPlan = await loadAvailabilityIntoSlotPlan({ forceRefresh: true });
+    if (!Array.isArray(refreshedSlotPlan)) {
+      throw new Error("Reset completed, but the refreshed availability could not be loaded. Try again.");
+    }
+    setPreview(null);
+    setToast({
+      tone: "success",
+      message: `Reset ${Number(result?.resetCount || 0)} existing non-practice game/guest slot${Number(result?.resetCount || 0) === 1 ? "" : "s"} and reloaded availability.`,
+    });
+    return refreshedSlotPlan;
+  }
 
-          const data = await apiFetch(`/api/slots?${qs.toString()}`);
-          const pageItems = extractSlotItems(data);
-          for (const slot of pageItems) {
-            const slotId = String(slot?.slotId || "").trim();
-            if (!slotId || seenSlotIds.has(slotId)) continue;
-            seenSlotIds.add(slotId);
-            list.push(slot);
-          }
-
-          const nextToken = extractContinuationToken(data);
-          if (!nextToken || pageItems.length === 0) break;
-          continuationToken = nextToken;
-        }
-
-        const availability = list
-          .filter((s) => s.isAvailability)
-          .sort((a, b) => {
-            const ad = `${a.gameDate || ""}|${a.startTime || ""}|${a.fieldKey || ""}|${a.slotId || ""}`;
-            const bd = `${b.gameDate || ""}|${b.startTime || ""}|${b.fieldKey || ""}|${b.slotId || ""}`;
-            return ad.localeCompare(bd);
-          });
-
-        const payload = { availability };
-        availabilityCacheRef.current.set(cacheKey, payload);
-        applyAvailabilityPayload(payload);
-      } catch (e) {
-        if (cancelled || requestId !== availabilityRequestIdRef.current) return;
-        setAvailabilityErr(normalizeRequestErrorMessage(e, "Failed to load availability slots."));
-        setSlotPlan([]);
-        setGuestAnchorPrimarySlotId("");
-        setGuestAnchorSecondarySlotId("");
-      } finally {
-        if (!cancelled && requestId === availabilityRequestIdRef.current) {
-          setAvailabilityLoading(false);
-        }
-      }
-    })();
+  useEffect(() => {
+    loadAvailabilityIntoSlotPlan();
     return () => {
-      cancelled = true;
+      availabilityRequestIdRef.current += 1;
     };
-  }, [leagueId, division, seasonStart, seasonEnd, bracketEnd]);
+  }, [loadAvailabilityIntoSlotPlan]);
 
   useEffect(() => {
     const allowed = new Set(
@@ -2134,8 +2173,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     });
   }
 
-  function buildWizardPayload() {
-    const slotPlanPayload = slotPlan.map((slot) => {
+  function buildWizardPayload(slotPlanOverride) {
+    const sourceSlotPlan = Array.isArray(slotPlanOverride) ? slotPlanOverride : slotPlan;
+    const slotPlanPayload = sourceSlotPlan.map((slot) => {
       const rank = Number(slot.priorityRank);
       return {
         slotId: slot.slotId,
@@ -2162,6 +2202,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       poolGamesPerTeam: Math.max(2, Number(poolGamesPerTeam) || 2),
       externalOfferPerWeek: Number(guestGamesPerWeek) || 0,
       maxExternalOffersPerTeamSeason: Number(maxExternalOffersPerTeamSeason) || 0,
+      resetGeneratedSlotsBeforeApply,
       maxGamesPerWeek: Number(maxGamesPerWeek) || 0,
       noDoubleHeaders,
       balanceHomeAway,
@@ -2230,7 +2271,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     }
     setLoading(true);
     try {
-      const payload = buildWizardPayload();
+      const refreshedSlotPlan = await resetGeneratedSlotsForRerun();
+      const payload = buildWizardPayload(refreshedSlotPlan);
       const data = await apiFetch("/api/schedule/wizard/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2255,8 +2297,12 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       "⚠️ WARNING: Applying this schedule will OVERWRITE all existing game assignments in this division.\n\n" +
       "This action:\n" +
       "• Replaces all current slot assignments\n" +
+      (resetGeneratedSlotsBeforeApply
+        ? "• Resets existing non-practice game and guest slots in this season window before previewing and applying\n"
+        : "• Leaves existing non-practice game and guest slots untouched before previewing and applying\n") +
+      "• Does NOT remove recurring allocations or field blackouts\n" +
       "• Cannot be undone\n" +
-      "• Should only be done when setting up a new season or completely rebuilding a schedule\n\n" +
+      "• May still require allocation cleanup if you need a different underlying slot pool\n\n" +
       "Are you sure you want to continue?"
     );
 
@@ -2286,7 +2332,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     }
     setLoading(true);
     try {
-      const payload = buildWizardPayload();
+      const refreshedSlotPlan = await resetGeneratedSlotsForRerun();
+      const payload = buildWizardPayload(refreshedSlotPlan);
       await apiFetch("/api/schedule/wizard/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2375,6 +2422,10 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         setErr("Drag source is no longer valid. Reload preview.");
         return;
       }
+      if (sourceAssignment?.isExternalOffer || targetAssignment?.isExternalOffer) {
+        setErr("Guest/external slots are locked in preview and cannot be swapped.");
+        return;
+      }
       const proposal = buildPreviewSwapRepairProposal(sourceAssignment, targetAssignment);
       if (!proposal) {
         setErr("Only regular-season assigned games can be swapped.");
@@ -2403,10 +2454,24 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     return `Guest assignments ${totalGuestAssignments}. Distribution: ${ordered.join(", ")}`;
   }
 
+  function getPrimaryIssueDetail(issue) {
+    const primary = issue?.details?.primaryViolation;
+    if (primary && typeof primary === "object" && !Array.isArray(primary)) return primary;
+    if (issue?.details && typeof issue.details === "object" && !Array.isArray(issue.details)) return issue.details;
+    return {};
+  }
+
   function buildIssueHint(issue, summary) {
     if (!issue) return "";
     const base = ISSUE_HINTS[issue.ruleId] || "";
     const issuePhase = getIssuePhase(issue);
+    const primaryDetail = getPrimaryIssueDetail(issue);
+    const sampleTeamId = String(primaryDetail?.teamId || "").trim();
+    const sampleGameDate = String(primaryDetail?.gameDate || "").trim();
+    const sampleCollision =
+      sampleTeamId || sampleGameDate
+        ? ` Example: ${sampleTeamId || "A team"}${sampleGameDate ? ` already has a game on ${sampleGameDate}` : " already has a game that day"}.`
+        : "";
     if (!summary) return base;
     if (issue.ruleId === "unassigned-matchups") {
       const phase =
@@ -2422,14 +2487,59 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         return `${base} Bracket finals must be placed after semifinal end times, so add a later championship slot if needed.`;
       }
     }
-    if (issue.ruleId === "double-header" && summary.teamCount && summary.teamCount % 2 === 1) {
-      return `${base} With an odd team count (${summary.teamCount}), some byes help reduce doubleheaders.`;
+    if (issue.ruleId === "double-header") {
+      if (summary.teamCount && summary.teamCount % 2 === 1) {
+        return `With an odd team count (${summary.teamCount}), two guest slots/week plus Max games/week at 2 should normally absorb the idle team. A remaining double-header usually means a guest slot still shares a date with an existing game, or one of the exact guest anchor weeks is missing.${sampleCollision}`;
+      }
+      return `${base}${sampleCollision}`;
     }
     if (issue.ruleId === "double-header-balance") {
       const max = Number(issue?.details?.maxDoubleHeaders ?? issue?.details?.max ?? NaN);
       const min = Number(issue?.details?.minDoubleHeaders ?? issue?.details?.min ?? NaN);
       if (Number.isFinite(max) && Number.isFinite(min)) {
         return `${base} Current spread is max ${max} vs min ${min} doubleheaders.`;
+      }
+    }
+    if (issue.ruleId === "home-away-balance") {
+      const offenders = Array.isArray(primaryDetail?.offenders) ? primaryDetail.offenders : [];
+      const worst = offenders[0];
+      const gap = Number(worst?.gap ?? NaN);
+      const teamId = String(worst?.teamId || "").trim();
+      if (teamId && Number.isFinite(gap)) {
+        return `${base} Worst gap: ${teamId} is off by ${gap} home/away result${gap === 1 ? "" : "s"}.`;
+      }
+    }
+    if (issue.ruleId === "idle-gap-balance") {
+      const offenders = Array.isArray(primaryDetail?.offenders) ? primaryDetail.offenders : [];
+      const worst = offenders[0];
+      const extraGapWeeks = Number(worst?.extraGapWeeks ?? NaN);
+      const teamId = String(worst?.teamId || "").trim();
+      if (teamId && Number.isFinite(extraGapWeeks)) {
+        return `${base} Worst idle stretch: ${teamId} has ${extraGapWeeks} extra idle week${extraGapWeeks === 1 ? "" : "s"} beyond the normal cadence.`;
+      }
+    }
+    if (issue.ruleId === "opponent-repeat-balance") {
+      const pairs = Array.isArray(primaryDetail?.pairs) ? primaryDetail.pairs : [];
+      const worst = pairs[0];
+      const pairKey = String(worst?.pairKey || "").trim();
+      const pairCount = Number(worst?.count ?? NaN);
+      if (pairKey && Number.isFinite(pairCount)) {
+        const [teamA, teamB] = pairKey.split("|");
+        if (teamA && teamB) {
+          return `${base} Most repeated pairing is ${teamA} vs ${teamB} (${pairCount} time${pairCount === 1 ? "" : "s"}).`;
+        }
+      }
+    }
+    if (issue.ruleId === "unused-game-capacity") {
+      const unusedCount = Number(primaryDetail?.count ?? NaN);
+      if (Number.isFinite(unusedCount)) {
+        const isBackwardLoaded = String(preview?.constructionStrategy || "")
+          .toLowerCase()
+          .startsWith("backward");
+        if (isBackwardLoaded) {
+          return `${base} ${unusedCount} slot${unusedCount === 1 ? "" : "s"} stayed open. Backward loading intentionally pushes regular games later in the season, so earlier openings often remain unused unless you need more league games.`;
+        }
+        return `${base} ${unusedCount} slot${unusedCount === 1 ? "" : "s"} stayed open and can absorb extra league games or guest use.`;
       }
     }
     return base;
@@ -2452,10 +2562,14 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       notes.push(`Bracket has ${bracket.slotsTotal} slots for ${bracket.matchupsTotal} matchups.`);
     }
     if (summary.teamCount % 2 === 1) {
-      notes.push(`Odd team count (${summary.teamCount}) adds BYEs and can create gaps.`);
+      notes.push(`Odd team count (${summary.teamCount}) creates one idle team each round; two guest slots/week plus Max games/week at 2 lets guest games absorb that instead of forcing BYEs.`);
     }
     if ((issues || []).some((i) => i.ruleId === "double-header")) {
-      notes.push("Doubleheaders indicate tight slot density or too few usable dates.");
+      if (summary.teamCount % 2 === 1) {
+        notes.push("With odd-team guest capacity reserved first, a remaining double-header usually points to a same-day guest collision or a missing exact guest anchor week, not just a lack of total slots.");
+      } else {
+        notes.push("Doubleheaders indicate tight slot density or too few usable dates.");
+      }
     }
     if ((issues || []).some((i) => i.ruleId === "double-header-balance")) {
       notes.push("Doubleheaders are allowed, but current assignment is uneven across teams.");
@@ -2463,11 +2577,17 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     if ((issues || []).some((i) => i.ruleId === "max-games-per-week")) {
       notes.push("Max games/week is a hard limit and is restricting assignments; add slots or widen date range.");
       if (summary.teamCount % 2 === 1) {
-        notes.push("Odd team count means one team will have a BYE and can have one fewer game in a given week.");
+        notes.push("If Max games/week stays below 2, guest slots cannot clear weekly BYEs for an odd-team division.");
       }
     }
     if ((issues || []).some((i) => i.ruleId === "missing-opponent")) {
       notes.push("Guest games or external offers may be enabled; missing opponents are expected there.");
+    }
+    if (
+      (issues || []).some((i) => i.ruleId === "unused-game-capacity") &&
+      String(preview?.constructionStrategy || "").toLowerCase().startsWith("backward")
+    ) {
+      notes.push("Backward loading intentionally concentrates regular games later in the season, so earlier game-capable slots may remain open.");
     }
     return notes;
   }
@@ -3860,8 +3980,10 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     const teamCountValue = Number(summary.teamCount) || 0;
     const oddTeamCount = teamCountValue > 0 && teamCountValue % 2 === 1;
     const guestGamesValue = Math.max(0, Number(guestGamesPerWeek) || 0);
+    const maxGamesValue = Math.max(0, Number(maxGamesPerWeek) || 0);
+    const selectedGuestAnchorCount = [guestAnchorPrimarySlotId, guestAnchorSecondarySlotId].filter(Boolean).length;
     const recommendedGuestGames = Math.max(
-      1,
+      oddTeamCount ? 2 : 1,
       Number(feasibility?.recommendations?.optimalGuestGamesPerWeek) || 0
     );
 
@@ -3869,18 +3991,21 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
     if (oddTeamCount) {
       const byeCounts = regularBalanceReport.teamRows.map((row) => row.byeWeeks);
+      const maxBye = byeCounts.length ? Math.max(...byeCounts) : 0;
+      const minBye = byeCounts.length ? Math.min(...byeCounts) : 0;
+      const canCoverByesWithGuestSlots = guestGamesValue >= 2 && maxGamesValue >= 2;
       if (byeCounts.length && regularBalanceReport.weekCount > 0) {
-        const maxBye = Math.max(...byeCounts);
-        const minBye = Math.min(...byeCounts);
         const heavyByeTeams = regularBalanceReport.teamRows
           .filter((row) => row.byeWeeks === maxBye)
           .slice(0, 4)
           .map((row) => row.teamId);
         rows.push({
           code: "ODD_TEAM_BYE_CONTEXT",
-          tone: maxBye - minBye > 1 ? "warning" : "info",
+          tone: canCoverByesWithGuestSlots && maxBye > 0 ? "warning" : maxBye - minBye > 1 ? "warning" : "info",
           message:
-            `Odd team count (${teamCountValue}) means BYEs are unavoidable. ` +
+            (canCoverByesWithGuestSlots
+              ? `Odd team count (${teamCountValue}) does not require BYEs when guest slots are active. `
+              : `Odd team count (${teamCountValue}) creates weekly idle-team pressure unless guest slots absorb it. `) +
             `Estimated BYE weeks across ${regularBalanceReport.weekCount} regular-season week(s): min ${minBye}, max ${maxBye}` +
             (heavyByeTeams.length ? ` (highest: ${heavyByeTeams.join(", ")}).` : "."),
         });
@@ -3888,28 +4013,61 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         rows.push({
           code: "ODD_TEAM_BYE_CONTEXT",
           tone: "info",
-          message: `Odd team count (${teamCountValue}) means BYEs are unavoidable. Use guest games and slot priorities to spread BYEs evenly.`,
+          message: `Odd team count (${teamCountValue}) creates one idle team each round. Use two guest slots/week plus Max games/week = 2 to absorb that team instead of defaulting to BYEs.`,
         });
       }
 
-      if (
-        guestGamesValue <= 0 &&
-        ((regularSummary.unassignedSlots || 0) > 0 || unassignedRegularReport.openSlots > 0)
-      ) {
+      if (guestGamesValue < 2) {
         rows.push({
           code: "GUEST_GAME_RECOMMENDATION",
           tone: "warning",
           suggestedGuestGamesPerWeek: recommendedGuestGames,
           message:
-            `This division has an odd team count and open regular slots (${unassignedRegularReport.openSlots || regularSummary.unassignedSlots || 0}). ` +
-            `Try Guest games/week = ${recommendedGuestGames} to reduce idle weeks and use spare capacity.`,
+            `This division has an odd team count. Target Guest games/week = ${recommendedGuestGames} so the scheduler can keep two recurring guest slots available each week and avoid avoidable BYEs.`,
         });
-      } else if (guestGamesValue > 0 && regularBalanceReport.totalGuestGames === 0 && (regularSummary.unassignedSlots || 0) > 0) {
+      }
+
+      if (guestGamesValue >= 2 && maxGamesValue > 0 && maxGamesValue < 2) {
+        rows.push({
+          code: "MAX_GAMES_WEEK_RECOMMENDATION",
+          tone: "warning",
+          suggestedMaxGamesPerWeek: 2,
+          message:
+            `Guest games are set to ${guestGamesValue}/week, but Max games/week is ${maxGamesValue}. Raise Max games/week to 2 so an idle team can take a guest game instead of a BYE.`,
+        });
+      }
+
+      if (guestGamesValue >= 2 && guestAnchorOptions.length >= 2 && selectedGuestAnchorCount < 2) {
+        rows.push({
+          code: "GUEST_ANCHOR_RECOMMENDATION",
+          tone: "warning",
+          message:
+            "Set the required guest anchor options in Slot plan. The selected day, time, and field are treated as exact weekly guest requirements and stay locked in preview.",
+        });
+      }
+
+      if (guestGamesValue > 0 && regularBalanceReport.totalGuestGames === 0 && (regularSummary.unassignedSlots || 0) > 0) {
         rows.push({
           code: "GUEST_GAME_NOT_PLACED",
           tone: "warning",
           message:
-            `Guest games are enabled (${guestGamesValue}/week) but none were placed. Check Slot plan game/both tags, priorities, and guest anchor options.`,
+            `Guest games are enabled (${guestGamesValue}/week) but none were placed. Check that enough recurring slots stay tagged Game/Both and that your required guest anchor field/time patterns exist in the slot plan.`,
+        });
+      } else if (regularBalanceReport.totalGuestGames > 0) {
+        rows.push({
+          code: "GUEST_GAME_LOCKED_NOTICE",
+          tone: "info",
+          message:
+            "Placed guest slots stay locked in preview. The wizard reserves guest capacity first, then places regular league matchups around it.",
+        });
+      }
+
+      if (canCoverByesWithGuestSlots && maxBye > 0) {
+        rows.push({
+          code: "ODD_TEAM_CONFLICT_AVOIDANCE",
+          tone: "warning",
+          message:
+            `You already have the right weekly guest capacity, so the remaining BYEs are coming from slot conflicts. Keep two weekly guest slots unblocked, tagged Game/Both, and anchored so repairs do not repurpose them.`,
         });
       }
     }
@@ -3946,7 +4104,16 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     }
 
     return rows;
-  }, [preview, guestGamesPerWeek, feasibility, regularBalanceReport, unassignedRegularReport.openSlots]);
+  }, [
+    preview,
+    guestGamesPerWeek,
+    maxGamesPerWeek,
+    feasibility,
+    regularBalanceReport,
+    guestAnchorPrimarySlotId,
+    guestAnchorSecondarySlotId,
+    guestAnchorOptions.length,
+  ]);
 
   const planningChecksReport = useMemo(() => {
     if (!preview) return [];
@@ -4225,7 +4392,26 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
       <div className="callout callout--warning">
         <strong>⚠️ Important:</strong> This wizard will <strong>OVERWRITE all existing game assignments</strong> in the selected division when you click "Apply schedule" at the end.
-        Use this tool only when setting up a new season or completely rebuilding a schedule.
+        {resetGeneratedSlotsBeforeApply ? (
+          <>
+            {" "}
+            It will also reset existing <strong>non-practice game and guest rows</strong> in this season window before previewing and applying the new run.
+          </>
+        ) : (
+          <>
+            {" "}
+            It will <strong>not</strong> reset existing non-practice game and guest rows before previewing or applying.
+          </>
+        )}{" "}
+        It does <strong>not</strong> clear recurring allocations or field blackouts. If you need a different underlying slot pool, clear or edit availability first, then rerun the wizard.
+        <label className="inlineCheck" style={{ marginTop: "0.75rem" }}>
+          <input
+            type="checkbox"
+            checked={resetGeneratedSlotsBeforeApply}
+            onChange={(e) => setResetGeneratedSlotsBeforeApply(e.target.checked)}
+          />
+          Reset existing non-practice game and guest slots in this season window before preview and apply
+        </label>
       </div>
 
       <div className="row row--wrap gap-2">
@@ -4509,7 +4695,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
               </label>
             </div>
             <div className="subtle">
-              Guest anchors now reserve matching weekly slots first for external/guest games (when matches exist), so regular matchups are scheduled around them.
+              Guest games/week is reserved before regular scheduling. When you set guest anchors, the selected day, time, and field are treated as exact weekly requirements for guest slots.
             </div>
 
             {availabilityLoading ? <div className="muted">Loading availability slots...</div> : null}
@@ -5623,6 +5809,21 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                             </button>
                           </div>
                         ) : null}
+                        {Number(rec.suggestedMaxGamesPerWeek) > 0 ? (
+                          <div className="row gap-2 mt-1">
+                            <button
+                              className="btn btn--ghost"
+                              type="button"
+                              onClick={() => {
+                                setMaxGamesPerWeek(String(rec.suggestedMaxGamesPerWeek));
+                                setPreview(null);
+                                setStep(3);
+                              }}
+                            >
+                              Set Max games/week = {rec.suggestedMaxGamesPerWeek}
+                            </button>
+                          </div>
+                        ) : null}
                       </div>
                     ))}
                   </div>
@@ -6292,7 +6493,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                 >
                   <div className="stack gap-3">
                 <div className="subtle">
-                  Tip: drag one <b>Regular Season</b> game row onto another to try a preview-only swap. The drop is revalidated immediately and illegal swaps are rejected.
+                  Tip: drag one <b>Regular Season</b> game row onto another to try a preview-only swap. Guest/external rows stay locked, and the drop is revalidated immediately.
                 </div>
                 <div className="callout">
                   <div className="row row--wrap gap-2" style={{ alignItems: "end" }}>
@@ -6415,7 +6616,13 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                             onDragOver={(event) => handleAssignmentDragOver(event, a)}
                             onDrop={(event) => handleAssignmentDrop(event, a)}
                             onDragEnd={clearAssignmentDragSwap}
-                            title={isDragEligible ? "Drag onto another regular-season game to preview a swap." : ""}
+                            title={
+                              isDragEligible
+                                ? "Drag onto another regular-season game to preview a swap."
+                                : a?.isExternalOffer
+                                  ? "Locked guest/external slot. Preview fixes and swaps will not move it."
+                                  : ""
+                            }
                           >
                             <td>{a.phase}</td>
                             <td>{isoDayShort(a.gameDate) || "-"}</td>

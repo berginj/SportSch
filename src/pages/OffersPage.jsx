@@ -11,6 +11,19 @@ function fmtDate(d) {
   return d || "";
 }
 
+function fmtWeekday(isoDate) {
+  const parts = String(isoDate || "").split("-");
+  if (parts.length !== 3) return "";
+  const year = Number(parts[0]);
+  const month = Number(parts[1]) - 1;
+  const day = Number(parts[2]);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return "";
+  const dt = new Date(Date.UTC(year, month, day));
+  if (Number.isNaN(dt.getTime())) return "";
+  const labels = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  return labels[dt.getUTCDay()] || "";
+}
+
 function addDaysToDate(isoDate, days) {
   const parts = (isoDate || "").split("-");
   if (parts.length !== 3) return "";
@@ -77,7 +90,7 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
   const [division, setDivision] = useState("");
   const [fields, setFields] = useState([]);
   const [slots, setSlots] = useState([]);
-  const [slotTypeFilter, setSlotTypeFilter] = useState("all");
+  const [slotTypeFilter, setSlotTypeFilter] = useState("offer");
   const [teams, setTeams] = useState([]);
   const [acceptTeamBySlot, setAcceptTeamBySlot] = useState({});
   const [loading, setLoading] = useState(true);
@@ -123,16 +136,28 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
     return (slots || [])
       .filter((s) => !s.isAvailability)
       .filter((s) => !isPracticeSlot(s))
+      .filter((s) => String(s?.status || "").trim() === "Open")
       .filter((s) => matchesTypeFilter(s.gameType, slotTypeFilter));
   }, [slots, slotTypeFilter]);
 
   const applyFiltersFromUrl = useCallback(() => {
-    if (typeof window === "undefined") return { division: "", type: "all" };
+    if (typeof window === "undefined") return { division: "", type: "offer" };
     const params = new URLSearchParams(window.location.search);
     const div = (params.get("division") || "").trim();
     const rawType = (params.get("slotType") || "").trim().toLowerCase();
-    const type = rawType === "request" || rawType === "offer" ? rawType : "all";
+    const type = rawType === "request" || rawType === "offer" ? rawType : "offer";
     return { division: div, type };
+  }, []);
+
+  const fetchDivisionSlots = useCallback(async (selectedDivision) => {
+    const normalizedDivision = String(selectedDivision || "").trim();
+    if (!normalizedDivision) return [];
+    const params = new URLSearchParams({
+      division: normalizedDivision,
+      status: "Open",
+    });
+    const data = await apiFetch(`/api/slots?${params.toString()}`);
+    return Array.isArray(data) ? data : [];
   }, []);
 
   async function loadAll(selectedDivision) {
@@ -154,8 +179,8 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
       setTeams(Array.isArray(tms) ? tms : []);
 
       if (firstDiv) {
-        const s = await apiFetch(`/api/slots?division=${encodeURIComponent(firstDiv)}`);
-        setSlots(Array.isArray(s) ? s : []);
+        const s = await fetchDivisionSlots(firstDiv);
+        setSlots(s);
       } else {
         setSlots([]);
       }
@@ -183,11 +208,14 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
   async function reloadSlots(nextDivision) {
     const d = nextDivision ?? division;
     setDivision(d);
-    if (!d) return;
+    if (!d) {
+      setSlots([]);
+      return;
+    }
     setErr("");
     try {
-      const s = await apiFetch(`/api/slots?division=${encodeURIComponent(d)}`);
-      setSlots(Array.isArray(s) ? s : []);
+      const s = await fetchDivisionSlots(d);
+      setSlots(s);
     } catch (e) {
       setErr(e?.message || String(e));
     }
@@ -423,9 +451,9 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
           <label title="Filter offers vs requests in the list.">
             Slot type
             <select value={slotTypeFilter} onChange={(e) => setSlotTypeFilter(e.target.value)}>
-              <option value="all">All</option>
               <option value="offer">Offers</option>
               <option value="request">Requests</option>
+              <option value="all">All</option>
             </select>
           </label>
           <button className="btn" onClick={() => loadAll(division)} title="Refresh divisions, fields, and offers.">
@@ -573,12 +601,13 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
       <div className="card">
         <div className="cardTitle">Open offers & requests</div>
         {filteredSlots.length === 0 ? (
-          <div className="muted">No offers or requests found for this division.</div>
+          <div className="muted">No open offers or requests found for this division.</div>
         ) : (
           <div className="tableWrap">
             <table className="table">
               <thead>
                 <tr>
+                  <th>Day</th>
                   <th>Date</th>
                   <th>Time</th>
                   <th>Field</th>
@@ -591,6 +620,7 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
               <tbody>
                 {filteredSlots.map((s) => (
                   <tr key={s.slotId}>
+                    <td>{fmtWeekday(s.gameDate) || "-"}</td>
                     <td>{fmtDate(s.gameDate)}</td>
                     <td>
                       {s.startTime}-{s.endTime}

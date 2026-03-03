@@ -45,6 +45,20 @@ public class AvailabilityAllocationsFunctions
         string? fieldKey
     );
 
+    public record UpdateAllocationRequest(
+        string? scope,
+        string? fieldKey,
+        string? startsOn,
+        string? endsOn,
+        List<string>? daysOfWeek,
+        string? startTimeLocal,
+        string? endTimeLocal,
+        string? slotType,
+        string? priorityRank,
+        string? notes,
+        bool? isActive
+    );
+
     private const string ScopeLeague = "LEAGUE";
 
     private record AllocationSpec(
@@ -394,6 +408,166 @@ public class AvailabilityAllocationsFunctions
         }
     }
 
+    [Function("UpdateAvailabilityAllocation")]
+    public async Task<HttpResponseData> Update(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "availability/allocations/{allocationId}")] HttpRequestData req,
+        string allocationId)
+    {
+        try
+        {
+            var leagueId = ApiGuards.RequireLeagueId(req);
+            var me = IdentityUtil.GetMe(req);
+            await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+
+            allocationId = (allocationId ?? "").Trim();
+            ApiGuards.EnsureValidTableKeyPart("allocationId", allocationId);
+
+            var body = await HttpUtil.ReadJsonAsync<UpdateAllocationRequest>(req);
+            if (body is null)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Invalid JSON body");
+
+            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.FieldAvailabilityAllocations);
+            var existingEntity = await FindAllocationAsync(table, leagueId, allocationId);
+            if (existingEntity is null)
+                return ApiResponses.Error(req, HttpStatusCode.NotFound, "NOT_FOUND", "Allocation not found.");
+
+            var scopeRaw = (body.scope ?? existingEntity.GetString("Scope") ?? ScopeLeague).Trim();
+            var scope = string.IsNullOrWhiteSpace(scopeRaw)
+                ? ScopeLeague
+                : string.Equals(scopeRaw, ScopeLeague, StringComparison.OrdinalIgnoreCase) ? ScopeLeague : scopeRaw;
+            if (!string.Equals(scope, ScopeLeague, StringComparison.OrdinalIgnoreCase))
+                ApiGuards.EnsureValidTableKeyPart("division", scope);
+
+            var fieldKeyRaw = (body.fieldKey ?? existingEntity.GetString("FieldKey") ?? "").Trim();
+            if (!TryParseFieldKey(fieldKeyRaw, out var parkCode, out var fieldCode))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "fieldKey must use parkCode/fieldCode.");
+            var normalizedFieldKey = $"{parkCode}/{fieldCode}";
+
+            var fieldsTable = await TableClients.GetTableAsync(_svc, Constants.Tables.Fields);
+            var fieldKeys = await LoadFieldKeysAsync(fieldsTable, leagueId);
+            if (!fieldKeys.Contains(normalizedFieldKey))
+            {
+                return ApiResponses.Error(
+                    req,
+                    HttpStatusCode.NotFound,
+                    "FIELD_NOT_FOUND",
+                    $"Field not found in {Constants.Tables.Fields}: {normalizedFieldKey}");
+            }
+
+            var startsOnRaw = (body.startsOn ?? existingEntity.GetString("StartsOn") ?? "").Trim();
+            if (!TryNormalizeDate(startsOnRaw, out var startsOnNorm) ||
+                !DateOnly.TryParseExact(startsOnNorm, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var startsOn))
+            {
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "startsOn must be YYYY-MM-DD.");
+            }
+
+            var endsOnRaw = (body.endsOn ?? existingEntity.GetString("EndsOn") ?? "").Trim();
+            if (!TryNormalizeDate(endsOnRaw, out var endsOnNorm) ||
+                !DateOnly.TryParseExact(endsOnNorm, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var endsOn))
+            {
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "endsOn must be YYYY-MM-DD.");
+            }
+
+            if (endsOn < startsOn)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "endsOn must be on or after startsOn.");
+
+            var dayValues = body.daysOfWeek ??
+                (existingEntity.GetString("DaysOfWeek") ?? "")
+                    .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .ToList();
+            var daysRaw = string.Join(",", dayValues.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value.Trim()));
+            if (!TryParseDays(daysRaw, out var days))
+            {
+                return ApiResponses.Error(
+                    req,
+                    HttpStatusCode.BadRequest,
+                    "BAD_REQUEST",
+                    "daysOfWeek must use Mon/Tue/Wed/Thu/Fri/Sat/Sun.");
+            }
+
+            var startTimeLocal = (body.startTimeLocal ?? existingEntity.GetString("StartTimeLocal") ?? "").Trim();
+            var endTimeLocal = (body.endTimeLocal ?? existingEntity.GetString("EndTimeLocal") ?? "").Trim();
+            var startMin = SlotOverlap.ParseMinutes(startTimeLocal);
+            var endMin = SlotOverlap.ParseMinutes(endTimeLocal);
+            if (startMin < 0 || endMin <= startMin)
+            {
+                return ApiResponses.Error(
+                    req,
+                    HttpStatusCode.BadRequest,
+                    "BAD_REQUEST",
+                    "startTimeLocal/endTimeLocal must be valid HH:MM and endTimeLocal after startTimeLocal.");
+            }
+
+            var slotType = NormalizeSlotType(body.slotType ?? existingEntity.GetString("SlotType"));
+            if (slotType is null)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "slotType must be Practice, Game, or Both.");
+
+            var existingPriorityRaw = (existingEntity.GetString("PriorityRank") ?? "").Trim();
+            if (!TryParsePriorityRank(body.priorityRank ?? existingPriorityRaw, out var priorityRank))
+            {
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "priorityRank must be a positive whole number.");
+            }
+            if (string.Equals(slotType, "practice", StringComparison.OrdinalIgnoreCase))
+                priorityRank = null;
+
+            var notes = body.notes ?? (existingEntity.GetString("Notes") ?? "");
+            var isActive = body.isActive ?? (existingEntity.GetBoolean("IsActive") ?? true);
+
+            var existing = await LoadExistingAllocationsAsync(table, leagueId, allocationId);
+            if (isActive)
+            {
+                var spec = new AllocationSpec(normalizedFieldKey, startsOn, endsOn, startMin, endMin, days);
+                if (HasAllocationOverlap(existing.byField, spec))
+                {
+                    return ApiResponses.Error(
+                        req,
+                        HttpStatusCode.Conflict,
+                        "ALLOCATION_OVERLAP",
+                        "Allocation overlaps an existing allocation for this field.");
+                }
+            }
+
+            var pk = Constants.Pk.FieldAvailabilityAllocations(leagueId, scope, normalizedFieldKey);
+            var updated = new TableEntity(pk, allocationId)
+            {
+                ["LeagueId"] = leagueId,
+                ["Scope"] = scope,
+                ["FieldKey"] = normalizedFieldKey,
+                ["Division"] = scope,
+                ["StartsOn"] = startsOnNorm,
+                ["EndsOn"] = endsOnNorm,
+                ["DaysOfWeek"] = string.Join(",", FormatDays(days)),
+                ["StartTimeLocal"] = startTimeLocal,
+                ["EndTimeLocal"] = endTimeLocal,
+                ["SlotType"] = slotType,
+                ["Notes"] = notes,
+                ["IsActive"] = isActive,
+                ["UpdatedUtc"] = DateTimeOffset.UtcNow
+            };
+            if (priorityRank.HasValue)
+                updated["PriorityRank"] = priorityRank.Value;
+
+            await table.UpsertEntityAsync(updated, TableUpdateMode.Replace);
+            if (!string.Equals(existingEntity.PartitionKey, pk, StringComparison.Ordinal))
+                await table.DeleteEntityAsync(existingEntity.PartitionKey, existingEntity.RowKey, existingEntity.ETag);
+
+            UsageTelemetry.Track(_log, "api_update_availability_allocation", leagueId, me.UserId, new
+            {
+                allocationId,
+                scope,
+                fieldKey = normalizedFieldKey
+            });
+
+            return ApiResponses.Ok(req, ToAllocationDto(updated));
+        }
+        catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "UpdateAvailabilityAllocation failed");
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
+        }
+    }
+
     [Function("ClearAvailabilityAllocations")]
     public async Task<HttpResponseData> Clear(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "availability/allocations/clear")] HttpRequestData req)
@@ -467,6 +641,51 @@ public class AvailabilityAllocationsFunctions
             _log.LogError(ex, "ClearAvailabilityAllocations failed");
             return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
         }
+    }
+
+    private static AllocationDto ToAllocationDto(TableEntity e)
+    {
+        var days = (e.GetString("DaysOfWeek") ?? "")
+            .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+        var slotType = NormalizeSlotType(e.GetString("SlotType")) ?? "practice";
+        int? priorityRank = e.GetInt32("PriorityRank");
+        if (!priorityRank.HasValue)
+        {
+            var rawPriority = (e.GetString("PriorityRank") ?? "").Trim();
+            if (int.TryParse(rawPriority, out var parsed) && parsed > 0)
+                priorityRank = parsed;
+        }
+        if (priorityRank.HasValue && priorityRank.Value <= 0) priorityRank = null;
+        if (string.Equals(slotType, "practice", StringComparison.OrdinalIgnoreCase)) priorityRank = null;
+
+        return new AllocationDto(
+            allocationId: e.RowKey,
+            scope: e.GetString("Scope") ?? ScopeLeague,
+            fieldKey: e.GetString("FieldKey") ?? "",
+            division: e.GetString("Division") ?? "",
+            startsOn: e.GetString("StartsOn") ?? "",
+            endsOn: e.GetString("EndsOn") ?? "",
+            daysOfWeek: days,
+            startTimeLocal: e.GetString("StartTimeLocal") ?? "",
+            endTimeLocal: e.GetString("EndTimeLocal") ?? "",
+            slotType: slotType,
+            priorityRank: priorityRank,
+            notes: e.GetString("Notes") ?? "",
+            isActive: e.GetBoolean("IsActive") ?? true
+        );
+    }
+
+    private static async Task<TableEntity?> FindAllocationAsync(TableClient table, string leagueId, string allocationId)
+    {
+        var pkPrefix = $"ALLOC|{leagueId}|";
+        var next = pkPrefix + "\uffff";
+        var filter =
+            $"PartitionKey ge '{ApiGuards.EscapeOData(pkPrefix)}' and PartitionKey lt '{ApiGuards.EscapeOData(next)}' " +
+            $"and RowKey eq '{ApiGuards.EscapeOData(allocationId)}'";
+        await foreach (var entity in table.QueryAsync<TableEntity>(filter: filter))
+            return entity;
+        return null;
     }
 
     private static bool TryParseDays(string raw, out HashSet<DayOfWeek> days)
@@ -698,7 +917,7 @@ public class AvailabilityAllocationsFunctions
     }
 
     private static async Task<(Dictionary<string, List<AllocationSpec>> byField, HashSet<string> exactKeys)>
-        LoadExistingAllocationsAsync(TableClient table, string leagueId)
+        LoadExistingAllocationsAsync(TableClient table, string leagueId, string? excludeAllocationId = null)
     {
         var byField = new Dictionary<string, List<AllocationSpec>>(StringComparer.OrdinalIgnoreCase);
         var exactKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -708,6 +927,12 @@ public class AvailabilityAllocationsFunctions
 
         await foreach (var e in table.QueryAsync<TableEntity>(filter: filter))
         {
+            if (!string.IsNullOrWhiteSpace(excludeAllocationId) &&
+                string.Equals(e.RowKey, excludeAllocationId, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
             var isActive = e.GetBoolean("IsActive") ?? true;
             if (!isActive) continue;
 

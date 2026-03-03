@@ -43,14 +43,14 @@ public class UpdateSlot
     );
 
     [Function("UpdateSlot")]
-    [OpenApiOperation(operationId: "UpdateSlot", tags: new[] { "Slots" }, Summary = "Update slot schedule details", Description = "Updates game date/time/field for an existing slot with conflict checks. LeagueAdmin or GlobalAdmin only.")]
+    [OpenApiOperation(operationId: "UpdateSlot", tags: new[] { "Slots" }, Summary = "Update slot schedule details", Description = "Updates game date/time/field for an existing slot, including availability slots, with conflict checks. LeagueAdmin or GlobalAdmin only.")]
     [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
     [OpenApiParameter(name: "division", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Division code")]
     [OpenApiParameter(name: "slotId", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Slot identifier")]
     [OpenApiRequestBody(contentType: "application/json", bodyType: typeof(UpdateSlotReq), Required = true, Description = "Updated schedule fields")]
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(object), Description = "Slot updated")]
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.Conflict, contentType: "application/json", bodyType: typeof(object), Description = "Field/time conflict detected")]
-    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Only league admins can edit scheduled games")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Only league admins can edit slots")]
     public async Task<HttpResponseData> Run(
         [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "slots/{division}/{slotId}")] HttpRequestData req,
         string division,
@@ -68,7 +68,7 @@ public class UpdateSlot
 
             if (!await IsLeagueAdminAsync(me.UserId, leagueId))
             {
-                return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN, "Only league admins can edit scheduled games.");
+                return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN, "Only league admins can edit slots.");
             }
 
             var body = await HttpUtil.ReadJsonAsync<UpdateSlotReq>(req);
@@ -81,12 +81,6 @@ public class UpdateSlot
             if (slot is null)
             {
                 return ApiResponses.Error(req, HttpStatusCode.NotFound, ErrorCodes.SLOT_NOT_FOUND, "Slot not found.");
-            }
-
-            var isAvailability = slot.GetBoolean("IsAvailability") ?? false;
-            if (isAvailability)
-            {
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST, "Availability slots cannot be edited from this action.");
             }
 
             var currentStatus = (slot.GetString("Status") ?? Constants.Status.SlotOpen).Trim();
