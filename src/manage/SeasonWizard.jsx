@@ -1017,6 +1017,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [err, setErr] = useState("");
   const [toast, setToast] = useState(null);
   const [slotPlan, setSlotPlan] = useState([]);
+  const [requestGames, setRequestGames] = useState([]);
   const [guestAnchorPrimarySlotId, setGuestAnchorPrimarySlotId] = useState("");
   const [guestAnchorSecondarySlotId, setGuestAnchorSecondarySlotId] = useState("");
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
@@ -2139,6 +2140,30 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
   function removeRivalryMatchupRow(index) {
     setRivalryMatchups((prev) => (Array.isArray(prev) ? prev : []).filter((_, idx) => idx !== index));
+    setPreview(null);
+  }
+
+  function addRequestGame() {
+    setRequestGames((prev) => [...(Array.isArray(prev) ? prev : []), {
+      gameDate: "",
+      startTime: "",
+      endTime: "",
+      fieldKey: "",
+      teamId: "",
+      opponentName: ""
+    }]);
+    setPreview(null);
+  }
+
+  function updateRequestGame(index, patch) {
+    setRequestGames((prev) =>
+      (Array.isArray(prev) ? prev : []).map((rg, idx) => (idx === index ? { ...rg, ...patch } : rg))
+    );
+    setPreview(null);
+  }
+
+  function removeRequestGame(index) {
+    setRequestGames((prev) => (Array.isArray(prev) ? prev : []).filter((_, idx) => idx !== index));
     setPreview(null);
   }
 
