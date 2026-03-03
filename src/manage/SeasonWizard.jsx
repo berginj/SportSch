@@ -973,14 +973,17 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [division, setDivision] = useState("");
   const [divisions, setDivisions] = useState([]);
   const [leagueSeasonConfig, setLeagueSeasonConfig] = useState({});
-  const [seasonStart, setSeasonStart] = useState("");
-  const [seasonEnd, setSeasonEnd] = useState("");
+
+  // Default season dates for Little League (Mar 15 - Jun 6)
+  const defaultYear = new Date().getFullYear();
+  const [seasonStart, setSeasonStart] = useState(`${defaultYear}-03-15`);
+  const [seasonEnd, setSeasonEnd] = useState(`${defaultYear}-06-06`);
   const [poolStart, setPoolStart] = useState("");
   const [poolEnd, setPoolEnd] = useState("");
   const [bracketStart, setBracketStart] = useState("");
   const [bracketEnd, setBracketEnd] = useState("");
 
-  const [minGamesPerTeam, setMinGamesPerTeam] = useState(0);
+  const [minGamesPerTeam, setMinGamesPerTeam] = useState(13);
   const [poolGamesPerTeam, setPoolGamesPerTeam] = useState(2);
   const [guestGamesPerWeek, setGuestGamesPerWeek] = useState(0);
   const [maxExternalOffersPerTeamSeason, setMaxExternalOffersPerTeamSeason] = useState(0);
