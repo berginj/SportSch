@@ -241,6 +241,94 @@ const ODD_TEAM_GUEST_PREVIEW = {
   unassignedSlots: [],
   unassignedMatchups: [],
 };
+const RULE_HINT_PREVIEW = {
+  ...BASE_PREVIEW,
+  summary: {
+    ...BASE_PREVIEW.summary,
+    teamCount: 9,
+  },
+  issues: [
+    {
+      phase: "Regular Season",
+      ruleId: "double-header",
+      severity: "error",
+      message: "2 violation(s) for rule double-header.",
+      details: {
+        count: 2,
+        primaryViolation: {
+          teamId: "TEAM-9",
+          gameDate: "2026-05-12",
+          count: 2,
+        },
+      },
+    },
+    {
+      phase: "Regular Season",
+      ruleId: "home-away-balance",
+      severity: "warning",
+      message: "Home/away balance is uneven for 2 team(s).",
+      details: {
+        count: 1,
+        primaryViolation: {
+          offenders: [
+            { teamId: "TEAM-3", gap: 3 },
+            { teamId: "TEAM-6", gap: 2 },
+          ],
+        },
+      },
+    },
+    {
+      phase: "Regular Season",
+      ruleId: "idle-gap-balance",
+      severity: "warning",
+      message: "Long idle gaps detected for 6 team(s).",
+      details: {
+        count: 1,
+        primaryViolation: {
+          offenders: [
+            { teamId: "TEAM-5", extraGapWeeks: 2 },
+          ],
+        },
+      },
+    },
+    {
+      phase: "Regular Season",
+      ruleId: "opponent-repeat-balance",
+      severity: "warning",
+      message: "18 opponent pairing(s) repeat more than once.",
+      details: {
+        count: 1,
+        primaryViolation: {
+          pairs: [
+            { pairKey: "TEAM-1|TEAM-2", count: 3 },
+          ],
+        },
+      },
+    },
+    {
+      phase: "Regular Season",
+      ruleId: "unused-game-capacity",
+      severity: "warning",
+      message: "22 game-capable slot(s) were left unused.",
+      details: {
+        count: 1,
+        primaryViolation: {
+          count: 22,
+        },
+      },
+    },
+  ],
+  totalIssues: 5,
+  applyBlocked: true,
+  constructionStrategy: "backward_greedy_v1",
+  ruleHealth: {
+    status: "yellow",
+    hardViolationCount: 1,
+    softViolationCount: 4,
+    softScore: 900,
+    groups: [],
+  },
+};
 const SEQUENTIAL_SLOT_AVAILABILITY = [
   {
     slotId: "avail-1",
@@ -564,6 +652,21 @@ describe("SeasonWizard", () => {
       expect(screen.getByRole("button", { name: "Set Max games/week = 2" })).toBeInTheDocument();
     });
     expect(screen.getByText(/placed guest slots stay locked in preview/i)).toBeInTheDocument();
+  });
+
+  it("shows actionable rule hints for odd-team guest scheduling and soft-balance issues", async () => {
+    installApiMock({ previewResponse: RULE_HINT_PREVIEW });
+
+    await advanceToPreview();
+    fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/two guest slots\/week plus Max games\/week at 2 should normally absorb the idle team/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Worst gap: TEAM-3 is off by 3 home\/away results\./i)).toBeInTheDocument();
+    expect(screen.getByText(/Worst idle stretch: TEAM-5 has 2 extra idle weeks/i)).toBeInTheDocument();
+    expect(screen.getByText(/Most repeated pairing is TEAM-1 vs TEAM-2 \(3 times\)\./i)).toBeInTheDocument();
+    expect(screen.getByText(/Backward loading intentionally pushes regular games later in the season/i)).toBeInTheDocument();
   });
 
   it("shows pattern and field totals and links to availability setup", async () => {

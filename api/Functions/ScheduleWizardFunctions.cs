@@ -533,12 +533,7 @@ public class ScheduleWizardFunctions
                     ruleId = g.RuleId,
                     severity = string.Equals(g.Severity, "hard", StringComparison.OrdinalIgnoreCase) ? "error" : "warning",
                     message = g.Summary,
-                    details = new Dictionary<string, object?>
-                    {
-                        ["count"] = g.Count,
-                        ["severity"] = g.Severity,
-                        ["smallestAffectedSet"] = g.SmallestAffectedSet
-                    }
+                    details = BuildRuleIssueDetails(g)
                 })
                 .ToList();
             if (poolAssignments.UnassignedMatchups.Count > 0)
@@ -844,14 +839,39 @@ public class ScheduleWizardFunctions
                 ruleId = g.RuleId,
                 severity = string.Equals(g.Severity, "hard", StringComparison.OrdinalIgnoreCase) ? "error" : "warning",
                 message = g.Summary,
-                details = new Dictionary<string, object?>
-                {
-                    ["count"] = g.Count,
-                    ["severity"] = g.Severity,
-                    ["smallestAffectedSet"] = g.SmallestAffectedSet
-                }
+                details = BuildRuleIssueDetails(g)
             })
             .ToList();
+    }
+
+    private static Dictionary<string, object?> BuildRuleIssueDetails(ScheduleRuleGroupReport group)
+    {
+        var details = new Dictionary<string, object?>
+        {
+            ["count"] = group.Count,
+            ["severity"] = group.Severity,
+            ["smallestAffectedSet"] = group.SmallestAffectedSet
+        };
+
+        var primary = group.Violations?
+            .Select(v => v.Details)
+            .FirstOrDefault(v => v is not null && v.Count > 0);
+        if (primary is not null)
+        {
+            details["primaryViolation"] = primary;
+        }
+
+        var samples = (group.Violations ?? Array.Empty<ScheduleRuleViolation>())
+            .Select(v => v.Details)
+            .Where(v => v is not null && v.Count > 0)
+            .Take(10)
+            .ToList();
+        if (samples.Count > 0)
+        {
+            details["sampleViolations"] = samples;
+        }
+
+        return details;
     }
 
     private static HashSet<string> BuildLockedGuestSlotIds(IEnumerable<ScheduleAssignment> assignments)
@@ -1488,14 +1508,29 @@ public class ScheduleWizardFunctions
         var carriedUnassignedSlots = new List<ScheduleAssignment>(result.UnassignedSlots);
         if (reservedExternalSlots.Count > 0)
         {
-            var anchoredResult = BuildAnchoredExternalAssignments(assignments, reservedExternalSlots, teams, maxGamesPerWeek, maxExternalOffersPerTeamSeason);
+            var anchoredResult = BuildAnchoredExternalAssignments(
+                assignments,
+                reservedExternalSlots,
+                teams,
+                maxGamesPerWeek,
+                maxExternalOffersPerTeamSeason,
+                noDoubleHeaders);
             assignments.AddRange(anchoredResult.Assignments);
             carriedUnassignedSlots.AddRange(anchoredResult.UnassignedSlots);
         }
         if (externalOfferPerWeek <= 0 || carriedUnassignedSlots.Count == 0)
             return new PhaseAssignments(assignments, carriedUnassignedSlots, result.UnassignedMatchups, result.PlacementTraces);
 
-        var withExternal = AddExternalOffers(assignments, carriedUnassignedSlots, result.UnassignedMatchups, teams, externalOfferPerWeek, guestAnchors, maxGamesPerWeek, maxExternalOffersPerTeamSeason);
+        var withExternal = AddExternalOffers(
+            assignments,
+            carriedUnassignedSlots,
+            result.UnassignedMatchups,
+            teams,
+            externalOfferPerWeek,
+            guestAnchors,
+            maxGamesPerWeek,
+            maxExternalOffersPerTeamSeason,
+            noDoubleHeaders);
         return new PhaseAssignments(withExternal.Assignments, withExternal.UnassignedSlots, withExternal.UnassignedMatchups, result.PlacementTraces);
     }
 
@@ -1641,7 +1676,8 @@ public class ScheduleWizardFunctions
         IReadOnlyList<SlotInfo> anchoredExternalSlots,
         IReadOnlyList<string> teams,
         int? maxGamesPerWeek,
-        int? maxExternalOffersPerTeamSeason)
+        int? maxExternalOffersPerTeamSeason,
+        bool noDoubleHeaders)
     {
         if (anchoredExternalSlots.Count == 0 || teams.Count == 0)
             return new AnchoredExternalBuildResult(new List<ScheduleAssignment>(), new List<ScheduleAssignment>());
@@ -1656,6 +1692,7 @@ public class ScheduleWizardFunctions
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
         var weekCounts = BuildTeamWeekCounts(existingAssignments);
+        var dateCounts = BuildTeamDateCounts(existingAssignments);
 
         foreach (var existing in existingAssignments)
         {
@@ -1676,7 +1713,18 @@ public class ScheduleWizardFunctions
             .ThenBy(s => s.fieldKey))
         {
             var weekKey = WeekKey(slot.gameDate);
-            var home = PickExternalHomeTeam(teams, totalCounts, homeCounts, externalCounts, weekCounts, weekKey, maxGamesPerWeek, maxExternalOffersPerTeamSeason);
+            var home = PickExternalHomeTeam(
+                teams,
+                totalCounts,
+                homeCounts,
+                externalCounts,
+                weekCounts,
+                dateCounts,
+                weekKey,
+                slot.gameDate,
+                maxGamesPerWeek,
+                maxExternalOffersPerTeamSeason,
+                noDoubleHeaders);
             if (string.IsNullOrWhiteSpace(home))
             {
                 anchoredUnassigned.Add(new ScheduleAssignment(slot.slotId, slot.gameDate, slot.startTime, slot.endTime, slot.fieldKey, "", "", false));
@@ -1687,6 +1735,7 @@ public class ScheduleWizardFunctions
             IncrementTeamCount(homeCounts, home);
             IncrementTeamCount(externalCounts, home);
             IncrementTeamWeekCount(weekCounts, home, weekKey);
+            IncrementTeamDateCount(dateCounts, home, slot.gameDate);
             anchoredAssignments.Add(new ScheduleAssignment(
                 SlotId: slot.slotId,
                 GameDate: slot.gameDate,
@@ -1839,7 +1888,8 @@ public class ScheduleWizardFunctions
         int externalOfferPerWeek,
         GuestAnchorSet? guestAnchors,
         int? maxGamesPerWeek,
-        int? maxExternalOffersPerTeamSeason)
+        int? maxExternalOffersPerTeamSeason,
+        bool noDoubleHeaders)
     {
         if (externalOfferPerWeek <= 0 || unassignedSlots.Count == 0 || teams.Count == 0)
             return new PhaseAssignments(assignments, unassignedSlots, unassignedMatchups);
@@ -1857,6 +1907,7 @@ public class ScheduleWizardFunctions
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
         var weekCounts = BuildTeamWeekCounts(assignments);
+        var dateCounts = BuildTeamDateCounts(assignments);
 
         foreach (var existing in assignments)
         {
@@ -1893,21 +1944,27 @@ public class ScheduleWizardFunctions
             }
 
             var ordered = OrderGuestCandidates(weekGroup.ToList(), guestAnchors);
-            var picks = ordered.Take(remainingCapacity).ToList();
-            var pickIds = new HashSet<string>(picks.Select(p => p.SlotId), StringComparer.OrdinalIgnoreCase);
+            var assignedSlotIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var assignedThisWeek = 0;
 
-            foreach (var slot in weekGroup)
+            foreach (var slot in ordered)
             {
-                if (!pickIds.Contains(slot.SlotId))
-                {
-                    remainingSlots.Add(slot);
-                    continue;
-                }
+                if (assignedThisWeek >= remainingCapacity) break;
 
-                var home = PickExternalHomeTeam(teams, totalCounts, homeCounts, externalCounts, weekCounts, weekGroup.Key, maxGamesPerWeek, maxExternalOffersPerTeamSeason);
+                var home = PickExternalHomeTeam(
+                    teams,
+                    totalCounts,
+                    homeCounts,
+                    externalCounts,
+                    weekCounts,
+                    dateCounts,
+                    weekGroup.Key,
+                    slot.GameDate,
+                    maxGamesPerWeek,
+                    maxExternalOffersPerTeamSeason,
+                    noDoubleHeaders);
                 if (string.IsNullOrWhiteSpace(home))
                 {
-                    remainingSlots.Add(slot);
                     continue;
                 }
 
@@ -1915,12 +1972,23 @@ public class ScheduleWizardFunctions
                 IncrementTeamCount(homeCounts, home);
                 IncrementTeamCount(externalCounts, home);
                 IncrementTeamWeekCount(weekCounts, home, weekGroup.Key);
+                IncrementTeamDateCount(dateCounts, home, slot.GameDate);
                 nextAssignments.Add(slot with
                 {
                     HomeTeamId = home,
                     AwayTeamId = "",
                     IsExternalOffer = true
                 });
+                assignedSlotIds.Add(slot.SlotId);
+                assignedThisWeek += 1;
+            }
+
+            foreach (var slot in weekGroup)
+            {
+                if (!assignedSlotIds.Contains(slot.SlotId))
+                {
+                    remainingSlots.Add(slot);
+                }
             }
         }
 
@@ -1985,13 +2053,17 @@ public class ScheduleWizardFunctions
         Dictionary<string, int> homeCounts,
         Dictionary<string, int> externalCounts,
         Dictionary<string, int> weekCounts,
+        Dictionary<string, int> dateCounts,
         string weekKey,
+        string gameDate,
         int? maxGamesPerWeek,
-        int? maxExternalOffersPerTeamSeason)
+        int? maxExternalOffersPerTeamSeason,
+        bool noDoubleHeaders)
     {
         return teams
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Where(t => CanAssignExternalInWeek(t, weekCounts, weekKey, maxGamesPerWeek))
+            .Where(t => CanAssignExternalOnDate(t, dateCounts, gameDate, noDoubleHeaders))
             .Where(t => !maxExternalOffersPerTeamSeason.HasValue || (externalCounts.TryGetValue(t, out var ext) ? ext : 0) < maxExternalOffersPerTeamSeason.Value)
             // Fill idle teams first so guest slots remove avoidable BYEs before they create extra doubleheaders.
             .OrderBy(t => GetTeamWeekCount(weekCounts, t, weekKey))
@@ -2034,10 +2106,29 @@ public class ScheduleWizardFunctions
         return GetTeamWeekCount(weekCounts, teamId, weekKey) < maxGamesPerWeek.Value;
     }
 
+    private static bool CanAssignExternalOnDate(
+        string teamId,
+        Dictionary<string, int> dateCounts,
+        string gameDate,
+        bool noDoubleHeaders)
+    {
+        if (string.IsNullOrWhiteSpace(teamId)) return false;
+        if (!noDoubleHeaders) return true;
+        if (string.IsNullOrWhiteSpace(gameDate)) return true;
+        return GetTeamDateCount(dateCounts, teamId, gameDate) <= 0;
+    }
+
     private static int GetTeamWeekCount(Dictionary<string, int> counts, string teamId, string weekKey)
     {
         if (string.IsNullOrWhiteSpace(teamId) || string.IsNullOrWhiteSpace(weekKey)) return 0;
         var key = $"{teamId}|{weekKey}";
+        return counts.TryGetValue(key, out var count) ? count : 0;
+    }
+
+    private static int GetTeamDateCount(Dictionary<string, int> counts, string teamId, string gameDate)
+    {
+        if (string.IsNullOrWhiteSpace(teamId) || string.IsNullOrWhiteSpace(gameDate)) return 0;
+        var key = $"{teamId}|{gameDate}";
         return counts.TryGetValue(key, out var count) ? count : 0;
     }
 
@@ -2046,6 +2137,25 @@ public class ScheduleWizardFunctions
         if (string.IsNullOrWhiteSpace(teamId) || string.IsNullOrWhiteSpace(weekKey)) return;
         var key = $"{teamId}|{weekKey}";
         counts[key] = counts.TryGetValue(key, out var value) ? value + 1 : 1;
+    }
+
+    private static void IncrementTeamDateCount(Dictionary<string, int> counts, string teamId, string gameDate)
+    {
+        if (string.IsNullOrWhiteSpace(teamId) || string.IsNullOrWhiteSpace(gameDate)) return;
+        var key = $"{teamId}|{gameDate}";
+        counts[key] = counts.TryGetValue(key, out var value) ? value + 1 : 1;
+    }
+
+    private static Dictionary<string, int> BuildTeamDateCounts(IEnumerable<ScheduleAssignment> assignments)
+    {
+        var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var assignment in assignments ?? Array.Empty<ScheduleAssignment>())
+        {
+            IncrementTeamDateCount(counts, assignment.HomeTeamId, assignment.GameDate);
+            IncrementTeamDateCount(counts, assignment.AwayTeamId, assignment.GameDate);
+        }
+
+        return counts;
     }
 
     private static string WeekKey(string gameDate)

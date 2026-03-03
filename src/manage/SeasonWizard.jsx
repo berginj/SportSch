@@ -39,10 +39,14 @@ const SLOT_TYPE_APPEARANCE = {
 const ISSUE_HINTS = {
   "unassigned-matchups": "Not enough availability slots, or constraints are too tight for the slot pool.",
   "unassigned-slots": "More availability than matchups. These can become extra offers or remain unused.",
-  "double-header": "Not enough slots to spread games across dates. Add slots or relax no-doubleheaders.",
+  "double-header": "A team was scheduled twice on the same date. Open another usable date, or allow doubleheaders if that load is intentional.",
   "double-header-balance": "Doubleheaders are not evenly distributed. Shift slot priorities/times to spread same-day load across teams.",
+  "home-away-balance": "A few teams are carrying a noticeably uneven home/away split.",
+  "idle-gap-balance": "Some teams have longer idle stretches than the rest of the division.",
   "max-games-per-week": "Max games/week is a hard cap. Add slots or widen the season window if assignments are short.",
   "missing-opponent": "A slot is missing an opponent. Check team count or external/guest game settings.",
+  "opponent-repeat-balance": "A few team pairings are repeating more often than the rest of the schedule.",
+  "unused-game-capacity": "Open game-capable slots remain after the schedule was built.",
 };
 const WIZARD_STEPS = [
   {
@@ -2274,10 +2278,24 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     return `Guest assignments ${totalGuestAssignments}. Distribution: ${ordered.join(", ")}`;
   }
 
+  function getPrimaryIssueDetail(issue) {
+    const primary = issue?.details?.primaryViolation;
+    if (primary && typeof primary === "object" && !Array.isArray(primary)) return primary;
+    if (issue?.details && typeof issue.details === "object" && !Array.isArray(issue.details)) return issue.details;
+    return {};
+  }
+
   function buildIssueHint(issue, summary) {
     if (!issue) return "";
     const base = ISSUE_HINTS[issue.ruleId] || "";
     const issuePhase = getIssuePhase(issue);
+    const primaryDetail = getPrimaryIssueDetail(issue);
+    const sampleTeamId = String(primaryDetail?.teamId || "").trim();
+    const sampleGameDate = String(primaryDetail?.gameDate || "").trim();
+    const sampleCollision =
+      sampleTeamId || sampleGameDate
+        ? ` Example: ${sampleTeamId || "A team"}${sampleGameDate ? ` already has a game on ${sampleGameDate}` : " already has a game that day"}.`
+        : "";
     if (!summary) return base;
     if (issue.ruleId === "unassigned-matchups") {
       const phase =
@@ -2293,14 +2311,59 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         return `${base} Bracket finals must be placed after semifinal end times, so add a later championship slot if needed.`;
       }
     }
-    if (issue.ruleId === "double-header" && summary.teamCount && summary.teamCount % 2 === 1) {
-      return `${base} With an odd team count (${summary.teamCount}), keep two guest slots/week tagged Game/Both so the idle team can absorb a guest game before doubleheaders or BYEs stack up.`;
+    if (issue.ruleId === "double-header") {
+      if (summary.teamCount && summary.teamCount % 2 === 1) {
+        return `With an odd team count (${summary.teamCount}), two guest slots/week plus Max games/week at 2 should normally absorb the idle team. A remaining double-header usually means a guest slot still shares a date with an existing game, or one of the exact guest anchor weeks is missing.${sampleCollision}`;
+      }
+      return `${base}${sampleCollision}`;
     }
     if (issue.ruleId === "double-header-balance") {
       const max = Number(issue?.details?.maxDoubleHeaders ?? issue?.details?.max ?? NaN);
       const min = Number(issue?.details?.minDoubleHeaders ?? issue?.details?.min ?? NaN);
       if (Number.isFinite(max) && Number.isFinite(min)) {
         return `${base} Current spread is max ${max} vs min ${min} doubleheaders.`;
+      }
+    }
+    if (issue.ruleId === "home-away-balance") {
+      const offenders = Array.isArray(primaryDetail?.offenders) ? primaryDetail.offenders : [];
+      const worst = offenders[0];
+      const gap = Number(worst?.gap ?? NaN);
+      const teamId = String(worst?.teamId || "").trim();
+      if (teamId && Number.isFinite(gap)) {
+        return `${base} Worst gap: ${teamId} is off by ${gap} home/away result${gap === 1 ? "" : "s"}.`;
+      }
+    }
+    if (issue.ruleId === "idle-gap-balance") {
+      const offenders = Array.isArray(primaryDetail?.offenders) ? primaryDetail.offenders : [];
+      const worst = offenders[0];
+      const extraGapWeeks = Number(worst?.extraGapWeeks ?? NaN);
+      const teamId = String(worst?.teamId || "").trim();
+      if (teamId && Number.isFinite(extraGapWeeks)) {
+        return `${base} Worst idle stretch: ${teamId} has ${extraGapWeeks} extra idle week${extraGapWeeks === 1 ? "" : "s"} beyond the normal cadence.`;
+      }
+    }
+    if (issue.ruleId === "opponent-repeat-balance") {
+      const pairs = Array.isArray(primaryDetail?.pairs) ? primaryDetail.pairs : [];
+      const worst = pairs[0];
+      const pairKey = String(worst?.pairKey || "").trim();
+      const pairCount = Number(worst?.count ?? NaN);
+      if (pairKey && Number.isFinite(pairCount)) {
+        const [teamA, teamB] = pairKey.split("|");
+        if (teamA && teamB) {
+          return `${base} Most repeated pairing is ${teamA} vs ${teamB} (${pairCount} time${pairCount === 1 ? "" : "s"}).`;
+        }
+      }
+    }
+    if (issue.ruleId === "unused-game-capacity") {
+      const unusedCount = Number(primaryDetail?.count ?? NaN);
+      if (Number.isFinite(unusedCount)) {
+        const isBackwardLoaded = String(preview?.constructionStrategy || "")
+          .toLowerCase()
+          .startsWith("backward");
+        if (isBackwardLoaded) {
+          return `${base} ${unusedCount} slot${unusedCount === 1 ? "" : "s"} stayed open. Backward loading intentionally pushes regular games later in the season, so earlier openings often remain unused unless you need more league games.`;
+        }
+        return `${base} ${unusedCount} slot${unusedCount === 1 ? "" : "s"} stayed open and can absorb extra league games or guest use.`;
       }
     }
     return base;
@@ -2326,7 +2389,11 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       notes.push(`Odd team count (${summary.teamCount}) creates one idle team each round; two guest slots/week plus Max games/week at 2 lets guest games absorb that instead of forcing BYEs.`);
     }
     if ((issues || []).some((i) => i.ruleId === "double-header")) {
-      notes.push("Doubleheaders indicate tight slot density or too few usable dates.");
+      if (summary.teamCount % 2 === 1) {
+        notes.push("With odd-team guest capacity reserved first, a remaining double-header usually points to a same-day guest collision or a missing exact guest anchor week, not just a lack of total slots.");
+      } else {
+        notes.push("Doubleheaders indicate tight slot density or too few usable dates.");
+      }
     }
     if ((issues || []).some((i) => i.ruleId === "double-header-balance")) {
       notes.push("Doubleheaders are allowed, but current assignment is uneven across teams.");
@@ -2339,6 +2406,12 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     }
     if ((issues || []).some((i) => i.ruleId === "missing-opponent")) {
       notes.push("Guest games or external offers may be enabled; missing opponents are expected there.");
+    }
+    if (
+      (issues || []).some((i) => i.ruleId === "unused-game-capacity") &&
+      String(preview?.constructionStrategy || "").toLowerCase().startsWith("backward")
+    ) {
+      notes.push("Backward loading intentionally concentrates regular games later in the season, so earlier game-capable slots may remain open.");
     }
     return notes;
   }
