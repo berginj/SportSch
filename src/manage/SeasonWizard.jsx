@@ -4,6 +4,7 @@ import { validateIsoDates } from "../lib/date";
 import { trackEvent } from "../lib/telemetry";
 import CollapsibleSection from "../components/CollapsibleSection";
 import Toast from "../components/Toast";
+import CalendarView from "../components/CalendarView";
 import { useCollapsibleSectionControl } from "../lib/useCollapsibleSectionControl";
 
 const WEEKDAY_OPTIONS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -1005,6 +1006,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [scheduleOptions, setScheduleOptions] = useState([]);
   const [selectedScheduleOption, setSelectedScheduleOption] = useState(null);
   const [generatingOptions, setGeneratingOptions] = useState(false);
+  const [previewCalendarView, setPreviewCalendarView] = useState(false);
   const [loading, setLoading] = useState(false);
   const [repairApplyingId, setRepairApplyingId] = useState("");
   const [selectedRepairProposalId, setSelectedRepairProposalId] = useState("");
