@@ -5,6 +5,7 @@ import { SLOT_STATUS } from "../lib/constants";
 import LeaguePicker from "../components/LeaguePicker";
 import StatusCard from "../components/StatusCard";
 import Toast from "../components/Toast";
+import CalendarView from "../components/CalendarView";
 import { ConfirmDialog, PromptDialog } from "../components/Dialogs";
 import { useConfirmDialog, usePromptDialog } from "../lib/useDialogs";
 import { trackEvent } from "../lib/telemetry";
@@ -139,6 +140,25 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
   const [editConflicts, setEditConflicts] = useState([]);
   const [editCheckingConflicts, setEditCheckingConflicts] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [useNewCalendarView, setUseNewCalendarView] = useState(() => {
+    try {
+      return localStorage.getItem("calendar-use-new-view") === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleCalendarView = () => {
+    setUseNewCalendarView((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("calendar-use-new-view", String(next));
+      } catch {
+        // Ignore localStorage errors
+      }
+      return next;
+    });
+  };
 
   const canPickTeam = isGlobalAdmin || role === "LeagueAdmin";
 
@@ -948,14 +968,38 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
         </div>
 
         <div className="card">
-          <div className="cardTitle">Calendar</div>
+          <div className="row row--between items-center mb-2">
+            <div className="cardTitle" style={{ marginBottom: 0 }}>Calendar</div>
+            <button
+              className="btn btn--ghost"
+              onClick={toggleCalendarView}
+              title={useNewCalendarView ? "Switch to classic list view" : "Switch to compact week card view"}
+            >
+              {useNewCalendarView ? "📋 Classic View" : "📅 Week Cards"}
+            </button>
+          </div>
           {role === "Coach" && !myCoachTeamId ? (
             <div className="callout callout--error">
               Coach actions require a team assignment. Ask a LeagueAdmin to assign your team.
             </div>
           ) : null}
           {timeline.length === 0 ? <div className="muted">No items in this range.</div> : null}
-          <div className="stack">
+
+          {useNewCalendarView ? (
+            <CalendarView
+              slots={slots.filter((s) => !s.isAvailability && matchesSlotType(s.gameType, slotTypeFilter))}
+              events={events}
+              defaultView="week-cards"
+              onSlotClick={openEditSlot}
+              onEventClick={(event) => {
+                if (canDeleteAnyEvent) {
+                  deleteEvent(event.eventId);
+                }
+              }}
+              showViewToggle={true}
+            />
+          ) : (
+            <div className="stack">
             {timeline.map((it) => {
               if (it.kind === "slot") {
                 const slot = it.raw;
@@ -1084,7 +1128,8 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
                 </div>
               );
             })}
-          </div>
+            </div>
+          )}
         </div>
       </div>
 
