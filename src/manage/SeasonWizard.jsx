@@ -2391,6 +2391,47 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     }
   }
 
+  async function submitScheduleFeedback(selectedOption) {
+    try {
+      const selectedSchedule = scheduleOptions.find(o => o.id === selectedOption);
+      if (!selectedSchedule || !selectedSchedule.metrics) return;
+
+      await apiFetch("/api/schedule/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          division,
+          selectedOption,
+          totalOptions: scheduleOptions.length,
+          selectedQuality: selectedSchedule.metrics.overallQuality,
+          selectedMetrics: selectedSchedule.metrics,
+          allOptionsMetrics: scheduleOptions.map(o => ({
+            optionId: o.id,
+            quality: o.metrics?.overallQuality || 0,
+            metrics: o.metrics,
+            wasSelected: o.id === selectedOption
+          })),
+          userComment: "",
+          seasonStart,
+          seasonEnd,
+          teamCount,
+          minGamesPerTeam,
+          constructionStrategy: selectedSchedule.strategy
+        })
+      });
+
+      trackEvent("schedule_feedback_submitted", {
+        leagueId,
+        division,
+        selectedOption,
+        quality: selectedSchedule.metrics.overallQuality
+      });
+    } catch (e) {
+      // Silent failure - don't block user workflow
+      console.error("Failed to submit feedback:", e);
+    }
+  }
+
   async function runPreview() {
     setErr("");
     const dateError = validateIsoDates([
@@ -5727,7 +5768,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                 </button>
                 <button
                   className="btn btn--primary"
-                  onClick={() => {
+                  onClick={async () => {
                     setStep(4);
                     trackEvent("wizard_schedule_option_selected", {
                       leagueId,
@@ -5735,6 +5776,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                       selectedOption: selectedScheduleOption,
                       quality: scheduleOptions.find(o => o.id === selectedScheduleOption)?.metrics?.overallQuality
                     });
+                    // Submit feedback for ML improvement (async, non-blocking)
+                    await submitScheduleFeedback(selectedScheduleOption);
                   }}
                 >
                   Continue with Option {selectedScheduleOption} →

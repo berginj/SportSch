@@ -121,6 +121,15 @@ public class ScheduleWizardFunctions
         double? weight
     );
 
+    public record RequestGameSlot(
+        string? gameDate,
+        string? startTime,
+        string? endTime,
+        string? fieldKey,
+        string? teamId,
+        string? opponentName
+    );
+
     public record GuestAnchorOption(
         string? dayOfWeek,
         string? startTime,
