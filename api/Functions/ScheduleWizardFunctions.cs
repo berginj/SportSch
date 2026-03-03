@@ -94,6 +94,7 @@ public class ScheduleWizardFunctions
         string? noGamesAfterTime,
         List<SlotPlanItem>? slotPlan,
         List<RivalryMatchupOption>? rivalryMatchups,
+        List<RequestGameSlot>? requestGames,
         GuestAnchorOption? guestAnchorPrimary,
         GuestAnchorOption? guestAnchorSecondary,
         bool? resetGeneratedSlotsBeforeApply,
@@ -471,9 +472,16 @@ public class ScheduleWizardFunctions
             var rawSlots = await LoadAvailabilitySlotsAsync(leagueId, division, seasonStart, bracketEnd ?? seasonEnd);
             if (rawSlots.Count == 0)
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "No availability slots found for this division.");
+
+            // Build request game slots (away games at external fields)
+            var requestGameSlots = BuildRequestGameSlots(body.requestGames, teams);
+
             var slotPlanLookup = BuildSlotPlanLookup(body.slotPlan);
             var hasSlotPlan = body.slotPlan is not null && body.slotPlan.Count > 0;
             var allSlots = ApplySlotPlan(rawSlots, slotPlanLookup, hasSlotPlan);
+
+            // Merge request game slots with availability slots
+            allSlots.AddRange(requestGameSlots);
             var totalGameCapableSlots = allSlots.Count(IsGameCapableSlotType);
             var filteredAllSlots = ApplyDateBlackouts(allSlots, blockedRanges);
             var blockedOutSlots = Math.Max(0, allSlots.Count - filteredAllSlots.Count);
@@ -3131,5 +3139,48 @@ public class ScheduleWizardFunctions
         string fieldKey,
         string offeringTeamId,
         string slotType,
-        int? priorityRank);
+        int? priorityRank,
+        bool isRequestGame = false,
+        string? requestGameTeamId = null,
+        string? requestGameOpponentName = null);
+
+    private static List<SlotInfo> BuildRequestGameSlots(List<RequestGameSlot>? requestGames, List<string> teams)
+    {
+        if (requestGames is null || requestGames.Count == 0) return new List<SlotInfo>();
+
+        var result = new List<SlotInfo>();
+        foreach (var rg in requestGames)
+        {
+            var gameDate = (rg.gameDate ?? "").Trim();
+            var startTime = (rg.startTime ?? "").Trim();
+            var endTime = (rg.endTime ?? "").Trim();
+            var fieldKey = (rg.fieldKey ?? "").Trim();
+            var teamId = (rg.teamId ?? "").Trim();
+            var opponentName = (rg.opponentName ?? "").Trim();
+
+            if (string.IsNullOrWhiteSpace(gameDate) || string.IsNullOrWhiteSpace(startTime) ||
+                string.IsNullOrWhiteSpace(endTime) || string.IsNullOrWhiteSpace(fieldKey) ||
+                string.IsNullOrWhiteSpace(teamId))
+                continue;
+
+            if (!DateOnly.TryParseExact(gameDate, "yyyy-MM-dd", out _)) continue;
+            if (!teams.Contains(teamId, StringComparer.OrdinalIgnoreCase)) continue;
+
+            result.Add(new SlotInfo(
+                slotId: Guid.NewGuid().ToString(),
+                gameDate: gameDate,
+                startTime: startTime,
+                endTime: endTime,
+                fieldKey: fieldKey,
+                offeringTeamId: "",
+                slotType: "game",
+                priorityRank: null,
+                isRequestGame: true,
+                requestGameTeamId: teamId,
+                requestGameOpponentName: string.IsNullOrWhiteSpace(opponentName) ? null : opponentName
+            ));
+        }
+
+        return result;
+    }
 }
