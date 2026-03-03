@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { validateIsoDates } from "../lib/date";
 import { trackEvent } from "../lib/telemetry";
@@ -1718,128 +1718,161 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     })();
   }, [leagueId, division]);
 
-  useEffect(() => {
-    if (!leagueId || !division) return;
-    if (!seasonStart || !seasonEnd) return;
-    let cancelled = false;
+  const applyAvailabilityPayload = useCallback((payload) => {
+    const availability = Array.isArray(payload?.availability) ? payload.availability : [];
+    const dayCounts = new Map();
+    const patternCounts = new Map();
+    for (const slot of availability) {
+      const weekday = isoDayShort(slot.gameDate || "");
+      if (weekday) {
+        dayCounts.set(weekday, (dayCounts.get(weekday) || 0) + 1);
+      }
+      const patternKey = `${weekday}|${slot.startTime || ""}|${slot.endTime || ""}|${slot.fieldKey || ""}`;
+      patternCounts.set(patternKey, (patternCounts.get(patternKey) || 0) + 1);
+    }
+
+    let nextSlotPlan = [];
+    setSlotPlan((prev) => {
+      const previousById = new Map((prev || []).map((item) => [item.slotId, item]));
+      nextSlotPlan = availability.map((slot) => {
+        const prior = previousById.get(slot.slotId);
+        const weekday = isoDayShort(slot.gameDate || "");
+        const baseStartTime = slot.startTime || "";
+        const baseEndTime = slot.endTime || "";
+        const basePatternKey = patternKeyFromParts(weekday, baseStartTime, baseEndTime, slot.fieldKey || "");
+        const nextStartTime = prior?.startTime || baseStartTime;
+        const nextEndTime = prior?.endTime || baseEndTime;
+        const allocationSlotType = normalizeSlotType(slot.allocationSlotType || "game");
+        const allocationPriority = normalizePriorityRank(slot.allocationPriorityRank ?? "");
+        const baselinePriority = allocationSlotType === "practice" ? "" : allocationPriority;
+        const nextSlotType = normalizeSlotType(prior?.slotType || allocationSlotType);
+        const nextPriority = normalizePriorityRank(prior?.priorityRank || baselinePriority);
+        return {
+          slotId: slot.slotId,
+          gameDate: slot.gameDate || "",
+          startTime: nextStartTime,
+          endTime: nextEndTime,
+          fieldKey: slot.fieldKey || "",
+          weekday,
+          baseStartTime,
+          baseEndTime,
+          basePatternKey,
+          slotType: nextSlotType,
+          priorityRank: nextSlotType === "practice" ? "" : nextPriority,
+          score: computeSlotScore(slot, weekday, patternCounts, dayCounts),
+        };
+      });
+      return nextSlotPlan;
+    });
+
+    return nextSlotPlan;
+  }, []);
+
+  const loadAvailabilityIntoSlotPlan = useCallback(async ({ forceRefresh = false } = {}) => {
+    if (!leagueId || !division || !seasonStart || !seasonEnd) return null;
+
     const requestId = availabilityRequestIdRef.current + 1;
     availabilityRequestIdRef.current = requestId;
     const planningDateTo = maxIsoDate(seasonEnd, bracketEnd) || seasonEnd;
     const cacheKey = [leagueId, division, seasonStart, seasonEnd, planningDateTo].join("|");
 
-    const applyAvailabilityPayload = (payload) => {
-      if (cancelled || requestId !== availabilityRequestIdRef.current) return false;
-      const availability = Array.isArray(payload?.availability) ? payload.availability : [];
-      const dayCounts = new Map();
-      const patternCounts = new Map();
-      for (const slot of availability) {
-        const weekday = isoDayShort(slot.gameDate || "");
-        if (weekday) {
-          dayCounts.set(weekday, (dayCounts.get(weekday) || 0) + 1);
+    setAvailabilityErr("");
+    setAvailabilityLoading(true);
+    try {
+      if (!forceRefresh) {
+        const cachedPayload = availabilityCacheRef.current.get(cacheKey);
+        if (cachedPayload) {
+          if (requestId !== availabilityRequestIdRef.current) return null;
+          return applyAvailabilityPayload(cachedPayload);
         }
-        const patternKey = `${weekday}|${slot.startTime || ""}|${slot.endTime || ""}|${slot.fieldKey || ""}`;
-        patternCounts.set(patternKey, (patternCounts.get(patternKey) || 0) + 1);
       }
 
-      setSlotPlan((prev) => {
-        const previousById = new Map((prev || []).map((item) => [item.slotId, item]));
-        return availability.map((slot) => {
-          const prior = previousById.get(slot.slotId);
-          const weekday = isoDayShort(slot.gameDate || "");
-          const baseStartTime = slot.startTime || "";
-          const baseEndTime = slot.endTime || "";
-          const basePatternKey = patternKeyFromParts(weekday, baseStartTime, baseEndTime, slot.fieldKey || "");
-          const nextStartTime = prior?.startTime || baseStartTime;
-          const nextEndTime = prior?.endTime || baseEndTime;
-          const allocationSlotType = normalizeSlotType(slot.allocationSlotType || "game");
-          const allocationPriority = normalizePriorityRank(slot.allocationPriorityRank ?? "");
-          const baselinePriority = allocationSlotType === "practice" ? "" : allocationPriority;
-          const nextSlotType = normalizeSlotType(prior?.slotType || allocationSlotType);
-          const nextPriority = normalizePriorityRank(prior?.priorityRank || baselinePriority);
-          return {
-            slotId: slot.slotId,
-            gameDate: slot.gameDate || "",
-            startTime: nextStartTime,
-            endTime: nextEndTime,
-            fieldKey: slot.fieldKey || "",
-            weekday,
-            baseStartTime,
-            baseEndTime,
-            basePatternKey,
-            slotType: nextSlotType,
-            priorityRank: nextSlotType === "practice" ? "" : nextPriority,
-            score: computeSlotScore(slot, weekday, patternCounts, dayCounts),
-          };
+      const list = [];
+      const seenSlotIds = new Set();
+      let continuationToken = "";
+      for (let page = 0; page < 50; page += 1) {
+        const qs = new URLSearchParams();
+        qs.set("division", division);
+        qs.set("dateFrom", seasonStart);
+        qs.set("dateTo", planningDateTo);
+        qs.set("status", "Open");
+        qs.set("pageSize", "500");
+        if (continuationToken) qs.set("continuationToken", continuationToken);
+
+        const data = await apiFetch(`/api/slots?${qs.toString()}`);
+        const pageItems = extractSlotItems(data);
+        for (const slot of pageItems) {
+          const slotId = String(slot?.slotId || "").trim();
+          if (!slotId || seenSlotIds.has(slotId)) continue;
+          seenSlotIds.add(slotId);
+          list.push(slot);
+        }
+
+        const nextToken = extractContinuationToken(data);
+        if (!nextToken || pageItems.length === 0) break;
+        continuationToken = nextToken;
+      }
+
+      const availability = list
+        .filter((s) => s.isAvailability)
+        .sort((a, b) => {
+          const ad = `${a.gameDate || ""}|${a.startTime || ""}|${a.fieldKey || ""}|${a.slotId || ""}`;
+          const bd = `${b.gameDate || ""}|${b.startTime || ""}|${b.fieldKey || ""}|${b.slotId || ""}`;
+          return ad.localeCompare(bd);
         });
-      });
-      return true;
+
+      const payload = { availability };
+      availabilityCacheRef.current.set(cacheKey, payload);
+      if (requestId !== availabilityRequestIdRef.current) return null;
+      return applyAvailabilityPayload(payload);
+    } catch (e) {
+      if (requestId !== availabilityRequestIdRef.current) return null;
+      setAvailabilityErr(normalizeRequestErrorMessage(e, "Failed to load availability slots."));
+      setSlotPlan([]);
+      setGuestAnchorPrimarySlotId("");
+      setGuestAnchorSecondarySlotId("");
+      return null;
+    } finally {
+      if (requestId === availabilityRequestIdRef.current) {
+        setAvailabilityLoading(false);
+      }
+    }
+  }, [applyAvailabilityPayload, bracketEnd, division, leagueId, seasonEnd, seasonStart]);
+
+  async function resetGeneratedSlotsForRerun() {
+    if (!resetGeneratedSlotsBeforeApply) return undefined;
+
+    const resetPayload = {
+      division,
+      seasonStart,
+      seasonEnd,
+      bracketEnd: bracketEnd || undefined,
     };
+    const result = await apiFetch("/api/schedule/wizard/reset-generated", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(resetPayload),
+    });
 
-    (async () => {
-      setAvailabilityErr("");
-      setAvailabilityLoading(true);
-      const cachedPayload = availabilityCacheRef.current.get(cacheKey);
-      if (cachedPayload) {
-        applyAvailabilityPayload(cachedPayload);
-        if (!cancelled && requestId === availabilityRequestIdRef.current) {
-          setAvailabilityLoading(false);
-        }
-        return;
-      }
-      try {
-        const list = [];
-        const seenSlotIds = new Set();
-        let continuationToken = "";
-        for (let page = 0; page < 50; page += 1) {
-          const qs = new URLSearchParams();
-          qs.set("division", division);
-          qs.set("dateFrom", seasonStart);
-          qs.set("dateTo", planningDateTo);
-          qs.set("status", "Open");
-          qs.set("pageSize", "500");
-          if (continuationToken) qs.set("continuationToken", continuationToken);
+    availabilityCacheRef.current.clear();
+    const refreshedSlotPlan = await loadAvailabilityIntoSlotPlan({ forceRefresh: true });
+    if (!Array.isArray(refreshedSlotPlan)) {
+      throw new Error("Reset completed, but the refreshed availability could not be loaded. Try again.");
+    }
+    setPreview(null);
+    setToast({
+      tone: "success",
+      message: `Reset ${Number(result?.resetCount || 0)} prior wizard-generated slot${Number(result?.resetCount || 0) === 1 ? "" : "s"} and reloaded availability.`,
+    });
+    return refreshedSlotPlan;
+  }
 
-          const data = await apiFetch(`/api/slots?${qs.toString()}`);
-          const pageItems = extractSlotItems(data);
-          for (const slot of pageItems) {
-            const slotId = String(slot?.slotId || "").trim();
-            if (!slotId || seenSlotIds.has(slotId)) continue;
-            seenSlotIds.add(slotId);
-            list.push(slot);
-          }
-
-          const nextToken = extractContinuationToken(data);
-          if (!nextToken || pageItems.length === 0) break;
-          continuationToken = nextToken;
-        }
-
-        const availability = list
-          .filter((s) => s.isAvailability)
-          .sort((a, b) => {
-            const ad = `${a.gameDate || ""}|${a.startTime || ""}|${a.fieldKey || ""}|${a.slotId || ""}`;
-            const bd = `${b.gameDate || ""}|${b.startTime || ""}|${b.fieldKey || ""}|${b.slotId || ""}`;
-            return ad.localeCompare(bd);
-          });
-
-        const payload = { availability };
-        availabilityCacheRef.current.set(cacheKey, payload);
-        applyAvailabilityPayload(payload);
-      } catch (e) {
-        if (cancelled || requestId !== availabilityRequestIdRef.current) return;
-        setAvailabilityErr(normalizeRequestErrorMessage(e, "Failed to load availability slots."));
-        setSlotPlan([]);
-        setGuestAnchorPrimarySlotId("");
-        setGuestAnchorSecondarySlotId("");
-      } finally {
-        if (!cancelled && requestId === availabilityRequestIdRef.current) {
-          setAvailabilityLoading(false);
-        }
-      }
-    })();
+  useEffect(() => {
+    loadAvailabilityIntoSlotPlan();
     return () => {
-      cancelled = true;
+      availabilityRequestIdRef.current += 1;
     };
-  }, [leagueId, division, seasonStart, seasonEnd, bracketEnd]);
+  }, [loadAvailabilityIntoSlotPlan]);
 
   useEffect(() => {
     const allowed = new Set(
@@ -2005,8 +2038,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     });
   }
 
-  function buildWizardPayload() {
-    const slotPlanPayload = slotPlan.map((slot) => {
+  function buildWizardPayload(slotPlanOverride) {
+    const sourceSlotPlan = Array.isArray(slotPlanOverride) ? slotPlanOverride : slotPlan;
+    const slotPlanPayload = sourceSlotPlan.map((slot) => {
       const rank = Number(slot.priorityRank);
       return {
         slotId: slot.slotId,
@@ -2102,7 +2136,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     }
     setLoading(true);
     try {
-      const payload = buildWizardPayload();
+      const refreshedSlotPlan = await resetGeneratedSlotsForRerun();
+      const payload = buildWizardPayload(refreshedSlotPlan);
       const data = await apiFetch("/api/schedule/wizard/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2128,8 +2163,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       "This action:\n" +
       "• Replaces all current slot assignments\n" +
       (resetGeneratedSlotsBeforeApply
-        ? "• Resets prior wizard-generated slots in this season window back to availability first\n"
-        : "• Leaves prior wizard-generated slots untouched before writing the new assignments\n") +
+        ? "• Resets prior wizard-generated slots in this season window before previewing and applying\n"
+        : "• Leaves prior wizard-generated slots untouched before previewing and applying\n") +
       "• Does NOT remove recurring allocations or field blackouts\n" +
       "• Cannot be undone\n" +
       "• May still require allocation cleanup if you need a different underlying slot pool\n\n" +
@@ -2162,7 +2197,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     }
     setLoading(true);
     try {
-      const payload = buildWizardPayload();
+      const refreshedSlotPlan = await resetGeneratedSlotsForRerun();
+      const payload = buildWizardPayload(refreshedSlotPlan);
       await apiFetch("/api/schedule/wizard/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -4224,12 +4260,12 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         {resetGeneratedSlotsBeforeApply ? (
           <>
             {" "}
-            It will also reset prior <strong>wizard-generated</strong> rows in this season window back to availability before applying the new run.
+            It will also reset prior <strong>wizard-generated</strong> rows in this season window before previewing and applying the new run.
           </>
         ) : (
           <>
             {" "}
-            It will <strong>not</strong> reset prior wizard-generated rows before applying.
+            It will <strong>not</strong> reset prior wizard-generated rows before previewing or applying.
           </>
         )}{" "}
         It does <strong>not</strong> clear recurring allocations or field blackouts. If you need a different underlying slot pool, clear or edit availability first, then rerun the wizard.
@@ -4239,7 +4275,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
             checked={resetGeneratedSlotsBeforeApply}
             onChange={(e) => setResetGeneratedSlotsBeforeApply(e.target.checked)}
           />
-          Reset prior wizard-generated slots in this season window before apply
+          Reset prior wizard-generated slots in this season window before preview and apply
         </label>
       </div>
 

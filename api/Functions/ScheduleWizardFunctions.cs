@@ -23,6 +23,54 @@ public class ScheduleWizardFunctions
         _log = lf.CreateLogger<ScheduleWizardFunctions>();
     }
 
+    [Function("ResetGeneratedScheduleWizardSlots")]
+    public async Task<HttpResponseData> ResetGenerated(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "schedule/wizard/reset-generated")] HttpRequestData req)
+    {
+        try
+        {
+            var leagueId = ApiGuards.RequireLeagueId(req);
+            var me = IdentityUtil.GetMe(req);
+            await ApiGuards.RequireLeagueAdminAsync(_svc, me.UserId, leagueId);
+
+            var body = await HttpUtil.ReadJsonAsync<WizardRequest>(req);
+            if (body is null)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Invalid JSON body");
+
+            var division = (body.division ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(division))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "division is required");
+            ApiGuards.EnsureValidTableKeyPart("division", division);
+
+            var seasonStart = RequireDate(body.seasonStart, "seasonStart");
+            var seasonEnd = RequireDate(body.seasonEnd, "seasonEnd");
+            if (seasonStart > seasonEnd)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "seasonStart must be before seasonEnd.");
+
+            var bracketEnd = OptionalDate(body.bracketEnd);
+            var resetCount = await ResetGeneratedSlotsBeforeApplyAsync(leagueId, division, seasonStart, bracketEnd ?? seasonEnd);
+            return ApiResponses.Ok(req, new
+            {
+                division,
+                resetCount,
+                dateFrom = seasonStart.ToString("yyyy-MM-dd"),
+                dateTo = (bracketEnd ?? seasonEnd).ToString("yyyy-MM-dd")
+            });
+        }
+        catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Schedule wizard generated-slot reset failed");
+            var requestId = req.FunctionContext.InvocationId.ToString();
+            return ApiResponses.Error(
+                req,
+                HttpStatusCode.InternalServerError,
+                ErrorCodes.INTERNAL_ERROR,
+                "An unexpected error occurred",
+                new { requestId, exception = ex.GetType().Name, detail = ex.Message });
+        }
+    }
+
     public record WizardRequest(
         string? division,
         string? seasonStart,
@@ -2833,13 +2881,14 @@ public class ScheduleWizardFunctions
         }
     }
 
-    private async Task ResetGeneratedSlotsBeforeApplyAsync(string leagueId, string division, DateOnly dateFrom, DateOnly dateTo)
+    private async Task<int> ResetGeneratedSlotsBeforeApplyAsync(string leagueId, string division, DateOnly dateFrom, DateOnly dateTo)
     {
         var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Slots);
         var pk = Constants.Pk.Slots(leagueId, division);
         var filter = $"PartitionKey eq '{ApiGuards.EscapeOData(pk)}'";
         filter += $" and GameDate ge '{ApiGuards.EscapeOData(dateFrom.ToString("yyyy-MM-dd"))}'";
         filter += $" and GameDate le '{ApiGuards.EscapeOData(dateTo.ToString("yyyy-MM-dd"))}'";
+        var resetCount = 0;
 
         await foreach (var slot in table.QueryAsync<TableEntity>(filter: filter))
         {
@@ -2848,7 +2897,10 @@ public class ScheduleWizardFunctions
 
             SlotEntityUtil.ResetSchedulerSlotToAvailability(slot, DateTimeOffset.UtcNow);
             await table.UpdateEntityAsync(slot, slot.ETag, TableUpdateMode.Merge);
+            resetCount += 1;
         }
+
+        return resetCount;
     }
 
     private async Task SaveWizardRunAsync(string leagueId, string division, string runId, string createdBy, WizardSummary summary, WizardRequest request)

@@ -425,6 +425,9 @@ function installApiMock({ previewResponse = BASE_PREVIEW, previewError = null, s
       }
       return Promise.resolve(previewResponse);
     }
+    if (url === "/api/schedule/wizard/reset-generated") {
+      return Promise.resolve({ resetCount: 1 });
+    }
     if (url === "/api/schedule/wizard/apply") {
       return Promise.resolve({ ok: true });
     }
@@ -488,15 +491,28 @@ describe("SeasonWizard", () => {
     await renderWizard();
 
     expect(screen.getByText(/OVERWRITE all existing game assignments/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Reset prior wizard-generated slots in this season window before apply/i)).toBeChecked();
-    expect(document.body.textContent).toContain("reset prior wizard-generated rows in this season window back to availability before applying the new run");
+    expect(screen.getByLabelText(/Reset prior wizard-generated slots in this season window before preview and apply/i)).toBeChecked();
+    expect(document.body.textContent).toContain("reset prior wizard-generated rows in this season window before previewing and applying the new run");
     expect(document.body.textContent).toContain("does not clear recurring allocations or field blackouts");
+  });
+
+  it("resets prior wizard-generated slots before preview when enabled", async () => {
+    await advanceToRules();
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview schedule" }));
+
+    await waitFor(() => expect(screen.getByText("Preview overview")).toBeInTheDocument());
+
+    const resetCallIndex = api.apiFetch.mock.calls.findIndex(([path]) => path === "/api/schedule/wizard/reset-generated");
+    const previewCallIndex = api.apiFetch.mock.calls.findIndex(([path]) => path === "/api/schedule/wizard/preview");
+    expect(resetCallIndex).toBeGreaterThanOrEqual(0);
+    expect(previewCallIndex).toBeGreaterThan(resetCallIndex);
   });
 
   it("sends the reset-before-apply toggle with the apply request", async () => {
     await advanceToPreview();
 
-    const resetToggle = screen.getByLabelText(/Reset prior wizard-generated slots in this season window before apply/i);
+    const resetToggle = screen.getByLabelText(/Reset prior wizard-generated slots in this season window before preview and apply/i);
     fireEvent.click(resetToggle);
 
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
