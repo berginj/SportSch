@@ -1002,6 +1002,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
   const [step, setStep] = useState(0);
   const [preview, setPreview] = useState(null);
+  const [scheduleOptions, setScheduleOptions] = useState([]);
+  const [selectedScheduleOption, setSelectedScheduleOption] = useState(null);
+  const [generatingOptions, setGeneratingOptions] = useState(false);
   const [loading, setLoading] = useState(false);
   const [repairApplyingId, setRepairApplyingId] = useState("");
   const [selectedRepairProposalId, setSelectedRepairProposalId] = useState("");
@@ -2245,6 +2248,144 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       setFeasibility(null);
     } finally {
       setFeasibilityLoading(false);
+    }
+  }
+
+  function calculateScheduleMetrics(previewResult) {
+    const summary = previewResult.summary?.regularSeason || {};
+    const assignments = previewResult.assignments || [];
+    const regularAssignments = assignments.filter(a => a.phase === "Regular Season");
+
+    // Team load spread (lower is better - measures max - min games per team)
+    const gamesByTeam = new Map();
+    regularAssignments.forEach(a => {
+      if (a.homeTeamId) gamesByTeam.set(a.homeTeamId, (gamesByTeam.get(a.homeTeamId) || 0) + 1);
+      if (a.awayTeamId) gamesByTeam.set(a.awayTeamId, (gamesByTeam.get(a.awayTeamId) || 0) + 1);
+    });
+    const teamCounts = Array.from(gamesByTeam.values());
+    const teamLoadSpread = teamCounts.length > 0 ? Math.max(...teamCounts) - Math.min(...teamCounts) : 0;
+
+    // Pair diversity (higher is better - % of pairs that don't repeat)
+    const pairCounts = new Map();
+    regularAssignments.forEach(a => {
+      if (!a.homeTeamId || !a.awayTeamId) return;
+      const key = [a.homeTeamId, a.awayTeamId].sort().join("|");
+      pairCounts.set(key, (pairCounts.get(key) || 0) + 1);
+    });
+    const pairValues = Array.from(pairCounts.values());
+    const uniquePairs = pairValues.filter(c => c === 1).length;
+    const pairDiversity = pairValues.length > 0 ? (uniquePairs / pairValues.length) * 100 : 100;
+
+    // Date spread (lower stddev is better - games evenly distributed)
+    const weekCounts = new Map();
+    regularAssignments.forEach(a => {
+      const weekKey = weekStartIso(a.gameDate);
+      weekCounts.set(weekKey, (weekCounts.get(weekKey) || 0) + 1);
+    });
+    const weekValues = Array.from(weekCounts.values());
+    const weekAvg = weekValues.length > 0 ? weekValues.reduce((a,b) => a + b, 0) / weekValues.length : 0;
+    const weekVariance = weekValues.length > 0 ? weekValues.reduce((sum, v) => sum + Math.pow(v - weekAvg, 2), 0) / weekValues.length : 0;
+    const dateSpreadStdDev = Math.sqrt(weekVariance);
+
+    // Guest game balance
+    const guestGamesByTeam = new Map();
+    regularAssignments.filter(a => a.isExternalOffer).forEach(a => {
+      if (a.homeTeamId) guestGamesByTeam.set(a.homeTeamId, (guestGamesByTeam.get(a.homeTeamId) || 0) + 1);
+    });
+    const guestCounts = Array.from(guestGamesByTeam.values());
+    const guestSpread = guestCounts.length > 0 ? Math.max(...guestCounts) - Math.min(...guestCounts) : 0;
+
+    // Overall quality score (0-100)
+    let quality = 100;
+    quality -= (summary.unassignedMatchups || 0) * 10;
+    quality -= (previewResult.ruleHealth?.hardViolationCount || 0) * 15;
+    quality -= teamLoadSpread * 5;
+    quality -= (100 - pairDiversity);
+    quality -= dateSpreadStdDev * 3;
+    quality -= guestSpread * 5;
+    quality -= (previewResult.issues?.filter(i => i.ruleId === "double-header").length || 0) * 2;
+    quality += (previewResult.ruleHealth?.softScore || 0) / 10;
+
+    return {
+      unassignedMatchups: summary.unassignedMatchups || 0,
+      guestGamesScheduled: regularAssignments.filter(a => a.isExternalOffer).length,
+      hardIssues: previewResult.ruleHealth?.hardViolationCount || 0,
+      softScore: previewResult.ruleHealth?.softScore || 0,
+      doubleheaders: previewResult.issues?.filter(i => i.ruleId === "double-header").length || 0,
+      teamLoadSpread,
+      pairDiversity,
+      dateSpreadStdDev,
+      guestSpread,
+      overallQuality: Math.max(0, Math.min(100, Math.round(quality)))
+    };
+  }
+
+  async function generateScheduleOptions() {
+    setErr("");
+    setGeneratingOptions(true);
+    setScheduleOptions([]);
+    setSelectedScheduleOption(null);
+
+    const basePayload = buildWizardPayload();
+    const options = [];
+
+    // Generate 4 schedules with different strategies
+    for (let i = 0; i < 4; i++) {
+      const payload = {
+        ...basePayload,
+        seed: Date.now() + (i * 1000),
+        constructionStrategy: i % 2 === 0 ? "backward_greedy_v1" : "forward_greedy_v1"
+      };
+
+      try {
+        const result = await apiFetch("/api/schedule/wizard/preview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        const metrics = calculateScheduleMetrics(result);
+
+        options.push({
+          id: i + 1,
+          seed: payload.seed,
+          strategy: payload.constructionStrategy,
+          preview: result,
+          metrics
+        });
+      } catch (e) {
+        options.push({
+          id: i + 1,
+          error: e?.message || "Generation failed",
+          metrics: null
+        });
+      }
+    }
+
+    setScheduleOptions(options);
+    setGeneratingOptions(false);
+
+    if (options.length > 0) {
+      // Auto-select best option
+      const validOptions = options.filter(o => !o.error && o.metrics);
+      if (validOptions.length > 0) {
+        const best = validOptions.reduce((a, b) =>
+          (a.metrics.overallQuality > b.metrics.overallQuality) ? a : b
+        );
+        setSelectedScheduleOption(best.id);
+      }
+      setToast({
+        tone: "success",
+        message: `Generated ${options.length} schedule options. Review and select the best one.`
+      });
+    }
+  }
+
+  function selectScheduleOption(optionId) {
+    setSelectedScheduleOption(optionId);
+    const option = scheduleOptions.find(o => o.id === optionId);
+    if (option && option.preview) {
+      setPreview(option.preview);
     }
   }
 
@@ -5443,11 +5584,161 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
               className="btn btn--primary"
               type="button"
               onClick={runPreview}
-              disabled={loading || !!rulesError}
-              title={rulesError || 'Generate a preview to unlock the final step.'}
+              disabled={loading || generatingOptions || !!rulesError}
+              title={rulesError || 'Generate a single preview schedule'}
             >
               {loading ? "Previewing..." : "Preview schedule"}
             </button>
+            <button
+              className="btn btn--ghost"
+              type="button"
+              onClick={generateScheduleOptions}
+              disabled={loading || generatingOptions || !!rulesError}
+              title={rulesError || 'Generate 4 different schedules and compare them'}
+            >
+              {generatingOptions ? "Generating..." : "🔄 Generate 4 Options"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {scheduleOptions.length > 0 && step === 3 ? (
+        <div className="card">
+          <div className="card__header">
+            <div className="h3">Schedule Comparison - Pick Your Favorite</div>
+            <div className="subtle">Generated {scheduleOptions.length} different schedules. Review metrics and select the best one.</div>
+          </div>
+          <div className="card__body">
+            <div className="row row--wrap gap-3">
+              {scheduleOptions.map((option) => {
+                const isSelected = selectedScheduleOption === option.id;
+                const isBest = option.metrics && scheduleOptions.filter(o => o.metrics).every(o => option.metrics.overallQuality >= (o.metrics?.overallQuality || 0));
+
+                return (
+                  <div
+                    key={option.id}
+                    className={`schedule-option ${isSelected ? "schedule-option--selected" : ""}`}
+                    style={{
+                      flex: "1 1 calc(50% - 1rem)",
+                      minWidth: "300px",
+                      border: isSelected ? "2px solid #3b82f6" : "1px solid #e5e7eb",
+                      borderRadius: "8px",
+                      padding: "1rem",
+                      background: isSelected ? "#eff6ff" : "white",
+                      cursor: "pointer"
+                    }}
+                    onClick={() => selectScheduleOption(option.id)}
+                  >
+                    <div className="row row--between items-center mb-2">
+                      <div className="font-bold">Option {option.id}</div>
+                      {isBest && option.metrics && (
+                        <span style={{ background: "#fef3c7", color: "#92400e", padding: "2px 8px", borderRadius: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
+                          ⭐ Recommended
+                        </span>
+                      )}
+                    </div>
+
+                    {option.error ? (
+                      <div className="callout callout--error">Failed: {option.error}</div>
+                    ) : option.metrics ? (
+                      <>
+                        <div className="row row--between mb-2">
+                          <span className="subtle">Quality Score</span>
+                          <span className="font-bold" style={{ fontSize: "1.2rem", color: option.metrics.overallQuality >= 80 ? "#059669" : option.metrics.overallQuality >= 60 ? "#3b82f6" : "#f59e0b" }}>
+                            {option.metrics.overallQuality}/100
+                          </span>
+                        </div>
+
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", fontSize: "0.85rem" }}>
+                          <div>
+                            <div className="subtle">Unscheduled</div>
+                            <div className={option.metrics.unassignedMatchups === 0 ? "font-bold" : "font-bold" } style={{ color: option.metrics.unassignedMatchups === 0 ? "#059669" : "#dc2626" }}>
+                              {option.metrics.unassignedMatchups}
+                            </div>
+                          </div>
+
+                          <div>
+                            <div className="subtle">Guest Games</div>
+                            <div className="font-bold">{option.metrics.guestGamesScheduled}</div>
+                          </div>
+
+                          <div>
+                            <div className="subtle">Hard Issues</div>
+                            <div className="font-bold" style={{ color: option.metrics.hardIssues === 0 ? "#059669" : "#dc2626" }}>
+                              {option.metrics.hardIssues}
+                            </div>
+                          </div>
+
+                          <div>
+                            <div className="subtle">Doubleheaders</div>
+                            <div className="font-bold">{option.metrics.doubleheaders}</div>
+                          </div>
+
+                          <div>
+                            <div className="subtle">Team Balance</div>
+                            <div className="font-bold" style={{ color: option.metrics.teamLoadSpread <= 1 ? "#059669" : "#f59e0b" }}>
+                              {option.metrics.teamLoadSpread} spread
+                            </div>
+                          </div>
+
+                          <div>
+                            <div className="subtle">Pair Diversity</div>
+                            <div className="font-bold">{option.metrics.pairDiversity.toFixed(0)}%</div>
+                          </div>
+
+                          <div>
+                            <div className="subtle">Guest Balance</div>
+                            <div className="font-bold" style={{ color: option.metrics.guestSpread === 0 ? "#059669" : "#f59e0b" }}>
+                              {option.metrics.guestSpread} spread
+                            </div>
+                          </div>
+
+                          <div>
+                            <div className="subtle">Date Spread</div>
+                            <div className="font-bold">{option.metrics.dateSpreadStdDev.toFixed(1)} σ</div>
+                          </div>
+                        </div>
+
+                        <button
+                          className={`btn ${isSelected ? "btn--primary" : "btn--ghost"} mt-3`}
+                          style={{ width: "100%" }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            selectScheduleOption(option.id);
+                          }}
+                        >
+                          {isSelected ? "✓ Selected" : "Select This Option"}
+                        </button>
+                      </>
+                    ) : (
+                      <div className="subtle">Loading...</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {selectedScheduleOption && (
+              <div className="row row--end gap-2 mt-3">
+                <button className="btn btn--ghost" onClick={() => setScheduleOptions([])}>
+                  Cancel Comparison
+                </button>
+                <button
+                  className="btn btn--primary"
+                  onClick={() => {
+                    setStep(4);
+                    trackEvent("wizard_schedule_option_selected", {
+                      leagueId,
+                      division,
+                      selectedOption: selectedScheduleOption,
+                      quality: scheduleOptions.find(o => o.id === selectedScheduleOption)?.metrics?.overallQuality
+                    });
+                  }}
+                >
+                  Continue with Option {selectedScheduleOption} →
+                </button>
+              </div>
+            )}
           </div>
         </div>
       ) : null}

@@ -563,6 +563,31 @@ public class ScheduleWizardFunctions
                 {
                     warnings.Add(new { code = "GUEST_GAMES_INCOMPLETE", message = "Not every team has a guest game offer yet." });
                 }
+
+                // Check guest game balance across teams (Little League requirement: evenly spread)
+                var guestGamesByTeam = teams.ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
+                foreach (var ext in externalAssignments)
+                {
+                    if (!string.IsNullOrWhiteSpace(ext.HomeTeamId))
+                        guestGamesByTeam[ext.HomeTeamId] = guestGamesByTeam.GetValueOrDefault(ext.HomeTeamId) + 1;
+                }
+
+                var guestCounts = guestGamesByTeam.Values.ToList();
+                if (guestCounts.Count > 0)
+                {
+                    var maxGuest = guestCounts.Max();
+                    var minGuest = guestCounts.Min();
+                    var guestSpread = maxGuest - minGuest;
+
+                    if (guestSpread > 1)  // Spread greater than 1 is imbalanced
+                    {
+                        warnings.Add(new {
+                            code = "GUEST_GAMES_IMBALANCED",
+                            message = $"Guest games unevenly distributed across teams (max: {maxGuest}, min: {minGuest}, spread: {guestSpread}). " +
+                                     $"For even balance, all teams should have {minGuest}-{minGuest + 1} guest games each."
+                        });
+                    }
+                }
             }
 
             var validationSummary = new ScheduleSummary(
