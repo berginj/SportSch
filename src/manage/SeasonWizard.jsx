@@ -1144,6 +1144,65 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     [rivalryMatchups]
   );
 
+  const requestGameIssues = useMemo(() => {
+    const issues = [];
+    const seen = new Map();
+
+    (requestGames || []).forEach((rg, idx) => {
+      const prefix = `Request game ${idx + 1}:`;
+
+      if (!rg.gameDate) {
+        issues.push(`${prefix} Date required`);
+      } else if (!isIsoDate(rg.gameDate)) {
+        issues.push(`${prefix} Invalid date format`);
+      } else {
+        if (seasonStart && rg.gameDate < seasonStart) {
+          issues.push(`${prefix} Date before season start`);
+        }
+        if (seasonEnd && rg.gameDate > seasonEnd) {
+          issues.push(`${prefix} Date after season end`);
+        }
+
+        if (rg.teamId) {
+          const key = `${rg.teamId}|${rg.gameDate}`;
+          if (seen.has(key)) {
+            issues.push(`${prefix} Duplicate (same team, same date)`);
+          }
+          seen.set(key, idx);
+        }
+      }
+
+      if (!rg.startTime || !rg.endTime) {
+        issues.push(`${prefix} Time required`);
+      } else {
+        const startMin = parseMinutes(rg.startTime);
+        const endMin = parseMinutes(rg.endTime);
+        if (startMin == null || endMin == null) {
+          issues.push(`${prefix} Invalid time format`);
+        } else if (startMin >= endMin) {
+          issues.push(`${prefix} End must be after start`);
+        }
+      }
+
+      if (!rg.fieldKey) {
+        issues.push(`${prefix} Field required`);
+      }
+
+      if (!rg.teamId) {
+        issues.push(`${prefix} Team required`);
+      } else {
+        const teamExists = normalizedDivisionTeams.some(t =>
+          String(t.teamId).toLowerCase() === String(rg.teamId).toLowerCase()
+        );
+        if (!teamExists) {
+          issues.push(`${prefix} Team not found in division`);
+        }
+      }
+    });
+
+    return issues;
+  }, [requestGames, seasonStart, seasonEnd, normalizedDivisionTeams]);
+
   const parsedNoGamesOnDates = useMemo(
     () => parseNoGamesDateText(noGamesOnDatesText),
     [noGamesOnDatesText]
