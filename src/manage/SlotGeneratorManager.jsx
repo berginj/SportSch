@@ -1186,11 +1186,11 @@ export default function SlotGeneratorManager({ leagueId }) {
               {availWeekdayColumns.map((day) => {
                 const dayPatterns = availSlotPatterns.filter((pattern) => pattern.weekday === day);
                 return (
-                  <div key={day} className="card" style={{ border: "1px solid #cbd5e1" }}>
-                    <div className="card__header" style={{ paddingBottom: "0.25rem" }}>
+                  <div key={day} className="card seasonWeekColumn">
+                    <div className="card__header seasonWeekColumn__header">
                       <div className="h4">{day}</div>
                     </div>
-                    <div className="card__body stack gap-2" style={{ paddingTop: 0 }}>
+                    <div className="card__body stack gap-2 seasonWeekColumn__body">
                       {!dayPatterns.length ? (
                         <div className="subtle">No recurring patterns</div>
                       ) : (
@@ -1203,17 +1203,16 @@ export default function SlotGeneratorManager({ leagueId }) {
                           const isExpanded = availExpandedPatternKey === pattern.key;
                           const isPatternBusy =
                             availPatternSavingKey === pattern.key || availPatternRemovingKey === pattern.key;
+                          const patternToneClass = pattern.interruptionCount > 0
+                            ? "availabilityPatternCard--warning"
+                            : "availabilityPatternCard--steady";
                           return (
                             <div
                               key={pattern.key}
-                              className="callout"
-                              style={{
-                                marginBottom: 0,
-                                borderLeft: pattern.interruptionCount > 0 ? "6px solid #c2410c" : "6px solid #0f766e",
-                              }}
+                              className={`callout availabilityPatternCard ${patternToneClass}`}
                             >
-                              <div className="row row--between gap-2">
-                                <div>
+                              <div className="row row--between gap-2 availabilityPatternCard__top">
+                                <div className="availabilityPatternCard__time">
                                   <b>{pattern.startTime}-{pattern.endTime}</b>
                                 </div>
                                 <div className="row row--wrap gap-1">
@@ -1222,8 +1221,13 @@ export default function SlotGeneratorManager({ leagueId }) {
                                   {pattern.durationMinutes ? <span className="pill">{pattern.durationMinutes} min</span> : null}
                                 </div>
                               </div>
-                              <div className="subtle">{pattern.fieldLabel}</div>
-                              <div className="subtle">Division: {pattern.division || "-"}</div>
+                              <div className="availabilityPatternCard__meta">
+                                <div className="subtle">{pattern.fieldLabel}</div>
+                                <div className="subtle">Division: {pattern.division || "-"}</div>
+                                <div className="subtle">
+                                  Span: {pattern.firstDate || "-"} to {pattern.lastDate || "-"}
+                                </div>
+                              </div>
                               <div className="grid2 mt-2">
                                 <label>
                                   Start time
@@ -1263,7 +1267,7 @@ export default function SlotGeneratorManager({ leagueId }) {
                               </div>
                               <div className="row row--wrap gap-2 mt-2">
                                 <button
-                                  className="btn btn--primary"
+                                  className="btn btn--primary btn--sm"
                                   type="button"
                                   onClick={() => saveAvailabilityPattern(pattern)}
                                   disabled={isPatternBusy}
@@ -1271,7 +1275,7 @@ export default function SlotGeneratorManager({ leagueId }) {
                                   {availPatternSavingKey === pattern.key ? "Saving..." : "Save recurring changes"}
                                 </button>
                                 <button
-                                  className="btn btn--danger"
+                                  className="btn btn--danger btn--sm"
                                   type="button"
                                   onClick={() => removeAvailabilityPattern(pattern)}
                                   disabled={isPatternBusy}
@@ -1279,7 +1283,7 @@ export default function SlotGeneratorManager({ leagueId }) {
                                   {availPatternRemovingKey === pattern.key ? "Removing..." : "Remove recurring pattern"}
                                 </button>
                                 <button
-                                  className="btn btn--ghost"
+                                  className="btn btn--ghost btn--sm"
                                   type="button"
                                   onClick={() => setAvailExpandedPatternKey(isExpanded ? "" : pattern.key)}
                                   disabled={availPatternRemovingKey === pattern.key}

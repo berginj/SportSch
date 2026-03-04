@@ -246,6 +246,28 @@ function extractContinuationToken(payload) {
   return String(token || "").trim();
 }
 
+function getOverlayStatusClassName(status) {
+  const value = String(status || "").trim().toLowerCase();
+  if (!value) return "status-scheduled";
+  if (value === "open") return "status-open";
+  if (value === "confirmed") return "status-confirmed";
+  if (value === "cancelled") return "status-cancelled";
+  if (value === "pending") return "status-scheduled";
+  return "status-scheduled";
+}
+
+function getOverlayTypeMeta(item) {
+  if (item.kind === "event") return { label: "Event", tone: "event" };
+  if (item.kind === "availability") return { label: "Availability", tone: "availability" };
+  if (item.isExternal) {
+    return {
+      label: item.status === "Confirmed" ? "Guest filled" : "Guest open",
+      tone: "external",
+    };
+  }
+  return { label: "Matchup", tone: "matchup" };
+}
+
 export default function SchedulerManager({ leagueId }) {
   const [divisions, setDivisions] = useState([]);
   const [division, setDivision] = useState("");
@@ -583,7 +605,7 @@ export default function SchedulerManager({ leagueId }) {
   }
 
   const divisionColors = useMemo(() => {
-    const palette = ["#1f4d7a", "#2f7a5a", "#8c4b2f", "#6b3fa0", "#8a6d2d", "#2a6f6f"];
+    const palette = ["#2e6fae", "#2f8f66", "#cc8a1d", "#8a5ea7", "#5d7288", "#c6534a"];
     const map = new Map();
     let idx = 0;
     for (const d of divisions || []) {
@@ -642,6 +664,23 @@ export default function SchedulerManager({ leagueId }) {
       map.set(item.date, list);
     }
     return map;
+  }, [overlayItems]);
+
+  const overlaySummary = useMemo(() => {
+    const summary = {
+      total: overlayItems.length,
+      matchups: 0,
+      availability: 0,
+      events: 0,
+      guest: 0,
+    };
+    for (const item of overlayItems) {
+      if (item.kind === "event") summary.events += 1;
+      else if (item.kind === "availability") summary.availability += 1;
+      else if (item.isExternal) summary.guest += 1;
+      else summary.matchups += 1;
+    }
+    return summary;
   }, [overlayItems]);
 
   const overlayWeek = useMemo(() => {
@@ -727,9 +766,9 @@ export default function SchedulerManager({ leagueId }) {
           <div className="row row--wrap gap-2 mb-3">
             {divisions.map((d) => {
               const code = d.code || d.division;
-              const color = divisionColors.get(code) || "#333";
+              const color = divisionColors.get(code) || "#17324a";
               return (
-                <label key={code} className="inlineCheck" style={{ borderLeft: `4px solid ${color}`, paddingLeft: 8 }}>
+                <label key={code} className="inlineCheck overlayFilterChip" style={{ "--overlay-accent": color }}>
                   <input
                     type="checkbox"
                     checked={overlayDivisions.includes(code)}
@@ -740,6 +779,26 @@ export default function SchedulerManager({ leagueId }) {
               );
             })}
           </div>
+          {overlayItems.length ? (
+            <div className="layoutStatRow mb-3">
+              <div className="layoutStat">
+                <div className="layoutStat__value">{overlaySummary.total}</div>
+                <div className="layoutStat__label">Tracked items</div>
+              </div>
+              <div className="layoutStat">
+                <div className="layoutStat__value">{overlaySummary.matchups}</div>
+                <div className="layoutStat__label">League matchups</div>
+              </div>
+              <div className="layoutStat">
+                <div className="layoutStat__value">{overlaySummary.guest}</div>
+                <div className="layoutStat__label">Guest offers</div>
+              </div>
+              <div className="layoutStat">
+                <div className="layoutStat__value">{overlaySummary.availability + overlaySummary.events}</div>
+                <div className="layoutStat__label">Capacity blockers</div>
+              </div>
+            </div>
+          ) : null}
           <div className="row gap-2 mb-3">
             <button className="btn" onClick={loadOverlay} disabled={overlayLoading}>
               {overlayLoading ? "Loading..." : "Refresh overlay"}
@@ -762,26 +821,31 @@ export default function SchedulerManager({ leagueId }) {
                 </thead>
                 <tbody>
                   {overlayItems.map((i, idx) => {
-                    const color = divisionColors.get(i.division) || "#333";
-                    const typeLabel = i.kind === "event"
-                      ? "Event"
-                      : i.kind === "availability"
-                        ? "Availability"
-                        : i.isExternal
-                          ? (i.status === "Confirmed" ? "External (filled)" : "External (open)")
-                          : "Matchup";
+                    const color = divisionColors.get(i.division) || "#17324a";
+                    const typeMeta = getOverlayTypeMeta(i);
                     return (
                       <tr key={`${i.kind}-${i.date}-${i.time}-${idx}`}>
                         <td>{i.date}</td>
                         <td>{i.time}</td>
                         <td>
-                          <span className="pill" style={{ borderLeft: `4px solid ${color}` }}>
+                          <span className="pill overlayDivisionPill" style={{ "--overlay-accent": color }}>
                             {i.division || "All"}
                           </span>
                         </td>
-                        <td>{typeLabel}</td>
-                        <td>{i.label} {i.field ? `@ ${i.field}` : ""}</td>
-                        <td>{i.status}</td>
+                        <td>
+                          <span className={`overlayTypeBadge overlayTypeBadge--${typeMeta.tone}`}>
+                            {typeMeta.label}
+                          </span>
+                        </td>
+                        <td>
+                          <div className="overlayDetailTitle">{i.label}</div>
+                          {i.field ? <div className="subtle">{i.field}</div> : null}
+                        </td>
+                        <td>
+                          <span className={`statusBadge ${getOverlayStatusClassName(i.status)}`}>
+                            {i.status}
+                          </span>
+                        </td>
                       </tr>
                     );
                   })}
@@ -888,10 +952,10 @@ export default function SchedulerManager({ leagueId }) {
                           const inMonth = day.getMonth() === monthBase.getMonth();
                           const isCurrentWeek = overlayWeekStart === toIsoDate(startOfWeek(day));
                           const badgeItems = [
-                            matchups ? { label: `M${matchups}`, color: "#1f4d7a" } : null,
-                            externals ? { label: `X${externals}`, color: "#8c4b2f" } : null,
-                            availability ? { label: `A${availability}`, color: "#4f5b6a" } : null,
-                            events ? { label: `E${events}`, color: "#2a6f6f" } : null,
+                            matchups ? { label: `M${matchups}`, tone: "matchup" } : null,
+                            externals ? { label: `G${externals}`, tone: "external" } : null,
+                            availability ? { label: `A${availability}`, tone: "availability" } : null,
+                            events ? { label: `E${events}`, tone: "event" } : null,
                           ].filter(Boolean);
                           return (
                             <td key={key}>
@@ -910,7 +974,7 @@ export default function SchedulerManager({ leagueId }) {
                               {badgeItems.length ? (
                                 <div className="text-[10px] mt-1 row row--wrap gap-1">
                                   {badgeItems.map((b) => (
-                                    <span key={b.label} className="pill" style={{ borderLeft: `3px solid ${b.color}` }}>
+                                    <span key={b.label} className={`overlayMiniBadge overlayMiniBadge--${b.tone}`}>
                                       {b.label}
                                     </span>
                                   ))}
@@ -946,18 +1010,25 @@ export default function SchedulerManager({ leagueId }) {
                           ) : (
                             <div className="stack gap-1">
                               {items.map((i, idx) => {
-                                const color = divisionColors.get(i.division) || "#333";
-                                const typeLabel = i.kind === "event"
-                                  ? "Event"
-                                  : i.kind === "availability"
-                                    ? "Availability"
-                                    : i.isExternal
-                                      ? (i.status === "Confirmed" ? "External (filled)" : "External (open)")
-                                      : "Matchup";
+                                const color = divisionColors.get(i.division) || "#17324a";
+                                const typeMeta = getOverlayTypeMeta(i);
                                 return (
-                                  <div key={`${key}-${idx}`} className="subtle" style={{ borderLeft: `4px solid ${color}`, paddingLeft: 6 }}>
-                                    <div className="text-xs">{i.time} {typeLabel}</div>
-                                    <div className="text-xs">{i.label}</div>
+                                  <div key={`${key}-${idx}`} className={`overlayDayEntry overlayDayEntry--${typeMeta.tone}`}>
+                                    <div className="overlayDayEntry__top">
+                                      <span className="overlayDayEntry__time">{i.time}</span>
+                                      <span className={`overlayTypeBadge overlayTypeBadge--${typeMeta.tone}`}>
+                                        {typeMeta.label}
+                                      </span>
+                                    </div>
+                                    <div className="overlayDetailTitle">{i.label}</div>
+                                    <div className="row row--wrap gap-1">
+                                      <span className="pill overlayDivisionPill" style={{ "--overlay-accent": color }}>
+                                        {i.division || "All"}
+                                      </span>
+                                      <span className={`statusBadge ${getOverlayStatusClassName(i.status)}`}>
+                                        {i.status}
+                                      </span>
+                                    </div>
                                   </div>
                                 );
                               })}
