@@ -131,6 +131,13 @@ function formatConflictTeams(conflict) {
   return offering || "-";
 }
 
+function getAllocationTypeBadgeClass(slotType) {
+  const value = String(slotType || "practice").trim().toLowerCase();
+  if (value === "game") return "softballBadge softballBadge--game";
+  if (value === "both") return "softballBadge softballBadge--both";
+  return "softballBadge softballBadge--practice";
+}
+
 export default function AvailabilityAllocationsManager({ leagueId }) {
   const [divisions, setDivisions] = useState([]);
   const [fields, setFields] = useState([]);
@@ -815,6 +822,14 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
     () => DAY_OPTIONS.filter((day) => manualDays[day]?.enabled),
     [manualDays]
   );
+  const allocationSummary = useMemo(() => ({
+    total: allocations.length,
+    active: allocations.filter((allocation) => allocation?.isActive).length,
+    gameCapable: allocations.filter((allocation) => {
+      const type = String(allocation?.slotType || "").trim().toLowerCase();
+      return type === "game" || type === "both";
+    }).length,
+  }), [allocations]);
 
   return (
     <div className="stack">
@@ -858,11 +873,11 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
           </label>
           <label>
             Date from
-            <input value={manualDateFrom} onChange={(e) => setManualDateFrom(e.target.value)} placeholder="YYYY-MM-DD" />
+            <input type="date" value={manualDateFrom} onChange={(e) => setManualDateFrom(e.target.value)} />
           </label>
           <label>
             Date to
-            <input value={manualDateTo} onChange={(e) => setManualDateTo(e.target.value)} placeholder="YYYY-MM-DD" />
+            <input type="date" value={manualDateTo} onChange={(e) => setManualDateTo(e.target.value)} />
           </label>
           <label className="inlineCheck">
             <input type="checkbox" checked={manualIsActive} onChange={(e) => setManualIsActive(e.target.checked)} />
@@ -972,15 +987,15 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
           {manualBlackouts.map((b, idx) => (
             <div key={`${idx}-${b.startDate || ""}-${b.endDate || ""}`} className="row row--wrap gap-2 items-center mb-2">
               <input
+                type="date"
                 value={b.startDate || ""}
                 onChange={(e) => updateManualBlackout(idx, "startDate", e.target.value)}
-                placeholder="YYYY-MM-DD"
               />
               <span className="muted">to</span>
               <input
+                type="date"
                 value={b.endDate || ""}
                 onChange={(e) => updateManualBlackout(idx, "endDate", e.target.value)}
-                placeholder="YYYY-MM-DD"
               />
               <input
                 value={b.label || ""}
@@ -1135,6 +1150,22 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
           </button>
         </div>
         {allocations.length ? (
+          <div className="card__body layoutStatRow">
+            <div className="layoutStat">
+              <div className="layoutStat__value">{allocationSummary.total}</div>
+              <div className="layoutStat__label">Loaded rows</div>
+            </div>
+            <div className="layoutStat">
+              <div className="layoutStat__value">{allocationSummary.active}</div>
+              <div className="layoutStat__label">Active rows</div>
+            </div>
+            <div className="layoutStat">
+              <div className="layoutStat__value">{allocationSummary.gameCapable}</div>
+              <div className="layoutStat__label">Game-capable</div>
+            </div>
+          </div>
+        ) : null}
+        {allocations.length ? (
           <div className="card__body tableWrap">
             <table className="table">
               <thead>
@@ -1163,9 +1194,17 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
                         <td>{a.startsOn} - {a.endsOn}</td>
                         <td>{(a.daysOfWeek || []).join(", ") || "Any"}</td>
                         <td>{a.startTimeLocal} - {a.endTimeLocal}</td>
-                        <td>{a.slotType || "practice"}</td>
+                        <td>
+                          <span className={getAllocationTypeBadgeClass(a.slotType || "practice")}>
+                            {a.slotType || "practice"}
+                          </span>
+                        </td>
                         <td>{a.priorityRank || "-"}</td>
-                        <td>{a.isActive ? "Yes" : "No"}</td>
+                        <td>
+                          <span className={`statusBadge ${a.isActive ? "status-confirmed" : "status-cancelled"}`}>
+                            {a.isActive ? "Active" : "Inactive"}
+                          </span>
+                        </td>
                         <td>{a.notes || ""}</td>
                         <td>
                           <button
@@ -1364,15 +1403,17 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
           </label>
           <label>
             Date from
-            <input value={genDateFrom} onChange={(e) => setGenDateFrom(e.target.value)} placeholder="YYYY-MM-DD" />
+            <input type="date" value={genDateFrom} onChange={(e) => setGenDateFrom(e.target.value)} />
           </label>
           <label>
             Date to
-            <input value={genDateTo} onChange={(e) => setGenDateTo(e.target.value)} placeholder="YYYY-MM-DD" />
+            <input type="date" value={genDateTo} onChange={(e) => setGenDateTo(e.target.value)} />
           </label>
           <label>
             Practice slot length (minutes)
             <input
+              type="number"
+              min="1"
               value={genPracticeMinutes}
               onChange={(e) => setGenPracticeMinutes(e.target.value)}
               inputMode="numeric"
@@ -1382,6 +1423,8 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
           <label>
             Game/both slot length (minutes)
             <input
+              type="number"
+              min="1"
               value={genGameMinutes}
               onChange={(e) => setGenGameMinutes(e.target.value)}
               inputMode="numeric"

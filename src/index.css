@@ -265,6 +265,8 @@
   .callout { @apply rounded-xl border-2 border-border bg-gray-50 px-3 py-2 text-sm; }
   .callout--error { @apply border-red-300 bg-red-50 text-red-700; }
   .callout--ok { @apply border-green-300 bg-green-50 text-green-700; }
+  .callout--info { @apply border-blue-300 bg-blue-50 text-blue-700; }
+  .callout--warning { @apply border-amber-300 bg-amber-50 text-amber-800; }
 
   .statusCard { @apply grid gap-2; }
   .statusCard--error { @apply border-red-300 text-red-700; }
@@ -484,9 +486,47 @@
   .layoutStat--link { @apply text-left transition hover:border-accent hover:bg-amber-50; }
 
   .inlineCheck { @apply inline-flex items-center gap-2 mt-4; }
+  .inlineCheck--compact { @apply mt-0; }
   .textareaMono { @apply w-full mt-3 font-mono text-sm; }
   .fieldInputShort { @apply w-16; }
   .codeblock { @apply mt-3 rounded-xl border-2 border-border bg-gray-900 p-3 text-xs overflow-x-auto font-mono text-gray-100; }
+
+  .controlBand {
+    @apply rounded-2xl border-2 border-border p-3;
+    background: linear-gradient(145deg, rgba(235, 242, 248, 0.92), rgba(226, 234, 242, 0.92));
+    box-shadow: var(--neo-inset);
+  }
+
+  .softballBadge {
+    @apply inline-flex items-center justify-center rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.02em];
+    border: 1px solid transparent;
+  }
+
+  .softballBadge--offer,
+  .softballBadge--game {
+    background: linear-gradient(145deg, #e9f1fb, #d9e6f5);
+    border-color: rgba(46, 111, 174, 0.24);
+    color: #1f5584;
+  }
+
+  .softballBadge--request,
+  .softballBadge--both {
+    background: linear-gradient(145deg, #fff4dd, #fbe6b7);
+    border-color: rgba(204, 138, 29, 0.3);
+    color: #8a5a11;
+  }
+
+  .softballBadge--practice {
+    background: linear-gradient(145deg, #eef9f3, #e4f4eb);
+    border-color: rgba(47, 143, 102, 0.24);
+    color: #1f6e4d;
+  }
+
+  .softballBadge--neutral {
+    background: linear-gradient(145deg, #edf3f8, #e3eaf1);
+    border-color: rgba(96, 116, 137, 0.18);
+    color: var(--muted);
+  }
 
   .modalOverlay {
     @apply fixed inset-0 z-50 flex items-center justify-center p-4;
@@ -1439,9 +1479,20 @@
   }
 
   .callout--ok,
-  .msg.ok {
+  .msg.ok,
+  .callout--info {
     background: linear-gradient(145deg, #eef9f3, #e4f4eb);
     color: #1f6e4d;
+  }
+
+  .callout--info {
+    background: linear-gradient(145deg, #eef4fa, #e3ebf4);
+    color: #1f5584;
+  }
+
+  .callout--warning {
+    background: linear-gradient(145deg, #fff7e5, #fbe9bb);
+    color: #8a5a11;
   }
 
   .card,

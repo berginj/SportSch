@@ -300,6 +300,16 @@ export default function AvailabilityManager({ leagueId }) {
     [divisions]
   );
 
+  const rulesSummary = useMemo(() => ({
+    total: rules.length,
+    active: rules.filter((rule) => rule?.isActive).length,
+    exceptions: Object.values(exceptionsByRule).reduce(
+      (count, list) => count + (Array.isArray(list) ? list.length : 0),
+      0
+    ),
+    preview: previewSlots.length,
+  }), [rules, exceptionsByRule, previewSlots.length]);
+
   return (
     <div className="stack">
       {err ? <div className="callout callout--error">{err}</div> : null}
@@ -311,6 +321,31 @@ export default function AvailabilityManager({ leagueId }) {
         <div className="card__header">
           <div className="h2">Availability rules</div>
           <div className="subtle">Create recurring availability windows and add exclusions.</div>
+        </div>
+        <div className="card__body">
+          <div className="controlBand">
+            <div className="subtle">
+              Use rules for focused field-specific recurring windows. Use allocations above when you need broader league supply planning across divisions.
+            </div>
+          </div>
+        </div>
+        <div className="card__body layoutStatRow">
+          <div className="layoutStat">
+            <div className="layoutStat__value">{rulesSummary.total}</div>
+            <div className="layoutStat__label">Rules</div>
+          </div>
+          <div className="layoutStat">
+            <div className="layoutStat__value">{rulesSummary.active}</div>
+            <div className="layoutStat__label">Active</div>
+          </div>
+          <div className="layoutStat">
+            <div className="layoutStat__value">{rulesSummary.exceptions}</div>
+            <div className="layoutStat__label">Loaded exceptions</div>
+          </div>
+          <div className="layoutStat">
+            <div className="layoutStat__value">{rulesSummary.preview}</div>
+            <div className="layoutStat__label">Preview slots</div>
+          </div>
         </div>
         <div className="card__body grid2">
           <label>
@@ -337,33 +372,33 @@ export default function AvailabilityManager({ leagueId }) {
           <label>
             Starts on
             <input
+              type="date"
               value={ruleDraft.startsOn}
               onChange={(e) => setRuleDraft((prev) => ({ ...prev, startsOn: e.target.value }))}
-              placeholder="YYYY-MM-DD"
             />
           </label>
           <label>
             Ends on
             <input
+              type="date"
               value={ruleDraft.endsOn}
               onChange={(e) => setRuleDraft((prev) => ({ ...prev, endsOn: e.target.value }))}
-              placeholder="YYYY-MM-DD"
             />
           </label>
           <label>
             Start time
             <input
+              type="time"
               value={ruleDraft.startTimeLocal}
               onChange={(e) => setRuleDraft((prev) => ({ ...prev, startTimeLocal: e.target.value }))}
-              placeholder="17:00"
             />
           </label>
           <label>
             End time
             <input
+              type="time"
               value={ruleDraft.endTimeLocal}
               onChange={(e) => setRuleDraft((prev) => ({ ...prev, endTimeLocal: e.target.value }))}
-              placeholder="22:00"
             />
           </label>
           <label className="inlineCheck">
@@ -425,7 +460,11 @@ export default function AvailabilityManager({ leagueId }) {
                     <td>{r.startsOn} → {r.endsOn}</td>
                     <td>{(r.daysOfWeek || []).join(", ")}</td>
                     <td>{r.startTimeLocal} - {r.endTimeLocal}</td>
-                    <td>{r.isActive ? "Active" : "Inactive"}</td>
+                    <td>
+                      <span className={`statusBadge ${r.isActive ? "status-confirmed" : "status-cancelled"}`}>
+                        {r.isActive ? "Active" : "Inactive"}
+                      </span>
+                    </td>
                     <td>
                       <div className="row row--wrap gap-2">
                         <button className="btn" onClick={() => editRule(r)}>Edit</button>
@@ -473,45 +512,45 @@ export default function AvailabilityManager({ leagueId }) {
                             <label>
                               Date from
                               <input
+                                type="date"
                                 value={(exceptionDrafts[r.ruleId] || emptyException).dateFrom}
                                 onChange={(e) => setExceptionDrafts((prev) => ({
                                   ...prev,
                                   [r.ruleId]: { ...(prev[r.ruleId] || emptyException), dateFrom: e.target.value },
                                 }))}
-                                placeholder="YYYY-MM-DD"
                               />
                             </label>
                             <label>
                               Date to
                               <input
+                                type="date"
                                 value={(exceptionDrafts[r.ruleId] || emptyException).dateTo}
                                 onChange={(e) => setExceptionDrafts((prev) => ({
                                   ...prev,
                                   [r.ruleId]: { ...(prev[r.ruleId] || emptyException), dateTo: e.target.value },
                                 }))}
-                                placeholder="YYYY-MM-DD"
                               />
                             </label>
                             <label>
                               Start time
                               <input
+                                type="time"
                                 value={(exceptionDrafts[r.ruleId] || emptyException).startTimeLocal}
                                 onChange={(e) => setExceptionDrafts((prev) => ({
                                   ...prev,
                                   [r.ruleId]: { ...(prev[r.ruleId] || emptyException), startTimeLocal: e.target.value },
                                 }))}
-                                placeholder="17:00"
                               />
                             </label>
                             <label>
                               End time
                               <input
+                                type="time"
                                 value={(exceptionDrafts[r.ruleId] || emptyException).endTimeLocal}
                                 onChange={(e) => setExceptionDrafts((prev) => ({
                                   ...prev,
                                   [r.ruleId]: { ...(prev[r.ruleId] || emptyException), endTimeLocal: e.target.value },
                                 }))}
-                                placeholder="22:00"
                               />
                             </label>
                             <label className="col-span-2">
@@ -549,17 +588,17 @@ export default function AvailabilityManager({ leagueId }) {
           <label>
             Date from
             <input
+              type="date"
               value={previewRange.dateFrom}
               onChange={(e) => setPreviewRange((prev) => ({ ...prev, dateFrom: e.target.value }))}
-              placeholder="YYYY-MM-DD"
             />
           </label>
           <label>
             Date to
             <input
+              type="date"
               value={previewRange.dateTo}
               onChange={(e) => setPreviewRange((prev) => ({ ...prev, dateTo: e.target.value }))}
-              placeholder="YYYY-MM-DD"
             />
           </label>
         </div>

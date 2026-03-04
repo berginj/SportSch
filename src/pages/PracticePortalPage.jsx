@@ -454,6 +454,13 @@ export default function PracticePortalPage({ me, leagueId }) {
       });
   }, [filteredAvailableSlots, practiceByWeek, selectedPracticePatternKeys, activeRequestPatternByKey]);
 
+  const portalSummary = useMemo(() => ({
+    selectedPractices: practiceSelections.length,
+    activeRequests: activePracticeRequests.length,
+    recurringChoices: availablePatternChoices.length,
+    oneOffChoices: oneOffSearchResults.length,
+  }), [practiceSelections.length, activePracticeRequests.length, availablePatternChoices.length, oneOffSearchResults.length]);
+
   async function requestPracticePattern(choice) {
     const slot = choice?.representativeSlot;
     if (!slot?.slotId || !division) return;
@@ -601,7 +608,10 @@ export default function PracticePortalPage({ me, leagueId }) {
   return (
     <div className="page">
       <div className="card">
-        <h2>Practice selection portal</h2>
+        <div className="card__header">
+          <h2>Practice selection portal</h2>
+          <div className="subtle">Recurring requests first, one-off bookings second.</div>
+        </div>
         <p className="muted">
           Coaches should submit up to 3 prioritized recurring practice requests. Commissioners approve one to lock the same field/day/time pattern across matching regular-season weeks.
         </p>
@@ -624,10 +634,28 @@ export default function PracticePortalPage({ me, leagueId }) {
         </div>
         {err ? <div className="callout callout--error">{err}</div> : null}
         {notice ? <div className="callout callout--ok">{notice}</div> : null}
+        <div className="layoutStatRow">
+          <div className="layoutStat">
+            <div className="layoutStat__value">{portalSummary.selectedPractices}</div>
+            <div className="layoutStat__label">Selected practices</div>
+          </div>
+          <div className="layoutStat">
+            <div className="layoutStat__value">{portalSummary.activeRequests}</div>
+            <div className="layoutStat__label">Active requests</div>
+          </div>
+          <div className="layoutStat">
+            <div className="layoutStat__value">{portalSummary.recurringChoices}</div>
+            <div className="layoutStat__label">Recurring choices</div>
+          </div>
+          <div className="layoutStat">
+            <div className="layoutStat__value">{portalSummary.oneOffChoices}</div>
+            <div className="layoutStat__label">One-off openings</div>
+          </div>
+        </div>
       </div>
 
       <div className="card">
-        <div className="row row--wrap gap-2" style={{ alignItems: "center" }}>
+        <div className="row row--wrap gap-2 items-center">
           <button
             type="button"
             className={`btn btn--sm ${portalMode === "recurring" ? "btn--primary" : ""}`}
@@ -637,7 +665,7 @@ export default function PracticePortalPage({ me, leagueId }) {
           </button>
           <button
             type="button"
-            className="btn btn--sm"
+            className={`btn btn--sm ${portalMode === "oneoff" ? "btn--primary" : ""}`}
             onClick={() => setPortalMode("oneoff")}
           >
             One-off Practice Search
@@ -650,7 +678,10 @@ export default function PracticePortalPage({ me, leagueId }) {
 
       {portalMode === "oneoff" ? (
         <div className="card">
-          <h3>One-off practice search</h3>
+          <div className="card__header">
+            <h3>One-off practice search</h3>
+            <div className="subtle">Self-booked single-date practices after recurring coverage is complete.</div>
+          </div>
           <div className={`callout mb-3 ${oneOffAvailabilityStatus.canBook ? "callout--ok" : ""}`}>
             <div>
               Commissioner one-off booking toggle: <b>{oneOffAvailabilityStatus.oneOffEnabled ? "Enabled" : "Disabled"}</b>
@@ -690,9 +721,9 @@ export default function PracticePortalPage({ me, leagueId }) {
             ) : null}
           </div>
 
-          <div className="callout mb-3">
+          <div className="callout mb-3 controlBand">
             <div className="row row--wrap gap-3">
-              <label className="row row--wrap gap-2" style={{ alignItems: "center" }}>
+              <label className="row row--wrap gap-2 items-center">
                 <input
                   type="checkbox"
                   checked={openToShareField}
@@ -701,7 +732,7 @@ export default function PracticePortalPage({ me, leagueId }) {
                 />
                 <span>Open to sharing a field</span>
               </label>
-              <label style={{ minWidth: 260 }}>
+              <label className="min-w-[260px]">
                 Propose sharing with team
                 <select
                   value={shareWithTeamId}
@@ -726,7 +757,7 @@ export default function PracticePortalPage({ me, leagueId }) {
               </label>
             </div>
             <div className="row row--wrap gap-3 mt-2">
-              <label style={{ minWidth: 220 }}>
+              <label className="min-w-[220px]">
                 Filter by day
                 <select value={oneOffDayFilter} onChange={(e) => setOneOffDayFilter(e.target.value)}>
                   {WEEKDAY_FILTER_OPTIONS.map((opt) => (
@@ -736,11 +767,11 @@ export default function PracticePortalPage({ me, leagueId }) {
                   ))}
                 </select>
               </label>
-              <label style={{ minWidth: 180 }}>
+              <label className="min-w-[180px]">
                 Date from
                 <input type="date" value={oneOffDateFrom} onChange={(e) => setOneOffDateFrom(e.target.value)} />
               </label>
-              <label style={{ minWidth: 180 }}>
+              <label className="min-w-[180px]">
                 Date to
                 <input type="date" value={oneOffDateTo} onChange={(e) => setOneOffDateTo(e.target.value)} />
               </label>
@@ -806,7 +837,10 @@ export default function PracticePortalPage({ me, leagueId }) {
       ) : (
         <>
       <div className="card">
-        <h3>Your selected practices</h3>
+        <div className="card__header">
+          <h3>Your selected practices</h3>
+          <div className="subtle">Confirmed recurring practices already assigned to your team.</div>
+        </div>
         {practiceSelections.length ? (
           <div className="tableWrap">
             <table className="table">
@@ -836,7 +870,10 @@ export default function PracticePortalPage({ me, leagueId }) {
       </div>
 
       <div className="card">
-        <h3>Your recurring requests (priority 1-3)</h3>
+        <div className="card__header">
+          <h3>Your recurring requests (priority 1-3)</h3>
+          <div className="subtle">Pending and approved requests currently active for this team.</div>
+        </div>
         {activePracticeRequests.length ? (
           <div className="tableWrap">
             <table className="table">
@@ -855,7 +892,7 @@ export default function PracticePortalPage({ me, leagueId }) {
                 {activePracticeRequests.map((request) => (
                   <tr key={request.requestId}>
                     <td>{request.priority || "-"}</td>
-                    <td>{request.status}</td>
+                    <td><span className={`statusBadge ${String(request.status || "").trim() === "Approved" ? "status-confirmed" : "status-open"}`}>{request.status}</span></td>
                     <td>{weekdayLabelFromDate(request?.slot?.gameDate) || "-"}</td>
                     <td>{request?.slot ? formatSlotTime(request.slot) : "-"}</td>
                     <td>{request?.slot ? formatSlotLocation(request.slot) : (request.slot?.fieldKey || "-")}</td>
@@ -878,10 +915,13 @@ export default function PracticePortalPage({ me, leagueId }) {
       </div>
 
       <div className="card">
-        <h3>Available practice choices</h3>
-        <div className="callout mb-3">
+        <div className="card__header">
+          <h3>Available practice choices</h3>
+          <div className="subtle">Recurring field-day-time patterns sorted by how usable they are.</div>
+        </div>
+        <div className="callout mb-3 controlBand">
           <div className="row row--wrap gap-3">
-            <label className="row row--wrap gap-2" style={{ alignItems: "center" }}>
+            <label className="row row--wrap gap-2 items-center">
               <input
                 type="checkbox"
                 checked={openToShareField}
@@ -890,7 +930,7 @@ export default function PracticePortalPage({ me, leagueId }) {
               />
               <span>Open to sharing a field</span>
             </label>
-            <label style={{ minWidth: 260 }}>
+            <label className="min-w-[260px]">
               Propose sharing with team
               <select
                 value={shareWithTeamId}
@@ -913,7 +953,7 @@ export default function PracticePortalPage({ me, leagueId }) {
                 ))}
               </select>
             </label>
-            <label style={{ minWidth: 220 }}>
+            <label className="min-w-[220px]">
               Filter by day
               <select
                 value={availableDayFilter}
@@ -971,7 +1011,7 @@ export default function PracticePortalPage({ me, leagueId }) {
                       <td>{choice.openWeeks}</td>
                       <td>{choice.claimableWeeks}</td>
                       <td>{choice.firstDate && choice.lastDate ? `${choice.firstDate} - ${choice.lastDate}` : (choice.firstDate || "")}</td>
-                      <td>{statusLabel || "-"}</td>
+                      <td>{statusLabel ? <span className="softballBadge softballBadge--neutral">{statusLabel}</span> : "-"}</td>
                       <td>{s?.gameDate || ""}</td>
                       <td className="tableActions">
                         <button

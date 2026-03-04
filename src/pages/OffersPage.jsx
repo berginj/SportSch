@@ -45,6 +45,18 @@ function formatGameType(gameType) {
   return "Offer";
 }
 
+function getOfferBadgeClass(gameType) {
+  return formatGameType(gameType) === "Request" ? "softballBadge softballBadge--request" : "softballBadge softballBadge--offer";
+}
+
+function getStatusBadgeClass(status) {
+  const value = String(status || "").trim().toLowerCase();
+  if (value === "open") return "statusBadge status-open";
+  if (value === "confirmed") return "statusBadge status-confirmed";
+  if (value === "cancelled") return "statusBadge status-cancelled";
+  return "statusBadge status-scheduled";
+}
+
 function matchesTypeFilter(gameType, filter) {
   const normalized = formatGameType(gameType);
   if (!filter || filter === "all") return true;
@@ -139,6 +151,16 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
       .filter((s) => String(s?.status || "").trim() === "Open")
       .filter((s) => matchesTypeFilter(s.gameType, slotTypeFilter));
   }, [slots, slotTypeFilter]);
+
+  const offersSummary = useMemo(() => {
+    const summary = { total: filteredSlots.length, offers: 0, requests: 0, ready: 0 };
+    for (const slot of filteredSlots) {
+      if (formatGameType(slot.gameType) === "Request") summary.requests += 1;
+      else summary.offers += 1;
+      if (canAcceptSlot(slot)) summary.ready += 1;
+    }
+    return summary;
+  }, [filteredSlots]);
 
   const applyFiltersFromUrl = useCallback(() => {
     if (typeof window === "undefined") return { division: "", type: "offer" };
@@ -432,33 +454,58 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
       />
 
       <div className="card">
-        <div className="cardTitle">
-          Create game offer or request
-          <span className="hint" title="Post an open offer or request that other teams can accept.">?</span>
+        <div className="card__header">
+          <div className="cardTitle">
+            Create game offer or request
+            <span className="hint" title="Post an open offer or request that other teams can accept.">?</span>
+          </div>
+          <div className="subtle">League exchange board for open game opportunities.</div>
         </div>
-        <div className="row filterRow">
-          <LeaguePicker leagueId={leagueId} setLeagueId={setLeagueId} me={me} label="League" />
-          <label title="Choose a division for this offer.">
-            Division
-            <select value={division} onChange={(e) => reloadSlots(e.target.value)}>
-              {divisions.map((d) => (
-                <option key={d.code} value={d.code}>
-                  {d.name} ({d.code})
-                </option>
-              ))}
-            </select>
-          </label>
-          <label title="Filter offers vs requests in the list.">
-            Slot type
-            <select value={slotTypeFilter} onChange={(e) => setSlotTypeFilter(e.target.value)}>
-              <option value="offer">Offers</option>
-              <option value="request">Requests</option>
-              <option value="all">All</option>
-            </select>
-          </label>
-          <button className="btn" onClick={() => loadAll(division)} title="Refresh divisions, fields, and offers.">
-            Refresh
-          </button>
+        <div className="controlBand">
+          <div className="formGrid">
+            <LeaguePicker leagueId={leagueId} setLeagueId={setLeagueId} me={me} label="League" />
+            <label title="Choose a division for this offer.">
+              Division
+              <select value={division} onChange={(e) => reloadSlots(e.target.value)}>
+                {divisions.map((d) => (
+                  <option key={d.code} value={d.code}>
+                    {d.name} ({d.code})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label title="Filter offers vs requests in the list.">
+              Slot type
+              <select value={slotTypeFilter} onChange={(e) => setSlotTypeFilter(e.target.value)}>
+                <option value="offer">Offers</option>
+                <option value="request">Requests</option>
+                <option value="all">All</option>
+              </select>
+            </label>
+            <div className="row row--end">
+              <button className="btn" onClick={() => loadAll(division)} title="Refresh divisions, fields, and offers.">
+                Refresh
+              </button>
+            </div>
+          </div>
+        </div>
+        <div className="layoutStatRow mt-3">
+          <div className="layoutStat">
+            <div className="layoutStat__value">{offersSummary.total}</div>
+            <div className="layoutStat__label">Open rows</div>
+          </div>
+          <div className="layoutStat">
+            <div className="layoutStat__value">{offersSummary.offers}</div>
+            <div className="layoutStat__label">Offers</div>
+          </div>
+          <div className="layoutStat">
+            <div className="layoutStat__value">{offersSummary.requests}</div>
+            <div className="layoutStat__label">Requests</div>
+          </div>
+          <div className="layoutStat">
+            <div className="layoutStat__value">{offersSummary.ready}</div>
+            <div className="layoutStat__label">Ready to accept</div>
+          </div>
         </div>
         <div className="muted mt-2">
           Create offers or requests for <b>{leagueId || "(no league)"}</b>.
@@ -466,7 +513,10 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
       </div>
 
       <div className="card">
-        <div className="cardTitle">Offer/request details</div>
+        <div className="card__header">
+          <div className="cardTitle">Offer/request details</div>
+          <div className="subtle">Post one-time or recurring openings with the same softball scheduling rules.</div>
+        </div>
         {(defaults.fieldKey || defaults.startTime) && (
           <div className="callout callout--info mb-3">
             <strong>Smart Defaults Active:</strong> Form pre-filled with your last-used values (team, field, time). Change them as needed.
@@ -513,24 +563,24 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
           </label>
           <label title="Game date (YYYY-MM-DD).">
             GameDate (YYYY-MM-DD)
-            <input value={gameDate} onChange={(e) => setGameDate(e.target.value)} placeholder="2026-03-29" />
+            <input type="date" value={gameDate} onChange={(e) => setGameDate(e.target.value)} />
           </label>
           <label title="Start time in 24h format.">
             StartTime (HH:MM)
-            <input value={startTime} onChange={(e) => setStartTime(e.target.value)} placeholder="09:00" />
+            <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
           </label>
           <label title="End time in 24h format.">
             EndTime (HH:MM)
-            <input value={endTime} onChange={(e) => setEndTime(e.target.value)} placeholder="10:15" />
+            <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
           </label>
-          <label className="row row--wrap gap-2 items-end" title="Post as a recurring offer or request.">
-            <span>Recurring</span>
+          <label className="inlineCheck inlineCheck--compact" title="Post as a recurring offer or request.">
             <input
               type="checkbox"
               checked={isRecurring}
               onChange={(e) => setIsRecurring(e.target.checked)}
               aria-label="Toggle recurring posting"
             />
+            Recurring
           </label>
           {isRecurring ? (
             <label title="Recurring cadence.">
@@ -599,7 +649,10 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
       </div>
 
       <div className="card">
-        <div className="cardTitle">Open offers & requests</div>
+        <div className="card__header">
+          <div className="cardTitle">Open offers & requests</div>
+          <div className="subtle">Division-specific open rows that are still available to claim.</div>
+        </div>
         {filteredSlots.length === 0 ? (
           <div className="muted">No open offers or requests found for this division.</div>
         ) : (
@@ -626,9 +679,17 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
                       {s.startTime}-{s.endTime}
                     </td>
                     <td>{s.displayName || s.fieldKey}</td>
-                    <td>{formatGameType(s.gameType)}</td>
-                    <td>{formatTeams(s) || s.offeringTeamId}</td>
-                    <td>{s.status}</td>
+                    <td>
+                      <span className={getOfferBadgeClass(s.gameType)}>
+                        {formatGameType(s.gameType)}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="overlayDetailTitle">{formatTeams(s) || s.offeringTeamId}</div>
+                    </td>
+                    <td>
+                      <span className={getStatusBadgeClass(s.status)}>{s.status}</span>
+                    </td>
                     <td className="text-right">
                       {canAcceptSlot(s) ? (
                         canPickTeam ? (
