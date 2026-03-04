@@ -367,7 +367,8 @@ function installLocalStorageMock() {
   return store;
 }
 
-function installApiMock({ previewResponse = BASE_PREVIEW, previewError = null, slotsResponse, teamsResponse } = {}) {
+function installApiMock({ previewResponse = BASE_PREVIEW, previewResponses = null, previewError = null, slotsResponse, teamsResponse } = {}) {
+  let previewIndex = 0;
   api.apiFetch.mockImplementation((path) => {
     const url = String(path || "");
     if (url === "/api/divisions") {
@@ -423,10 +424,18 @@ function installApiMock({ previewResponse = BASE_PREVIEW, previewError = null, s
       if (previewError) {
         return Promise.reject(previewError);
       }
+      if (Array.isArray(previewResponses) && previewResponses.length > 0) {
+        const next = previewResponses[Math.min(previewIndex, previewResponses.length - 1)];
+        previewIndex += 1;
+        return Promise.resolve(next);
+      }
       return Promise.resolve(previewResponse);
     }
     if (url === "/api/schedule/wizard/reset-generated") {
       return Promise.resolve({ resetCount: 1 });
+    }
+    if (url === "/api/schedule/feedback") {
+      return Promise.resolve({ recorded: true });
     }
     if (url === "/api/schedule/wizard/apply") {
       return Promise.resolve({ ok: true });
@@ -529,6 +538,45 @@ describe("SeasonWizard", () => {
       const applyCall = api.apiFetch.mock.calls.find(([path]) => path === "/api/schedule/wizard/apply");
       const payload = JSON.parse(applyCall?.[1]?.body || "{}");
       expect(payload.resetGeneratedSlotsBeforeApply).toBe(false);
+    } finally {
+      confirmSpy.mockRestore();
+    }
+  });
+
+  it("applies the selected generated schedule option using that option's seed and strategy", async () => {
+    installApiMock({
+      previewResponses: [
+        { ...BASE_PREVIEW, seed: 101, constructionStrategy: "backward_greedy_v1+strict_validation_v2" },
+        { ...BASE_PREVIEW, seed: 202, constructionStrategy: "forward_greedy_v1+strict_validation_v2" },
+        { ...BASE_PREVIEW, seed: 303, constructionStrategy: "backward_greedy_v1+strict_validation_v2" },
+        { ...BASE_PREVIEW, seed: 404, constructionStrategy: "forward_greedy_v1+strict_validation_v2" },
+      ],
+    });
+
+    await advanceToRules();
+
+    fireEvent.click(screen.getByRole("button", { name: /Generate 4 Options/i }));
+    await waitFor(() => expect(screen.getByText(/Schedule Comparison - Pick Your Favorite/i)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText("Option 2"));
+    fireEvent.click(screen.getByRole("button", { name: /Continue with Option 2/i }));
+    await waitFor(() => expect(screen.getByText("Preview overview")).toBeInTheDocument());
+
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Apply schedule" }));
+
+      await waitFor(() => {
+        expect(api.apiFetch).toHaveBeenCalledWith(
+          "/api/schedule/wizard/apply",
+          expect.objectContaining({ method: "POST" })
+        );
+      });
+
+      const applyCall = api.apiFetch.mock.calls.find(([path]) => path === "/api/schedule/wizard/apply");
+      const payload = JSON.parse(applyCall?.[1]?.body || "{}");
+      expect(payload.seed).toBe(202);
+      expect(payload.constructionStrategy).toBe("forward_greedy_v1");
     } finally {
       confirmSpy.mockRestore();
     }

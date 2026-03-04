@@ -4,7 +4,6 @@ import { validateIsoDates } from "../lib/date";
 import { trackEvent } from "../lib/telemetry";
 import CollapsibleSection from "../components/CollapsibleSection";
 import Toast from "../components/Toast";
-import CalendarView from "../components/CalendarView";
 import { useCollapsibleSectionControl } from "../lib/useCollapsibleSectionControl";
 
 const WEEKDAY_OPTIONS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -1006,7 +1005,6 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [scheduleOptions, setScheduleOptions] = useState([]);
   const [selectedScheduleOption, setSelectedScheduleOption] = useState(null);
   const [generatingOptions, setGeneratingOptions] = useState(false);
-  const [previewCalendarView, setPreviewCalendarView] = useState(false);
   const [loading, setLoading] = useState(false);
   const [repairApplyingId, setRepairApplyingId] = useState("");
   const [selectedRepairProposalId, setSelectedRepairProposalId] = useState("");
@@ -1017,7 +1015,6 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [err, setErr] = useState("");
   const [toast, setToast] = useState(null);
   const [slotPlan, setSlotPlan] = useState([]);
-  const [requestGames, setRequestGames] = useState([]);
   const [guestAnchorPrimarySlotId, setGuestAnchorPrimarySlotId] = useState("");
   const [guestAnchorSecondarySlotId, setGuestAnchorSecondarySlotId] = useState("");
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
@@ -1143,65 +1140,6 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         .map((row) => ({ ...row, weight: Math.max(1, Math.min(10, Math.round(row.weight)))})),
     [rivalryMatchups]
   );
-
-  const requestGameIssues = useMemo(() => {
-    const issues = [];
-    const seen = new Map();
-
-    (requestGames || []).forEach((rg, idx) => {
-      const prefix = `Request game ${idx + 1}:`;
-
-      if (!rg.gameDate) {
-        issues.push(`${prefix} Date required`);
-      } else if (!isIsoDate(rg.gameDate)) {
-        issues.push(`${prefix} Invalid date format`);
-      } else {
-        if (seasonStart && rg.gameDate < seasonStart) {
-          issues.push(`${prefix} Date before season start`);
-        }
-        if (seasonEnd && rg.gameDate > seasonEnd) {
-          issues.push(`${prefix} Date after season end`);
-        }
-
-        if (rg.teamId) {
-          const key = `${rg.teamId}|${rg.gameDate}`;
-          if (seen.has(key)) {
-            issues.push(`${prefix} Duplicate (same team, same date)`);
-          }
-          seen.set(key, idx);
-        }
-      }
-
-      if (!rg.startTime || !rg.endTime) {
-        issues.push(`${prefix} Time required`);
-      } else {
-        const startMin = parseMinutes(rg.startTime);
-        const endMin = parseMinutes(rg.endTime);
-        if (startMin == null || endMin == null) {
-          issues.push(`${prefix} Invalid time format`);
-        } else if (startMin >= endMin) {
-          issues.push(`${prefix} End must be after start`);
-        }
-      }
-
-      if (!rg.fieldKey) {
-        issues.push(`${prefix} Field required`);
-      }
-
-      if (!rg.teamId) {
-        issues.push(`${prefix} Team required`);
-      } else {
-        const teamExists = normalizedDivisionTeams.some(t =>
-          String(t.teamId).toLowerCase() === String(rg.teamId).toLowerCase()
-        );
-        if (!teamExists) {
-          issues.push(`${prefix} Team not found in division`);
-        }
-      }
-    });
-
-    return issues;
-  }, [requestGames, seasonStart, seasonEnd, normalizedDivisionTeams]);
 
   const parsedNoGamesOnDates = useMemo(
     () => parseNoGamesDateText(noGamesOnDatesText),
@@ -1831,7 +1769,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         tone: "success",
         message: `Saved template "${templateName}"`,
       });
-    } catch (e) {
+    } catch {
       setErr("Failed to save template. LocalStorage may be full.");
     }
   }
@@ -1880,7 +1818,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         tone: "info",
         message: `Deleted template "${templateName}"`,
       });
-    } catch (e) {
+    } catch {
       setErr("Failed to delete template.");
     }
   }
@@ -2202,30 +2140,6 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     setPreview(null);
   }
 
-  function addRequestGame() {
-    setRequestGames((prev) => [...(Array.isArray(prev) ? prev : []), {
-      gameDate: "",
-      startTime: "",
-      endTime: "",
-      fieldKey: "",
-      teamId: "",
-      opponentName: ""
-    }]);
-    setPreview(null);
-  }
-
-  function updateRequestGame(index, patch) {
-    setRequestGames((prev) =>
-      (Array.isArray(prev) ? prev : []).map((rg, idx) => (idx === index ? { ...rg, ...patch } : rg))
-    );
-    setPreview(null);
-  }
-
-  function removeRequestGame(index) {
-    setRequestGames((prev) => (Array.isArray(prev) ? prev : []).filter((_, idx) => idx !== index));
-    setPreview(null);
-  }
-
   function suggestRivalryMatchups() {
     const teamIds = normalizedDivisionTeams.map((team) => team.teamId).filter(Boolean);
     if (teamIds.length < 2) {
@@ -2281,6 +2195,11 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     const noGamesOnDates = parsedNoGamesOnDates.values;
     const normalizedNoGamesBeforeTime = normalizeClockInput(noGamesBeforeTime);
     const normalizedNoGamesAfterTime = normalizeClockInput(noGamesAfterTime);
+    const previewSeed = Number(preview?.seed);
+    const previewConstructionStrategy = String(preview?.constructionStrategy || "")
+      .trim()
+      .toLowerCase()
+      .split("+")[0];
 
     const payload = {
       division,
@@ -2299,6 +2218,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       noDoubleHeaders,
       balanceHomeAway,
       slotPlan: slotPlanPayload,
+      seed: Number.isFinite(previewSeed) ? previewSeed : undefined,
+      constructionStrategy: previewConstructionStrategy || undefined,
     };
     if (blockedDateRanges.length) payload.blockedDateRanges = blockedDateRanges;
     if (noGamesOnDates.length) payload.noGamesOnDates = noGamesOnDates;
@@ -2459,6 +2380,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
           (a.metrics.overallQuality > b.metrics.overallQuality) ? a : b
         );
         setSelectedScheduleOption(best.id);
+        setPreview(best.preview);
       }
       setToast({
         tone: "success",

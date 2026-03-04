@@ -508,7 +508,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
   }
 
   function openEditSlot(slot) {
-    if (!slot) return;
+    if (!slot || !canEditSlot(slot)) return;
     setErr("");
     setEditingSlot(slot);
     setEditGameDate(slot.gameDate || "");
@@ -990,7 +990,11 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
               slots={slots.filter((s) => !s.isAvailability && matchesSlotType(s.gameType, slotTypeFilter))}
               events={events}
               defaultView="week-cards"
-              onSlotClick={openEditSlot}
+              onSlotClick={(slot) => {
+                if (canEditSlot(slot)) {
+                  openEditSlot(slot);
+                }
+              }}
               onEventClick={(event) => {
                 if (canDeleteAnyEvent) {
                   deleteEvent(event.eventId);

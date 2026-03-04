@@ -153,8 +153,6 @@ function WeekCardsView({ weekGroups, onSlotClick, onEventClick }) {
         const totalGames = week.slots.filter(s => !s.isAvailability).length;
         const totalOpen = week.slots.filter(s => s.status === "Open").length;
         const totalEvents = week.events.length;
-        const utilization = totalGames + totalOpen;
-
         // Calculate day summaries
         const daySummaries = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((dayName) => {
           const dayDates = Array.from(week.days.values()).filter((d) => {
