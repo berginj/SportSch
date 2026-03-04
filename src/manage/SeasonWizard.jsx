@@ -2215,6 +2215,48 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     setPreview(null);
   }
 
+  function bulkImportRequestGames() {
+    const csvText = window.prompt(
+      "Paste CSV data (one game per line):\n" +
+      "Format: date,startTime,endTime,field,teamId,opponentName\n" +
+      "Example: 2026-05-20,09:00,10:30,external/tournament,Rockets,Rival High"
+    );
+
+    if (!csvText || !csvText.trim()) return;
+
+    const lines = csvText.trim().split("\n");
+    const imported = [];
+    let errorCount = 0;
+
+    lines.forEach((line) => {
+      const parts = line.split(",").map((p) => p.trim());
+      if (parts.length < 5) {
+        errorCount++;
+        return;
+      }
+
+      imported.push({
+        gameDate: parts[0] || "",
+        startTime: parts[1] || "",
+        endTime: parts[2] || "",
+        fieldKey: parts[3] || "",
+        teamId: parts[4] || "",
+        opponentName: parts[5] || "",
+      });
+    });
+
+    if (imported.length > 0) {
+      setRequestGames((prev) => [...(Array.isArray(prev) ? prev : []), ...imported]);
+      setPreview(null);
+      setToast({
+        tone: "success",
+        message: `Imported ${imported.length} request game(s)${errorCount > 0 ? `. Skipped ${errorCount} invalid line(s).` : ""}`,
+      });
+    } else {
+      setErr("No valid request games in CSV.");
+    }
+  }
+
   function removeRequestGameRow(index) {
     setRequestGames((prev) => (Array.isArray(prev) ? prev : []).filter((_, idx) => idx !== index));
     setPreview(null);
@@ -5689,13 +5731,23 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                     Add one-time away games at external venues. These are exact date/time/field requirements, count against the away team&apos;s weekly load, and stay locked in preview/apply.
                   </div>
                 </div>
-                <button
-                  type="button"
-                  className="btn btn--ghost"
-                  onClick={addRequestGameRow}
-                >
-                  Add request game
-                </button>
+                <div className="row gap-2">
+                  <button
+                    type="button"
+                    className="btn btn--ghost"
+                    onClick={addRequestGameRow}
+                  >
+                    Add request game
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--ghost"
+                    onClick={bulkImportRequestGames}
+                    title="Import multiple request games from CSV"
+                  >
+                    Import CSV
+                  </button>
+                </div>
               </div>
               {requestGameRowIssues.length ? (
                 <div className="callout callout--warning mb-2">
