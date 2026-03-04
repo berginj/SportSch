@@ -1750,6 +1750,83 @@
     color: var(--muted);
   }
 
+  .notificationCenterList {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .notificationCenterItem {
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    background: linear-gradient(145deg, #edf3f8, #e3eaf1);
+    box-shadow: var(--neo-shadow-sm);
+    transition: background-color 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  }
+
+  .notificationCenterItem.is-unread {
+    background: linear-gradient(145deg, #eef4fa, #e3ebf4);
+    border-color: rgba(46, 111, 174, 0.16);
+  }
+
+  .notificationCenterItem.is-link {
+    cursor: pointer;
+  }
+
+  .notificationCenterItem.is-link:hover {
+    border-color: rgba(255, 255, 255, 0.88);
+    box-shadow: 14px 14px 24px rgba(148, 163, 184, 0.22), -10px -10px 20px rgba(255, 255, 255, 0.9);
+  }
+
+  .notificationCenterItem__row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.8rem;
+  }
+
+  .notificationCenterItem__dot {
+    width: 0.65rem;
+    height: 0.65rem;
+    margin-top: 0.35rem;
+    border-radius: 999px;
+    background: var(--blue);
+    box-shadow: 0 0 0 3px rgba(46, 111, 174, 0.14);
+    flex: 0 0 auto;
+  }
+
+  .notificationCenterItem__content {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    gap: 0.45rem;
+  }
+
+  .notificationCenterItem__meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .notificationCenterItem__message {
+    margin: 0;
+    color: var(--text);
+    line-height: 1.45;
+  }
+
+  .notificationCenterItem__time {
+    font-size: 0.82rem;
+    color: var(--muted);
+  }
+
+  .notificationCenterItem__link {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--blue);
+    white-space: nowrap;
+    align-self: center;
+  }
+
   .topnav__league-select,
   .modal__input,
   input:not([type="checkbox"]),

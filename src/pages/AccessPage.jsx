@@ -11,6 +11,13 @@ const ROLE_OPTIONS = [
 const NEW_LEAGUE_VALUE = "NEW_LEAGUE";
 const NEW_LEAGUE_LABEL = "New league (enter details in message)";
 
+function getAccessStatusBadgeClass(status) {
+  const value = (status || "").trim().toLowerCase();
+  if (value === "approved") return "statusBadge status-confirmed";
+  if (value === "denied") return "statusBadge status-cancelled";
+  return "statusBadge status-open";
+}
+
 export default function AccessPage({ me, leagueId, setLeagueId }) {
   const [leagues, setLeagues] = useState([]);
   const [role, setRole] = useState("Coach");
@@ -26,6 +33,11 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
   const email = me?.email || "";
   const autoSubmitted = useRef(false);
   const autoRequested = useRef(false);
+  const requestSummary = useMemo(() => ({
+    total: mine.length,
+    pending: mine.filter((request) => (request?.status || "").trim() === "Pending").length,
+    approved: mine.filter((request) => (request?.status || "").trim() === "Approved").length,
+  }), [mine]);
 
   const applyFiltersFromUrl = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -199,11 +211,37 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
 
   return (
     <div className="page">
-      <h1>Access</h1>
+      <div className="card">
+        <div className="card__header">
+          <div className="h1">Access</div>
+          <div className="subtle">Request league access, track status, and reapply with context when needed.</div>
+        </div>
+        <div className="layoutStatRow">
+          <div className="layoutStat">
+            <div className="layoutStat__value">{requestSummary.total}</div>
+            <div className="layoutStat__label">Requests</div>
+          </div>
+          <div className="layoutStat">
+            <div className="layoutStat__value">{requestSummary.pending}</div>
+            <div className="layoutStat__label">Pending</div>
+          </div>
+          <div className="layoutStat">
+            <div className="layoutStat__value">{requestSummary.approved}</div>
+            <div className="layoutStat__label">Approved</div>
+          </div>
+          <div className="layoutStat">
+            <div className="layoutStat__value">{leagues.length}</div>
+            <div className="layoutStat__label">Available leagues</div>
+          </div>
+        </div>
+      </div>
 
       {!signedIn ? (
         <div className="card">
-          <h2>Sign in</h2>
+          <div className="card__header">
+            <h2>Sign in</h2>
+            <div className="subtle">Authentication is required before an access request can be created.</div>
+          </div>
           <p>
             You&apos;re not signed in. Choose a sign-in method below.
           </p>
@@ -221,10 +259,13 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
         </div>
       ) : (
         <div className="card">
-          <h2>Request access</h2>
-          <div className="muted">Signed in as {email || me?.userId}</div>
+          <div className="card__header">
+            <h2>Request access</h2>
+            <div className="subtle">Signed in as {email || me?.userId}</div>
+          </div>
 
-          <div className="formGrid">
+          <div className="controlBand">
+            <div className="formGrid">
             <label>
               League
               <select
@@ -258,6 +299,7 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
                 ))}
               </select>
             </label>
+            </div>
           </div>
           <div className="muted">
             Global admin access is assigned from the global admin management page only.
@@ -279,13 +321,16 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
             </button>
           </div>
 
-          {err ? <div className="err">{err}</div> : null}
-          {ok ? <div className="ok">{ok}</div> : null}
+          {err ? <div className="callout callout--error">{err}</div> : null}
+          {ok ? <div className="callout callout--ok">{ok}</div> : null}
         </div>
       )}
 
       <div className="card">
-        <h2>My requests</h2>
+        <div className="card__header">
+          <h2>My requests</h2>
+          <div className="subtle">Your request history for the current account.</div>
+        </div>
         {mine.length === 0 ? (
           <div className="muted">No access requests yet.</div>
         ) : (
@@ -305,7 +350,7 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
                     >
                     <td>{r.leagueId}</td>
                     <td>{r.requestedRole}</td>
-                    <td>{r.status}</td>
+                    <td><span className={getAccessStatusBadgeClass(r.status)}>{r.status}</span></td>
                     <td>{r.updatedUtc ? new Date(r.updatedUtc).toLocaleString() : ""}</td>
                   </tr>
                 ))}
@@ -316,7 +361,10 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
       </div>
 
       <div className="card">
-        <h2>What happens next</h2>
+        <div className="card__header">
+          <h2>What happens next</h2>
+          <div className="subtle">The review cycle after you submit access.</div>
+        </div>
         <ul>
           <li>An admin reviews your request and either approves or denies it.</li>
           <li>

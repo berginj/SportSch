@@ -477,6 +477,13 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
     return (memberships || []).filter((m) => (m.role || "").toLowerCase() === "coach");
   }, [memberships]);
 
+  const adminSummary = useMemo(() => ({
+    requests: sorted.length,
+    coaches: coaches.length,
+    leagues: globalLeagues.length,
+    users: users.length,
+  }), [sorted.length, coaches.length, globalLeagues.length, users.length]);
+
   const teamsByDivision = useMemo(() => {
     const map = new Map();
     for (const t of teams || []) {
@@ -612,61 +619,73 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
         onCancel={handleCancel}
       />
 
-      {/* Internal Tab Navigation */}
-      <div className="card mb-6">
-        <div className="flex items-center gap-2 border-b border-gray-200 overflow-x-auto">
+      <div className="card">
+        <div className="card__header">
+          <div className="h2">Admin workspace</div>
+          <div className="subtle">League operations, membership review, imports, and global setup in one place.</div>
+        </div>
+        <div className="layoutStatRow">
+          <div className="layoutStat">
+            <div className="layoutStat__value">{adminSummary.requests}</div>
+            <div className="layoutStat__label">Visible requests</div>
+          </div>
+          <div className="layoutStat">
+            <div className="layoutStat__value">{adminSummary.coaches}</div>
+            <div className="layoutStat__label">Coach memberships</div>
+          </div>
+          <div className="layoutStat">
+            <div className="layoutStat__value">{adminSummary.users}</div>
+            <div className="layoutStat__label">Loaded users</div>
+          </div>
+          {isGlobalAdmin ? (
+            <div className="layoutStat">
+              <div className="layoutStat__value">{adminSummary.leagues}</div>
+              <div className="layoutStat__label">Known leagues</div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card__header">
+          <div className="h2">Admin sections</div>
+          <div className="subtle">Switch between dashboards, access review, coach setup, imports, and global administration.</div>
+        </div>
+        <div className="controlBand">
+          <div className="tabs">
           <button
-            className={`px-4 py-2 font-semibold border-b-2 transition-colors ${
-              activeSection === 'dashboard'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
+            className={`tabBtn ${activeSection === 'dashboard' ? 'active' : ''}`}
             onClick={() => setActiveSection('dashboard')}
           >
             Dashboard
           </button>
           <button
-            className={`px-4 py-2 font-semibold border-b-2 transition-colors ${
-              activeSection === 'access-requests'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
+            className={`tabBtn ${activeSection === 'access-requests' ? 'active' : ''}`}
             onClick={() => setActiveSection('access-requests')}
           >
             Access Requests
           </button>
           <button
-            className={`px-4 py-2 font-semibold border-b-2 transition-colors ${
-              activeSection === 'coaches'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
+            className={`tabBtn ${activeSection === 'coaches' ? 'active' : ''}`}
             onClick={() => setActiveSection('coaches')}
           >
             Coach Assignments
           </button>
           <button
-            className={`px-4 py-2 font-semibold border-b-2 transition-colors ${
-              activeSection === 'import'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
+            className={`tabBtn ${activeSection === 'import' ? 'active' : ''}`}
             onClick={() => setActiveSection('import')}
           >
             CSV Import
           </button>
           {isGlobalAdmin && (
             <button
-              className={`px-4 py-2 font-semibold border-b-2 transition-colors ${
-                activeSection === 'global'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-600 hover:text-gray-900'
-              }`}
+              className={`tabBtn ${activeSection === 'global' ? 'active' : ''}`}
               onClick={() => setActiveSection('global')}
             >
               Global Admin
             </button>
           )}
+        </div>
         </div>
       </div>
 
