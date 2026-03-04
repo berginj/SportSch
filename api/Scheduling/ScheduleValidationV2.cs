@@ -175,7 +175,7 @@ public static class ScheduleValidationV2
     {
         foreach (var a in assignments)
         {
-            if (a.IsExternalOffer) continue;
+            if (a.IsExternalOffer || a.IsRequestGame) continue;
             if (!string.IsNullOrWhiteSpace(a.HomeTeamId) && !string.IsNullOrWhiteSpace(a.AwayTeamId)) continue;
             violations.Add(new ScheduleRuleViolation(
                 "missing-opponent",
@@ -223,8 +223,7 @@ public static class ScheduleValidationV2
         var byTeamDate = new Dictionary<string, Dictionary<string, List<ScheduleAssignment>>>(StringComparer.OrdinalIgnoreCase);
         foreach (var a in assignments)
         {
-            AddTeamDateAssignment(byTeamDate, a.HomeTeamId, a);
-            AddTeamDateAssignment(byTeamDate, a.AwayTeamId, a);
+            AddTrackedAssignmentByTeamDate(byTeamDate, a);
         }
 
         foreach (var (teamId, byDate) in byTeamDate)
@@ -297,8 +296,7 @@ public static class ScheduleValidationV2
         var byTeamWeek = new Dictionary<string, Dictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
         foreach (var a in assignments)
         {
-            AddTeamWeekCount(byTeamWeek, a.HomeTeamId, a.GameDate);
-            AddTeamWeekCount(byTeamWeek, a.AwayTeamId, a.GameDate);
+            AddTrackedTeamWeekCounts(byTeamWeek, a);
         }
 
         foreach (var (teamId, weekMap) in byTeamWeek)
@@ -387,10 +385,9 @@ public static class ScheduleValidationV2
 
         var homeCounts = teamList.ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
         var awayCounts = teamList.ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
-        foreach (var a in assignments.Where(a => !a.IsExternalOffer))
+        foreach (var a in assignments)
         {
-            if (homeCounts.ContainsKey(a.HomeTeamId)) homeCounts[a.HomeTeamId] += 1;
-            if (awayCounts.ContainsKey(a.AwayTeamId)) awayCounts[a.AwayTeamId] += 1;
+            AccumulateHomeAwayCountsForAssignment(a, homeCounts, awayCounts);
         }
 
         var offenders = teamList
@@ -421,7 +418,7 @@ public static class ScheduleValidationV2
         List<ScheduleRuleViolation> violations)
     {
         var games = assignments
-            .Where(a => !a.IsExternalOffer && !string.IsNullOrWhiteSpace(a.HomeTeamId) && !string.IsNullOrWhiteSpace(a.AwayTeamId))
+            .Where(a => !a.IsExternalOffer && !a.IsRequestGame && !string.IsNullOrWhiteSpace(a.HomeTeamId) && !string.IsNullOrWhiteSpace(a.AwayTeamId))
             .ToList();
         if (games.Count == 0) return;
 
@@ -556,7 +553,7 @@ public static class ScheduleValidationV2
         terms.Add(new ScheduleSoftScoreTerm("weather-weighted-unused-capacity", 2, weatherWeightedUnused, weatherWeightedUnused * 2));
 
         var pairRepeatRaw = result.Assignments
-            .Where(a => !a.IsExternalOffer && !string.IsNullOrWhiteSpace(a.HomeTeamId) && !string.IsNullOrWhiteSpace(a.AwayTeamId))
+            .Where(a => !a.IsExternalOffer && !a.IsRequestGame && !string.IsNullOrWhiteSpace(a.HomeTeamId) && !string.IsNullOrWhiteSpace(a.AwayTeamId))
             .GroupBy(a => PairKey(a.HomeTeamId, a.AwayTeamId), StringComparer.OrdinalIgnoreCase)
             .Where(g => !string.IsNullOrWhiteSpace(g.Key))
             .Sum(g => Math.Max(0, g.Count() - 1));
@@ -579,10 +576,9 @@ public static class ScheduleValidationV2
             .ToList();
         var homeCounts = teamList.ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
         var awayCounts = teamList.ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
-        foreach (var a in result.Assignments.Where(a => !a.IsExternalOffer))
+        foreach (var a in result.Assignments)
         {
-            if (homeCounts.ContainsKey(a.HomeTeamId)) homeCounts[a.HomeTeamId] += 1;
-            if (awayCounts.ContainsKey(a.AwayTeamId)) awayCounts[a.AwayTeamId] += 1;
+            AccumulateHomeAwayCountsForAssignment(a, homeCounts, awayCounts);
         }
         var homeAwayGapSum = teamList.Sum(t => Math.Abs(homeCounts[t] - awayCounts[t]));
         terms.Add(new ScheduleSoftScoreTerm("home-away-balance-gap", 2, homeAwayGapSum, homeAwayGapSum * 2));
@@ -635,7 +631,7 @@ public static class ScheduleValidationV2
         if (totalDays <= 0) return 0;
 
         double totalPenalty = 0;
-        foreach (var a in result.Assignments.Where(a => !a.IsExternalOffer))
+        foreach (var a in result.Assignments.Where(a => !a.IsExternalOffer && !a.IsRequestGame))
         {
             var pairKey = PairKey(a.HomeTeamId, a.AwayTeamId);
             if (string.IsNullOrWhiteSpace(pairKey)) continue;
@@ -827,15 +823,34 @@ public static class ScheduleValidationV2
         list.Add(assignment);
     }
 
+    private static void AddTrackedAssignmentByTeamDate(
+        Dictionary<string, Dictionary<string, List<ScheduleAssignment>>> byTeamDate,
+        ScheduleAssignment assignment)
+    {
+        foreach (var teamId in EnumerateTrackedTeamIds(assignment))
+        {
+            AddTeamDateAssignment(byTeamDate, teamId, assignment);
+        }
+    }
+
     private static Dictionary<string, Dictionary<string, int>> BuildTeamDateCounts(IEnumerable<ScheduleAssignment> assignments)
     {
         var byTeamDate = new Dictionary<string, Dictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
         foreach (var a in assignments)
         {
-            AddTeamDateCount(byTeamDate, a.HomeTeamId, a.GameDate);
-            AddTeamDateCount(byTeamDate, a.AwayTeamId, a.GameDate);
+            AddTrackedTeamDateCounts(byTeamDate, a);
         }
         return byTeamDate;
+    }
+
+    private static void AddTrackedTeamDateCounts(
+        Dictionary<string, Dictionary<string, int>> byTeamDate,
+        ScheduleAssignment assignment)
+    {
+        foreach (var teamId in EnumerateTrackedTeamIds(assignment))
+        {
+            AddTeamDateCount(byTeamDate, teamId, assignment.GameDate);
+        }
     }
 
     private static void AddTeamDateCount(Dictionary<string, Dictionary<string, int>> byTeamDate, string teamId, string gameDate)
@@ -852,14 +867,24 @@ public static class ScheduleValidationV2
     private static Dictionary<string, List<DateOnly>> BuildTeamGameDates(IEnumerable<ScheduleAssignment> assignments)
     {
         var byTeamDates = new Dictionary<string, List<DateOnly>>(StringComparer.OrdinalIgnoreCase);
-        foreach (var a in assignments.Where(a => !a.IsExternalOffer))
+        foreach (var a in assignments)
         {
             if (!TryParseDate(a.GameDate, out var date)) continue;
-            AddTeamGameDate(byTeamDates, a.HomeTeamId, date);
-            AddTeamGameDate(byTeamDates, a.AwayTeamId, date);
+            AddTrackedTeamGameDates(byTeamDates, a, date);
         }
 
         return byTeamDates;
+    }
+
+    private static void AddTrackedTeamGameDates(
+        Dictionary<string, List<DateOnly>> byTeamDates,
+        ScheduleAssignment assignment,
+        DateOnly date)
+    {
+        foreach (var teamId in EnumerateTrackedTeamIds(assignment))
+        {
+            AddTeamGameDate(byTeamDates, teamId, date);
+        }
     }
 
     private static void AddTeamGameDate(Dictionary<string, List<DateOnly>> byTeamDates, string teamId, DateOnly date)
@@ -884,6 +909,63 @@ public static class ScheduleValidationV2
             byTeamWeek[teamId] = weeks;
         }
         weeks[week] = weeks.TryGetValue(week, out var count) ? count + 1 : 1;
+    }
+
+    private static void AddTrackedTeamWeekCounts(
+        Dictionary<string, Dictionary<string, int>> byTeamWeek,
+        ScheduleAssignment assignment)
+    {
+        foreach (var teamId in EnumerateTrackedTeamIds(assignment))
+        {
+            AddTeamWeekCount(byTeamWeek, teamId, assignment.GameDate);
+        }
+    }
+
+    private static void AccumulateHomeAwayCountsForAssignment(
+        ScheduleAssignment assignment,
+        Dictionary<string, int> homeCounts,
+        Dictionary<string, int> awayCounts)
+    {
+        if (assignment.IsExternalOffer)
+        {
+            if (homeCounts.ContainsKey(assignment.HomeTeamId))
+                homeCounts[assignment.HomeTeamId] += 1;
+            return;
+        }
+
+        if (assignment.IsRequestGame)
+        {
+            if (awayCounts.ContainsKey(assignment.AwayTeamId))
+                awayCounts[assignment.AwayTeamId] += 1;
+            return;
+        }
+
+        if (homeCounts.ContainsKey(assignment.HomeTeamId))
+            homeCounts[assignment.HomeTeamId] += 1;
+        if (awayCounts.ContainsKey(assignment.AwayTeamId))
+            awayCounts[assignment.AwayTeamId] += 1;
+    }
+
+    private static IEnumerable<string> EnumerateTrackedTeamIds(ScheduleAssignment assignment)
+    {
+        if (assignment.IsExternalOffer)
+        {
+            if (!string.IsNullOrWhiteSpace(assignment.HomeTeamId))
+                yield return assignment.HomeTeamId;
+            yield break;
+        }
+
+        if (assignment.IsRequestGame)
+        {
+            if (!string.IsNullOrWhiteSpace(assignment.AwayTeamId))
+                yield return assignment.AwayTeamId;
+            yield break;
+        }
+
+        if (!string.IsNullOrWhiteSpace(assignment.HomeTeamId))
+            yield return assignment.HomeTeamId;
+        if (!string.IsNullOrWhiteSpace(assignment.AwayTeamId))
+            yield return assignment.AwayTeamId;
     }
 
     private static string WeekKeyFromDate(string gameDate)

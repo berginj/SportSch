@@ -999,6 +999,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [teamCount, setTeamCount] = useState(0);
   const [divisionTeams, setDivisionTeams] = useState([]);
   const [rivalryMatchups, setRivalryMatchups] = useState([]);
+  const [requestGames, setRequestGames] = useState([]);
 
   const [step, setStep] = useState(0);
   const [preview, setPreview] = useState(null);
@@ -1139,6 +1140,65 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         .slice(0, MAX_RIVALRY_MATCHUPS)
         .map((row) => ({ ...row, weight: Math.max(1, Math.min(10, Math.round(row.weight)))})),
     [rivalryMatchups]
+  );
+  const requestGameRowIssues = useMemo(() => {
+    const issues = [];
+    const seen = new Set();
+    (requestGames || []).forEach((row, idx) => {
+      const gameDate = String(row?.gameDate || "").trim();
+      const startTime = normalizeClockInput(row?.startTime || "") || "";
+      const endTime = normalizeClockInput(row?.endTime || "") || "";
+      const fieldKey = String(row?.fieldKey || "").trim();
+      const teamId = String(row?.teamId || "").trim();
+      const opponentName = String(row?.opponentName || "").trim();
+      const hasAnyValue = gameDate || startTime || endTime || fieldKey || teamId || opponentName;
+      if (!hasAnyValue) return;
+
+      if (!gameDate || !startTime || !endTime || !fieldKey || !teamId) {
+        issues.push(`Request game ${idx + 1}: date, start, end, field, and away team are required.`);
+        return;
+      }
+      if (!isIsoDate(gameDate)) {
+        issues.push(`Request game ${idx + 1}: date must be YYYY-MM-DD.`);
+        return;
+      }
+      if (seasonStart && seasonEnd && !isIsoDateInRange(gameDate, seasonStart, seasonEnd)) {
+        issues.push(`Request game ${idx + 1}: date must stay within the season range.`);
+        return;
+      }
+      const startMin = parseMinutes(startTime);
+      const endMin = parseMinutes(endTime);
+      if (startMin == null || endMin == null || startMin >= endMin) {
+        issues.push(`Request game ${idx + 1}: end time must be after start time.`);
+        return;
+      }
+
+      const dedupeKey = [teamId, gameDate, startTime, endTime, fieldKey.toLowerCase()].join("|");
+      if (seen.has(dedupeKey)) {
+        issues.push(`Request game ${idx + 1}: duplicate fixed away event.`);
+        return;
+      }
+      seen.add(dedupeKey);
+    });
+    return issues;
+  }, [requestGames, seasonStart, seasonEnd]);
+  const requestGamesPayload = useMemo(
+    () =>
+      (requestGames || [])
+        .map((row) => ({
+          gameDate: String(row?.gameDate || "").trim(),
+          startTime: normalizeClockInput(row?.startTime || "") || "",
+          endTime: normalizeClockInput(row?.endTime || "") || "",
+          fieldKey: String(row?.fieldKey || "").trim(),
+          teamId: String(row?.teamId || "").trim(),
+          opponentName: String(row?.opponentName || "").trim(),
+        }))
+        .filter((row) => row.gameDate && row.startTime && row.endTime && row.fieldKey && row.teamId)
+        .map((row) => ({
+          ...row,
+          opponentName: row.opponentName || undefined,
+        })),
+    [requestGames]
   );
 
   const parsedNoGamesOnDates = useMemo(
@@ -1829,6 +1889,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     setGuestAnchorPrimarySlotId("");
     setGuestAnchorSecondarySlotId("");
     setRivalryMatchups([]);
+    setRequestGames([]);
   }, [division]);
 
   useEffect(() => {
@@ -2140,6 +2201,26 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     setPreview(null);
   }
 
+  function addRequestGameRow() {
+    setRequestGames((prev) => [
+      ...(Array.isArray(prev) ? prev : []),
+      { gameDate: "", startTime: "", endTime: "", fieldKey: "", teamId: "", opponentName: "" },
+    ]);
+    setPreview(null);
+  }
+
+  function updateRequestGameRow(index, patch) {
+    setRequestGames((prev) =>
+      (Array.isArray(prev) ? prev : []).map((row, idx) => (idx === index ? { ...row, ...patch } : row))
+    );
+    setPreview(null);
+  }
+
+  function removeRequestGameRow(index) {
+    setRequestGames((prev) => (Array.isArray(prev) ? prev : []).filter((_, idx) => idx !== index));
+    setPreview(null);
+  }
+
   function suggestRivalryMatchups() {
     const teamIds = normalizedDivisionTeams.map((team) => team.teamId).filter(Boolean);
     if (teamIds.length < 2) {
@@ -2226,6 +2307,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     if (normalizedNoGamesBeforeTime) payload.noGamesBeforeTime = normalizedNoGamesBeforeTime;
     if (normalizedNoGamesAfterTime) payload.noGamesAfterTime = normalizedNoGamesAfterTime;
     if (rivalryPayload.length) payload.rivalryMatchups = rivalryPayload;
+    if (requestGamesPayload.length) payload.requestGames = requestGamesPayload;
 
     const primaryAnchor = guestAnchorPayloadFromSlotId(guestAnchorPrimarySlotId);
     const secondaryAnchor = guestAnchorPayloadFromSlotId(guestAnchorSecondarySlotId);
@@ -2266,6 +2348,14 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     // Team load spread (lower is better - measures max - min games per team)
     const gamesByTeam = new Map();
     regularAssignments.forEach(a => {
+      if (a?.isExternalOffer) {
+        if (a.homeTeamId) gamesByTeam.set(a.homeTeamId, (gamesByTeam.get(a.homeTeamId) || 0) + 1);
+        return;
+      }
+      if (a?.isRequestGame) {
+        if (a.awayTeamId) gamesByTeam.set(a.awayTeamId, (gamesByTeam.get(a.awayTeamId) || 0) + 1);
+        return;
+      }
       if (a.homeTeamId) gamesByTeam.set(a.homeTeamId, (gamesByTeam.get(a.homeTeamId) || 0) + 1);
       if (a.awayTeamId) gamesByTeam.set(a.awayTeamId, (gamesByTeam.get(a.awayTeamId) || 0) + 1);
     });
@@ -2275,6 +2365,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     // Pair diversity (higher is better - % of pairs that don't repeat)
     const pairCounts = new Map();
     regularAssignments.forEach(a => {
+      if (a?.isExternalOffer || a?.isRequestGame) return;
       if (!a.homeTeamId || !a.awayTeamId) return;
       const key = [a.homeTeamId, a.awayTeamId].sort().join("|");
       pairCounts.set(key, (pairCounts.get(key) || 0) + 1);
@@ -2459,6 +2550,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     if (rivalryRowIssues.length > 0) {
       return setErr(rivalryRowIssues[0]);
     }
+    if (requestGameRowIssues.length > 0) {
+      return setErr(requestGameRowIssues[0]);
+    }
     if (leagueRuleIssues.length > 0) {
       return setErr(leagueRuleIssues[0]);
     }
@@ -2491,8 +2585,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       "This action:\n" +
       "- Replaces all current slot assignments\n" +
       (resetGeneratedSlotsBeforeApply
-        ? "- Resets existing non-practice game and guest slots in this season window before previewing and applying\n"
-        : "- Leaves existing non-practice game and guest slots untouched before previewing and applying\n") +
+        ? "- Resets existing non-practice game, guest, and request slots in this season window before previewing and applying\n"
+        : "- Leaves existing non-practice game, guest, and request slots untouched before previewing and applying\n") +
       "- Does NOT remove recurring allocations or field blackouts\n" +
       "- Cannot be undone\n" +
       "- May still require allocation cleanup if you need a different underlying slot pool\n\n" +
@@ -2519,6 +2613,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     }
     if (rivalryRowIssues.length > 0) {
       return setErr(rivalryRowIssues[0]);
+    }
+    if (requestGameRowIssues.length > 0) {
+      return setErr(requestGameRowIssues[0]);
     }
     if (leagueRuleIssues.length > 0) {
       return setErr(leagueRuleIssues[0]);
@@ -2573,6 +2670,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     if (!assignment || repairApplyingId) return false;
     if (String(assignment.phase || "") !== "Regular Season") return false;
     if (assignment.isExternalOffer) return false;
+    if (assignment.isRequestGame) return false;
     if (!String(assignment.slotId || "").trim()) return false;
     if (!String(assignment.homeTeamId || "").trim() || !String(assignment.awayTeamId || "").trim()) return false;
     return true;
@@ -2615,8 +2713,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         setErr("Drag source is no longer valid. Reload preview.");
         return;
       }
-      if (sourceAssignment?.isExternalOffer || targetAssignment?.isExternalOffer) {
-        setErr("Guest/external slots are locked in preview and cannot be swapped.");
+      if (sourceAssignment?.isExternalOffer || targetAssignment?.isExternalOffer || sourceAssignment?.isRequestGame || targetAssignment?.isRequestGame) {
+        setErr("Guest and request slots are locked in preview and cannot be swapped.");
         return;
       }
       const proposal = buildPreviewSwapRepairProposal(sourceAssignment, targetAssignment);
@@ -2843,8 +2941,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     if (!Number.isFinite(externalCap) || externalCap < 0) return "Max guest/crossover offers per team must be 0 or greater.";
     if (leagueRuleIssues.length > 0) return leagueRuleIssues[0];
     if (rivalryRowIssues.length > 0) return rivalryRowIssues[0];
+    if (requestGameRowIssues.length > 0) return requestGameRowIssues[0];
     return "";
-  }, [maxGamesPerWeek, minGamesPerTeam, poolGamesPerTeam, guestGamesPerWeek, maxExternalOffersPerTeamSeason, leagueRuleIssues, rivalryRowIssues]);
+  }, [maxGamesPerWeek, minGamesPerTeam, poolGamesPerTeam, guestGamesPerWeek, maxExternalOffersPerTeamSeason, leagueRuleIssues, rivalryRowIssues, requestGameRowIssues]);
 
   const previewError = useMemo(() => {
     if (!preview) return "";
@@ -2875,8 +2974,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       issues,
       warnings,
       regularAssignments,
-      regularScheduledAssignments: regularAssignments.filter((assignment) => !assignment?.isExternalOffer),
+      regularScheduledAssignments: regularAssignments.filter((assignment) => !assignment?.isExternalOffer && !assignment?.isRequestGame),
       regularGuestAssignments: regularAssignments.filter((assignment) => assignment?.isExternalOffer && assignment?.homeTeamId),
+      regularRequestAssignments: regularAssignments.filter((assignment) => assignment?.isRequestGame && assignment?.awayTeamId),
       regularUnassignedSlots: unassignedSlots.filter((slot) => slot?.phase === "Regular Season"),
       regularUnassignedMatchups: unassignedMatchups.filter((matchup) => getIssuePhase(matchup) === "Regular Season"),
     };
@@ -3060,6 +3160,14 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     previewCollections.assignments.forEach((assignment) => {
       const homeTeamId = String(assignment?.homeTeamId || "").trim();
       const awayTeamId = String(assignment?.awayTeamId || "").trim();
+      if (assignment?.isExternalOffer) {
+        if (homeTeamId) teamIds.add(homeTeamId);
+        return;
+      }
+      if (assignment?.isRequestGame) {
+        if (awayTeamId) teamIds.add(awayTeamId);
+        return;
+      }
       if (homeTeamId) teamIds.add(homeTeamId);
       if (awayTeamId) teamIds.add(awayTeamId);
     });
@@ -3245,6 +3353,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     const regularAssignments = previewCollections.regularAssignments;
     const regularGames = previewCollections.regularScheduledAssignments.filter((a) => a?.homeTeamId && a?.awayTeamId);
     const regularGuestGames = previewCollections.regularGuestAssignments;
+    const regularRequestGames = previewCollections.regularRequestAssignments;
     const regularUnassignedSlots = previewCollections.regularUnassignedSlots;
     const regularUnassignedMatchups = previewCollections.regularUnassignedMatchups;
     const manualPriorityByPair = new Map(
@@ -3264,6 +3373,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     });
     regularGuestGames.forEach((a) => {
       if (a?.homeTeamId) teamIds.add(String(a.homeTeamId).trim());
+    });
+    regularRequestGames.forEach((a) => {
+      if (a?.awayTeamId) teamIds.add(String(a.awayTeamId).trim());
     });
     regularUnassignedMatchups.forEach((m) => {
       if (m?.homeTeamId) teamIds.add(String(m.homeTeamId).trim());
@@ -3379,6 +3491,18 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       addActivity(teamId, a?.gameDate);
     });
 
+    regularRequestGames.forEach((a) => {
+      const teamId = String(a?.awayTeamId || "").trim();
+      if (!teamId) return;
+      const stat = ensureTeamStat(teamId);
+      if (stat) {
+        stat.games += 1;
+        stat.away += 1;
+        stat.activity += 1;
+      }
+      addActivity(teamId, a?.gameDate);
+    });
+
     regularUnassignedMatchups.forEach((m) => {
       const home = String(m?.homeTeamId || "").trim();
       const away = String(m?.awayTeamId || "").trim();
@@ -3488,7 +3612,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       teamRows,
       matrixRows,
       pairRows,
-      totalRegularGames: regularGames.length,
+      totalRegularGames: regularGames.length + regularRequestGames.length,
       totalGuestGames: regularGuestGames.length,
       weekCount: regularWeekKeys.length,
       weekKeys: regularWeekKeys,
@@ -3544,6 +3668,13 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         const home = String(a?.homeTeamId || "").trim();
         const cell = ensureTeamWeek(home, weekKey);
         if (cell) cell.guest += 1;
+        return;
+      }
+      if (a?.isRequestGame) {
+        const away = String(a?.awayTeamId || "").trim();
+        const cell = ensureTeamWeek(away, weekKey);
+        if (cell) cell.regular += 1;
+        addTeamWeekRegularAssignment(away, weekKey, a);
         return;
       }
       const home = String(a?.homeTeamId || "").trim();
@@ -3948,6 +4079,10 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         addTeamWeekCount(assignment?.homeTeamId, weekKey, "guest");
         return;
       }
+      if (assignment?.isRequestGame) {
+        addTeamWeekCount(assignment?.awayTeamId, weekKey, "regular");
+        return;
+      }
       addTeamWeekCount(assignment?.homeTeamId, weekKey, "regular");
       addTeamWeekCount(assignment?.awayTeamId, weekKey, "regular");
     });
@@ -4125,6 +4260,14 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         label: "External / guest game",
         tone: "neutral",
         detail: "This assignment is marked as an external offer (guest game), so opponent balance metrics differ from intra-division games.",
+      });
+    }
+    if (selected?.isRequestGame) {
+      scoringFactors.push({
+        key: "request-game",
+        label: "Fixed request game",
+        tone: "neutral",
+        detail: "This away game is locked from the Rules step. It counts toward the away team's weekly load and will not be moved by preview repairs.",
       });
     }
     if (!scoringFactors.length) {
@@ -4378,6 +4521,14 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
       const teamIds = new Set();
       regularAssignments.forEach((a) => {
+        if (a?.isExternalOffer) {
+          if (a?.homeTeamId) teamIds.add(a.homeTeamId);
+          return;
+        }
+        if (a?.isRequestGame) {
+          if (a?.awayTeamId) teamIds.add(a.awayTeamId);
+          return;
+        }
         if (a?.homeTeamId) teamIds.add(a.homeTeamId);
         if (a?.awayTeamId) teamIds.add(a.awayTeamId);
       });
@@ -4588,12 +4739,12 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         {resetGeneratedSlotsBeforeApply ? (
           <>
             {" "}
-            It will also reset existing <strong>non-practice game and guest rows</strong> in this season window before previewing and applying the new run.
+            It will also reset existing <strong>non-practice game, guest, and request rows</strong> in this season window before previewing and applying the new run.
           </>
         ) : (
           <>
             {" "}
-            It will <strong>not</strong> reset existing non-practice game and guest rows before previewing or applying.
+            It will <strong>not</strong> reset existing non-practice game, guest, and request rows before previewing or applying.
           </>
         )}{" "}
         It does <strong>not</strong> clear recurring allocations or field blackouts. If you need a different underlying slot pool, clear or edit availability first, then rerun the wizard.
@@ -4603,7 +4754,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
             checked={resetGeneratedSlotsBeforeApply}
             onChange={(e) => setResetGeneratedSlotsBeforeApply(e.target.checked)}
           />
-          Reset existing non-practice game and guest slots in this season window before preview and apply
+          Reset existing non-practice game, guest, and request slots in this season window before preview and apply
         </label>
       </div>
 
@@ -5529,6 +5680,125 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
               )}
               <div className="subtle mt-2">
                 Weight 1-10: higher values increase the penalty for placing that matchup early in the regular season.
+              </div>
+            </div>
+            <div className="card">
+              <div className="row items-center justify-between gap-2 mb-2">
+                <div>
+                  <div className="font-bold">Request games (locked away events)</div>
+                  <div className="subtle">
+                    Add one-time away games at external venues. These are exact date/time/field requirements, count against the away team&apos;s weekly load, and stay locked in preview/apply.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={addRequestGameRow}
+                >
+                  Add request game
+                </button>
+              </div>
+              {requestGameRowIssues.length ? (
+                <div className="callout callout--warning mb-2">
+                  <div className="font-bold mb-1">Request game issues</div>
+                  {requestGameRowIssues.slice(0, 4).map((issue, idx) => (
+                    <div key={`request-game-issue-${idx}`} className="subtle">{issue}</div>
+                  ))}
+                  {requestGameRowIssues.length > 4 ? <div className="subtle">Showing first 4 issues.</div> : null}
+                </div>
+              ) : null}
+              {requestGames.length === 0 ? (
+                <div className="subtle">
+                  No fixed away games configured. Add them here for tournaments, makeup games, or known external matchups that must stay on the calendar.
+                </div>
+              ) : (
+                <div className="tableWrap">
+                  <table className="table table--compact">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Start</th>
+                        <th>End</th>
+                        <th>Field</th>
+                        <th>Away team</th>
+                        <th>Opponent</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {requestGames.map((row, idx) => (
+                        <tr key={`request-game-row-${idx}`}>
+                          <td>
+                            <input
+                              aria-label={`Request game ${idx + 1} date`}
+                              type="date"
+                              value={row?.gameDate || ""}
+                              onChange={(e) => updateRequestGameRow(idx, { gameDate: e.target.value })}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              aria-label={`Request game ${idx + 1} start`}
+                              type="time"
+                              value={normalizeClockInput(row?.startTime) || row?.startTime || ""}
+                              onChange={(e) => updateRequestGameRow(idx, { startTime: e.target.value })}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              aria-label={`Request game ${idx + 1} end`}
+                              type="time"
+                              value={normalizeClockInput(row?.endTime) || row?.endTime || ""}
+                              onChange={(e) => updateRequestGameRow(idx, { endTime: e.target.value })}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              aria-label={`Request game ${idx + 1} field`}
+                              value={row?.fieldKey || ""}
+                              onChange={(e) => updateRequestGameRow(idx, { fieldKey: e.target.value })}
+                              placeholder="external/tournament"
+                            />
+                          </td>
+                          <td>
+                            <select
+                              aria-label={`Request game ${idx + 1} away team`}
+                              value={row?.teamId || ""}
+                              onChange={(e) => updateRequestGameRow(idx, { teamId: e.target.value })}
+                            >
+                              <option value="">Select team</option>
+                              {normalizedDivisionTeams.map((team) => (
+                                <option key={`request-team-${idx}-${team.teamId}`} value={team.teamId}>
+                                  {team.name && team.name !== team.teamId ? `${team.name} (${team.teamId})` : team.teamId}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td>
+                            <input
+                              aria-label={`Request game ${idx + 1} opponent`}
+                              value={row?.opponentName || ""}
+                              onChange={(e) => updateRequestGameRow(idx, { opponentName: e.target.value })}
+                              placeholder="Opponent (optional)"
+                            />
+                          </td>
+                          <td style={{ width: 90 }}>
+                            <button
+                              type="button"
+                              className="btn btn--ghost"
+                              onClick={() => removeRequestGameRow(idx)}
+                            >
+                              Remove
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <div className="subtle mt-2">
+                Request games are locked before the solver places regular matchups. The selected away team cannot also be given another game on that same date when no-doubleheaders is enabled.
               </div>
             </div>
             <div className={`callout ${planningIntel.totalShortfall > 0 ? "callout--error" : "callout--ok"}`}>
@@ -6964,8 +7234,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                             title={
                               isDragEligible
                                 ? "Drag onto another regular-season game to preview a swap."
-                                : a?.isExternalOffer
-                                  ? "Locked guest/external slot. Preview fixes and swaps will not move it."
+                                : (a?.isExternalOffer || a?.isRequestGame)
+                                  ? "Locked guest/request slot. Preview fixes and swaps will not move it."
                                   : ""
                             }
                           >
@@ -7041,7 +7311,11 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                     <>
                       <div className="subtle mt-2">
                         <b>{selectedGameExplain.selected.homeTeamId || "-"}</b>
-                        {selectedGameExplain.selected.isExternalOffer ? " vs Guest" : ` vs ${selectedGameExplain.selected.awayTeamId || "-"}`}
+                        {selectedGameExplain.selected.isExternalOffer
+                          ? " vs Guest"
+                          : selectedGameExplain.selected.isRequestGame
+                            ? ` vs ${selectedGameExplain.selected.awayTeamId || "-"} (fixed away event)`
+                            : ` vs ${selectedGameExplain.selected.awayTeamId || "-"}`}
                         {" | "}
                         {selectedGameExplain.selected.phase}
                         {" | "}

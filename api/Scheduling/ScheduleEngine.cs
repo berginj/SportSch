@@ -25,7 +25,9 @@ public record ScheduleAssignment(
     string FieldKey,
     string HomeTeamId,
     string AwayTeamId,
-    bool IsExternalOffer);
+    bool IsExternalOffer,
+    bool IsRequestGame = false,
+    string? RequestGameOpponent = null);
 
 public record MatchupPair(string HomeTeamId, string AwayTeamId);
 
@@ -130,7 +132,8 @@ public static class ScheduleEngine
         ScheduleConstraints constraints,
         bool includePlacementTraces = false,
         int? tieBreakSeed = null,
-        IReadOnlyDictionary<string, int>? matchupPriorityByPair = null)
+        IReadOnlyDictionary<string, int>? matchupPriorityByPair = null,
+        IReadOnlyList<ScheduleAssignment>? seededAssignments = null)
     {
         var teamSet = new HashSet<string>(teams, StringComparer.OrdinalIgnoreCase);
         var homeCounts = teams.ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
@@ -141,6 +144,15 @@ public static class ScheduleEngine
         var gamesByTeamDates = teams.ToDictionary(t => t, _ => new List<DateTime>(), StringComparer.OrdinalIgnoreCase);
         var externalOfferCounts = teams.ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
         var slotDateRange = BuildSlotDateRange(slots);
+        SeedCountsFromAssignments(
+            seededAssignments,
+            homeCounts,
+            awayCounts,
+            gamesByDate,
+            gamesByWeek,
+            pairCounts,
+            gamesByTeamDates,
+            externalOfferCounts);
 
         var assignments = new List<ScheduleAssignment>();
         var remainingMatchups = new List<MatchupPair>(matchups);
@@ -318,7 +330,8 @@ public static class ScheduleEngine
         IReadOnlyList<string> teams,
         ScheduleConstraints constraints,
         int? tieBreakSeed = null,
-        IReadOnlyDictionary<string, int>? matchupPriorityByPair = null)
+        IReadOnlyDictionary<string, int>? matchupPriorityByPair = null,
+        IReadOnlyList<ScheduleAssignment>? seededAssignments = null)
     {
         var teamSet = new HashSet<string>(teams, StringComparer.OrdinalIgnoreCase);
         var homeCounts = teams.ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
@@ -329,6 +342,15 @@ public static class ScheduleEngine
         var gamesByTeamDates = teams.ToDictionary(t => t, _ => new List<DateTime>(), StringComparer.OrdinalIgnoreCase);
         var remainingMatchups = new List<MatchupPair>(targetMatchups ?? Array.Empty<MatchupPair>());
         var slotDateRange = BuildSlotDateRange(slots);
+        SeedCountsFromAssignments(
+            seededAssignments,
+            homeCounts,
+            awayCounts,
+            gamesByDate,
+            gamesByWeek,
+            pairCounts,
+            gamesByTeamDates,
+            externalOfferCounts: null);
 
         var assignmentBySlot = (snapshotAssignments ?? Array.Empty<ScheduleAssignment>())
             .Where(a => !string.IsNullOrWhiteSpace(a.SlotId))
@@ -377,6 +399,29 @@ public static class ScheduleEngine
                     FixedHomeTeamId: string.IsNullOrWhiteSpace(fixedHome) ? null : fixedHome,
                     SelectedHomeTeamId: assigned.HomeTeamId,
                     SelectedAwayTeamId: null,
+                    SelectedScoreBreakdown: null,
+                    CandidateCount: 0,
+                    FeasibleCandidateCount: 0,
+                    TopFeasibleAlternatives: new List<ScheduleCandidateTrace>(),
+                    TopRejectedAlternatives: new List<ScheduleCandidateTrace>()));
+                slotOrderIndex += 1;
+                continue;
+            }
+
+            if (assigned.IsRequestGame)
+            {
+                ApplyCounts("", assigned.AwayTeamId, slot.GameDate, homeCounts, awayCounts, gamesByDate, gamesByWeek, pairCounts, gamesByTeamDates);
+                traces.Add(new SchedulePlacementTrace(
+                    SlotId: slot.SlotId,
+                    GameDate: slot.GameDate,
+                    StartTime: slot.StartTime,
+                    EndTime: slot.EndTime,
+                    FieldKey: slot.FieldKey,
+                    SlotOrderIndex: slotOrderIndex,
+                    Outcome: "request-game",
+                    FixedHomeTeamId: string.IsNullOrWhiteSpace(fixedHome) ? null : fixedHome,
+                    SelectedHomeTeamId: assigned.HomeTeamId,
+                    SelectedAwayTeamId: assigned.AwayTeamId,
                     SelectedScoreBreakdown: null,
                     CandidateCount: 0,
                     FeasibleCandidateCount: 0,
@@ -1055,6 +1100,121 @@ public static class ScheduleEngine
                 pairCounts[pairKey] = pairCounts.TryGetValue(pairKey, out var count) ? count + 1 : 1;
             }
         }
+    }
+
+    private static void SeedCountsFromAssignments(
+        IReadOnlyList<ScheduleAssignment>? seededAssignments,
+        Dictionary<string, int> homeCounts,
+        Dictionary<string, int> awayCounts,
+        Dictionary<string, HashSet<string>> gamesByDate,
+        Dictionary<string, int> gamesByWeek,
+        Dictionary<string, int> pairCounts,
+        Dictionary<string, List<DateTime>> gamesByTeamDates,
+        Dictionary<string, int>? externalOfferCounts)
+    {
+        if (seededAssignments is null || seededAssignments.Count == 0) return;
+
+        foreach (var assignment in seededAssignments)
+        {
+            if (assignment is null) continue;
+            var gameDate = assignment.GameDate ?? "";
+            if (string.IsNullOrWhiteSpace(gameDate)) continue;
+
+            if (assignment.IsExternalOffer)
+            {
+                ApplySeededTeamSide(
+                    assignment.HomeTeamId,
+                    countsAsHome: true,
+                    gameDate,
+                    homeCounts,
+                    awayCounts,
+                    gamesByDate,
+                    gamesByWeek,
+                    gamesByTeamDates);
+                if (externalOfferCounts is not null &&
+                    !string.IsNullOrWhiteSpace(assignment.HomeTeamId) &&
+                    externalOfferCounts.ContainsKey(assignment.HomeTeamId))
+                {
+                    externalOfferCounts[assignment.HomeTeamId] =
+                        externalOfferCounts.TryGetValue(assignment.HomeTeamId, out var externalCount)
+                            ? externalCount + 1
+                            : 1;
+                }
+                continue;
+            }
+
+            if (assignment.IsRequestGame)
+            {
+                ApplySeededTeamSide(
+                    assignment.AwayTeamId,
+                    countsAsHome: false,
+                    gameDate,
+                    homeCounts,
+                    awayCounts,
+                    gamesByDate,
+                    gamesByWeek,
+                    gamesByTeamDates);
+                continue;
+            }
+
+            var countedHome = ApplySeededTeamSide(
+                assignment.HomeTeamId,
+                countsAsHome: true,
+                gameDate,
+                homeCounts,
+                awayCounts,
+                gamesByDate,
+                gamesByWeek,
+                gamesByTeamDates);
+            var countedAway = ApplySeededTeamSide(
+                assignment.AwayTeamId,
+                countsAsHome: false,
+                gameDate,
+                homeCounts,
+                awayCounts,
+                gamesByDate,
+                gamesByWeek,
+                gamesByTeamDates);
+            if (countedHome && countedAway)
+            {
+                var pairKey = PairKey(assignment.HomeTeamId, assignment.AwayTeamId);
+                if (!string.IsNullOrWhiteSpace(pairKey))
+                {
+                    pairCounts[pairKey] = pairCounts.TryGetValue(pairKey, out var count) ? count + 1 : 1;
+                }
+            }
+        }
+    }
+
+    private static bool ApplySeededTeamSide(
+        string teamId,
+        bool countsAsHome,
+        string gameDate,
+        Dictionary<string, int> homeCounts,
+        Dictionary<string, int> awayCounts,
+        Dictionary<string, HashSet<string>> gamesByDate,
+        Dictionary<string, int> gamesByWeek,
+        Dictionary<string, List<DateTime>> gamesByTeamDates)
+    {
+        if (string.IsNullOrWhiteSpace(teamId)) return false;
+        if (countsAsHome)
+        {
+            if (!homeCounts.ContainsKey(teamId)) return false;
+            homeCounts[teamId] += 1;
+        }
+        else
+        {
+            if (!awayCounts.ContainsKey(teamId)) return false;
+            awayCounts[teamId] += 1;
+        }
+
+        if (gamesByDate.TryGetValue(teamId, out var gameDates))
+        {
+            gameDates.Add(gameDate);
+        }
+        AddWeekCount(gamesByWeek, teamId, gameDate);
+        AddTeamGameDate(gamesByTeamDates, teamId, gameDate);
+        return true;
     }
 
     private static string PickExternalHome(

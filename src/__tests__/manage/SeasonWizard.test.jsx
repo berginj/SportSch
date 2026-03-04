@@ -500,8 +500,8 @@ describe("SeasonWizard", () => {
     await renderWizard();
 
     expect(screen.getByText(/OVERWRITE all existing game assignments/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Reset existing non-practice game and guest slots in this season window before preview and apply/i)).toBeChecked();
-    expect(document.body.textContent).toContain("reset existing non-practice game and guest rows in this season window before previewing and applying the new run");
+    expect(screen.getByLabelText(/Reset existing non-practice game, guest, and request slots in this season window before preview and apply/i)).toBeChecked();
+    expect(document.body.textContent).toContain("reset existing non-practice game, guest, and request rows in this season window before previewing and applying the new run");
     expect(document.body.textContent).toContain("does not clear recurring allocations or field blackouts");
   });
 
@@ -521,7 +521,7 @@ describe("SeasonWizard", () => {
   it("sends the reset-before-apply toggle with the apply request", async () => {
     await advanceToPreview();
 
-    const resetToggle = screen.getByLabelText(/Reset existing non-practice game and guest slots in this season window before preview and apply/i);
+    const resetToggle = screen.getByLabelText(/Reset existing non-practice game, guest, and request slots in this season window before preview and apply/i);
     fireEvent.click(resetToggle);
 
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
@@ -580,6 +580,60 @@ describe("SeasonWizard", () => {
     } finally {
       confirmSpy.mockRestore();
     }
+  });
+
+  it("sends fixed request games in the preview payload and shows them as locked preview rows", async () => {
+    installApiMock({
+      previewResponse: {
+        ...BASE_PREVIEW,
+        assignments: [
+          ...BASE_PREVIEW.assignments,
+          {
+            phase: "Regular Season",
+            slotId: "TEAM-1|2026-04-10|17:00|19:00|tournament_main",
+            gameDate: "2026-04-10",
+            startTime: "17:00",
+            endTime: "19:00",
+            fieldKey: "tournament/main",
+            homeTeamId: "Wildcats",
+            awayTeamId: "TEAM-1",
+            isExternalOffer: false,
+            isRequestGame: true,
+            requestGameOpponent: "Wildcats",
+          },
+        ],
+      },
+    });
+
+    await advanceToRules();
+
+    fireEvent.click(screen.getByRole("button", { name: /Add request game/i }));
+    fireEvent.change(screen.getByLabelText("Request game 1 date"), { target: { value: "2026-04-10" } });
+    fireEvent.change(screen.getByLabelText("Request game 1 start"), { target: { value: "17:00" } });
+    fireEvent.change(screen.getByLabelText("Request game 1 end"), { target: { value: "19:00" } });
+    fireEvent.change(screen.getByLabelText("Request game 1 field"), { target: { value: "tournament/main" } });
+    fireEvent.change(screen.getByLabelText("Request game 1 away team"), { target: { value: "TEAM-1" } });
+    fireEvent.change(screen.getByLabelText("Request game 1 opponent"), { target: { value: "Wildcats" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview schedule" }));
+    await waitFor(() => expect(screen.getByText("Preview overview")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /Expand all/i }));
+
+    const previewCall = api.apiFetch.mock.calls.find(([path]) => path === "/api/schedule/wizard/preview");
+    const payload = JSON.parse(previewCall?.[1]?.body || "{}");
+    expect(payload.requestGames).toEqual([
+      {
+        gameDate: "2026-04-10",
+        startTime: "17:00",
+        endTime: "19:00",
+        fieldKey: "tournament/main",
+        teamId: "TEAM-1",
+        opponentName: "Wildcats",
+      },
+    ]);
+
+    expect(screen.getAllByText("REQUEST").length).toBeGreaterThan(0);
+    expect(screen.getByText("TEAM-1 at Wildcats")).toBeInTheDocument();
   });
 
   it("defaults postseason dates from the season range and uses date pickers", async () => {
