@@ -224,6 +224,18 @@ function WeekCardsView({ weekGroups, onSlotClick, onEventClick }) {
                                 </div>
                                 <div className="calendar-item__field">
                                   {slot.displayName || `${slot.parkName || ""} ${slot.fieldName || ""}`.trim()}
+                                  {slot.address && (
+                                    <a
+                                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(slot.address)}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="field-directions-link"
+                                      onClick={(e) => e.stopPropagation()}
+                                      title="Get directions to field"
+                                    >
+                                      📍
+                                    </a>
+                                  )}
                                 </div>
                                 <div className="calendar-item__details">
                                   <div className="calendar-item__matchup">
