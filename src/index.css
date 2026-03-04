@@ -955,4 +955,233 @@
       transition-duration: 0.01ms !important;
     }
   }
+
+  .seasonWizard {
+    --season-wizard-shell: #e7edf4;
+    --season-wizard-panel: #edf2f8;
+    --season-wizard-panel-strong: #f4f7fb;
+    --season-wizard-border: rgba(255, 255, 255, 0.72);
+    --season-wizard-shadow-light: rgba(255, 255, 255, 0.92);
+    --season-wizard-shadow-dark: rgba(148, 163, 184, 0.38);
+    --season-wizard-shadow-soft: rgba(148, 163, 184, 0.22);
+    --season-wizard-rail-bg: linear-gradient(145deg, #eef3f8, #e6edf4);
+    --season-wizard-rail-shadow: 14px 14px 28px rgba(148, 163, 184, 0.24), -14px -14px 28px rgba(255, 255, 255, 0.88);
+    position: relative;
+    padding: 1rem;
+    border-radius: 32px;
+    background:
+      radial-gradient(circle at top left, rgba(59, 130, 246, 0.08), transparent 42%),
+      radial-gradient(circle at 85% 18%, rgba(16, 185, 129, 0.06), transparent 38%),
+      linear-gradient(145deg, #edf3f9, #e3eaf2);
+    border: 1px solid rgba(255, 255, 255, 0.85);
+    box-shadow:
+      18px 18px 36px rgba(148, 163, 184, 0.24),
+      -18px -18px 36px rgba(255, 255, 255, 0.85);
+  }
+
+  .seasonWizard::before {
+    content: "";
+    position: absolute;
+    inset: 12px;
+    border-radius: 24px;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    pointer-events: none;
+  }
+
+  .seasonWizard > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .seasonWizard .card,
+  .seasonWizard .callout,
+  .seasonWizard .dataCard,
+  .seasonWizard .slotCard,
+  .seasonWizard .timelineItem {
+    background: linear-gradient(145deg, var(--season-wizard-panel-strong), var(--season-wizard-panel));
+    border: 1px solid var(--season-wizard-border);
+    box-shadow:
+      12px 12px 24px var(--season-wizard-shadow-soft),
+      -12px -12px 24px var(--season-wizard-shadow-light);
+  }
+
+  .seasonWizard .card:hover,
+  .seasonWizard .dataCard:hover,
+  .seasonWizard .slotCard:hover {
+    transform: translateY(-1px);
+    border-color: rgba(255, 255, 255, 0.85);
+    box-shadow:
+      14px 14px 28px rgba(148, 163, 184, 0.24),
+      -14px -14px 28px rgba(255, 255, 255, 0.94);
+  }
+
+  .seasonWizard .seasonWizard__heroCallout {
+    background:
+      radial-gradient(circle at top right, rgba(251, 191, 36, 0.16), transparent 34%),
+      linear-gradient(145deg, #f4f6fa, #ebeff5);
+  }
+
+  .seasonWizard .seasonWizard__stepStrip {
+    padding: 0.5rem;
+    border-radius: 24px;
+    background: linear-gradient(145deg, #eef3f8, #e3eaf2);
+    box-shadow:
+      inset 5px 5px 10px rgba(148, 163, 184, 0.18),
+      inset -5px -5px 10px rgba(255, 255, 255, 0.85);
+  }
+
+  .seasonWizard .seasonWizard__statusRail {
+    border-radius: 24px;
+    border-color: rgba(255, 255, 255, 0.82);
+    backdrop-filter: blur(10px);
+  }
+
+  .seasonWizard label,
+  .seasonWizard .subtle,
+  .seasonWizard .muted {
+    color: #5a6878;
+  }
+
+  .seasonWizard .h4,
+  .seasonWizard .h3,
+  .seasonWizard .font-bold,
+  .seasonWizard strong {
+    color: #233243;
+  }
+
+  .seasonWizard .pill {
+    border: 1px solid rgba(255, 255, 255, 0.78);
+    background: linear-gradient(145deg, #edf2f8, #e6edf4);
+    color: #526070;
+    box-shadow:
+      inset 2px 2px 5px rgba(148, 163, 184, 0.16),
+      inset -2px -2px 5px rgba(255, 255, 255, 0.86);
+  }
+
+  .seasonWizard .btn,
+  .seasonWizard .seasonWizard__stepButton {
+    border: 1px solid rgba(255, 255, 255, 0.78);
+    background: linear-gradient(145deg, #f2f6fb, #e6edf5);
+    box-shadow:
+      8px 8px 18px rgba(148, 163, 184, 0.2),
+      -8px -8px 18px rgba(255, 255, 255, 0.9);
+  }
+
+  .seasonWizard .btn:hover:not(:disabled),
+  .seasonWizard .seasonWizard__stepButton:hover:not(:disabled) {
+    border-color: rgba(255, 255, 255, 0.88);
+    box-shadow:
+      10px 10px 20px rgba(148, 163, 184, 0.22),
+      -10px -10px 20px rgba(255, 255, 255, 0.94);
+  }
+
+  .seasonWizard .btn:active:not(:disabled),
+  .seasonWizard .seasonWizard__stepButton:active:not(:disabled) {
+    box-shadow:
+      inset 4px 4px 10px rgba(148, 163, 184, 0.18),
+      inset -4px -4px 10px rgba(255, 255, 255, 0.86);
+    transform: translateY(0);
+  }
+
+  .seasonWizard .btn.btn--primary {
+    background: linear-gradient(145deg, #fde68a, #fbbf24);
+    border-color: rgba(251, 191, 36, 0.45);
+    box-shadow:
+      10px 10px 18px rgba(217, 119, 6, 0.16),
+      -8px -8px 16px rgba(255, 255, 255, 0.78);
+  }
+
+  .seasonWizard .btn.btn--ghost {
+    background: linear-gradient(145deg, #f4f7fb, #e7eef6);
+  }
+
+  .seasonWizard input:not([type="checkbox"]),
+  .seasonWizard select,
+  .seasonWizard textarea {
+    background: linear-gradient(145deg, #e7edf4, #f6f9fc);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    box-shadow:
+      inset 4px 4px 10px rgba(148, 163, 184, 0.15),
+      inset -4px -4px 10px rgba(255, 255, 255, 0.88);
+  }
+
+  .seasonWizard input:not([type="checkbox"]):hover:not(:focus),
+  .seasonWizard select:hover:not(:focus),
+  .seasonWizard textarea:hover:not(:focus) {
+    background: linear-gradient(145deg, #e5ebf2, #f8fbfe);
+    border-color: rgba(255, 255, 255, 0.84);
+  }
+
+  .seasonWizard input:not([type="checkbox"]):focus,
+  .seasonWizard select:focus,
+  .seasonWizard textarea:focus {
+    background: linear-gradient(145deg, #edf3fa, #f8fbff);
+    border-color: rgba(59, 130, 246, 0.28);
+    box-shadow:
+      inset 4px 4px 9px rgba(148, 163, 184, 0.12),
+      inset -4px -4px 9px rgba(255, 255, 255, 0.92),
+      0 0 0 3px rgba(59, 130, 246, 0.08);
+  }
+
+  .seasonWizard .inlineCheck {
+    gap: 0.65rem;
+  }
+
+  .seasonWizard .tableWrap {
+    padding: 0.35rem;
+    border-radius: 24px;
+    background: linear-gradient(145deg, #e6edf5, #f4f7fb);
+    box-shadow:
+      inset 4px 4px 10px rgba(148, 163, 184, 0.12),
+      inset -4px -4px 10px rgba(255, 255, 255, 0.84);
+  }
+
+  .seasonWizard .table {
+    border-radius: 18px;
+    overflow: hidden;
+  }
+
+  .seasonWizard .table th {
+    background: rgba(245, 248, 252, 0.7);
+    border-bottom: 1px solid rgba(203, 213, 225, 0.7);
+  }
+
+  .seasonWizard .table td {
+    border-bottom-color: rgba(203, 213, 225, 0.55);
+  }
+
+  .seasonWizard .table--compact tbody tr:nth-child(odd) {
+    background: rgba(255, 255, 255, 0.35);
+  }
+
+  .seasonWizard .callout--error {
+    background: linear-gradient(145deg, #fff3f2, #fdecec);
+    color: #b42318;
+  }
+
+  .seasonWizard .callout--ok {
+    background: linear-gradient(145deg, #f2fbf6, #e7f8ee);
+    color: #166534;
+  }
+
+  .seasonWizard .callout--warning {
+    color: #9a6700;
+  }
+
+  @media (max-width: 768px) {
+    .seasonWizard {
+      padding: 0.75rem;
+      border-radius: 24px;
+    }
+
+    .seasonWizard::before {
+      inset: 8px;
+      border-radius: 18px;
+    }
+
+    .seasonWizard .seasonWizard__stepStrip {
+      padding: 0.35rem;
+      border-radius: 18px;
+    }
+  }
 }

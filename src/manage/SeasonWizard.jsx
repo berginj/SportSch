@@ -955,13 +955,12 @@ function StepButton({ active, status = "neutral", onClick, children, title = "" 
   const style = stylesByStatus[status] || stylesByStatus.neutral;
   return (
     <button
-      className={`btn btn--ghost ${active ? "is-active" : ""}`}
+      className={`btn btn--ghost seasonWizard__stepButton ${active ? "is-active" : ""}`}
       type="button"
       onClick={onClick}
       title={title}
       style={{
         ...style,
-        boxShadow: active ? "0 0 0 2px rgba(15,23,42,0.25)" : "none",
       }}
     >
       {children}
@@ -4730,11 +4729,11 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   }
 
   return (
-    <div className="stack gap-3">
+    <div className="stack gap-3 seasonWizard">
       {toast ? <Toast {...toast} onClose={() => setToast(null)} /> : null}
       {err ? <div className="callout callout--error">{err}</div> : null}
 
-      <div className="callout callout--warning">
+      <div className="callout callout--warning seasonWizard__heroCallout">
         <strong>Important:</strong> This wizard will <strong>OVERWRITE all existing game assignments</strong> in the selected division when you click "Apply schedule" at the end.
         {resetGeneratedSlotsBeforeApply ? (
           <>
@@ -4758,7 +4757,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         </label>
       </div>
 
-      <div className="row row--wrap gap-2">
+      <div className="row row--wrap gap-2 seasonWizard__stepStrip">
         {steps.map((meta, idx) => (
           <StepButton
             key={meta.label}
@@ -4773,13 +4772,13 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       </div>
       <div className="subtle">Step state: green = complete, red = needs attention, neutral = pending.</div>
       <div
-        className={currentStepIssue ? "callout callout--error" : "callout"}
+        className={`${currentStepIssue ? "callout callout--error" : "callout"} seasonWizard__statusRail`}
         style={{
           position: "sticky",
           top: "0.75rem",
           zIndex: 3,
-          backgroundColor: "#fff",
-          boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)",
+          backgroundColor: "var(--season-wizard-rail-bg)",
+          boxShadow: "var(--season-wizard-rail-shadow)",
         }}
       >
         <div className="row row--between gap-2" style={{ alignItems: "center" }}>
