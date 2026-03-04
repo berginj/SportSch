@@ -50,47 +50,20 @@ export default function NotificationBell({ leagueId }) {
   }
 
   return (
-    <div className="notification-bell-container" style={{ position: 'relative', display: 'inline-block' }}>
+    <div className="notificationBell">
       <button
         ref={bellRef}
-        className="notification-bell"
+        className="notificationBell__button"
         onClick={toggleDropdown}
         title={`${unreadCount} unread notification${unreadCount !== 1 ? 's' : ''}`}
         aria-label={`Notifications. ${unreadCount} unread.`}
-        style={{
-          position: 'relative',
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
-          padding: '8px',
-          fontSize: '20px',
-          color: 'inherit',
-        }}
       >
-        {/* Bell Icon (Unicode bell character) */}
-        <span aria-hidden="true">Bell</span>
+        <span className="notificationBell__label" aria-hidden="true">Alerts</span>
 
         {/* Unread Badge */}
         {unreadCount > 0 && (
           <span
-            className="notification-badge"
-            style={{
-              position: 'absolute',
-              top: '4px',
-              right: '4px',
-              backgroundColor: '#ef4444',
-              color: 'white',
-              borderRadius: '50%',
-              padding: '2px 6px',
-              fontSize: '11px',
-              fontWeight: 'bold',
-              minWidth: '18px',
-              height: '18px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              lineHeight: '1',
-            }}
+            className="notificationBell__badge"
             aria-label={`${unreadCount} unread`}
           >
             {unreadCount > 99 ? '99+' : unreadCount}
@@ -100,7 +73,7 @@ export default function NotificationBell({ leagueId }) {
 
       {/* Dropdown */}
       {isOpen && (
-        <div ref={dropdownRef}>
+        <div ref={dropdownRef} className="notificationBell__dropdown">
           <NotificationDropdown
             notifications={notifications}
             loading={loading}

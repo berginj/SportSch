@@ -44,164 +44,87 @@ export default function NotificationDropdown({
   }
 
   return (
-    <div
-      className="notification-dropdown"
-      style={{
-        position: 'absolute',
-        top: '100%',
-        right: '0',
-        marginTop: '8px',
-        backgroundColor: 'white',
-        border: '1px solid #e5e7eb',
-        borderRadius: '8px',
-        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
-        width: '360px',
-        maxHeight: '480px',
-        overflowY: 'auto',
-        zIndex: 1000,
-      }}
-    >
+    <div className="notificationDropdown">
       {/* Header */}
-      <div
-        className="notification-dropdown-header"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '12px 16px',
-          borderBottom: '1px solid #e5e7eb',
-          backgroundColor: '#f9fafb',
-        }}
-      >
+      <div className="notificationDropdown__header">
         <a
           href="#notifications"
-          style={{
-            margin: 0,
-            fontSize: '16px',
-            fontWeight: '600',
-            color: '#1f2937',
-            textDecoration: 'none',
-          }}
+          className="notificationDropdown__title"
           onClick={onClose}
           title="View all notifications"
         >
           Notifications
         </a>
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div className="notificationDropdown__actions">
           {unreadCount > 0 && (
             <button
+              type="button"
               onClick={onMarkAllAsRead}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#3b82f6',
-                fontSize: '13px',
-                cursor: 'pointer',
-                padding: '4px 8px',
-              }}
+              className="notificationDropdown__textButton"
               title="Mark all as read"
             >
               Mark all read
             </button>
           )}
           <button
+            type="button"
             onClick={onRefresh}
-            style={{
-              background: 'none',
-              border: 'none',
-              fontSize: '16px',
-              cursor: 'pointer',
-              padding: '4px',
-            }}
+            className="notificationDropdown__refreshButton"
             title="Refresh"
             aria-label="Refresh notifications"
-          >Refresh</button>
+          >
+            Refresh
+          </button>
         </div>
       </div>
 
       {/* Body */}
-      <div className="notification-dropdown-body">
+      <div className="notificationDropdown__body">
         {loading ? (
-          <div style={{ padding: '24px', textAlign: 'center', color: '#6b7280' }}>
+          <div className="notificationDropdown__state">
             Loading notifications...
           </div>
         ) : error ? (
-          <div style={{ padding: '24px', textAlign: 'center', color: '#ef4444' }}>
+          <div className="notificationDropdown__state notificationDropdown__state--error">
             {error}
           </div>
         ) : notifications.length === 0 ? (
-          <div style={{ padding: '24px', textAlign: 'center', color: '#6b7280' }}>
+          <div className="notificationDropdown__state">
             No notifications yet.
           </div>
         ) : (
-          <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+          <ul className="notificationDropdown__list">
             {notifications.map((notification) => (
               <li
                 key={notification.notificationId}
                 onClick={() => handleNotificationClick(notification)}
-                style={{
-                  padding: '12px 16px',
-                  borderBottom: '1px solid #f3f4f6',
-                  cursor: notification.link ? 'pointer' : 'default',
-                  backgroundColor: notification.isRead ? 'white' : '#eff6ff',
-                  transition: 'background-color 0.2s',
-                }}
-                onMouseEnter={(e) => {
-                  if (notification.link) {
-                    e.currentTarget.style.backgroundColor = notification.isRead ? '#f9fafb' : '#dbeafe';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = notification.isRead ? 'white' : '#eff6ff';
-                }}
+                className={[
+                  'notificationDropdown__item',
+                  notification.isRead ? 'is-read' : 'is-unread',
+                  notification.link ? 'is-link' : '',
+                ].filter(Boolean).join(' ')}
               >
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                <div className="notificationDropdown__row">
                   {/* Unread Indicator */}
                   {!notification.isRead && (
-                    <div
-                      style={{
-                        width: '8px',
-                        height: '8px',
-                        borderRadius: '50%',
-                        backgroundColor: '#3b82f6',
-                        marginTop: '6px',
-                        flexShrink: 0,
-                      }}
-                      aria-label="Unread"
-                    />
+                    <div className="notificationDropdown__dot" aria-label="Unread" />
                   )}
 
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="notificationDropdown__content">
                     {/* Notification Type Badge */}
                     {notification.type && (
-                      <span
-                        style={{
-                          display: 'inline-block',
-                          fontSize: '11px',
-                          fontWeight: '600',
-                          textTransform: 'uppercase',
-                          color: '#6b7280',
-                          marginBottom: '4px',
-                        }}
-                      >
+                      <span className="notificationDropdown__type">
                         {notification.type.replace(/([A-Z])/g, ' $1').trim()}
                       </span>
                     )}
 
                     {/* Message */}
-                    <p
-                      style={{
-                        margin: '0 0 4px 0',
-                        fontSize: '14px',
-                        color: '#111827',
-                        lineHeight: '1.4',
-                      }}
-                    >
+                    <p className="notificationDropdown__message">
                       {notification.message}
                     </p>
 
                     {/* Time */}
-                    <span style={{ fontSize: '12px', color: '#9ca3af' }}>
+                    <span className="notificationDropdown__time">
                       {formatTimeAgo(notification.createdUtc)}
                     </span>
                   </div>
@@ -213,23 +136,14 @@ export default function NotificationDropdown({
       </div>
 
       {/* Footer with Settings Link */}
-      <div
-        style={{
-          padding: '12px 16px',
-          borderTop: '1px solid #e5e7eb',
-          textAlign: 'center',
-        }}
-      >
+      <div className="notificationDropdown__footer">
         <a
           href="#settings"
-          style={{
-            color: '#3b82f6',
-            textDecoration: 'none',
-            fontSize: '14px',
-            fontWeight: '500',
-          }}
+          className="notificationDropdown__settings"
           onClick={onClose}
-        >Notification Settings</a>
+        >
+          Notification Settings
+        </a>
       </div>
     </div>
   );

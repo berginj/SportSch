@@ -211,23 +211,36 @@ function WeekCardsView({ weekGroups, onSlotClick, onEventClick }) {
                           {getDayName(day.date)}, {day.date}
                         </div>
                         <div className="day-detail__items">
-                          {day.slots.map((slot, idx) => (
-                            <div
-                              key={`slot-${idx}`}
-                              className="calendar-item calendar-item--slot"
-                              onClick={() => onSlotClick?.(slot)}
-                            >
-                              <div className="calendar-item__time">
-                                {slot.startTime}-{slot.endTime}
+                          {day.slots.map((slot, idx) => {
+                            const tone = getSlotToneKey(slot);
+                            return (
+                              <div
+                                key={`slot-${idx}`}
+                                className={`calendar-item calendar-item--slot calendar-item--${tone}`}
+                                onClick={() => onSlotClick?.(slot)}
+                              >
+                                <div className="calendar-item__time">
+                                  {slot.startTime}-{slot.endTime}
+                                </div>
+                                <div className="calendar-item__field">
+                                  {slot.displayName || `${slot.parkName || ""} ${slot.fieldName || ""}`.trim()}
+                                </div>
+                                <div className="calendar-item__details">
+                                  <div className="calendar-item__matchup">
+                                    {getMatchupLabel(slot)}
+                                  </div>
+                                  <div className="calendar-item__meta">
+                                    <span className={`calendar-item__status calendar-item__status--${tone}`}>
+                                      {getSlotStatusLabel(slot)}
+                                    </span>
+                                    {slot.division ? (
+                                      <span className="calendar-item__division">{slot.division}</span>
+                                    ) : null}
+                                  </div>
+                                </div>
                               </div>
-                              <div className="calendar-item__field">
-                                {slot.displayName || `${slot.parkName || ""} ${slot.fieldName || ""}`.trim()}
-                              </div>
-                              <div className="calendar-item__matchup">
-                                {getMatchupLabel(slot)}
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                           {day.events.map((event, idx) => (
                             <div
                               key={`event-${idx}`}
@@ -282,23 +295,31 @@ function AgendaView({ weekGroups, onSlotClick, onEventClick }) {
                   <div className="agenda-field-group__name">
                     Field: {fieldName}
                   </div>
-                  {slots.map((slot, idx) => (
-                    <div
-                      key={`slot-${idx}`}
-                      className="agenda-item"
-                      onClick={() => onSlotClick?.(slot)}
-                    >
-                      <div className="agenda-item__time">
-                        {slot.startTime}-{slot.endTime}
+                  {slots.map((slot, idx) => {
+                    const tone = getSlotToneKey(slot);
+                    return (
+                      <div
+                        key={`slot-${idx}`}
+                        className={`agenda-item agenda-item--${tone}`}
+                        onClick={() => onSlotClick?.(slot)}
+                      >
+                        <div className="agenda-item__time">
+                          {slot.startTime}-{slot.endTime}
+                        </div>
+                        <div className="agenda-item__matchup">
+                          {getMatchupLabel(slot)}
+                        </div>
+                        <div className="agenda-item__meta">
+                          <span className={`agenda-item__status agenda-item__status--${tone}`}>
+                            {getSlotStatusLabel(slot)}
+                          </span>
+                          {slot.division ? (
+                            <span className="agenda-item__division">{slot.division}</span>
+                          ) : null}
+                        </div>
                       </div>
-                      <div className="agenda-item__matchup">
-                        {getMatchupLabel(slot)}
-                      </div>
-                      <div className="agenda-item__status">
-                        {slot.status}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ))}
 
@@ -371,6 +392,20 @@ function getMatchupLabel(slot) {
   if (home) return `${home} vs TBD`;
   if (slot.status === "Open") return "Open Slot";
   return "";
+}
+
+function getSlotToneKey(slot) {
+  if (slot.status === "Cancelled") return "cancelled";
+  if (slot.isAvailability) return "availability";
+  if (slot.status === "Confirmed") return "confirmed";
+  if (slot.status === "Pending") return "pending";
+  if (slot.status === "Open") return "open";
+  return "scheduled";
+}
+
+function getSlotStatusLabel(slot) {
+  if (slot.isAvailability) return "Availability";
+  return slot.status || "Scheduled";
 }
 
 function groupByField(slots) {
