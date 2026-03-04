@@ -46,6 +46,7 @@ public static class Constants
         public const string Notifications = "GameSwapNotifications";
         public const string NotificationPreferences = "GameSwapNotificationPreferences";
         public const string EmailQueue = "GameSwapEmailQueue";
+        public const string ScheduleFeedback = "GameSwapScheduleFeedback";
     }
 
     public static class Pk

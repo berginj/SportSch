@@ -41,7 +41,7 @@ public class ScheduleFeedbackFunctions
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST, "division is required.");
 
             // Store feedback in Table Storage
-            var table = await TableClients.GetTableAsync(_svc, "ScheduleFeedback");
+            var table = await TableClients.GetTableAsync(_svc, Constants.Tables.ScheduleFeedback);
             var timestamp = DateTimeOffset.UtcNow;
             var pk = $"FEEDBACK|{leagueId}|{division}";
             var rk = $"{timestamp:yyyy-MM-ddTHH:mm:ss.fff}|{Guid.NewGuid()}";

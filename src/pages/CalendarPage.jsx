@@ -975,7 +975,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
               onClick={toggleCalendarView}
               title={useNewCalendarView ? "Switch to classic list view" : "Switch to compact week card view"}
             >
-              {useNewCalendarView ? "📋 Classic View" : "📅 Week Cards"}
+              {useNewCalendarView ? "Classic View" : "Week Cards"}
             </button>
           </div>
           {role === "Coach" && !myCoachTeamId ? (
@@ -1019,7 +1019,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
                         <span className="slotHeader__date">{it.date}</span>
                         {it.start && (
                           <>
-                            <span>•</span>
+                            <span>|</span>
                             <span className="slotHeader__time">
                               {it.start}{it.end ? `-${it.end}` : ""}
                             </span>
@@ -1027,7 +1027,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
                         )}
                         {division && (
                           <>
-                            <span>•</span>
+                            <span>|</span>
                             <span className="slotHeader__division">{division}</span>
                           </>
                         )}
@@ -1046,7 +1046,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
                     <div className="slotBody">
                       <div className="slotBody__primary">
                         <div className="slotField">
-                          <span className="slotField__icon">📍</span>
+                          <span className="slotField__icon">@</span>
                           <span>{fieldName || "Field TBD"}</span>
                         </div>
                         {matchup && <div className="slotMatchup">{matchup}</div>}

@@ -2487,15 +2487,15 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
     // Warn user that this will overwrite existing schedule
     const confirmed = window.confirm(
-      "⚠️ WARNING: Applying this schedule will OVERWRITE all existing game assignments in this division.\n\n" +
+      "WARNING: Applying this schedule will OVERWRITE all existing game assignments in this division.\n\n" +
       "This action:\n" +
-      "• Replaces all current slot assignments\n" +
+      "- Replaces all current slot assignments\n" +
       (resetGeneratedSlotsBeforeApply
-        ? "• Resets existing non-practice game and guest slots in this season window before previewing and applying\n"
-        : "• Leaves existing non-practice game and guest slots untouched before previewing and applying\n") +
-      "• Does NOT remove recurring allocations or field blackouts\n" +
-      "• Cannot be undone\n" +
-      "• May still require allocation cleanup if you need a different underlying slot pool\n\n" +
+        ? "- Resets existing non-practice game and guest slots in this season window before previewing and applying\n"
+        : "- Leaves existing non-practice game and guest slots untouched before previewing and applying\n") +
+      "- Does NOT remove recurring allocations or field blackouts\n" +
+      "- Cannot be undone\n" +
+      "- May still require allocation cleanup if you need a different underlying slot pool\n\n" +
       "Are you sure you want to continue?"
     );
 
@@ -4584,7 +4584,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       {err ? <div className="callout callout--error">{err}</div> : null}
 
       <div className="callout callout--warning">
-        <strong>⚠️ Important:</strong> This wizard will <strong>OVERWRITE all existing game assignments</strong> in the selected division when you click "Apply schedule" at the end.
+        <strong>Important:</strong> This wizard will <strong>OVERWRITE all existing game assignments</strong> in the selected division when you click "Apply schedule" at the end.
         {resetGeneratedSlotsBeforeApply ? (
           <>
             {" "}
@@ -4855,7 +4855,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                         style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
                         title="Delete template"
                       >
-                        ✕
+                        X
                       </button>
                     </div>
                   ))}
@@ -5197,7 +5197,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                 </div>
                 {feasibility.conflicts.map((conflict, idx) => (
                   <div key={idx} className="subtle mb-1">
-                    {conflict.severity === "error" ? "❌" : "⚠️"} {conflict.message}
+                    {conflict.severity === "error" ? "[Error]" : "[Warn]"} {conflict.message}
                   </div>
                 ))}
               </div>
@@ -5206,7 +5206,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
             {/* Recommendation Banner (Success) */}
             {feasibility && (!feasibility.conflicts || feasibility.conflicts.length === 0) ? (
               <div className="callout callout--ok">
-                <div className="font-bold mb-2">✅ Recommended Configuration</div>
+                <div className="font-bold mb-2">Recommended Configuration</div>
                 <div className="subtle mb-2">{feasibility.recommendations.message}</div>
                 <div className="subtle">
                   Utilization: {feasibility.recommendations.utilizationStatus} ({feasibility.capacity.requiredRegularSlots} of {feasibility.capacity.availableRegularSlots} regular-season slots)
@@ -5645,7 +5645,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
               disabled={loading || generatingOptions || !!rulesError}
               title={rulesError || 'Generate 4 different schedules and compare them'}
             >
-              {generatingOptions ? "Generating..." : "🔄 Generate 4 Options"}
+              {generatingOptions ? "Generating..." : "Generate 4 Options"}
             </button>
           </div>
         </div>
@@ -5682,7 +5682,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                       <div className="font-bold">Option {option.id}</div>
                       {isBest && option.metrics && (
                         <span style={{ background: "#fef3c7", color: "#92400e", padding: "2px 8px", borderRadius: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
-                          ⭐ Recommended
+                          Recommended
                         </span>
                       )}
                     </div>
@@ -5744,7 +5744,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
                           <div>
                             <div className="subtle">Date Spread</div>
-                            <div className="font-bold">{option.metrics.dateSpreadStdDev.toFixed(1)} σ</div>
+                            <div className="font-bold">{option.metrics.dateSpreadStdDev.toFixed(1)} stddev</div>
                           </div>
                         </div>
 
@@ -5756,7 +5756,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                             selectScheduleOption(option.id);
                           }}
                         >
-                          {isSelected ? "✓ Selected" : "Select This Option"}
+                          {isSelected ? "Selected" : "Select This Option"}
                         </button>
                       </>
                     ) : (
@@ -5786,7 +5786,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                     await submitScheduleFeedback(selectedScheduleOption);
                   }}
                 >
-                  Continue with Option {selectedScheduleOption} →
+                  Continue with Option {selectedScheduleOption}
                 </button>
               </div>
             )}
@@ -6473,7 +6473,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                                     ? { bg: `rgba(34,197,94,${0.12 + (lateFactor * 0.08)})`, border: "#bbf7d0", text: "#166534" }
                                     : { bg: `rgba(245,158,11,${0.14 + (lateFactor * 0.08)})`, border: "#fde68a", text: "#92400e" };
                               const label = cell.total > 0 ? String(cell.total) : "0";
-                              const detail = `${lane.teamId} • ${cell.weekKey} • total ${cell.total} (regular ${cell.regular}, guest ${cell.guest})`;
+                              const detail = `${lane.teamId} | ${cell.weekKey} | total ${cell.total} (regular ${cell.regular}, guest ${cell.guest})`;
                               return (
                                 <td
                                   key={`lane-cell-${lane.teamId}-${cell.weekKey}`}
@@ -6564,9 +6564,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                                     ? `rgba(59,130,246,${Math.min(0.54, alpha)})`
                                     : `rgba(148,163,184,${Math.min(0.32, alpha)})`;
                               const label = cell.capacity > 0 ? `${cell.used}/${cell.capacity}` : "-";
-                              const detail = `${row.fieldKey} • ${cell.weekKey} • used ${cell.used}/${cell.capacity}` +
-                                (cell.guest ? ` • guest ${cell.guest}` : "") +
-                                (cell.regular ? ` • regular ${cell.regular}` : "");
+                              const detail = `${row.fieldKey} | ${cell.weekKey} | used ${cell.used}/${cell.capacity}` +
+                                (cell.guest ? ` | guest ${cell.guest}` : "") +
+                                (cell.regular ? ` | regular ${cell.regular}` : "");
                               return (
                                 <td
                                   key={`heat-cell-${row.fieldKey}-${cell.weekKey}`}
@@ -6992,7 +6992,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                             <td>
                               {a.isRequestGame && a.requestGameOpponent ? (
                                 <span title={`Away: ${a.awayTeamId} at ${a.requestGameOpponent}`}>
-                                  {a.awayTeamId} → {a.requestGameOpponent}
+                                  {a.awayTeamId} at {a.requestGameOpponent}
                                 </span>
                               ) : (
                                 a.awayTeamId || "-"

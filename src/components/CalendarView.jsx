@@ -114,14 +114,14 @@ function ViewToggle({ currentView, onChange }) {
         onClick={() => onChange("week-cards")}
         title="Week card view (compact)"
       >
-        📅 Week Cards
+        Week Cards
       </button>
       <button
         className={`btn btn--ghost ${currentView === "agenda" ? "btn--active" : ""}`}
         onClick={() => onChange("agenda")}
         title="Agenda list view (chronological)"
       >
-        📋 Agenda
+        Agenda
       </button>
     </div>
   );
@@ -174,11 +174,11 @@ function WeekCardsView({ weekGroups, onSlotClick, onEventClick }) {
               <div className="week-card__title">
                 <span className="week-card__dates">{week.weekStart} - {week.weekEnd}</span>
                 <span className="week-card__stats">
-                  {totalGames} games • {totalOpen} open • {totalEvents} events
+                  {totalGames} games | {totalOpen} open | {totalEvents} events
                 </span>
               </div>
               <button className="week-card__toggle" type="button">
-                {isExpanded ? "▼ Hide" : "▶ Details"}
+                {isExpanded ? "Hide" : "Details"}
               </button>
             </div>
 
@@ -234,7 +234,7 @@ function WeekCardsView({ weekGroups, onSlotClick, onEventClick }) {
                               className="calendar-item calendar-item--event"
                               onClick={() => onEventClick?.(event)}
                             >
-                              <div className="calendar-item__title">📌 {event.title || "Event"}</div>
+                              <div className="calendar-item__title">Event: {event.title || "Event"}</div>
                               {event.description && (
                                 <div className="calendar-item__description">{event.description}</div>
                               )}
@@ -280,7 +280,7 @@ function AgendaView({ weekGroups, onSlotClick, onEventClick }) {
               {groupByField(day.slots).map(({ fieldKey, fieldName, slots }) => (
                 <div key={fieldKey} className="agenda-field-group">
                   <div className="agenda-field-group__name">
-                    🏟 {fieldName}
+                    Field: {fieldName}
                   </div>
                   {slots.map((slot, idx) => (
                     <div
@@ -308,7 +308,7 @@ function AgendaView({ weekGroups, onSlotClick, onEventClick }) {
                   className="agenda-item agenda-item--event"
                   onClick={() => onEventClick?.(event)}
                 >
-                  <div className="agenda-item__title">📌 {event.title || "Event"}</div>
+                  <div className="agenda-item__title">Event: {event.title || "Event"}</div>
                   {event.description && (
                     <div className="agenda-item__description">{event.description}</div>
                   )}
