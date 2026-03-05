@@ -2430,7 +2430,17 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     setScheduleOptions([]);
     setSelectedScheduleOption(null);
 
-    const basePayload = buildWizardPayload();
+    // Reset slots like regular preview does
+    let refreshedSlotPlan;
+    try {
+      refreshedSlotPlan = await resetGeneratedSlotsForRerun();
+    } catch (e) {
+      setErr("Failed to reset slots before generation: " + (e?.message || "Unknown error"));
+      setGeneratingOptions(false);
+      return;
+    }
+
+    const basePayload = buildWizardPayload(refreshedSlotPlan);
     const options = [];
 
     // Generate 4 schedules with different seeds under the canonical backward strategy.
@@ -2458,6 +2468,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
           metrics
         });
       } catch (e) {
+        console.error("Generate option", i + 1, "failed:", e);
         options.push({
           id: i + 1,
           error: e?.message || "Generation failed",
