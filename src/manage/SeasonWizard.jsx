@@ -3366,6 +3366,11 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       addAssigned(assignment?.homeTeamId);
       addAssigned(assignment?.awayTeamId);
     });
+    // Include guest/external offer games in assigned count (they count toward total!)
+    const regularGuestAssignments = previewCollections.regularAssignments.filter(a => a?.isExternalOffer);
+    regularGuestAssignments.forEach((assignment) => {
+      addAssigned(assignment?.homeTeamId);  // Guest game counts for home team
+    });
     regularUnassignedMatchups.forEach((matchup) => {
       addUnassigned(matchup?.homeTeamId);
       addUnassigned(matchup?.awayTeamId);
