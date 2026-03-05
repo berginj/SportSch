@@ -272,10 +272,10 @@ public class ScheduleWizardFunctions
             var regularRangeEnd = poolStart.HasValue ? poolStart.Value.AddDays(-1) : seasonEnd;
             var regularSlots = FilterSlots(gameCapableSlots, seasonStart, regularRangeEnd);
             var poolSlots = poolStart.HasValue && poolEnd.HasValue
-                ? FilterSlots(filteredAllSlots, poolStart.Value, poolEnd.Value)
+                ? FilterSlots(gameCapableSlots, poolStart.Value, poolEnd.Value)
                 : new List<SlotInfo>();
             var bracketSlots = bracketStart.HasValue && bracketEnd.HasValue
-                ? FilterSlots(filteredAllSlots, bracketStart.Value, bracketEnd.Value)
+                ? FilterSlots(gameCapableSlots, bracketStart.Value, bracketEnd.Value)
                 : new List<SlotInfo>();
 
             // Calculate active weeks in regular season from usable slots after blackouts.
@@ -514,10 +514,10 @@ public class ScheduleWizardFunctions
             var regularRangeEnd = poolStart.HasValue ? poolStart.Value.AddDays(-1) : seasonEnd;
             var regularSlots = FilterSlots(gameCapableSlots, seasonStart, regularRangeEnd);
             var poolSlots = poolStart.HasValue && poolEnd.HasValue
-                ? FilterSlots(filteredAllSlots, poolStart.Value, poolEnd.Value)
+                ? FilterSlots(gameCapableSlots, poolStart.Value, poolEnd.Value)
                 : new List<SlotInfo>();
             var bracketSlots = bracketStart.HasValue && bracketEnd.HasValue
-                ? FilterSlots(filteredAllSlots, bracketStart.Value, bracketEnd.Value)
+                ? FilterSlots(gameCapableSlots, bracketStart.Value, bracketEnd.Value)
                 : new List<SlotInfo>();
 
             var regularMatchups = BuildRepeatedMatchups(teams, minGamesPerTeam);
