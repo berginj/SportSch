@@ -38,6 +38,7 @@ public sealed class TableStartup : IHostedService
             Constants.Tables.LeagueBackups,
             Constants.Tables.Notifications,
             Constants.Tables.NotificationPreferences,
+            Constants.Tables.ReminderDispatch,
             Constants.Tables.EmailQueue
         };
 

@@ -45,6 +45,7 @@ public static class Constants
         // Notifications
         public const string Notifications = "GameSwapNotifications";
         public const string NotificationPreferences = "GameSwapNotificationPreferences";
+        public const string ReminderDispatch = "GameSwapReminderDispatch";
         public const string EmailQueue = "GameSwapEmailQueue";
         public const string ScheduleFeedback = "GameSwapScheduleFeedback";
     }
@@ -90,6 +91,9 @@ public static class Constants
 
         // Notification preferences: PK = userId, RK = leagueId (or "global")
         public static string NotificationPreferences(string userId) => userId;
+
+        // Reminder dispatch: PK = REMINDER|{leagueId}|{slotId}, RK = reminderType (24h, 2h)
+        public static string ReminderDispatch(string leagueId, string slotId) => $"REMINDER|{leagueId}|{slotId}";
 
         // Email queue: PK = status (Pending, Sent, Failed), RK = emailId
         public static string EmailQueue(string status) => $"EMAIL|{status}";
