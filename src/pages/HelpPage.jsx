@@ -494,7 +494,7 @@ export default function HelpPage({ me, leagueId }) {
               LeagueAdmins can import/manage fields, manage divisions, manage teams, and update league contact info. Global admins are higher-level across all leagues.
             </p>
             <p className="muted m-0">
-              Use League Management &gt; Fields for field CSV import and availability setup (fieldKey is required). Use League Management &gt; League Settings for teams and divisions, and League Management &gt; Scheduler to run the scheduler.
+              Use League Management &gt; Fields for field CSV import and availability setup (fieldKey is required). Use League Management &gt; League Settings for teams and divisions, and League Management &gt; Commissioner Hub &gt; Season Wizard to run scheduling.
             </p>
           </Section>
 

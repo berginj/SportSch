@@ -551,8 +551,8 @@ describe("SeasonWizard", () => {
     await renderWizard();
 
     expect(screen.getByText(/applies the current preview into slots for the selected division and season window/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Attempt reset of existing non-practice game, guest, and request slots in this season window before preview and apply/i)).toBeChecked();
-    expect(document.body.textContent).toContain("attempts to reset existing non-practice game, guest, and request rows");
+    expect(screen.getByLabelText(/Reset existing non-practice game, guest, and request slots in this season window before each new Preview run/i)).toBeChecked();
+    expect(document.body.textContent).toContain("rerunning Preview first resets existing non-practice game, guest, and request rows");
     expect(document.body.textContent).toContain("does not clear recurring allocations or field blackouts");
   });
 
@@ -572,7 +572,7 @@ describe("SeasonWizard", () => {
   it("sends the reset-before-apply toggle with the apply request", async () => {
     await advanceToPreview();
 
-    const resetToggle = screen.getByLabelText(/Attempt reset of existing non-practice game, guest, and request slots in this season window before preview and apply/i);
+    const resetToggle = screen.getByLabelText(/Reset existing non-practice game, guest, and request slots in this season window before each new Preview run/i);
     fireEvent.click(resetToggle);
     const resetCallsBeforeApply = api.apiFetch.mock.calls.filter(([path]) => path === "/api/schedule/wizard/reset-generated").length;
 
@@ -821,7 +821,8 @@ describe("SeasonWizard", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Max games" }));
 
-    expect(screen.getByLabelText(/No doubleheaders/i)).not.toBeChecked();
+    expect(screen.getByLabelText(/No doubleheaders/i)).toBeChecked();
+    expect(screen.getByLabelText(/No doubleheaders/i)).toBeDisabled();
     expect(screen.getByLabelText(/Balance home\/away/i)).not.toBeChecked();
 
     fireEvent.click(screen.getByRole("button", { name: "Conservative" }));

@@ -1,12 +1,12 @@
-# Scheduling workflow (rules → slots → schedule → validation → export)
+# Scheduling workflow (rules -> slots -> schedule -> validation -> export)
 
-This guide documents the **rule-driven schedule seed flow** and how to produce exports for SportsEngine.
+This guide documents the rule-driven season scheduling flow and how to produce exports for SportsEngine.
 
 ## 1) Create availability rules
 
 Rules define repeating field availability for a division (field + date range + days + time window).
 
-**Rule inputs** (mirrors `api/Functions/AvailabilityFunctions.cs`):
+Rule inputs (mirrors `api/Functions/AvailabilityFunctions.cs`):
 
 - `division` (ex: `10U`)
 - `fieldKey` (`parkCode/fieldCode`)
@@ -16,7 +16,7 @@ Rules define repeating field availability for a division (field + date range + d
 - `recurrencePattern` (currently `Weekly`)
 - `timezone` (defaults to league timezone)
 
-These rules are stored in **GameSwapFieldAvailabilityRules** (PK `AVAILRULE|{leagueId}|{fieldKey}`), with exceptions in **GameSwapFieldAvailabilityExceptions** (PK `AVAILRULEEX|{ruleId}`).
+These rules are stored in `GameSwapFieldAvailabilityRules` (PK `AVAILRULE|{leagueId}|{fieldKey}`), with exceptions in `GameSwapFieldAvailabilityExceptions` (PK `AVAILRULEEX|{ruleId}`).
 
 ## 2) Add rule exceptions
 
@@ -58,15 +58,15 @@ POST /api/schedule/slots/apply?mode=skip|overwrite
 
 ## 4) Check scheduling feasibility (Season Wizard)
 
-The Season Wizard includes an intelligent feasibility system that validates capacity and constraints **before** running the full scheduling engine.
+The Season Wizard includes a feasibility check that validates capacity and constraints before running full scheduling.
 
-### Feasibility Endpoint
+Feasibility endpoint:
 
 ```
 POST /api/schedule/wizard/feasibility
 ```
 
-Body (same as preview/apply):
+Body (same shape as preview/apply):
 
 ```json
 {
@@ -77,75 +77,23 @@ Body (same as preview/apply):
   "maxGamesPerWeek": 2,
   "noDoubleHeaders": true,
   "externalOfferPerWeek": 1,
-  "slotPlan": [...]
+  "slotPlan": []
 }
 ```
 
-Response:
+The system reports conflicts such as:
 
-```json
-{
-  "regularSeasonFeasible": true,
-  "poolPlayFeasible": true,
-  "bracketFeasible": true,
-  "conflicts": [
-    {
-      "conflictId": "capacity-insufficient",
-      "message": "15 games/team requires 68 slots, but only 45 available. Recommend 10 games per team.",
-      "severity": "error"
-    }
-  ],
-  "recommendations": {
-    "minGamesPerTeam": 10,
-    "maxGamesPerTeam": 11,
-    "optimalGuestGamesPerWeek": 1,
-    "message": "Recommend 10-11 games per team with 1 guest game/week for balanced schedule",
-    "utilizationStatus": "Good utilization (90%)"
-  },
-  "capacity": {
-    "availableRegularSlots": 45,
-    "requiredRegularSlots": 50,
-    "surplusOrShortfall": -5,
-    "guestSlotsReserved": 10,
-    "effectiveSlotsRemaining": 35
-  }
-}
-```
+- `capacity-insufficient`
+- `guest-games-over-consuming`
+- `no-doubleheaders-blocking`
+- `max-games-per-week-insufficient`
 
-### Feasibility Checks
-
-The system detects these constraint conflicts:
-
-| Conflict Type | Detection | Resolution |
-|--------------|-----------|------------|
-| `capacity-insufficient` | Required slots > available slots | Reduce games per team or add more slots |
-| `guest-games-over-consuming` | Guest games leave insufficient capacity | Reduce guest games per week |
-| `no-doubleheaders-blocking` | Can't fit games in weeks with constraints | Increase maxGamesPerWeek or allow doubleheaders |
-| `max-games-per-week-insufficient` | Weekly capacity too tight | Increase maxGamesPerWeek or extend season |
-
-### Auto-Fill Recommendations
-
-When the Season Wizard loads Step 4 (Rules) with `minGamesPerTeam=0`:
-- Automatically calculates optimal games per team based on available capacity
-- Recommends guest games per week for odd team counts
-- Auto-fills inputs with recommended values
-- Updates in real-time as constraints change (500ms debounce)
-
-### UI Integration
-
-In `SeasonWizard.jsx`, Step 4 displays:
-- ✅ **Success banner**: Shows recommended configuration when no conflicts
-- ⚠️ **Warning banner**: Shows constraint warnings (fixable issues)
-- ❌ **Error banner**: Shows blocking conflicts (impossible configurations)
-- **Capacity breakdown**: Regular, pool, and bracket slot utilization
-- **Inline hints**: Recommended ranges below input fields
-
-## 5) Generate division schedule
+## 5) Generate division schedule (wizard engine)
 
 Preview assignments:
 
 ```
-POST /api/schedule/preview
+POST /api/schedule/wizard/preview
 ```
 
 Body:
@@ -153,52 +101,43 @@ Body:
 ```json
 {
   "division": "10U",
-  "dateFrom": "2026-04-01",
-  "dateTo": "2026-06-30",
-  "constraints": {
-    "maxGamesPerWeek": 2,
-    "noDoubleHeaders": true,
-    "balanceHomeAway": true,
-    "externalOfferPerWeek": 1
-  }
+  "seasonStart": "2026-04-01",
+  "seasonEnd": "2026-06-30",
+  "poolStart": "2026-06-07",
+  "poolEnd": "2026-06-19",
+  "bracketStart": "2026-06-20",
+  "bracketEnd": "2026-06-27",
+  "minGamesPerTeam": 11,
+  "poolGamesPerTeam": 3,
+  "maxGamesPerWeek": 2,
+  "noDoubleHeaders": true,
+  "balanceHomeAway": true,
+  "externalOfferPerWeek": 2,
+  "slotPlan": []
 }
 ```
 
 Apply assignments (writes to slots):
 
 ```
+POST /api/schedule/wizard/apply
+```
+
+## 6) Validation + deprecated endpoints
+
+Wizard preview/apply responses include rule-health output (hard + soft rule summaries), warnings, and issue details.
+
+Legacy scheduler endpoints are deprecated and return `410 SCHEDULER_DEPRECATED`:
+
+```
+POST /api/schedule/preview
 POST /api/schedule/apply
-```
-
-## 6) Rerun validations
-
-Every `/api/schedule/preview` response includes validation warnings (double headers, max games per week, missing opponents, unassigned matchups/slots).
-
-To rerun validation after edits against scheduled games, call:
-
-```
 POST /api/schedule/validate
-```
-
-Body (same shape as preview):
-
-```json
-{
-  "division": "10U",
-  "dateFrom": "2026-04-01",
-  "dateTo": "2026-06-30",
-  "constraints": {
-    "maxGamesPerWeek": 2,
-    "noDoubleHeaders": true,
-    "balanceHomeAway": true,
-    "externalOfferPerWeek": 1
-  }
-}
 ```
 
 ## 7) Export CSVs (internal + SportsEngine)
 
-In the UI, use **League Management → Scheduler → Export CSV** or **Export SportsEngine CSV**.
+Use League Management -> Commissioner Hub -> Season Wizard and export from the schedule output tools.
 
 The SportsEngine export is generated from the same assignments using the template in `docs/sportsenginetemplate.csv`.
 

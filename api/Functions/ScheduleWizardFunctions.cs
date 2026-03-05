@@ -760,10 +760,6 @@ public class ScheduleWizardFunctions
             if (apply)
             {
                 var runId = Guid.NewGuid().ToString("N");
-                if (resetGeneratedSlotsBeforeApply)
-                {
-                    await ResetGeneratedSlotsBeforeApplyAsync(leagueId, division, seasonStart, planningDateTo);
-                }
                 await ApplyAssignmentsAsync(leagueId, division, runId, assignments);
                 await SaveWizardRunAsync(leagueId, division, runId, me.Email ?? me.UserId, summary, body);
             }
@@ -3372,63 +3368,154 @@ public class ScheduleWizardFunctions
             .ToList();
     }
 
+    private record ApplyRollbackAction(
+        string PartitionKey,
+        string RowKey,
+        bool Created,
+        TableEntity? PreviousSnapshot
+    );
+
+    private record RequestGameUpsertResult(
+        string PartitionKey,
+        string RowKey,
+        bool Created,
+        TableEntity? PreviousSnapshot
+    );
+
     private async Task ApplyAssignmentsAsync(string leagueId, string division, string runId, IEnumerable<WizardSlotDto> assignments)
     {
         var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Slots);
         var pk = Constants.Pk.Slots(leagueId, division);
+        var assignmentList = (assignments ?? Array.Empty<WizardSlotDto>())
+            .Where(a => a is not null)
+            .ToList();
+        var rollbackActions = new List<ApplyRollbackAction>(assignmentList.Count);
 
-        foreach (var a in assignments)
+        var nonRequestAssignments = assignmentList
+            .Where(a => !a.isRequestGame)
+            .ToList();
+        var duplicateSlotIds = nonRequestAssignments
+            .Select(a => (a.slotId ?? "").Trim())
+            .Where(slotId => !string.IsNullOrWhiteSpace(slotId))
+            .GroupBy(slotId => slotId, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key)
+            .ToList();
+        if (duplicateSlotIds.Count > 0)
         {
-            if (a.isRequestGame)
+            var sample = string.Join(", ", duplicateSlotIds.Take(8));
+            throw new ApiGuards.HttpError(
+                (int)HttpStatusCode.Conflict,
+                $"Apply aborted: duplicate slot assignment(s) detected in preview ({sample}{(duplicateSlotIds.Count > 8 ? ", ..." : "")}).");
+        }
+
+        var slotById = new Dictionary<string, TableEntity>(StringComparer.OrdinalIgnoreCase);
+        var missingSlotIds = new List<string>();
+        foreach (var slotId in nonRequestAssignments
+            .Select(a => (a.slotId ?? "").Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (string.IsNullOrWhiteSpace(slotId))
             {
-                await UpsertRequestGameAssignmentAsync(table, pk, leagueId, division, runId, a);
+                missingSlotIds.Add("(blank)");
                 continue;
             }
 
-            TableEntity slot;
             try
             {
-                slot = (await table.GetEntityAsync<TableEntity>(pk, a.slotId)).Value;
+                slotById[slotId] = (await table.GetEntityAsync<TableEntity>(pk, slotId)).Value;
             }
             catch (RequestFailedException ex) when (ex.Status == 404)
             {
-                continue;
+                missingSlotIds.Add(slotId);
             }
+        }
 
-            var nowUtc = DateTimeOffset.UtcNow;
+        if (missingSlotIds.Count > 0)
+        {
+            var sample = string.Join(", ", missingSlotIds.Take(8));
+            throw new ApiGuards.HttpError(
+                (int)HttpStatusCode.Conflict,
+                $"Apply aborted before writes: {missingSlotIds.Count} target slot(s) are missing ({sample}{(missingSlotIds.Count > 8 ? ", ..." : "")}). Run preview again.");
+        }
 
-            SlotEntityUtil.ApplySchedulerAssignment(
-                slot,
-                runId,
-                a.homeTeamId ?? "",
-                a.awayTeamId ?? "",
-                a.isExternalOffer,
-                confirmedBy: "Wizard",
-                nowUtc: nowUtc);
-
-            slot["GameDate"] = a.gameDate ?? (slot.GetString("GameDate") ?? "");
-            slot["StartTime"] = a.startTime ?? (slot.GetString("StartTime") ?? "");
-            slot["EndTime"] = a.endTime ?? (slot.GetString("EndTime") ?? "");
-            if (TimeUtil.TryParseMinutes(a.startTime ?? "", out var startMin))
+        try
+        {
+            foreach (var a in assignmentList)
             {
-                slot["StartMin"] = startMin;
+                if (a.isRequestGame)
+                {
+                    var requestResult = await UpsertRequestGameAssignmentAsync(table, pk, leagueId, division, runId, a);
+                    rollbackActions.Add(new ApplyRollbackAction(
+                        requestResult.PartitionKey,
+                        requestResult.RowKey,
+                        requestResult.Created,
+                        requestResult.PreviousSnapshot));
+                    continue;
+                }
+
+                var slotId = (a.slotId ?? "").Trim();
+                if (!slotById.TryGetValue(slotId, out var slot))
+                {
+                    throw new ApiGuards.HttpError(
+                        (int)HttpStatusCode.Conflict,
+                        $"Apply aborted before writes: slot '{slotId}' is missing. Run preview again.");
+                }
+
+                var previousSnapshot = CloneTableEntity(slot);
+                var nowUtc = DateTimeOffset.UtcNow;
+
+                SlotEntityUtil.ApplySchedulerAssignment(
+                    slot,
+                    runId,
+                    a.homeTeamId ?? "",
+                    a.awayTeamId ?? "",
+                    a.isExternalOffer,
+                    confirmedBy: "Wizard",
+                    nowUtc: nowUtc);
+
+                slot["GameDate"] = a.gameDate ?? (slot.GetString("GameDate") ?? "");
+                slot["StartTime"] = a.startTime ?? (slot.GetString("StartTime") ?? "");
+                slot["EndTime"] = a.endTime ?? (slot.GetString("EndTime") ?? "");
+                if (TimeUtil.TryParseMinutes(a.startTime ?? "", out var startMin))
+                {
+                    slot["StartMin"] = startMin;
+                }
+                if (TimeUtil.TryParseMinutes(a.endTime ?? "", out var endMin))
+                {
+                    slot["EndMin"] = endMin;
+                }
+
+                var notes = (slot.GetString("Notes") ?? "").Trim();
+                var phaseNote = $"Wizard: {a.phase}";
+                if (string.IsNullOrWhiteSpace(notes))
+                    slot["Notes"] = phaseNote;
+                else if (!notes.Contains(phaseNote, StringComparison.OrdinalIgnoreCase))
+                    slot["Notes"] = $"{notes} | {phaseNote}";
+                await table.UpdateEntityAsync(slot, slot.ETag, TableUpdateMode.Merge);
+                rollbackActions.Add(new ApplyRollbackAction(slot.PartitionKey, slot.RowKey, Created: false, previousSnapshot));
             }
-            if (TimeUtil.TryParseMinutes(a.endTime ?? "", out var endMin))
+        }
+        catch (Exception applyEx)
+        {
+            try
             {
-                slot["EndMin"] = endMin;
+                await RollbackAppliedAssignmentsAsync(table, rollbackActions);
+            }
+            catch (Exception rollbackEx)
+            {
+                _log.LogError(rollbackEx, "Wizard apply rollback failed after apply error.");
+                throw;
             }
 
-            var notes = (slot.GetString("Notes") ?? "").Trim();
-            var phaseNote = $"Wizard: {a.phase}";
-            if (string.IsNullOrWhiteSpace(notes))
-                slot["Notes"] = phaseNote;
-            else if (!notes.Contains(phaseNote, StringComparison.OrdinalIgnoreCase))
-                slot["Notes"] = $"{notes} | {phaseNote}";
-            await table.UpdateEntityAsync(slot, slot.ETag, TableUpdateMode.Merge);
+            _log.LogWarning(applyEx, "Wizard apply failed and was rolled back.");
+            throw new ApiGuards.HttpError(
+                (int)HttpStatusCode.Conflict,
+                "Apply failed before completion. All assignment writes were rolled back. Run preview again and retry.");
         }
     }
 
-    private static async Task UpsertRequestGameAssignmentAsync(
+    private static async Task<RequestGameUpsertResult> UpsertRequestGameAssignmentAsync(
         TableClient table,
         string partitionKey,
         string leagueId,
@@ -3442,9 +3529,11 @@ public class ScheduleWizardFunctions
 
         TableEntity slot;
         var isNew = false;
+        TableEntity? previousSnapshot = null;
         try
         {
             slot = (await table.GetEntityAsync<TableEntity>(partitionKey, slotId)).Value;
+            previousSnapshot = CloneTableEntity(slot);
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {
@@ -3502,10 +3591,65 @@ public class ScheduleWizardFunctions
         if (isNew)
         {
             await table.AddEntityAsync(slot);
-            return;
+            return new RequestGameUpsertResult(partitionKey, slotId, Created: true, previousSnapshot);
         }
 
         await table.UpdateEntityAsync(slot, slot.ETag, TableUpdateMode.Merge);
+        return new RequestGameUpsertResult(partitionKey, slotId, Created: false, previousSnapshot);
+    }
+
+    private async Task RollbackAppliedAssignmentsAsync(TableClient table, IReadOnlyList<ApplyRollbackAction> rollbackActions)
+    {
+        if (rollbackActions is null || rollbackActions.Count == 0)
+            return;
+
+        for (var i = rollbackActions.Count - 1; i >= 0; i--)
+        {
+            var action = rollbackActions[i];
+            if (action.Created)
+            {
+                try
+                {
+                    await table.DeleteEntityAsync(action.PartitionKey, action.RowKey, ETag.All);
+                }
+                catch (RequestFailedException ex) when (ex.Status == 404)
+                {
+                    // Already absent; nothing to rollback for this row.
+                }
+                continue;
+            }
+
+            if (action.PreviousSnapshot is null)
+                continue;
+
+            try
+            {
+                await table.UpdateEntityAsync(action.PreviousSnapshot, ETag.All, TableUpdateMode.Replace);
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                await table.AddEntityAsync(action.PreviousSnapshot);
+            }
+        }
+    }
+
+    private static TableEntity CloneTableEntity(TableEntity source)
+    {
+        var clone = new TableEntity(source.PartitionKey, source.RowKey)
+        {
+            ETag = source.ETag
+        };
+        if (source.Timestamp.HasValue)
+        {
+            clone.Timestamp = source.Timestamp;
+        }
+
+        foreach (var kvp in source)
+        {
+            clone[kvp.Key] = kvp.Value;
+        }
+
+        return clone;
     }
 
     private async Task<int> ResetGeneratedSlotsBeforeApplyAsync(string leagueId, string division, DateOnly dateFrom, DateOnly dateTo)

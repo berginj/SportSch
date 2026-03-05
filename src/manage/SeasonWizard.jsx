@@ -85,7 +85,7 @@ const RULE_PRESETS = [
   {
     id: "max_games",
     label: "Max games",
-    description: "Push for more games by relaxing balance constraints and allowing doubleheaders.",
+    description: "Push for more games by relaxing balance constraints while keeping no-doubleheaders on.",
   },
   {
     id: "conservative",
@@ -2109,7 +2109,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       setMinGamesPerTeam(recommendedMax);
       setGuestGamesPerWeek(Math.max(recommendedGuestGames, 1));
       setMaxGamesPerWeek(Math.max(2, Number(maxGamesPerWeek) || 0));
-      setNoDoubleHeaders(false);
+      setNoDoubleHeaders(true);
       setBalanceHomeAway(false);
     } else if (presetId === "conservative") {
       setMinGamesPerTeam(Math.max(1, recommendedMin - 1));
@@ -2299,7 +2299,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       maxExternalOffersPerTeamSeason: Number(maxExternalOffersPerTeamSeason) || 0,
       resetGeneratedSlotsBeforeApply,
       maxGamesPerWeek: Number(maxGamesPerWeek) || 0,
-      noDoubleHeaders,
+      noDoubleHeaders: true,
       balanceHomeAway,
       slotPlan: slotPlanPayload,
       seed: Number.isFinite(previewSeed) ? previewSeed : undefined,
@@ -2355,10 +2355,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         if (a.homeTeamId) gamesByTeam.set(a.homeTeamId, (gamesByTeam.get(a.homeTeamId) || 0) + 1);
         return;
       }
-      if (a?.isRequestGame) {
-        if (a.awayTeamId) gamesByTeam.set(a.awayTeamId, (gamesByTeam.get(a.awayTeamId) || 0) + 1);
-        return;
-      }
+      if (a?.isRequestGame) return;
       if (a.homeTeamId) gamesByTeam.set(a.homeTeamId, (gamesByTeam.get(a.homeTeamId) || 0) + 1);
       if (a.awayTeamId) gamesByTeam.set(a.awayTeamId, (gamesByTeam.get(a.awayTeamId) || 0) + 1);
     });
@@ -2594,9 +2591,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       "Apply this schedule preview to the selected division and season window.\n\n" +
       "This action:\n" +
       "- Writes the current preview assignments to matching slots in that window\n" +
-      (resetGeneratedSlotsBeforeApply
-        ? "- Attempts to reset existing non-practice game, guest, and request rows in this season window before preview/apply\n"
-        : "- Leaves existing non-practice game, guest, and request rows untouched before preview/apply\n") +
+      "- Applies exactly this preview (no reset step runs during Apply)\n" +
       (previewIssueCount > 0 ? "- Includes unresolved warnings/issues shown in preview\n" : "") +
       "- Does not change recurring allocations or field blackouts\n" +
       "- Cannot be undone\n\n" +
@@ -3425,7 +3420,6 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     const regularAssignments = previewCollections.regularAssignments;
     const regularGames = previewCollections.regularScheduledAssignments.filter((a) => a?.homeTeamId && a?.awayTeamId);
     const regularGuestGames = previewCollections.regularGuestAssignments;
-    const regularRequestGames = previewCollections.regularRequestAssignments;
     const regularUnassignedSlots = previewCollections.regularUnassignedSlots;
     const regularUnassignedMatchups = previewCollections.regularUnassignedMatchups;
     const manualPriorityByPair = new Map(
@@ -3445,9 +3439,6 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     });
     regularGuestGames.forEach((a) => {
       if (a?.homeTeamId) teamIds.add(String(a.homeTeamId).trim());
-    });
-    regularRequestGames.forEach((a) => {
-      if (a?.awayTeamId) teamIds.add(String(a.awayTeamId).trim());
     });
     regularUnassignedMatchups.forEach((m) => {
       if (m?.homeTeamId) teamIds.add(String(m.homeTeamId).trim());
@@ -3563,18 +3554,6 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       addActivity(teamId, a?.gameDate);
     });
 
-    regularRequestGames.forEach((a) => {
-      const teamId = String(a?.awayTeamId || "").trim();
-      if (!teamId) return;
-      const stat = ensureTeamStat(teamId);
-      if (stat) {
-        stat.games += 1;
-        stat.away += 1;
-        stat.activity += 1;
-      }
-      addActivity(teamId, a?.gameDate);
-    });
-
     regularUnassignedMatchups.forEach((m) => {
       const home = String(m?.homeTeamId || "").trim();
       const away = String(m?.awayTeamId || "").trim();
@@ -3684,7 +3663,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       teamRows,
       matrixRows,
       pairRows,
-      totalRegularGames: regularGames.length + regularRequestGames.length,
+      totalRegularGames: regularGames.length,
       totalGuestGames: regularGuestGames.length,
       weekCount: regularWeekKeys.length,
       weekKeys: regularWeekKeys,
@@ -3742,13 +3721,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         if (cell) cell.guest += 1;
         return;
       }
-      if (a?.isRequestGame) {
-        const away = String(a?.awayTeamId || "").trim();
-        const cell = ensureTeamWeek(away, weekKey);
-        if (cell) cell.regular += 1;
-        addTeamWeekRegularAssignment(away, weekKey, a);
-        return;
-      }
+      if (a?.isRequestGame) return;
       const home = String(a?.homeTeamId || "").trim();
       const away = String(a?.awayTeamId || "").trim();
       const homeCell = ensureTeamWeek(home, weekKey);
@@ -4151,10 +4124,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         addTeamWeekCount(assignment?.homeTeamId, weekKey, "guest");
         return;
       }
-      if (assignment?.isRequestGame) {
-        addTeamWeekCount(assignment?.awayTeamId, weekKey, "regular");
-        return;
-      }
+      if (assignment?.isRequestGame) return;
       addTeamWeekCount(assignment?.homeTeamId, weekKey, "regular");
       addTeamWeekCount(assignment?.awayTeamId, weekKey, "regular");
     });
@@ -4339,7 +4309,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         key: "request-game",
         label: "Fixed request game",
         tone: "neutral",
-        detail: "This away game is locked from the Rules step. It counts toward the away team's weekly load and will not be moved by preview repairs.",
+        detail: "This away game is locked from the Rules step. It stays fixed in preview/apply and is excluded from generated schedule game-count targets.",
       });
     }
     if (!scoringFactors.length) {
@@ -4811,12 +4781,12 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         {resetGeneratedSlotsBeforeApply ? (
           <>
             {" "}
-            It also attempts to reset existing <strong>non-practice game, guest, and request rows</strong> in this same window before preview/apply.
+            When enabled below, rerunning <strong>Preview</strong> first resets existing non-practice game, guest, and request rows in this same window before rebuilding the run.
           </>
         ) : (
           <>
             {" "}
-            It will <strong>not</strong> run that reset step before preview/apply.
+            It will <strong>not</strong> run that preview reset step before rebuilding a new run.
           </>
         )}{" "}
         It does <strong>not</strong> clear recurring allocations or field blackouts. If you need a different slot pool, edit availability first, then rerun the wizard.
@@ -4826,7 +4796,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
             checked={resetGeneratedSlotsBeforeApply}
             onChange={(e) => setResetGeneratedSlotsBeforeApply(e.target.checked)}
           />
-          Attempt reset of existing non-practice game, guest, and request slots in this season window before preview and apply
+          Reset existing non-practice game, guest, and request slots in this season window before each new Preview run
         </label>
       </div>
 
@@ -5506,8 +5476,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                 </label>
                 <div className="stack gap-2">
                   <label className="inlineCheck">
-                    <input type="checkbox" checked={noDoubleHeaders} onChange={(e) => setNoDoubleHeaders(e.target.checked)} />
-                    No doubleheaders
+                    <input type="checkbox" checked readOnly disabled />
+                    No doubleheaders (always on)
                   </label>
                   <label className="inlineCheck">
                     <input type="checkbox" checked={balanceHomeAway} onChange={(e) => setBalanceHomeAway(e.target.checked)} />
@@ -5732,7 +5702,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                 <div>
                   <div className="font-bold">Request games (locked away events)</div>
                   <div className="subtle">
-                    Add one-time away games at external venues. These are exact date/time/field requirements, count against the away team&apos;s weekly load, and stay locked in preview/apply.
+                    Add one-time away games at external venues. These are exact date/time/field requirements that stay locked in preview/apply and do not change generated schedule game-count targets.
                   </div>
                 </div>
                 <div className="row gap-2">
@@ -5853,7 +5823,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                 </div>
               )}
               <div className="subtle mt-2">
-                Request games are locked before the solver places regular matchups. The selected away team cannot also be given another game on that same date when no-doubleheaders is enabled.
+                Request games are locked before the solver places regular matchups. The selected away team cannot also be given another game on that same date.
               </div>
             </div>
             <div className={`callout ${planningIntel.totalShortfall > 0 ? "callout--error" : "callout--ok"}`}>
@@ -7114,7 +7084,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                     </div>
                     <div className="subtle">
                       {unassignedRegularReport.openSlots > 0
-                        ? `${unassignedRegularReport.openSlots} open regular slot(s) remain. Try relaxing rules (max games/week or no-doubleheaders) to fit more games.`
+                        ? `${unassignedRegularReport.openSlots} open regular slot(s) remain. Try increasing max games/week or adjusting slot priorities to fit more games.`
                         : "No open regular slots remain; add or reclassify game-capable slots to place the remaining matchups."}
                     </div>
                     <div className="tableWrap mt-2">

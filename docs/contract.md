@@ -546,9 +546,9 @@ the notes for required headers or roles.
 | PATCH | /availability/rules/{ruleId}/exceptions/{exceptionId} | `Functions/AvailabilityFunctions.cs` | Update availability exception (requires `x-league-id`, LeagueAdmin). |
 | DELETE | /availability/rules/{ruleId}/exceptions/{exceptionId} | `Functions/AvailabilityFunctions.cs` | Delete availability exception (requires `x-league-id`, LeagueAdmin). |
 | GET | /availability/preview | `Functions/AvailabilityFunctions.cs` | Preview availability slots (requires `x-league-id`, LeagueAdmin). |
-| POST | /schedule/preview | `Functions/ScheduleFunctions.cs` | Preview schedule for a division (requires `x-league-id`, LeagueAdmin). |
-| POST | /schedule/apply | `Functions/ScheduleFunctions.cs` | Apply schedule assignments (requires `x-league-id`, LeagueAdmin). Blocks if validation issues exist. |
-| POST | /schedule/validate | `Functions/ScheduleFunctions.cs` | Validate scheduled games for a division (requires `x-league-id`, LeagueAdmin). |
+| POST | /schedule/preview | `Functions/ScheduleFunctions.cs` | Deprecated. Returns `410 SCHEDULER_DEPRECATED`; use `/schedule/wizard/preview`. |
+| POST | /schedule/apply | `Functions/ScheduleFunctions.cs` | Deprecated. Returns `410 SCHEDULER_DEPRECATED`; use `/schedule/wizard/apply`. |
+| POST | /schedule/validate | `Functions/ScheduleFunctions.cs` | Deprecated. Returns `410 SCHEDULER_DEPRECATED`; use wizard rule-health output. |
 | POST | /schedule/wizard/preview | `Functions/ScheduleWizardFunctions.cs` | Preview wizard-built season schedule (requires `x-league-id`, LeagueAdmin). |
 | POST | /schedule/wizard/apply | `Functions/ScheduleWizardFunctions.cs` | Apply wizard-built season schedule (requires `x-league-id`, LeagueAdmin). |
 | POST | /schedule/slots/preview | `Functions/SlotGenerationFunctions.cs` | Preview generated availability slots (requires `x-league-id`, LeagueAdmin). |
@@ -1670,155 +1670,11 @@ Response
 
 ## 8c) Division scheduling (admin)
 
-### POST /schedule/preview (league-scoped)
-Requires: LeagueAdmin or global admin.
+Legacy scheduling endpoints `/schedule/preview`, `/schedule/apply`, and `/schedule/validate` are deprecated.
 
-Body
-```json
-{
-  "division": "10U",
-  "dateFrom": "2026-04-01",
-  "dateTo": "2026-06-30",
-  "constraints": {
-    "maxGamesPerWeek": 2,
-    "noDoubleHeaders": true,
-    "balanceHomeAway": true,
-    "externalOfferPerWeek": 1
-  }
-}
-```
-
-Response
-```json
-{
-  "data": {
-    "summary": {
-      "slotsTotal": 24,
-      "slotsAssigned": 20,
-      "matchupsTotal": 21,
-      "matchupsAssigned": 20,
-      "externalOffers": 0,
-      "unassignedSlots": 4,
-      "unassignedMatchups": 1
-    },
-    "assignments": [
-      {
-        "slotId": "slot_1",
-        "gameDate": "2026-04-10",
-        "startTime": "18:00",
-        "endTime": "19:30",
-        "fieldKey": "gunston/turf",
-        "homeTeamId": "TIGERS",
-        "awayTeamId": "EAGLES",
-        "isExternalOffer": false
-      }
-    ],
-    "unassignedSlots": [
-      {
-        "slotId": "slot_24",
-        "gameDate": "2026-06-29",
-        "startTime": "18:00",
-        "endTime": "19:30",
-        "fieldKey": "gunston/turf",
-        "homeTeamId": "",
-        "awayTeamId": "",
-        "isExternalOffer": false
-      }
-    ],
-    "unassignedMatchups": [
-      { "homeTeamId": "SHARKS", "awayTeamId": "OWLS" }
-    ],
-    "failures": [
-      {
-        "ruleId": "double-header",
-        "severity": "warning",
-        "message": "TIGERS has 2 games on 2026-04-10.",
-        "details": { "teamId": "TIGERS", "gameDate": "2026-04-10", "count": 2 }
-      }
-    ]
-  }
-}
-```
-
-Notes
-- Saving league season settings also propagates the season defaults to all divisions in the league.
-
-### POST /schedule/apply (league-scoped)
-Requires: LeagueAdmin or global admin.
-
-Body: same as preview.
-
-Response
-```json
-{
-  "data": {
-    "runId": "sched_123",
-    "summary": {
-      "slotsTotal": 24,
-      "slotsAssigned": 20,
-      "matchupsTotal": 21,
-      "matchupsAssigned": 20,
-      "externalOffers": 0,
-      "unassignedSlots": 4,
-      "unassignedMatchups": 1
-    },
-    "assignments": [
-      {
-        "slotId": "slot_1",
-        "gameDate": "2026-04-10",
-        "startTime": "18:00",
-        "endTime": "19:30",
-        "fieldKey": "gunston/turf",
-        "homeTeamId": "TIGERS",
-        "awayTeamId": "EAGLES",
-        "isExternalOffer": false
-      }
-    ],
-    "failures": []
-  }
-}
-```
-
-Apply failure (validation issues)
-```json
-{
-  "error": {
-    "code": "SCHEDULE_VALIDATION_FAILED",
-    "message": "Schedule validation failed with 2 issue(s). Review the Schedule preview and adjust constraints, then try again. See /#schedule."
-  }
-}
-```
-
-### POST /schedule/validate (league-scoped)
-Requires: LeagueAdmin or global admin.
-
-Body: same as preview.
-
-Response
-```json
-{
-  "data": {
-    "summary": {
-      "slotsTotal": 20,
-      "slotsAssigned": 20,
-      "matchupsTotal": 20,
-      "matchupsAssigned": 20,
-      "externalOffers": 0,
-      "unassignedSlots": 0,
-      "unassignedMatchups": 0
-    },
-    "issues": [
-      {
-        "ruleId": "double-header",
-        "severity": "warning",
-        "message": "TIGERS has 2 games on 2026-04-10.",
-        "details": { "teamId": "TIGERS", "gameDate": "2026-04-10", "count": 2 }
-      }
-    ],
-    "totalIssues": 1
-  }
-}
-```
+Current behavior:
+- all three endpoints return `410 SCHEDULER_DEPRECATED`
+- all commissioner scheduling flows use wizard endpoints only
 
 ### POST /schedule/wizard/preview (league-scoped)
 Requires: LeagueAdmin or global admin.
@@ -1873,9 +1729,9 @@ Scheduler export formats
 - SportsEngine CSV template (`docs/sportsenginetemplate.csv`): Event Type, Date, Start Time, End Time, Duration (minutes), Home Team, Away Team, Venue, Status (other event-only columns left blank)
 
 Validation + apply rules
-- `/schedule/preview` returns `failures` when validation warnings exist.
-- `/schedule/apply` fails with `SCHEDULE_VALIDATION_FAILED` if validation issues exist.
-- `/schedule/validate` runs validations against scheduled games (non-availability slots only).
+- `/schedule/wizard/preview` returns warnings/issues plus `ruleHealth` summaries.
+- `/schedule/wizard/apply` writes the full preview run when apply succeeds; failures roll back and return a conflict.
+- Legacy `/schedule/preview|apply|validate` endpoints are deprecated and return `410 SCHEDULER_DEPRECATED`.
 
 ### POST /schedule/slots/preview (league-scoped)
 Requires: LeagueAdmin or global admin.
