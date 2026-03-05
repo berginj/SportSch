@@ -162,6 +162,37 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
 
   const canPickTeam = isGlobalAdmin || role === "LeagueAdmin";
 
+  async function loadAllSlots(slotsQuery) {
+    const merged = [];
+    let continuationToken = "";
+    let pageCount = 0;
+    const maxPages = 40;
+    const pageSize = 250;
+
+    while (pageCount < maxPages) {
+      const query = new URLSearchParams(slotsQuery);
+      query.set("pageSize", String(pageSize));
+      if (continuationToken) query.set("continuationToken", continuationToken);
+
+      const response = await apiFetch(`/api/slots?${query.toString()}`);
+      if (Array.isArray(response)) {
+        merged.push(...response);
+        break;
+      }
+
+      const items = Array.isArray(response?.items) ? response.items : [];
+      merged.push(...items);
+
+      continuationToken = typeof response?.continuationToken === "string"
+        ? response.continuationToken
+        : "";
+      pageCount += 1;
+      if (!continuationToken) break;
+    }
+
+    return merged;
+  }
+
   async function loadMeta() {
     const [divs, flds] = await Promise.all([apiFetch("/api/divisions"), apiFetch("/api/fields")]);
     setDivisions(Array.isArray(divs) ? divs : []);
@@ -214,7 +245,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
 
       const [ev, sl] = await Promise.all([
         current.showEvents ? apiFetch(`/api/events?${baseQuery.toString()}`) : Promise.resolve([]),
-        shouldLoadSlots ? apiFetch(`/api/slots?${slotsQuery.toString()}`) : Promise.resolve([]),
+        shouldLoadSlots ? loadAllSlots(slotsQuery) : Promise.resolve([]),
       ]);
       setEvents(Array.isArray(ev) ? ev : []);
       setSlots(Array.isArray(sl) ? sl : []);
