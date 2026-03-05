@@ -244,7 +244,7 @@ public class ScheduleWizardFunctions
             var externalOfferPerWeek = Math.Max(0, body.externalOfferPerWeek ?? 0);
             var maxGamesPerWeek = body.maxGamesPerWeek.GetValueOrDefault();
             if (maxGamesPerWeek < 0) maxGamesPerWeek = 0;
-            var noDoubleHeaders = body.noDoubleHeaders ?? true;
+            var noDoubleHeaders = true;
             var blockedRanges = NormalizeBlockedDateRanges(body.blockedDateRanges);
 
             // Load teams
@@ -356,7 +356,7 @@ public class ScheduleWizardFunctions
                 teams,
                 previewRegularMatchups,
                 maxGamesPerWeek: (body.wizard.maxGamesPerWeek ?? 0) <= 0 ? null : body.wizard.maxGamesPerWeek,
-                noDoubleHeaders: body.wizard.noDoubleHeaders ?? true,
+                noDoubleHeaders: true,
                 balanceHomeAway: body.wizard.balanceHomeAway ?? true,
                 blockedRanges: blockedRanges,
                 hardLeagueRules: hardLeagueRules,
@@ -459,7 +459,7 @@ public class ScheduleWizardFunctions
             var poolGamesPerTeam = Math.Max(2, body.poolGamesPerTeam ?? 2);
             var externalOfferPerWeek = Math.Max(0, body.externalOfferPerWeek ?? 0);
             var maxGamesPerWeek = (body.maxGamesPerWeek ?? 0) <= 0 ? (int?)null : body.maxGamesPerWeek;
-            var noDoubleHeaders = body.noDoubleHeaders ?? true;
+            var noDoubleHeaders = true;
             var balanceHomeAway = body.balanceHomeAway ?? true;
             var preferredDays = new List<DayOfWeek>();
             var strictPreferredWeeknights = false;
@@ -555,20 +555,22 @@ public class ScheduleWizardFunctions
             var regularAssignments = AssignPhaseSlots("Regular Season", regularSlots, regularMatchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek, hardLeagueRules.MaxExternalOffersPerTeamSeason, regularMaxTotalGamesPerTeam, preferredDays, strictPreferredWeeknights, guestAnchors, scheduleBackward: useBackwardRegularSeason, tieBreakSeed: seed, seasonStart: seasonStart, bracketStart: bracketStart, bracketEnd: bracketEnd, matchupPriorityByPair: regularMatchupPriorityByPair, fixedAssignments: regularRequestAssignments);
             var poolAssignments = AssignPhaseSlots("Pool Play", poolSlots, poolMatchups, teams, null, noDoubleHeaders, balanceHomeAway, 0, hardLeagueRules.MaxExternalOffersPerTeamSeason, null, preferredDays: new List<DayOfWeek>(), strictPreferredWeeknights: false, guestAnchors: null, scheduleBackward: false, tieBreakSeed: seed, seasonStart: seasonStart, bracketStart: bracketStart, bracketEnd: bracketEnd, fixedAssignments: poolRequestAssignments);
             var bracketAssignments = AssignBracketSlots(bracketSlots, bracketMatchups, bracketRequestAssignments);
+            var regularScheduledCount = regularAssignments.Assignments.Count(a => !a.IsRequestGame);
+            var poolScheduledCount = poolAssignments.Assignments.Count(a => !a.IsRequestGame);
+            var bracketScheduledCount = bracketAssignments.Assignments.Count(a => !a.IsRequestGame);
             var totalPhaseSlots = regularSlots
                 .Select(s => s.slotId)
                 .Concat(poolSlots.Select(s => s.slotId))
                 .Concat(bracketSlots.Select(s => s.slotId))
-                .Concat(requestGameAssignments.Select(s => s.slotId))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Count();
 
             var summary = new WizardSummary(
-                regularSeason: BuildPhaseSummary("Regular Season", regularSlots.Count + regularRequestAssignments.Count, regularAssignments.Assignments.Count, regularMatchups.Count, regularAssignments.UnassignedMatchups.Count),
-                poolPlay: BuildPhaseSummary("Pool Play", poolSlots.Count + poolRequestAssignments.Count, poolAssignments.Assignments.Count, poolMatchups.Count, poolAssignments.UnassignedMatchups.Count),
-                bracket: BuildPhaseSummary("Bracket", bracketSlots.Count + bracketRequestAssignments.Count, bracketAssignments.Assignments.Count, bracketMatchups.Count, bracketAssignments.UnassignedMatchups.Count),
+                regularSeason: BuildPhaseSummary("Regular Season", regularSlots.Count, regularScheduledCount, regularMatchups.Count, regularAssignments.UnassignedMatchups.Count),
+                poolPlay: BuildPhaseSummary("Pool Play", poolSlots.Count, poolScheduledCount, poolMatchups.Count, poolAssignments.UnassignedMatchups.Count),
+                bracket: BuildPhaseSummary("Bracket", bracketSlots.Count, bracketScheduledCount, bracketMatchups.Count, bracketAssignments.UnassignedMatchups.Count),
                 totalSlots: totalPhaseSlots,
-                totalAssigned: regularAssignments.Assignments.Count + poolAssignments.Assignments.Count + bracketAssignments.Assignments.Count,
+                totalAssigned: regularScheduledCount + poolScheduledCount + bracketScheduledCount,
                 teamCount: teams.Count
             );
 
@@ -738,16 +740,15 @@ public class ScheduleWizardFunctions
             var additionalHardIssueCount = invariantHardIssueCount + explicitHardIssueCount;
             var hardViolationCount = strictValidation.RuleHealth.HardViolationCount + additionalHardIssueCount;
             var applyBlocked = strictValidation.RuleHealth.ApplyBlocked || additionalHardIssueCount > 0;
-            var allowApplyOverride = additionalHardIssueCount == 0 && CanApplyWithSingleMissingRequiredMatchupOverride(body, strictValidation.RuleHealth);
-            var effectiveApplyBlocked = applyBlocked && !allowApplyOverride;
-            if (allowApplyOverride)
+            if (applyBlocked)
             {
                 warnings.Add(new
                 {
-                    code = "APPLY_OVERRIDE_SINGLE_MISSING_REQUIRED_MATCHUP",
-                    message = "Apply override acknowledged: one required regular-season matchup remains unassigned and will be accepted on apply."
+                    code = "APPLY_WITH_WARNINGS",
+                    message = "This preview includes hard-rule warnings. Apply remains available, and the full run will be written if you continue."
                 });
             }
+            var effectiveApplyBlocked = false;
             var lockedGuestSlotIds = BuildLockedGuestSlotIds(regularAssignments.Assignments);
             var repairProposals = BuildFilteredRepairProposals(
                 ScheduleRepairEngine.Propose(validationResult, strictValidation.RuleHealth, validationConfig, teams, maxProposals: 8),
@@ -758,22 +759,6 @@ public class ScheduleWizardFunctions
 
             if (apply)
             {
-                if (effectiveApplyBlocked)
-                {
-                    var requestId = req.FunctionContext.InvocationId.ToString();
-                    return ApiResponses.Error(
-                        req,
-                        HttpStatusCode.Conflict,
-                        ErrorCodes.SCHEDULE_BLOCKED,
-                        "Schedule has hard rule violations. Review Rule Health and repair suggestions before applying.",
-                        new
-                        {
-                            requestId,
-                            ruleHealth = strictValidation.RuleHealth,
-                            hardViolations = hardViolationCount,
-                            totalIssues
-                        });
-                }
                 var runId = Guid.NewGuid().ToString("N");
                 if (resetGeneratedSlotsBeforeApply)
                 {
@@ -816,24 +801,6 @@ public class ScheduleWizardFunctions
         if (string.IsNullOrWhiteSpace(raw) || !DateOnly.TryParseExact(raw, "yyyy-MM-dd", out var date))
             throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, $"{field} must be YYYY-MM-DD.");
         return date;
-    }
-
-    private static bool CanApplyWithSingleMissingRequiredMatchupOverride(WizardRequest request, ScheduleRuleHealthReport ruleHealth)
-    {
-        if (!(request.allowApplyWithSingleMissingRequiredMatchup ?? false))
-            return false;
-        if (ruleHealth.HardViolationCount != 1)
-            return false;
-
-        var hardGroups = (ruleHealth.Groups ?? Array.Empty<ScheduleRuleGroupReport>())
-            .Where(g => string.Equals(g.Severity, "hard", StringComparison.OrdinalIgnoreCase))
-            .ToList();
-        if (hardGroups.Count != 1)
-            return false;
-
-        var hardGroup = hardGroups[0];
-        return string.Equals(hardGroup.RuleId, "unscheduled-required-matchups", StringComparison.OrdinalIgnoreCase)
-            && hardGroup.Count == 1;
     }
 
     private static List<object> BuildWizardInvariantIssues(
@@ -900,7 +867,6 @@ public class ScheduleWizardFunctions
 
                 if (assignment.IsRequestGame)
                 {
-                    IncrementTeamCount(counts, assignment.AwayTeamId);
                     continue;
                 }
 
@@ -1419,7 +1385,7 @@ public class ScheduleWizardFunctions
                 teams,
                 regularMatchups,
                 maxGamesPerWeek: (wizard.maxGamesPerWeek ?? 0) <= 0 ? null : wizard.maxGamesPerWeek,
-                noDoubleHeaders: wizard.noDoubleHeaders ?? true,
+                noDoubleHeaders: true,
                 balanceHomeAway: wizard.balanceHomeAway ?? true,
                 blockedRanges,
                 hardLeagueRules,
@@ -1926,6 +1892,12 @@ public class ScheduleWizardFunctions
         if (externalOfferPerWeek <= 0 || slots.Count == 0)
             return new List<SlotInfo>();
 
+        var requiredAnchors = EnumerateGuestAnchors(guestAnchors)
+            .Take(Math.Max(0, externalOfferPerWeek))
+            .ToList();
+        if (requiredAnchors.Count == 0)
+            return new List<SlotInfo>();
+
         // Calculate week 1 end (first 7 calendar days from season start)
         var weekOneEnd = seasonStart.AddDays(6);
 
@@ -1967,7 +1939,7 @@ public class ScheduleWizardFunctions
             var weekSelections = new List<SlotInfo>();
             var reservedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var anchor in EnumerateGuestAnchors(guestAnchors))
+            foreach (var anchor in requiredAnchors)
             {
                 if (weekSelections.Count >= externalOfferPerWeek) break;
 
@@ -1979,16 +1951,6 @@ public class ScheduleWizardFunctions
 
                 weekSelections.Add(exactMatch);
                 reservedIds.Add(exactMatch.slotId);
-            }
-
-            foreach (var slot in orderedWeekSlots)
-            {
-                if (weekSelections.Count >= externalOfferPerWeek) break;
-                if (reservedIds.Contains(slot.slotId))
-                    continue;
-
-                weekSelections.Add(slot);
-                reservedIds.Add(slot.slotId);
             }
 
             picked.AddRange(weekSelections);
@@ -2016,18 +1978,47 @@ public class ScheduleWizardFunctions
         if (externalOfferPerWeek <= 0 || regularRangeEnd < seasonStart)
             return warnings;
 
-        var requiredAnchors = EnumerateGuestAnchors(guestAnchors)
+        var availableAnchors = EnumerateGuestAnchors(guestAnchors).ToList();
+        if (availableAnchors.Count == 0)
+        {
+            warnings.Add(new
+            {
+                code = "GUEST_ANCHORS_REQUIRED",
+                message = $"Guest games/week is set to {externalOfferPerWeek}, but no guest anchors are configured."
+            });
+            return warnings;
+        }
+
+        if (availableAnchors.Count < externalOfferPerWeek)
+        {
+            warnings.Add(new
+            {
+                code = "GUEST_ANCHORS_INSUFFICIENT",
+                message = $"Guest games/week is set to {externalOfferPerWeek}, but only {availableAnchors.Count} guest anchor(s) are configured."
+            });
+        }
+
+        var requiredAnchors = availableAnchors
             .Take(Math.Max(0, externalOfferPerWeek))
             .Select((anchor, idx) => new { Anchor = anchor, Ordinal = idx + 1 })
             .ToList();
-        if (requiredAnchors.Count == 0)
+
+        var weekOneEnd = seasonStart.AddDays(6);
+        var firstGuestEligibleDate = weekOneEnd.AddDays(1);
+        if (regularRangeEnd < firstGuestEligibleDate)
             return warnings;
 
         var weeklySlots = regularSlots
+            .Where(slot =>
+            {
+                if (!DateOnly.TryParseExact(slot.gameDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var slotDate))
+                    return false;
+                return slotDate >= firstGuestEligibleDate;
+            })
             .GroupBy(slot => WeekKey(slot.gameDate))
             .Where(group => !string.IsNullOrWhiteSpace(group.Key))
             .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
-        var weekStarts = BuildRegularSeasonWeekStarts(seasonStart, regularRangeEnd);
+        var weekStarts = BuildRegularSeasonWeekStarts(firstGuestEligibleDate, regularRangeEnd);
 
         foreach (var required in requiredAnchors)
         {
@@ -2103,6 +2094,9 @@ public class ScheduleWizardFunctions
 
         foreach (var existing in existingAssignments)
         {
+            if (existing.IsRequestGame)
+                continue;
+
             IncrementTeamCount(totalCounts, existing.HomeTeamId);
             IncrementTeamCount(totalCounts, existing.AwayTeamId);
             IncrementTeamCount(homeCounts, existing.HomeTeamId);
@@ -2304,6 +2298,8 @@ public class ScheduleWizardFunctions
     {
         if (externalOfferPerWeek <= 0 || unassignedSlots.Count == 0 || teams.Count == 0)
             return new PhaseAssignments(assignments, unassignedSlots, unassignedMatchups);
+        if (!EnumerateGuestAnchors(guestAnchors).Any())
+            return new PhaseAssignments(assignments, unassignedSlots, unassignedMatchups);
 
         var nextAssignments = new List<ScheduleAssignment>(assignments);
         var remainingSlots = new List<ScheduleAssignment>();
@@ -2322,6 +2318,9 @@ public class ScheduleWizardFunctions
 
         foreach (var existing in assignments)
         {
+            if (existing.IsRequestGame)
+                continue;
+
             IncrementTeamCount(totalCounts, existing.HomeTeamId);
             IncrementTeamCount(totalCounts, existing.AwayTeamId);
             IncrementTeamCount(homeCounts, existing.HomeTeamId);
@@ -2354,7 +2353,16 @@ public class ScheduleWizardFunctions
                 continue;
             }
 
-            var ordered = OrderGuestCandidates(weekGroup.ToList(), guestAnchors);
+            var ordered = OrderGuestCandidates(
+                weekGroup
+                    .Where(slot => MatchesAnyGuestAnchor(slot, guestAnchors))
+                    .ToList(),
+                guestAnchors);
+            if (ordered.Count == 0)
+            {
+                remainingSlots.AddRange(weekGroup);
+                continue;
+            }
             var assignedSlotIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var assignedThisWeek = 0;
 
@@ -2424,6 +2432,13 @@ public class ScheduleWizardFunctions
         if (MatchesGuestAnchor(slot, guestAnchors.Primary, strictField: true)) return 0;
         if (MatchesGuestAnchor(slot, guestAnchors.Secondary, strictField: true)) return 1;
         return 100;
+    }
+
+    private static bool MatchesAnyGuestAnchor(ScheduleAssignment slot, GuestAnchorSet? guestAnchors)
+    {
+        if (guestAnchors is null) return false;
+        return MatchesGuestAnchor(slot, guestAnchors.Primary, strictField: true)
+            || MatchesGuestAnchor(slot, guestAnchors.Secondary, strictField: true);
     }
 
     private static int GuestAnchorScore(SlotInfo slot, GuestAnchorSet? guestAnchors)
@@ -2500,6 +2515,9 @@ public class ScheduleWizardFunctions
         var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         foreach (var assignment in assignments)
         {
+            if (assignment.IsRequestGame)
+                continue;
+
             var weekKey = WeekKey(assignment.GameDate);
             if (string.IsNullOrWhiteSpace(weekKey)) continue;
             IncrementTeamWeekCount(counts, assignment.HomeTeamId, weekKey);
@@ -2565,6 +2583,9 @@ public class ScheduleWizardFunctions
         var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         foreach (var assignment in assignments ?? Array.Empty<ScheduleAssignment>())
         {
+            if (assignment.IsRequestGame)
+                continue;
+
             IncrementTeamDateCount(counts, assignment.HomeTeamId, assignment.GameDate);
             IncrementTeamDateCount(counts, assignment.AwayTeamId, assignment.GameDate);
         }
@@ -3591,7 +3612,7 @@ public class ScheduleWizardFunctions
             ["DateFrom"] = request.seasonStart ?? "",
             ["DateTo"] = request.seasonEnd ?? "",
             ["MaxGamesPerWeek"] = request.maxGamesPerWeek ?? 0,
-            ["NoDoubleHeaders"] = request.noDoubleHeaders ?? true,
+            ["NoDoubleHeaders"] = true,
             ["BalanceHomeAway"] = request.balanceHomeAway ?? true,
             ["ExternalOfferPerWeek"] = request.externalOfferPerWeek ?? 0,
             ["MaxExternalOffersPerTeamSeason"] = request.maxExternalOffersPerTeamSeason ?? 0,

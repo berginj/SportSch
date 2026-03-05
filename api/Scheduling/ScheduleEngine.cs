@@ -125,6 +125,9 @@ public static class ScheduleEngine
 
         foreach (var assignment in list)
         {
+            if (assignment.IsRequestGame)
+                continue;
+
             if (!string.IsNullOrWhiteSpace(assignment.HomeTeamId) && teamSet.Contains(assignment.HomeTeamId))
             {
                 IncrementTeamWeekCount(weekCounts, assignment.HomeTeamId, WeekKey(assignment.GameDate));
@@ -532,7 +535,6 @@ public static class ScheduleEngine
 
             if (assigned.IsRequestGame)
             {
-                ApplyCounts("", assigned.AwayTeamId, slot.GameDate, homeCounts, awayCounts, gamesByDate, gamesByWeek, pairCounts, gamesByTeamDates);
                 traces.Add(new SchedulePlacementTrace(
                     SlotId: slot.SlotId,
                     GameDate: slot.GameDate,
@@ -1267,15 +1269,6 @@ public static class ScheduleEngine
 
             if (assignment.IsRequestGame)
             {
-                ApplySeededTeamSide(
-                    assignment.AwayTeamId,
-                    countsAsHome: false,
-                    gameDate,
-                    homeCounts,
-                    awayCounts,
-                    gamesByDate,
-                    gamesByWeek,
-                    gamesByTeamDates);
                 continue;
             }
 

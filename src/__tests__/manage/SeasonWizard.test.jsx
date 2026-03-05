@@ -597,14 +597,13 @@ describe("SeasonWizard", () => {
     }
   });
 
-  it("allows apply with explicit acknowledgement when exactly one required matchup is unassigned", async () => {
+  it("allows apply with warnings when required matchups remain unassigned", async () => {
     installApiMock({ previewResponse: SINGLE_MISSING_MATCHUP_PREVIEW });
     await advanceToPreview();
 
-    expect(screen.getByText(/One required matchup is still unassigned/i)).toBeInTheDocument();
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     try {
-      fireEvent.click(screen.getByRole("button", { name: "Apply with 1 missing matchup" }));
+      fireEvent.click(screen.getByRole("button", { name: "Apply with warnings" }));
 
       await waitFor(() => {
         expect(api.apiFetch).toHaveBeenCalledWith(
@@ -615,19 +614,19 @@ describe("SeasonWizard", () => {
 
       const applyCall = api.apiFetch.mock.calls.find(([path]) => path === "/api/schedule/wizard/apply");
       const payload = JSON.parse(applyCall?.[1]?.body || "{}");
-      expect(payload.allowApplyWithSingleMissingRequiredMatchup).toBe(true);
-      expect(String(confirmSpy.mock.calls[0]?.[0] || "")).toContain("Acknowledges 1 unscheduled required matchup");
+      expect(payload.allowApplyWithSingleMissingRequiredMatchup).toBeUndefined();
+      expect(String(confirmSpy.mock.calls[0]?.[0] || "")).toContain("Includes unresolved warnings/issues shown in preview");
     } finally {
       confirmSpy.mockRestore();
     }
   });
 
-  it("keeps apply blocked for other hard-rule failures", async () => {
+  it("keeps apply available for hard-rule failures and uses warning labeling", async () => {
     installApiMock({ previewResponse: RULE_HINT_PREVIEW });
     await advanceToPreview();
 
-    expect(screen.getByRole("button", { name: "Apply blocked" })).toBeDisabled();
-    expect(screen.getByText(/Apply blocked by hard rule violations/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Apply with warnings" })).toBeEnabled();
+    expect(screen.getByText(/Applying will keep current warnings\/issues/i)).toBeInTheDocument();
   });
 
   it("shows apply outcome details and opens calendar with matching filters", async () => {

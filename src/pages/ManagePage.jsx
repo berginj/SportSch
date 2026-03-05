@@ -4,7 +4,6 @@ import CollapsibleSection from "../components/CollapsibleSection";
 
 const FieldsImport = lazy(() => import("../manage/FieldsImport"));
 const InvitesManager = lazy(() => import("../manage/InvitesManager"));
-const SchedulerManager = lazy(() => import("../manage/SchedulerManager"));
 const CommissionerHub = lazy(() => import("../manage/CommissionerHub"));
 const AvailabilityManager = lazy(() => import("../manage/AvailabilityManager"));
 const SlotGeneratorManager = lazy(() => import("../manage/SlotGeneratorManager"));
@@ -45,7 +44,6 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
       ...(canSchedule ? [{ id: "commissioner", label: "Commissioner Hub" }] : []),
       ...(canSchedule ? [{ id: "settings", label: "League Settings" }] : []),
       { id: "invites", label: "Invites" },
-      ...(canSchedule ? [{ id: "scheduler", label: "Scheduler" }] : []),
       ...(canSchedule ? [{ id: "coach-links", label: "Coach Links" }] : []),
       ...(canSchedule ? [{ id: "practice-requests", label: "Practice Requests" }] : []),
       { id: "fields", label: "Fields" },
@@ -236,22 +234,6 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
           </div>
         </div>
       )}
-
-
-      {activeTabId === "scheduler" && canSchedule && (
-        <div className="card">
-          <div className="card__header">
-            <div className="h2">Scheduler</div>
-            <div className="subtle">Auto-assign matchups to open slots for a division.</div>
-          </div>
-          <div className="card__body">
-            <Suspense fallback={sectionFallback}>
-              <SchedulerManager leagueId={leagueId} />
-            </Suspense>
-          </div>
-        </div>
-      )}
-
       {activeTabId === "coach-links" && canSchedule && (
         <div className="card">
           <div className="card__header">

@@ -935,8 +935,6 @@ public static class ScheduleValidationV2
 
         if (assignment.IsRequestGame)
         {
-            if (awayCounts.ContainsKey(assignment.AwayTeamId))
-                awayCounts[assignment.AwayTeamId] += 1;
             return;
         }
 
@@ -957,8 +955,6 @@ public static class ScheduleValidationV2
 
         if (assignment.IsRequestGame)
         {
-            if (!string.IsNullOrWhiteSpace(assignment.AwayTeamId))
-                yield return assignment.AwayTeamId;
             yield break;
         }
 

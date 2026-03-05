@@ -53,108 +53,33 @@ public class ScheduleFunctions
     );
 
     [Function("SchedulePreview")]
-    public async Task<HttpResponseData> Preview(
+    public Task<HttpResponseData> Preview(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "schedule/preview")] HttpRequestData req)
     {
-        return await RunSchedule(req, apply: false);
+        return Task.FromResult(LegacySchedulerDeprecated(req));
     }
 
     [Function("ScheduleApply")]
-    public async Task<HttpResponseData> Apply(
+    public Task<HttpResponseData> Apply(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "schedule/apply")] HttpRequestData req)
     {
-        return await RunSchedule(req, apply: true);
+        return Task.FromResult(LegacySchedulerDeprecated(req));
     }
 
     [Function("ScheduleValidate")]
-    public async Task<HttpResponseData> Validate(
+    public Task<HttpResponseData> Validate(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "schedule/validate")] HttpRequestData req)
     {
-        try
-        {
-            var leagueId = ApiGuards.RequireLeagueId(req);
-            var me = IdentityUtil.GetMe(req);
-            if (string.IsNullOrWhiteSpace(me.UserId) || me.UserId == "UNKNOWN")
-            {
-                return ApiResponses.Error(req, HttpStatusCode.Unauthorized,
-                    ErrorCodes.UNAUTHENTICATED, "You must be signed in.");
-            }
+        return Task.FromResult(LegacySchedulerDeprecated(req));
+    }
 
-            // Authorization - league admin required
-            if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
-            {
-                var membership = await _membershipRepo.GetMembershipAsync(me.UserId, leagueId);
-                var myRole = (membership?.GetString("Role") ?? Constants.Roles.Viewer).Trim();
-                if (!string.Equals(myRole, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
-                {
-                    return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
-                        "Only league admins can validate schedules");
-                }
-            }
-
-            var body = await HttpUtil.ReadJsonAsync<ScheduleRequest>(req);
-            if (body is null)
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Invalid JSON body");
-
-            var division = (body.division ?? "").Trim();
-            if (string.IsNullOrWhiteSpace(division))
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "division is required");
-            ApiGuards.EnsureValidTableKeyPart("division", division);
-
-            var dateFrom = (body.dateFrom ?? "").Trim();
-            var dateTo = (body.dateTo ?? "").Trim();
-            if (!string.IsNullOrWhiteSpace(dateFrom) && !DateOnly.TryParseExact(dateFrom, "yyyy-MM-dd", out _))
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "dateFrom must be YYYY-MM-DD.");
-            if (!string.IsNullOrWhiteSpace(dateTo) && !DateOnly.TryParseExact(dateTo, "yyyy-MM-dd", out _))
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "dateTo must be YYYY-MM-DD.");
-
-            var constraints = body.constraints ?? new ScheduleConstraintsDto(null, null, null, null);
-            var maxGamesPerWeek = (constraints.maxGamesPerWeek ?? 0) <= 0 ? (int?)null : constraints.maxGamesPerWeek;
-            var noDoubleHeaders = constraints.noDoubleHeaders ?? true;
-            var balanceHomeAway = constraints.balanceHomeAway ?? true;
-            var externalOfferPerWeek = Math.Max(0, constraints.externalOfferPerWeek ?? 0);
-            var scheduleConstraints = new ScheduleConstraints(maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek);
-
-            var assignments = await LoadScheduledAssignmentsAsync(leagueId, division, dateFrom, dateTo);
-            if (assignments.Count == 0)
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "No scheduled games found in this range.");
-
-            var summary = new ScheduleSummary(
-                SlotsTotal: assignments.Count,
-                SlotsAssigned: assignments.Count,
-                MatchupsTotal: assignments.Count,
-                MatchupsAssigned: assignments.Count,
-                ExternalOffers: assignments.Count(a => a.IsExternalOffer),
-                UnassignedSlots: 0,
-                UnassignedMatchups: 0);
-
-            var result = new GameSwap.Functions.Scheduling.ScheduleResult(
-                summary,
-                assignments,
-                new List<ScheduleAssignment>(),
-                new List<GameSwap.Functions.Scheduling.MatchupPair>());
-            var validation = ScheduleValidation.Validate(result, scheduleConstraints);
-            var issues = validation.Issues
-                .Select(i => (object)new { ruleId = i.RuleId, severity = i.Severity, message = i.Message, details = i.Details })
-                .ToList();
-
-            return ApiResponses.Ok(req, new { summary, issues, totalIssues = validation.TotalIssues });
-        }
-        catch (ApiGuards.HttpError ex)
-        {
-            return ApiResponses.FromHttpError(req, ex);
-        }
-        catch (Exception ex)
-        {
-            _log.LogError(ex, "Schedule validate failed");
-            var requestId = req.FunctionContext.InvocationId.ToString();
-            return ApiResponses.Error(
-                req,
-                HttpStatusCode.InternalServerError,
-                ErrorCodes.INTERNAL_ERROR,
-                "An unexpected error occurred",
-                new { requestId, exception = ex.GetType().Name, detail = ex.Message });
-        }
+    private static HttpResponseData LegacySchedulerDeprecated(HttpRequestData req)
+    {
+        return ApiResponses.Error(
+            req,
+            HttpStatusCode.Gone,
+            "SCHEDULER_DEPRECATED",
+            "This endpoint is deprecated. Use /api/schedule/wizard/preview and /api/schedule/wizard/apply.");
     }
 
     [Function("ScheduleResetUsage")]
