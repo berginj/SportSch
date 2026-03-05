@@ -159,11 +159,12 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId, theme =
           <button
             type="button"
             className={`btn btn--sm btn--ghost topnav__theme-toggle ${theme === "dark" ? "is-active" : ""}`}
-            onClick={onToggleTheme}
+            onClick={() => onToggleTheme?.()}
             title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
             aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+            aria-pressed={theme === "dark"}
           >
-            {theme === "dark" ? "Dark" : "Light"}
+            Theme: {theme === "dark" ? "Dark" : "Light"}
           </button>
           <span className="topnav__user" title={email}>
             {email || "Signed in"}

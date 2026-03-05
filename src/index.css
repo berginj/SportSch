@@ -39,6 +39,30 @@
     --neo-shadow-sm: 8px 8px 16px var(--neo-dark), -8px -8px 16px var(--neo-light);
     --neo-shadow-md: 14px 14px 28px rgba(148, 163, 184, 0.24), -14px -14px 28px rgba(255, 255, 255, 0.9);
     --neo-inset: inset 4px 4px 10px rgba(148, 163, 184, 0.16), inset -4px -4px 10px rgba(255, 255, 255, 0.88);
+
+    /* Shared themed surfaces */
+    --surface-raised: linear-gradient(145deg, #edf3f8, #e3eaf1);
+    --surface-raised-strong: linear-gradient(145deg, #eef4fa, #e4ebf3);
+    --surface-panel: linear-gradient(145deg, rgba(243, 247, 251, 0.94), rgba(230, 237, 245, 0.92));
+    --surface-panel-hover: linear-gradient(145deg, rgba(247, 250, 253, 0.96), rgba(233, 240, 247, 0.94));
+    --surface-inset-bg: linear-gradient(145deg, #e3eaf1, #f3f7fb);
+
+    /* Shared status tones */
+    --status-open-bg: linear-gradient(145deg, #fff3d7, #fde7a4);
+    --status-open-border: rgba(243, 194, 79, 0.35);
+    --status-open-text: #9a6700;
+
+    --status-pending-bg: linear-gradient(145deg, #e9f1fb, #d9e6f5);
+    --status-pending-border: rgba(46, 111, 174, 0.25);
+    --status-pending-text: #1f5584;
+
+    --status-confirmed-bg: linear-gradient(145deg, #eaf7ef, #d9efdf);
+    --status-confirmed-border: rgba(47, 143, 102, 0.25);
+    --status-confirmed-text: #1f6e4d;
+
+    --status-cancelled-bg: linear-gradient(145deg, #fff1ef, #f8ddda);
+    --status-cancelled-border: rgba(198, 83, 74, 0.26);
+    --status-cancelled-text: #a74138;
   }
 
   :root[data-theme="dark"] {
@@ -71,6 +95,28 @@
     --neo-shadow-sm: 8px 8px 16px rgba(0, 0, 0, 0.38), -8px -8px 16px rgba(255, 255, 255, 0.03);
     --neo-shadow-md: 14px 14px 28px rgba(0, 0, 0, 0.46), -14px -14px 28px rgba(255, 255, 255, 0.02);
     --neo-inset: inset 4px 4px 10px rgba(0, 0, 0, 0.48), inset -4px -4px 10px rgba(255, 255, 255, 0.04);
+
+    --surface-raised: linear-gradient(145deg, #22384e, #1a2f44);
+    --surface-raised-strong: linear-gradient(145deg, #27415a, #1d344b);
+    --surface-panel: linear-gradient(145deg, rgba(34, 56, 78, 0.94), rgba(26, 47, 68, 0.94));
+    --surface-panel-hover: linear-gradient(145deg, rgba(39, 65, 90, 0.94), rgba(29, 52, 75, 0.94));
+    --surface-inset-bg: linear-gradient(145deg, #1f3449, #182a3d);
+
+    --status-open-bg: linear-gradient(145deg, rgba(243, 194, 79, 0.24), rgba(243, 194, 79, 0.16));
+    --status-open-border: rgba(243, 194, 79, 0.48);
+    --status-open-text: #ffe8b3;
+
+    --status-pending-bg: linear-gradient(145deg, rgba(108, 169, 226, 0.22), rgba(108, 169, 226, 0.14));
+    --status-pending-border: rgba(108, 169, 226, 0.42);
+    --status-pending-text: #d9ebff;
+
+    --status-confirmed-bg: linear-gradient(145deg, rgba(87, 180, 138, 0.22), rgba(87, 180, 138, 0.14));
+    --status-confirmed-border: rgba(87, 180, 138, 0.4);
+    --status-confirmed-text: #cbf3df;
+
+    --status-cancelled-bg: linear-gradient(145deg, rgba(224, 131, 122, 0.22), rgba(224, 131, 122, 0.14));
+    --status-cancelled-border: rgba(224, 131, 122, 0.42);
+    --status-cancelled-text: #ffd2cd;
 
     --season-wizard-shell: #16283b;
     --season-wizard-panel: #1a2e43;
@@ -450,10 +496,26 @@
 
   .statusBadge { @apply inline-flex items-center rounded-full border-2 border-border bg-gray-50 px-2 py-1 text-xs text-gray-700 capitalize font-medium; }
   .statusBadge--link { @apply transition hover:border-accent hover:bg-amber-50 hover:text-gray-900; }
-  .statusBadge.status-open { @apply bg-yellow-50 text-amber-700 border-amber-300; }
-  .statusBadge.status-confirmed { @apply bg-green-50 text-green-700 border-green-300; }
-  .statusBadge.status-cancelled { @apply bg-red-50 text-red-700 border-red-300; }
-  .statusBadge.status-scheduled { @apply bg-blue-50 text-blue-700 border-blue-300; }
+  .statusBadge.status-open {
+    background: var(--status-open-bg);
+    border-color: var(--status-open-border);
+    color: var(--status-open-text);
+  }
+  .statusBadge.status-confirmed {
+    background: var(--status-confirmed-bg);
+    border-color: var(--status-confirmed-border);
+    color: var(--status-confirmed-text);
+  }
+  .statusBadge.status-cancelled {
+    background: var(--status-cancelled-bg);
+    border-color: var(--status-cancelled-border);
+    color: var(--status-cancelled-text);
+  }
+  .statusBadge.status-scheduled {
+    background: var(--status-pending-bg);
+    border-color: var(--status-pending-border);
+    color: var(--status-pending-text);
+  }
 
   .topNav, .topnav {
     @apply sticky top-0 z-10 border-b-2 border-border backdrop-blur-md;
@@ -479,6 +541,11 @@
 
   .topnav__league {
     @apply flex flex-col gap-0.5;
+  }
+
+  .topnav__theme-toggle {
+    min-width: 92px;
+    white-space: nowrap;
   }
 
   .topnav__league-select {
@@ -1970,27 +2037,27 @@
   }
 
   .statusBadge.status-open {
-    background: linear-gradient(145deg, #fff3d7, #fde7a4);
-    color: #9a6700;
-    border-color: rgba(243, 194, 79, 0.4);
+    background: var(--status-open-bg);
+    color: var(--status-open-text);
+    border-color: var(--status-open-border);
   }
 
   .statusBadge.status-confirmed {
-    background: linear-gradient(145deg, #eaf7ef, #d9efdf);
-    color: #1f6e4d;
-    border-color: rgba(47, 143, 102, 0.3);
+    background: var(--status-confirmed-bg);
+    color: var(--status-confirmed-text);
+    border-color: var(--status-confirmed-border);
   }
 
   .statusBadge.status-cancelled {
-    background: linear-gradient(145deg, #fff1ef, #f8ddda);
-    color: #a74138;
-    border-color: rgba(198, 83, 74, 0.28);
+    background: var(--status-cancelled-bg);
+    color: var(--status-cancelled-text);
+    border-color: var(--status-cancelled-border);
   }
 
   .statusBadge.status-scheduled {
-    background: linear-gradient(145deg, #e9f1fb, #d9e6f5);
-    color: #1f5584;
-    border-color: rgba(46, 111, 174, 0.28);
+    background: var(--status-pending-bg);
+    color: var(--status-pending-text);
+    border-color: var(--status-pending-border);
   }
 
   .layoutBadge {
@@ -2051,7 +2118,7 @@
   :root[data-theme="dark"] select,
   :root[data-theme="dark"] textarea,
   :root[data-theme="dark"] button {
-    background: linear-gradient(145deg, #22384e, #1a2f44);
+    background: var(--surface-raised);
     border-color: rgba(255, 255, 255, 0.16);
     color: var(--text);
   }
@@ -2060,7 +2127,7 @@
   :root[data-theme="dark"] select:hover:not(:focus),
   :root[data-theme="dark"] textarea:hover:not(:focus),
   :root[data-theme="dark"] button:hover:not(:disabled) {
-    background: linear-gradient(145deg, #27415a, #1d344b);
+    background: var(--surface-raised-strong);
     border-color: rgba(255, 255, 255, 0.24);
   }
 
@@ -2086,10 +2153,6 @@
     box-shadow: none;
   }
 
-  :root[data-theme="dark"] .topnav__theme-toggle {
-    min-width: 70px;
-  }
-
   :root[data-theme="dark"] .card,
   :root[data-theme="dark"] .slotCard,
   :root[data-theme="dark"] .timelineItem,
@@ -2097,7 +2160,7 @@
   :root[data-theme="dark"] .layoutStat,
   :root[data-theme="dark"] .layoutPreview,
   :root[data-theme="dark"] .controlBand {
-    background: linear-gradient(145deg, #22384e, #1a2f44);
+    background: var(--surface-raised);
     border-color: rgba(255, 255, 255, 0.14);
     box-shadow: var(--neo-shadow-sm);
   }
@@ -2115,7 +2178,7 @@
   :root[data-theme="dark"] .layoutPill,
   :root[data-theme="dark"] .msg,
   :root[data-theme="dark"] .statusBadge {
-    background: linear-gradient(145deg, #1f3449, #182a3d);
+    background: var(--surface-inset-bg);
     border-color: rgba(255, 255, 255, 0.14);
     color: var(--text);
   }

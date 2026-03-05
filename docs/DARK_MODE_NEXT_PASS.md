@@ -2,16 +2,22 @@
 
 This is the follow-up scope after the MVP dark mode toggle.
 
+## Completed in pass 2
+
+1. Added reusable surface/status tokens in [`src/index.css`](../src/index.css) for both light/dark themes.
+2. Migrated calendar/agenda status visuals to shared tokens in [`src/components/CalendarView.css`](../src/components/CalendarView.css).
+3. Improved top-nav toggle accessibility (`aria-pressed`) and label clarity.
+4. Added theme persistence/toggle tests in [`src/__tests__/App.theme.test.jsx`](../src/__tests__/App.theme.test.jsx).
+
 ## Remaining UI coverage gaps
 
 1. Convert remaining hard-coded light gradients/colors in [`src/index.css`](../src/index.css) to semantic variables.
-2. Convert remaining hard-coded light gradients/colors in [`src/components/CalendarView.css`](../src/components/CalendarView.css) to semantic variables.
-3. Normalize all `@apply` color tokens (`bg-gray-*`, `text-gray-*`, `border-gray-*`, etc.) to theme-aware utility classes or CSS variables.
-4. Add dark-mode-specific overrides for wizard-heavy surfaces:
+2. Normalize all `@apply` color tokens (`bg-gray-*`, `text-gray-*`, `border-gray-*`, etc.) to theme-aware utility classes or CSS variables.
+3. Add dark-mode-specific overrides for wizard-heavy surfaces:
    - `SeasonWizard` visual rails/cards/status regions
    - Scheduler overlays and validation panels
    - Availability and slot generator dense table views
-5. Review status chips/badges for WCAG contrast in dark mode (open/confirmed/cancelled/scheduled).
+4. Review status chips/badges for WCAG contrast in dark mode (open/confirmed/cancelled/scheduled).
 
 ## Behavior and UX follow-ups
 
