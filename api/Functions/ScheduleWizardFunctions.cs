@@ -2837,7 +2837,7 @@ public class ScheduleWizardFunctions
             {
                 config = hasSlotPlan
                     ? new SlotPlanConfig("practice", null, null, null)
-                    : new SlotPlanConfig("game", null, null, null);
+                    : new SlotPlanConfig(slot.slotType, slot.priorityRank, null, null);
             }
 
             var normalizedType = NormalizeSlotType(config.SlotType);
@@ -2867,6 +2867,14 @@ public class ScheduleWizardFunctions
         var h = minutes / 60;
         var m = minutes % 60;
         return $"{h:D2}:{m:D2}";
+    }
+
+    private static int? ParsePositiveInt(string? raw)
+    {
+        var value = (raw ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        if (!int.TryParse(value, out var parsed)) return null;
+        return parsed > 0 ? parsed : null;
     }
 
     private static string NormalizeSlotType(string? raw)
@@ -3068,6 +3076,16 @@ public class ScheduleWizardFunctions
             var isExternalOffer = SlotEntityUtil.ReadBool(e, "IsExternalOffer", false);
             if (!string.IsNullOrWhiteSpace(homeTeamId) || !string.IsNullOrWhiteSpace(awayTeamId) || isExternalOffer) continue;
 
+            var slotTypeRaw = SlotEntityUtil.ReadString(e, "AllocationSlotType");
+            if (string.IsNullOrWhiteSpace(slotTypeRaw))
+                slotTypeRaw = SlotEntityUtil.ReadString(e, "SlotType");
+            var normalizedSlotType = NormalizeSlotType(slotTypeRaw);
+
+            var priorityRaw = SlotEntityUtil.ReadString(e, "AllocationPriorityRank");
+            if (string.IsNullOrWhiteSpace(priorityRaw))
+                priorityRaw = SlotEntityUtil.ReadString(e, "PriorityRank");
+            var priorityRank = normalizedSlotType == "practice" ? null : ParsePositiveInt(priorityRaw);
+
             list.Add(new SlotInfo(
                 slotId: e.RowKey,
                 gameDate: SlotEntityUtil.ReadString(e, "GameDate"),
@@ -3075,8 +3093,8 @@ public class ScheduleWizardFunctions
                 endTime: SlotEntityUtil.ReadString(e, "EndTime"),
                 fieldKey: SlotEntityUtil.ReadString(e, "FieldKey"),
                 offeringTeamId: SlotEntityUtil.ReadString(e, "OfferingTeamId"),
-                slotType: "game",
-                priorityRank: null
+                slotType: normalizedSlotType,
+                priorityRank: priorityRank
             ));
         }
 
