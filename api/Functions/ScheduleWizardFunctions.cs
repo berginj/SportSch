@@ -732,7 +732,8 @@ public class ScheduleWizardFunctions
                 gameCapableSlots,
                 regularAssignments.Assignments,
                 teams,
-                minGamesPerTeam);
+                minGamesPerTeam,
+                guestAnchors);
             issues.AddRange(invariantIssues);
             var invariantHardIssueCount = invariantIssues.Count;
             var totalIssues = issues.Count;
@@ -803,7 +804,8 @@ public class ScheduleWizardFunctions
         IReadOnlyList<SlotInfo> gameCapableSlots,
         IReadOnlyList<ScheduleAssignment> regularAssignments,
         IReadOnlyList<string> teams,
-        int regularTargetGamesPerTeam)
+        int regularTargetGamesPerTeam,
+        GuestAnchorSet? guestAnchors)
     {
         var issues = new List<object>();
 
@@ -897,6 +899,43 @@ public class ScheduleWizardFunctions
                         ["count"] = overflow.Count,
                         ["targetGames"] = regularTargetGamesPerTeam,
                         ["offenders"] = offenders
+                    }
+                });
+            }
+        }
+
+        if (guestAnchors is not null)
+        {
+            var offAnchorGuestAssignments = regularAssignments
+                .Where(assignment => assignment.IsExternalOffer)
+                .Where(assignment => !MatchesAnyGuestAnchor(assignment, guestAnchors))
+                .ToList();
+
+            if (offAnchorGuestAssignments.Count > 0)
+            {
+                var sample = offAnchorGuestAssignments
+                    .Take(6)
+                    .Select(a => new Dictionary<string, object?>
+                    {
+                        ["slotId"] = a.SlotId,
+                        ["gameDate"] = a.GameDate,
+                        ["startTime"] = a.StartTime,
+                        ["endTime"] = a.EndTime,
+                        ["fieldKey"] = a.FieldKey,
+                        ["homeTeamId"] = a.HomeTeamId
+                    })
+                    .ToList();
+
+                issues.Add(new
+                {
+                    phase = "Regular Season",
+                    ruleId = "guest-anchor-slot-mismatch",
+                    severity = "error",
+                    message = $"{offAnchorGuestAssignments.Count} guest offer assignment(s) are outside the configured guest anchor slots.",
+                    details = new Dictionary<string, object?>
+                    {
+                        ["count"] = offAnchorGuestAssignments.Count,
+                        ["sampleAssignments"] = sample
                     }
                 });
             }
