@@ -9,6 +9,7 @@ Use these alongside this API contract for workflow-critical behavior:
 
 - `docs/SCHEDULING_ENGINE_BEHAVIORAL_CONTRACT.md`
 - `docs/SLOT_LIFECYCLE_BEHAVIORAL_CONTRACT.md`
+- `docs/PRACTICE_REQUESTS_AND_CLAIMS_BEHAVIORAL_CONTRACT.md`
 
 ## Cross-cutting rules
 
