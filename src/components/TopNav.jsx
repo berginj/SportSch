@@ -1,9 +1,10 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
+import { THEME_MODE } from "../lib/constants";
 
 const NotificationBell = lazy(() => import("./NotificationBell"));
 
-export default function TopNav({ tab, setTab, me, leagueId, setLeagueId, theme = "light", onToggleTheme }) {
+export default function TopNav({ tab, setTab, me, leagueId, setLeagueId, theme = "light", themeMode = THEME_MODE.SYSTEM, onToggleTheme }) {
   const memberships = useMemo(
     () => (Array.isArray(me?.memberships) ? me.memberships : []),
     [me]
@@ -82,6 +83,21 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId, theme =
   }, [isGlobalAdmin, globalLeagues, memberships, roleByLeague]);
 
   const hasLeagues = leagueOptions.length > 0;
+  const nextThemeMode = themeMode === THEME_MODE.SYSTEM
+    ? THEME_MODE.LIGHT
+    : themeMode === THEME_MODE.LIGHT
+      ? THEME_MODE.DARK
+      : THEME_MODE.SYSTEM;
+  const themeLabel = themeMode === THEME_MODE.SYSTEM
+    ? "Auto"
+    : themeMode === THEME_MODE.DARK
+      ? "Dark"
+      : "Light";
+  const nextThemeLabel = nextThemeMode === THEME_MODE.SYSTEM
+    ? "Auto"
+    : nextThemeMode === THEME_MODE.DARK
+      ? "Dark"
+      : "Light";
 
   return (
     <header className="topnav">
@@ -160,11 +176,10 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId, theme =
             type="button"
             className={`btn btn--sm btn--ghost topnav__theme-toggle ${theme === "dark" ? "is-active" : ""}`}
             onClick={() => onToggleTheme?.()}
-            title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
-            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
-            aria-pressed={theme === "dark"}
+            title={`Current theme mode: ${themeLabel}. Switch to ${nextThemeLabel}.`}
+            aria-label={`Current theme mode: ${themeLabel}. Switch to ${nextThemeLabel}.`}
           >
-            Theme: {theme === "dark" ? "Dark" : "Light"}
+            Theme: {themeLabel}
           </button>
           <span className="topnav__user" title={email}>
             {email || "Signed in"}

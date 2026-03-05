@@ -15,6 +15,13 @@ This is the follow-up scope after the MVP dark mode toggle.
 2. Improved overlay contrast by tokenizing badge/day-entry backgrounds and text colors.
 3. Improved notification dropdown/center dark-mode readability (item states, header/footer, action buttons).
 
+## Completed in pass 4
+
+1. Added explicit contrast upgrades for `CoachLinksGenerator` cards, stat tiles, rows, and link inputs.
+2. Replaced wizard comparison metric hard-coded text colors with theme-safe semantic metric classes.
+3. Added 3-state theme mode support (`Auto`, `Light`, `Dark`) with persisted mode and OS preference handling.
+4. Expanded theme tests to cover mode cycling and system preference behavior.
+
 ## Remaining UI coverage gaps
 
 1. Convert remaining hard-coded light gradients/colors in [`src/index.css`](../src/index.css) to semantic variables.
@@ -27,10 +34,8 @@ This is the follow-up scope after the MVP dark mode toggle.
 
 ## Behavior and UX follow-ups
 
-1. Add a 3-state theme setting: `Light`, `Dark`, `System`.
-2. Observe `prefers-color-scheme` changes live when `System` is selected.
-3. Add a settings-page control for theme (currently only in top nav).
-4. Add subtle transition tuning for large background gradient switches to reduce perceived flicker.
+1. Add a settings-page control for theme (currently only in top nav).
+2. Add subtle transition tuning for large background gradient switches to reduce perceived flicker.
 
 ## Testing follow-ups
 

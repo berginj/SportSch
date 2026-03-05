@@ -14,9 +14,10 @@ vi.mock("../lib/telemetry", () => ({
 }));
 
 vi.mock("../components/TopNav", () => ({
-  default: ({ theme, onToggleTheme }) => (
+  default: ({ theme, themeMode, onToggleTheme }) => (
     <div data-testid="topnav">
       <span data-testid="theme-value">{theme}</span>
+      <span data-testid="theme-mode-value">{themeMode}</span>
       <button type="button" onClick={onToggleTheme}>
         Toggle Theme
       </button>
@@ -142,15 +143,17 @@ describe("App theme behavior", () => {
       expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
     });
     expect(screen.getByTestId("theme-value")).toHaveTextContent("dark");
+    expect(screen.getByTestId("theme-mode-value")).toHaveTextContent("dark");
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("dark");
   });
 
-  it("toggles theme and persists updated value", async () => {
+  it("cycles theme mode light -> dark -> system -> light and persists mode", async () => {
     localStorage.setItem(THEME_STORAGE_KEY, "light");
 
     render(<App />);
     expect(await screen.findByText("HOME_PAGE")).toBeInTheDocument();
     expect(screen.getByTestId("theme-value")).toHaveTextContent("light");
+    expect(screen.getByTestId("theme-mode-value")).toHaveTextContent("light");
 
     fireEvent.click(screen.getByRole("button", { name: /toggle theme/i }));
 
@@ -158,6 +161,7 @@ describe("App theme behavior", () => {
       expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
     });
     expect(screen.getByTestId("theme-value")).toHaveTextContent("dark");
+    expect(screen.getByTestId("theme-mode-value")).toHaveTextContent("dark");
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("dark");
 
     fireEvent.click(screen.getByRole("button", { name: /toggle theme/i }));
@@ -166,6 +170,40 @@ describe("App theme behavior", () => {
       expect(document.documentElement.getAttribute("data-theme")).toBe("light");
     });
     expect(screen.getByTestId("theme-value")).toHaveTextContent("light");
+    expect(screen.getByTestId("theme-mode-value")).toHaveTextContent("system");
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("system");
+
+    fireEvent.click(screen.getByRole("button", { name: /toggle theme/i }));
+
+    await waitFor(() => {
+      expect(document.documentElement.getAttribute("data-theme")).toBe("light");
+    });
+    expect(screen.getByTestId("theme-value")).toHaveTextContent("light");
+    expect(screen.getByTestId("theme-mode-value")).toHaveTextContent("light");
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("light");
+  });
+
+  it("applies system mode using OS dark preference", async () => {
+    localStorage.setItem(THEME_STORAGE_KEY, "system");
+    window.matchMedia = vi.fn().mockImplementation((query) => ({
+      matches: query === "(prefers-color-scheme: dark)",
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+
+    render(<App />);
+    expect(await screen.findByText("HOME_PAGE")).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+    });
+    expect(screen.getByTestId("theme-mode-value")).toHaveTextContent("system");
+    expect(screen.getByTestId("theme-value")).toHaveTextContent("dark");
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("system");
   });
 });

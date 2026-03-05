@@ -40,13 +40,16 @@ function readTabFromHash() {
 }
 
 function readThemePreference() {
-  if (typeof window === "undefined") return THEME_MODE.LIGHT;
+  if (typeof window === "undefined") return THEME_MODE.SYSTEM;
   const stored = (window.localStorage.getItem(THEME_STORAGE_KEY) || "").trim().toLowerCase();
-  if (stored === THEME_MODE.DARK || stored === THEME_MODE.LIGHT) return stored;
-  if (typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: dark)").matches) {
-    return THEME_MODE.DARK;
-  }
-  return THEME_MODE.LIGHT;
+  if (stored === THEME_MODE.DARK || stored === THEME_MODE.LIGHT || stored === THEME_MODE.SYSTEM) return stored;
+  return THEME_MODE.SYSTEM;
+}
+
+function readSystemPrefersDark() {
+  if (typeof window === "undefined") return false;
+  if (typeof window.matchMedia !== "function") return false;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
 export default function App() {
@@ -54,8 +57,13 @@ export default function App() {
   const [tab, setTab] = useState(() => readTabFromHash());
   const [invite, setInvite] = useState(() => readInviteFromUrl());
   const [showShortcuts, setShowShortcuts] = useState(false);
-  const [theme, setTheme] = useState(() => readThemePreference());
+  const [themeMode, setThemeMode] = useState(() => readThemePreference());
+  const [systemPrefersDark, setSystemPrefersDark] = useState(() => readSystemPrefersDark());
   const tableView = "A";
+  const theme = useMemo(
+    () => (themeMode === THEME_MODE.SYSTEM ? (systemPrefersDark ? THEME_MODE.DARK : THEME_MODE.LIGHT) : themeMode),
+    [themeMode, systemPrefersDark]
+  );
 
   const isSignedIn = !!me && me.userId && me.userId !== "UNKNOWN";
   const isGlobalAdmin = !!me?.isGlobalAdmin;
@@ -118,12 +126,33 @@ export default function App() {
     if (typeof document === "undefined") return;
     document.documentElement.setAttribute("data-theme", theme);
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+      window.localStorage.setItem(THEME_STORAGE_KEY, themeMode);
     }
-  }, [theme]);
+  }, [theme, themeMode]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (typeof window.matchMedia !== "function") return;
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = () => setSystemPrefersDark(mediaQuery.matches);
+    onChange();
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", onChange);
+      return () => mediaQuery.removeEventListener("change", onChange);
+    }
+    if (typeof mediaQuery.addListener === "function") {
+      mediaQuery.addListener(onChange);
+      return () => mediaQuery.removeListener(onChange);
+    }
+    return undefined;
+  }, []);
 
   function toggleTheme() {
-    setTheme((prev) => (prev === THEME_MODE.DARK ? THEME_MODE.LIGHT : THEME_MODE.DARK));
+    setThemeMode((prev) => {
+      if (prev === THEME_MODE.SYSTEM) return THEME_MODE.LIGHT;
+      if (prev === THEME_MODE.LIGHT) return THEME_MODE.DARK;
+      return THEME_MODE.SYSTEM;
+    });
   }
 
   if (!me) {
@@ -219,6 +248,7 @@ export default function App() {
           leagueId={activeLeagueId}
           setLeagueId={setActiveLeagueId}
           theme={theme}
+          themeMode={themeMode}
           onToggleTheme={toggleTheme}
         />
       </Suspense>

@@ -7,6 +7,7 @@ export const THEME_STORAGE_KEY = "gameswap_theme";
 export const THEME_MODE = {
   LIGHT: "light",
   DARK: "dark",
+  SYSTEM: "system",
 };
 
 // Canonical status strings (must match API)
