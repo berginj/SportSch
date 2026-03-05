@@ -226,6 +226,7 @@ public class SlotService : ISlotService
             LeagueId = request.LeagueId,
             Division = request.Division,
             Status = statusList.Count == 1 ? statusList[0] : null, // Single status can use OData filter
+            ExcludeAvailability = request.ExcludeAvailability,
             FromDate = request.FromDate,
             ToDate = request.ToDate,
             FieldKey = request.FieldKey,
@@ -255,6 +256,9 @@ public class SlotService : ISlotService
                 if (!string.Equals(fieldKey, fieldKeyFilter, StringComparison.OrdinalIgnoreCase))
                     return false;
             }
+
+            if (request.ExcludeAvailability && ReadBool(e, "IsAvailability", false))
+                return false;
 
             var gameDate = ReadString(e, "GameDate");
             if (!IsWithinDateRange(gameDate, fromDateNorm, toDateNorm))
@@ -357,6 +361,16 @@ public class SlotService : ISlotService
         if (!entity.TryGetValue(key, out var value) || value is null) return defaultValue;
         var text = value.ToString();
         return string.IsNullOrWhiteSpace(text) ? defaultValue : text.Trim();
+    }
+
+    private static bool ReadBool(TableEntity entity, string key, bool defaultValue)
+    {
+        if (!entity.TryGetValue(key, out var value) || value is null) return defaultValue;
+        if (value is bool b) return b;
+        var text = value.ToString()?.Trim() ?? "";
+        if (bool.TryParse(text, out var parsedBool)) return parsedBool;
+        if (int.TryParse(text, out var parsedInt)) return parsedInt != 0;
+        return defaultValue;
     }
 
     public async Task CancelSlotAsync(string leagueId, string division, string slotId, string userId)

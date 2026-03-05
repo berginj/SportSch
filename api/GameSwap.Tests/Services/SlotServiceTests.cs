@@ -357,6 +357,68 @@ public class SlotServiceTests : IDisposable
         Assert.Single(list);
     }
 
+    [Fact]
+    public async Task QuerySlotsAsync_WithExcludeAvailability_FiltersAvailabilityRows()
+    {
+        // Arrange
+        var availability = new TableEntity("SLOT|league-1|AAA", "slot-a")
+        {
+            { "LeagueId", "league-1" },
+            { "Division", "AAA" },
+            { "Status", Constants.Status.SlotOpen },
+            { "IsAvailability", true },
+            { "GameDate", "2026-03-21" },
+            { "StartTime", "18:00" },
+            { "DisplayName", "Field A" }
+        };
+
+        var scheduledGame = new TableEntity("SLOT|league-1|AAA", "slot-b")
+        {
+            { "LeagueId", "league-1" },
+            { "Division", "AAA" },
+            { "Status", Constants.Status.SlotConfirmed },
+            { "IsAvailability", false },
+            { "GameDate", "2026-03-22" },
+            { "StartTime", "18:00" },
+            { "DisplayName", "Field B" }
+        };
+
+        _mockSlotRepo
+            .Setup(x => x.QuerySlotsAsync(It.IsAny<SlotQueryFilter>(), null))
+            .ReturnsAsync(new PaginationResult<TableEntity>
+            {
+                Items = new List<TableEntity> { availability, scheduledGame },
+                PageSize = 50,
+                ContinuationToken = null
+            });
+
+        var request = new SlotQueryRequest
+        {
+            LeagueId = "league-1",
+            Division = "AAA",
+            Status = $"{Constants.Status.SlotOpen},{Constants.Status.SlotConfirmed}",
+            ExcludeAvailability = true,
+            FromDate = "2026-03-14",
+            ToDate = "2026-06-10",
+            PageSize = 50,
+            ReturnEnvelope = false
+        };
+
+        var context = new CorrelationContext
+        {
+            LeagueId = "league-1",
+            UserId = "user-1",
+            CorrelationId = Guid.NewGuid().ToString()
+        };
+
+        // Act
+        var result = await _service.QuerySlotsAsync(request, context);
+
+        // Assert
+        var list = Assert.IsType<List<object>>(result);
+        Assert.Single(list);
+    }
+
     public void Dispose()
     {
         // Cleanup if needed

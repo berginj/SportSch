@@ -34,6 +34,7 @@ public class GetSlots
     [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
     [OpenApiParameter(name: "division", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Filter by division (e.g., '10U', '12U')")]
     [OpenApiParameter(name: "status", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Filter by status ('Open', 'Confirmed', 'Cancelled')")]
+    [OpenApiParameter(name: "excludeAvailability", In = ParameterLocation.Query, Required = false, Type = typeof(bool), Description = "Exclude availability rows (true/false)")]
     [OpenApiParameter(name: "dateFrom", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Filter by start date (YYYY-MM-DD)")]
     [OpenApiParameter(name: "dateTo", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Filter by end date (YYYY-MM-DD)")]
     [OpenApiParameter(name: "fieldKey", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Filter by field key (parkCode/fieldCode)")]
@@ -61,6 +62,7 @@ public class GetSlots
             // Extract query parameters
             var division = (ApiGuards.GetQueryParam(req, "division") ?? "").Trim();
             var status = (ApiGuards.GetQueryParam(req, "status") ?? "").Trim();
+            var excludeAvailabilityRaw = (ApiGuards.GetQueryParam(req, "excludeAvailability") ?? "").Trim();
             var dateFrom = (ApiGuards.GetQueryParam(req, "dateFrom") ?? "").Trim();
             var dateTo = (ApiGuards.GetQueryParam(req, "dateTo") ?? "").Trim();
             var fieldKey = (ApiGuards.GetQueryParam(req, "fieldKey") ?? "").Trim();
@@ -69,12 +71,20 @@ public class GetSlots
             var pageSize = int.TryParse(pageSizeStr, out var ps) ? ps : 50;
             var returnEnvelope = !string.IsNullOrWhiteSpace(continuationToken) || !string.IsNullOrWhiteSpace(pageSizeStr);
 
+            var excludeAvailability = false;
+            if (!string.IsNullOrWhiteSpace(excludeAvailabilityRaw))
+            {
+                excludeAvailability = excludeAvailabilityRaw == "1" ||
+                    bool.TryParse(excludeAvailabilityRaw, out var parsedExcludeAvailability) && parsedExcludeAvailability;
+            }
+
             // Build service request
             var serviceRequest = new SlotQueryRequest
             {
                 LeagueId = leagueId,
                 Division = division,
                 Status = status,
+                ExcludeAvailability = excludeAvailability,
                 FromDate = dateFrom,
                 ToDate = dateTo,
                 FieldKey = fieldKey,

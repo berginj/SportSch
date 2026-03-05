@@ -256,6 +256,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
 
       const slotsQuery = new URLSearchParams(baseQuery);
       if (activeStatuses.length) slotsQuery.set("status", activeStatuses.join(","));
+      slotsQuery.set("excludeAvailability", "1");
 
       const [ev, sl] = await Promise.all([
         current.showEvents ? apiFetch(`/api/events?${baseQuery.toString()}`) : Promise.resolve([]),

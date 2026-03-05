@@ -88,6 +88,9 @@ public class SlotRepository : ISlotRepository
         if (!string.IsNullOrEmpty(filter.FieldKey))
             filters.Add(ODataFilterBuilder.PropertyEquals("FieldKey", filter.FieldKey));
 
+        if (filter.ExcludeAvailability)
+            filters.Add("IsAvailability ne true");
+
         if (filter.IsExternalOffer.HasValue)
             filters.Add($"IsExternalOffer eq {filter.IsExternalOffer.Value.ToString().ToLower()}");
 
