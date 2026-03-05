@@ -113,13 +113,16 @@ export default function CoachDashboard({ me, leagueId, setTab }) {
     return (
       <div className="page">
         <div className="card">
-          <h1 className="text-2xl font-bold mb-4">Welcome, Coach!</h1>
+          <div className="card__header">
+            <div className="h1">Welcome, Coach</div>
+            <div className="subtle">Your coach account is active and waiting on team assignment.</div>
+          </div>
           <div className="callout callout--info mb-4">
-            <strong>Team Assignment Needed</strong>
-            <p className="mt-2">
+            <div className="font-semibold">Team assignment needed</div>
+            <div className="mt-2">
               You're registered as a coach, but you haven't been assigned to a team yet.
               Contact your league administrator to get assigned to your team.
-            </p>
+            </div>
           </div>
           <QuickActionsPanel setTab={setTab} hasTeam={false} />
         </div>
@@ -129,16 +132,34 @@ export default function CoachDashboard({ me, leagueId, setTab }) {
 
   return (
     <div className="page">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">Coach Dashboard</h1>
-        <p className="text-gray-600">Welcome back! Here's what's happening with your team.</p>
+      <div className="card">
+        <div className="card__header">
+          <div className="h1">Coach Dashboard</div>
+          <div className="subtle">Welcome back. Here is what is happening with your team.</div>
+        </div>
+        <div className="layoutStatRow">
+          <div className="layoutStat">
+            <div className="layoutStat__value">{dashboard.upcomingGames.length}</div>
+            <div className="layoutStat__label">Upcoming games</div>
+          </div>
+          <div className="layoutStat">
+            <div className="layoutStat__value">{dashboard.openOffersInDivision}</div>
+            <div className="layoutStat__label">Open offers in division</div>
+          </div>
+          <div className="layoutStat">
+            <div className="layoutStat__value">{dashboard.myOpenOffers}</div>
+            <div className="layoutStat__label">Your open offers</div>
+          </div>
+          <div className="layoutStat">
+            <div className="layoutStat__value">{dashboard.team?.division || '-'}</div>
+            <div className="layoutStat__label">Division</div>
+          </div>
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {/* Team Summary Card */}
         <TeamSummaryCard team={dashboard.team} />
 
-        {/* Action Items Card */}
         <ActionItemsCard
           openOffersInDivision={dashboard.openOffersInDivision}
           myOpenOffers={dashboard.myOpenOffers}
@@ -146,36 +167,35 @@ export default function CoachDashboard({ me, leagueId, setTab }) {
           setTab={setTab}
         />
 
-        {/* Quick Actions */}
         <QuickActionsPanel setTab={setTab} hasTeam={true} />
       </div>
 
-      {/* Upcoming Games Section */}
       {dashboard.upcomingGames.length > 0 && (
-        <div className="card mt-6">
-          <h2 className="text-xl font-bold mb-4">Upcoming Games</h2>
-          <div className="space-y-3">
+        <div className="card">
+          <div className="card__header">
+            <div className="h2">Upcoming Games</div>
+          </div>
+          <div className="grid gap-3">
             {dashboard.upcomingGames.map((game, idx) => (
               <GameCard key={game.slotId || idx} game={game} teamId={teamId} />
             ))}
           </div>
-          <button
-            className="btn btn--ghost mt-4"
-            onClick={() => setTab('calendar')}
-          >
+          <button className="btn btn--ghost" onClick={() => setTab('calendar')}>
             View Full Schedule
           </button>
         </div>
       )}
 
       {dashboard.upcomingGames.length === 0 && (
-        <div className="card mt-6">
-          <h2 className="text-xl font-bold mb-3">Upcoming Games</h2>
+        <div className="card">
+          <div className="card__header">
+            <div className="h2">Upcoming Games</div>
+          </div>
           <div className="callout callout--info">
-            <p>No upcoming games scheduled in the next 30 days.</p>
-            <p className="mt-2">
+            <div>No upcoming games scheduled in the next 30 days.</div>
+            <div className="mt-2">
               Check the <button className="link" onClick={() => setTab('calendar')}>Calendar</button> for available game slots.
-            </p>
+            </div>
           </div>
         </div>
       )}
@@ -185,19 +205,19 @@ export default function CoachDashboard({ me, leagueId, setTab }) {
 
 function TeamSummaryCard({ team }) {
   return (
-    <div className="card bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-      <div className="flex items-start justify-between mb-3">
-        <h2 className="text-lg font-bold text-blue-900">My Team</h2>
-        <span className="badge badge--primary">{team.division}</span>
+    <div className="card">
+      <div className="card__header">
+        <div className="h2">My Team</div>
+        <span className="statusBadge">{team.division}</span>
       </div>
-      <div className="text-2xl font-bold text-blue-900 mb-1">
+      <div className="h1 mb-1">
         {team.name || team.teamId}
       </div>
       {team.name && team.name !== team.teamId && (
-        <div className="text-sm text-blue-700">Team ID: {team.teamId}</div>
+        <div className="subtle">Team ID: {team.teamId}</div>
       )}
       {team.primaryContact && (
-        <div className="mt-3 pt-3 border-t border-blue-200 text-sm text-blue-800">
+        <div className="callout mt-3">
           <div className="font-semibold">Primary Contact</div>
           {team.primaryContact.name && <div>{team.primaryContact.name}</div>}
           {team.primaryContact.email && (
@@ -217,19 +237,21 @@ function ActionItemsCard({ openOffersInDivision, myOpenOffers, upcomingGames, se
 
   return (
     <div className="card">
-      <h2 className="text-lg font-bold mb-4">Action Items</h2>
+      <div className="card__header">
+        <div className="h2">Action Items</div>
+      </div>
       {!hasActions && (
-        <p className="text-gray-600">No action items at this time.</p>
+        <div className="muted">No action items at this time.</div>
       )}
       {hasActions && (
-        <div className="space-y-3">
+        <div className="grid gap-3">
           {openOffersInDivision > 0 && (
-            <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded">
+            <div className="callout callout--ok row row--between row--wrap">
               <div>
-                <div className="font-semibold text-green-900">
+                <div className="font-semibold">
                   {openOffersInDivision} New {openOffersInDivision === 1 ? 'Offer' : 'Offers'}
                 </div>
-                <div className="text-sm text-green-700">Available in your division</div>
+                <div className="subtle">Available in your division</div>
               </div>
               <button
                 className="btn btn--sm btn--primary"
@@ -241,12 +263,12 @@ function ActionItemsCard({ openOffersInDivision, myOpenOffers, upcomingGames, se
           )}
 
           {myOpenOffers > 0 && (
-            <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded">
+            <div className="callout callout--info row row--between row--wrap">
               <div>
-                <div className="font-semibold text-blue-900">
+                <div className="font-semibold">
                   {myOpenOffers} Open {myOpenOffers === 1 ? 'Offer' : 'Offers'}
                 </div>
-                <div className="text-sm text-blue-700">Your slots still available</div>
+                <div className="subtle">Your slots still available</div>
               </div>
               <button
                 className="btn btn--sm btn--ghost"
@@ -258,10 +280,10 @@ function ActionItemsCard({ openOffersInDivision, myOpenOffers, upcomingGames, se
           )}
 
           {upcomingGames.length > 0 && upcomingGames[0] && isWithinDays(upcomingGames[0].gameDate, 1) && (
-            <div className="flex items-center justify-between p-3 bg-yellow-50 border border-yellow-200 rounded">
+            <div className="callout callout--warning row row--between row--wrap">
               <div>
-                <div className="font-semibold text-yellow-900">Game Tomorrow</div>
-                <div className="text-sm text-yellow-700">
+                <div className="font-semibold">Game Tomorrow</div>
+                <div className="subtle">
                   {upcomingGames[0].startTime} at {upcomingGames[0].displayName || upcomingGames[0].fieldKey}
                 </div>
               </div>
@@ -282,15 +304,16 @@ function ActionItemsCard({ openOffersInDivision, myOpenOffers, upcomingGames, se
 function QuickActionsPanel({ setTab, hasTeam }) {
   return (
     <div className="card">
-      <h2 className="text-lg font-bold mb-4">Quick Actions</h2>
-      <div className="space-y-2">
+      <div className="card__header">
+        <div className="h2">Quick Actions</div>
+      </div>
+      <div className="grid gap-2">
         {hasTeam && (
           <button
             className="btn btn--primary w-full justify-center"
             onClick={() => setTab('calendar')}
             title="Offer a game slot to other teams"
           >
-            <span className="mr-2">📅</span>
             Offer a Game Slot
           </button>
         )}
@@ -299,7 +322,6 @@ function QuickActionsPanel({ setTab, hasTeam }) {
           onClick={() => setTab('calendar')}
           title="Browse available game slots"
         >
-          <span className="mr-2">🔍</span>
           Browse Available Slots
         </button>
         <button
@@ -307,7 +329,6 @@ function QuickActionsPanel({ setTab, hasTeam }) {
           onClick={() => setTab('calendar')}
           title="View your team's schedule"
         >
-          <span className="mr-2">📆</span>
           View Team Schedule
         </button>
       </div>
@@ -322,21 +343,17 @@ function GameCard({ game, teamId }) {
   const vsText = opponent ? (isHome ? `vs ${opponent}` : `@ ${opponent}`) : 'TBD';
 
   return (
-    <div className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded hover:bg-gray-100 transition-colors">
-      <div className="flex-1">
+    <div className="layoutPanel row row--between row--wrap">
+      <div className="min-w-0">
         <div className="font-semibold">
           {formatGameDate(game.gameDate)} at {formatTime(game.startTime)}
         </div>
-        <div className="text-sm text-gray-600">
-          {vsText} • {game.displayName || game.fieldKey}
+        <div className="subtle">
+          {vsText} - {game.displayName || game.fieldKey}
         </div>
       </div>
-      {isHome && (
-        <span className="badge badge--sm badge--success">Home</span>
-      )}
-      {isAway && (
-        <span className="badge badge--sm">Away</span>
-      )}
+      {isHome ? <span className="statusBadge status-confirmed">Home</span> : null}
+      {isAway ? <span className="statusBadge">Away</span> : null}
     </div>
   );
 }

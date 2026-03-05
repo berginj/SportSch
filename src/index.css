@@ -488,6 +488,27 @@
   .inlineCheck { @apply inline-flex items-center gap-2 mt-4; }
   .inlineCheck--compact { @apply mt-0; }
   .textareaMono { @apply w-full mt-3 font-mono text-sm; }
+  .progressMeter {
+    width: 100%;
+    height: 0.85rem;
+    border: 0;
+    border-radius: 999px;
+    overflow: hidden;
+    background: linear-gradient(145deg, #dfe7ef, #f4f8fc);
+    box-shadow: var(--neo-inset);
+  }
+  .progressMeter::-webkit-progress-bar {
+    background: linear-gradient(145deg, #dfe7ef, #f4f8fc);
+    border-radius: 999px;
+  }
+  .progressMeter::-webkit-progress-value {
+    background: linear-gradient(145deg, #f8d87a, #ecb53a);
+    border-radius: 999px;
+  }
+  .progressMeter::-moz-progress-bar {
+    background: linear-gradient(145deg, #f8d87a, #ecb53a);
+    border-radius: 999px;
+  }
   .fieldInputShort { @apply w-16; }
   .codeblock { @apply mt-3 rounded-xl border-2 border-border bg-gray-900 p-3 text-xs overflow-x-auto font-mono text-gray-100; }
 

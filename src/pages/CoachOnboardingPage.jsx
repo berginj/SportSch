@@ -469,12 +469,15 @@ export default function CoachOnboardingPage({ me, leagueId }) {
     return (
       <div className="page">
         <div className="card">
-          <h1 className="text-2xl font-bold mb-4">Coach Onboarding</h1>
+          <div className="card__header">
+            <div className="h1">Coach Onboarding</div>
+            <div className="subtle">Complete your team setup and schedule preferences</div>
+          </div>
           <div className="callout callout--error">
-            <strong>Team Assignment Required</strong>
-            <p className="mt-2">
+            <div className="font-semibold">Team assignment required</div>
+            <div className="mt-2">
               You need to be assigned to a team before completing onboarding. Contact your league administrator.
-            </p>
+            </div>
           </div>
         </div>
       </div>
@@ -483,26 +486,41 @@ export default function CoachOnboardingPage({ me, leagueId }) {
 
   return (
     <div className="page">
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">Coach Onboarding</h1>
-        <p className="text-gray-600">Complete your team setup and schedule preferences</p>
+      <div className="card">
+        <div className="card__header">
+          <div className="h1">Coach Onboarding</div>
+          <div className="subtle">Complete your team setup and schedule preferences</div>
+        </div>
+        <div className="layoutStatRow">
+          <div className="layoutStat">
+            <div className="layoutStat__value">{progress.completed} / {progress.total}</div>
+            <div className="layoutStat__label">Setup checks complete</div>
+          </div>
+          <div className="layoutStat">
+            <div className="layoutStat__value">{activePracticeRequests.length}</div>
+            <div className="layoutStat__label">Active practice requests</div>
+          </div>
+          <div className="layoutStat">
+            <div className="layoutStat__value">{recurringPracticeChoices.length}</div>
+            <div className="layoutStat__label">Recurring patterns available</div>
+          </div>
+          <div className="layoutStat">
+            <div className="layoutStat__value">{upcomingGames.length}</div>
+            <div className="layoutStat__label">Upcoming games (90 days)</div>
+          </div>
+        </div>
       </div>
 
-      {/* Progress Card */}
-      <div className="card mb-6">
-        <h2 className="text-xl font-bold mb-4">Setup Progress</h2>
+      <div className="card">
+        <div className="card__header">
+          <div className="h2">Setup Progress</div>
+        </div>
         <div className="mb-4">
-          <div className="flex items-center justify-between mb-2">
+          <div className="row row--between mb-2">
             <span className="font-semibold">{progress.completed} of {progress.total} completed</span>
-            <span className="text-sm text-gray-600">{progress.percentage}%</span>
+            <span className="subtle">{progress.percentage}%</span>
           </div>
-          <div className="w-full bg-gray-200 rounded-full h-3">
-            <div
-              className="bg-accent h-3 rounded-full transition-all duration-300"
-              style={{ width: `${progress.percentage}%` }}
-            />
-          </div>
+          <progress className="progressMeter" value={progress.percentage} max={100} />
         </div>
         <div className="grid gap-2">
           <CheckItem checked={progress.checks.teamNameSet} label="Set team name" />
@@ -514,16 +532,15 @@ export default function CoachOnboardingPage({ me, leagueId }) {
         </div>
       </div>
 
-      {error && (
-        <div className="callout callout--error mb-6">{error}</div>
-      )}
+      {error && <div className="callout callout--error">{error}</div>}
 
-      {/* Section 1: Team Information */}
-      <div className="card mb-6">
-        <h2 className="text-xl font-bold mb-4">1. Team Information</h2>
-        <p className="text-sm text-gray-600 mb-4">
-          Update your team name and contact information. This will be visible to other teams and league administrators.
-        </p>
+      <div className="card">
+        <div className="card__header">
+          <div className="h2">1. Team Information</div>
+          <div className="subtle">
+            Update your team name and contact information. This will be visible to other teams and league administrators.
+          </div>
+        </div>
 
         <div className="grid gap-4">
           <label>
@@ -536,7 +553,7 @@ export default function CoachOnboardingPage({ me, leagueId }) {
             />
           </label>
 
-          <div className="grid md:grid-cols-3 gap-4">
+          <div className="formGrid">
             <label>
               Primary Contact Name
               <input
@@ -567,7 +584,7 @@ export default function CoachOnboardingPage({ me, leagueId }) {
           </div>
 
           <div>
-            <div className="flex items-center justify-between mb-2">
+            <div className="row row--between mb-2">
               <label className="font-semibold">Assistant Coaches</label>
               <button
                 className="btn btn--sm btn--primary"
@@ -578,11 +595,11 @@ export default function CoachOnboardingPage({ me, leagueId }) {
               </button>
             </div>
             {assistantCoaches.length === 0 ? (
-              <div className="text-sm text-gray-600">No assistant coaches added yet</div>
+              <div className="muted">No assistant coaches added yet</div>
             ) : (
               <div className="grid gap-3">
                 {assistantCoaches.map((coach, idx) => (
-                  <div key={idx} className="grid md:grid-cols-4 gap-2 p-3 bg-gray-50 rounded border border-gray-200">
+                  <div key={idx} className="layoutPanel grid gap-2 md:grid-cols-4">
                     <input
                       type="text"
                       value={coach.name || ''}
@@ -602,7 +619,7 @@ export default function CoachOnboardingPage({ me, leagueId }) {
                       placeholder="Phone"
                     />
                     <button
-                      className="btn btn--sm"
+                      className="btn btn--sm btn--ghost"
                       onClick={() => removeAssistantCoach(idx)}
                     >
                       Remove
@@ -613,43 +630,38 @@ export default function CoachOnboardingPage({ me, leagueId }) {
             )}
           </div>
 
-          <button
-            className="btn btn--primary w-full md:w-auto"
-            onClick={saveTeamInfo}
-            disabled={savingTeam}
-          >
+          <button className="btn btn--primary" onClick={saveTeamInfo} disabled={savingTeam}>
             {savingTeam ? 'Saving...' : 'Save Team Information'}
           </button>
         </div>
       </div>
 
-      {/* Section 2: Practice Slot Requests */}
-      <div className="card mb-6">
-        <h2 className="text-xl font-bold mb-4">2. Practice Slot Requests</h2>
-        <p className="text-sm text-gray-600 mb-4">
-          Request 1-3 recurring practice patterns. Pick a field/time pattern once and the commissioner approval will reserve the matching weeks.
-          You can request up to 3 patterns total.
-        </p>
+      <div className="card">
+        <div className="card__header">
+          <div className="h2">2. Practice Slot Requests</div>
+          <div className="subtle">
+            Request 1-3 recurring practice patterns. Pick a field/time pattern once and commissioner approval will reserve matching weeks.
+          </div>
+        </div>
 
-        {/* Your Requests */}
         {activePracticeRequests.length > 0 && (
-          <div className="mb-6">
-            <h3 className="font-semibold mb-3">Your Practice Requests</h3>
+          <div className="mb-4">
+            <div className="font-semibold mb-3">Your practice requests</div>
             <div className="grid gap-3">
               {activePracticeRequests.map((req) => (
                 <div
                   key={req.requestId}
-                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 bg-gray-50 rounded border border-gray-200"
+                  className="layoutPanel row row--between row--wrap"
                 >
-                  <div className="flex-1 min-w-0">
+                  <div className="min-w-0">
                     <div className="font-semibold">
-                      {req.slot?.gameDate} • {req.slot?.startTime}-{req.slot?.endTime}
+                      {req.slot?.gameDate} - {req.slot?.startTime}-{req.slot?.endTime}
                     </div>
-                    <div className="text-sm text-gray-600 truncate">
+                    <div className="subtle truncate">
                       {formatSlotLocation(req.slot)}
                     </div>
                     {req.openToShareField ? (
-                      <div className="text-xs text-gray-600 mt-1">
+                      <div className="subtle mt-1">
                         Open to share field{req.shareWithTeamId ? ` with ${req.shareWithTeamId}` : ''}.
                       </div>
                     ) : null}
@@ -661,12 +673,11 @@ export default function CoachOnboardingPage({ me, leagueId }) {
           </div>
         )}
 
-        {/* Available Slots */}
         <div>
-          <div className="mb-4 p-3 bg-gray-50 rounded border border-gray-200">
+          <div className="callout mb-4">
             <div className="font-semibold mb-2">Sharing preference (applies to new requests)</div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="flex items-center gap-2">
+            <div className="formGrid">
+              <label className="inlineCheck inlineCheck--compact">
                 <input
                   type="checkbox"
                   checked={openToShareField}
@@ -692,13 +703,13 @@ export default function CoachOnboardingPage({ me, leagueId }) {
                 </select>
               </label>
             </div>
-            <div className="text-xs text-gray-600 mt-2">
+            <div className="subtle mt-2">
               Request up to 3 recurring practice patterns. Your sharing preference is attached to each new request.
             </div>
           </div>
-          <div className="mb-3 flex flex-col md:flex-row md:items-end md:justify-between gap-3">
-            <h3 className="font-semibold m-0">Recurring Practice Choices (Reserve All Matching Weeks)</h3>
-            <label className="text-sm" style={{ minWidth: 220 }}>
+          <div className="row row--between row--wrap mb-3">
+            <div className="font-semibold">Recurring practice choices (reserve all matching weeks)</div>
+            <label className="min-w-[220px]">
               View by day
               <select
                 value={practiceDayFilter}
@@ -710,15 +721,15 @@ export default function CoachOnboardingPage({ me, leagueId }) {
               </select>
             </label>
           </div>
-          <div className="text-xs text-gray-600 mb-3">
+          <div className="subtle mb-3">
             Each row is one recurring field/day/time pattern. Weeks show the season week range (W1-Wx) that will be reserved when approved.
           </div>
           {recurringPracticeChoices.length === 0 ? (
-            <div className="text-sm text-gray-600 mb-3">
+            <div className="muted mb-3">
               {practiceDayFilter ? 'No recurring practice patterns for the selected day.' : 'No recurring practice patterns available at this time.'}
             </div>
           ) : (
-            <div className="tableWrap mb-4" style={{ maxHeight: '22rem', overflowY: 'auto' }}>
+            <div className="tableWrap tableWrap--sticky mb-4 max-h-[22rem]">
               <table className="table">
                 <thead>
                   <tr>
@@ -777,12 +788,13 @@ export default function CoachOnboardingPage({ me, leagueId }) {
         </div>
       </div>
 
-      {/* Section 3: Clinic Preference */}
-      <div className="card mb-6">
-        <h2 className="text-xl font-bold mb-4">3. Clinic & Open Practice Preference</h2>
-        <p className="text-sm text-gray-600 mb-4">
-          Select your preferred time window for league-wide clinics and open practice sessions.
-        </p>
+      <div className="card">
+        <div className="card__header">
+          <div className="h2">3. Clinic and Open Practice Preference</div>
+          <div className="subtle">
+            Select your preferred time window for league-wide clinics and open practice sessions.
+          </div>
+        </div>
 
         <label>
           Preferred Time Window
@@ -799,21 +811,16 @@ export default function CoachOnboardingPage({ me, leagueId }) {
           </select>
         </label>
 
-        <button
-          className="btn btn--primary mt-4"
-          onClick={saveTeamInfo}
-          disabled={savingTeam}
-        >
+        <button className="btn btn--primary" onClick={saveTeamInfo} disabled={savingTeam}>
           {savingTeam ? 'Saving...' : 'Save Preference'}
         </button>
       </div>
 
-      {/* Section 4: Schedule Review */}
-      <div className="card mb-6">
-        <h2 className="text-xl font-bold mb-4">4. Your Game Schedule</h2>
-        <p className="text-sm text-gray-600 mb-4">
-          Review your team's upcoming games for the season.
-        </p>
+      <div className="card">
+        <div className="card__header">
+          <div className="h2">4. Your Game Schedule</div>
+          <div className="subtle">Review your team's upcoming games for the season.</div>
+        </div>
 
         {upcomingGames.length === 0 ? (
           <div className="callout callout--info">
@@ -829,17 +836,17 @@ export default function CoachOnboardingPage({ me, leagueId }) {
               return (
                 <div
                   key={game.slotId}
-                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 bg-gray-50 rounded border border-gray-200"
+                  className="layoutPanel row row--between row--wrap"
                 >
-                  <div className="flex-1 min-w-0">
+                  <div className="min-w-0">
                     <div className="font-semibold">
-                      {game.gameDate} • {game.startTime}
+                      {game.gameDate} - {game.startTime}
                     </div>
-                    <div className="text-sm text-gray-600 truncate">
-                      {vsText} • {game.displayName || game.fieldKey}
+                    <div className="subtle truncate">
+                      {vsText} - {game.displayName || game.fieldKey}
                     </div>
                   </div>
-                  {isHome && <span className="badge badge--success">Home</span>}
+                  {isHome ? <span className="statusBadge status-confirmed">Home</span> : <span className="statusBadge">Away</span>}
                 </div>
               );
             })}
@@ -847,13 +854,17 @@ export default function CoachOnboardingPage({ me, leagueId }) {
         )}
       </div>
 
-      {/* Complete Onboarding Button */}
       {!teamData?.onboardingComplete && (
-        <div className="card bg-gradient-to-br from-green-50 to-green-100 border-green-200">
-          <h2 className="text-xl font-bold text-green-900 mb-2">Ready to Complete Setup?</h2>
-          <p className="text-sm text-green-800 mb-4">
-            Once you've reviewed everything, mark your onboarding as complete. You can still make changes later if needed.
-          </p>
+        <div className="card">
+          <div className="card__header">
+            <div className="h2">Ready to Complete Setup?</div>
+            <div className="subtle">
+              Once you've reviewed everything, mark your onboarding as complete. You can still make changes later if needed.
+            </div>
+          </div>
+          <div className="callout callout--ok mb-3">
+            Complete at least 50% of setup checks before submitting onboarding.
+          </div>
           <button
             className="btn btn--primary"
             onClick={markOnboardingComplete}
@@ -866,11 +877,14 @@ export default function CoachOnboardingPage({ me, leagueId }) {
       )}
 
       {teamData?.onboardingComplete && (
-        <div className="card bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-          <h2 className="text-xl font-bold text-blue-900 mb-2">✅ Onboarding Complete</h2>
-          <p className="text-sm text-blue-800">
-            You've completed the onboarding process. You can still update your information at any time.
-          </p>
+        <div className="card">
+          <div className="card__header">
+            <div className="h2">Onboarding Complete</div>
+            <div className="subtle">You can still update your information at any time.</div>
+          </div>
+          <div className="callout callout--info">
+            Your team onboarding is marked complete.
+          </div>
         </div>
       )}
 
@@ -882,20 +896,20 @@ export default function CoachOnboardingPage({ me, leagueId }) {
 
 function CheckItem({ checked, label }) {
   return (
-    <div className="flex items-center gap-2">
-      <span className={`text-lg ${checked ? 'text-green-600' : 'text-gray-400'}`}>
-        {checked ? '✅' : '⬜'}
+    <div className="row">
+      <span className={`statusBadge ${checked ? 'status-confirmed' : 'status-open'}`}>
+        {checked ? 'Done' : 'Pending'}
       </span>
-      <span className={checked ? 'text-green-900 font-medium' : 'text-gray-600'}>{label}</span>
+      <span className={checked ? 'font-semibold' : 'muted'}>{label}</span>
     </div>
   );
 }
 
 function StatusBadge({ status }) {
   const config = {
-    Pending: { className: 'badge bg-yellow-100 text-yellow-800', label: 'Pending Approval' },
-    Approved: { className: 'badge bg-green-100 text-green-800', label: 'Approved' },
-    Rejected: { className: 'badge bg-red-100 text-red-800', label: 'Rejected' }
+    Pending: { className: 'statusBadge status-open', label: 'Pending Approval' },
+    Approved: { className: 'statusBadge status-confirmed', label: 'Approved' },
+    Rejected: { className: 'statusBadge status-cancelled', label: 'Rejected' }
   };
 
   const { className, label } = config[status] || config.Pending;
