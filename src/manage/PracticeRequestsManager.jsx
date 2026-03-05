@@ -231,7 +231,9 @@ export default function PracticeRequestsManager({ leagueId }) {
   if (loading && requests.length === 0) {
     return (
       <div className="card">
-        <h3>Practice Slot Requests</h3>
+        <div className="card__header">
+          <div className="h2">Practice Slot Requests</div>
+        </div>
         <p className="muted">Loading practice requests...</p>
       </div>
     );
@@ -239,8 +241,8 @@ export default function PracticeRequestsManager({ leagueId }) {
 
   return (
     <div className="card">
-      <div className="flex items-center justify-between mb-4">
-        <h3>Practice Slot Requests</h3>
+      <div className="card__header">
+        <div className="h2">Practice Slot Requests</div>
         <button
           className="btn btn--sm"
           onClick={loadRequests}
@@ -255,8 +257,8 @@ export default function PracticeRequestsManager({ leagueId }) {
       )}
 
       <div className="callout mb-4">
-        <div className="row row--wrap gap-3" style={{ alignItems: 'end' }}>
-          <label style={{ minWidth: 220 }}>
+        <div className="row row--wrap gap-3 items-end">
+          <label className="min-w-[220px]">
             Coverage check division
             <select
               value={portalDivision}
@@ -275,7 +277,7 @@ export default function PracticeRequestsManager({ leagueId }) {
               })}
             </select>
           </label>
-          <label className="row row--wrap gap-2" style={{ alignItems: 'center' }}>
+          <label className="inlineCheck inlineCheck--compact">
             <input
               type="checkbox"
               checked={!!portalSettings?.oneOffRequestsEnabled}
@@ -317,8 +319,8 @@ export default function PracticeRequestsManager({ leagueId }) {
       </div>
 
       <div className="callout mb-4">
-        <div className="row row--wrap gap-3" style={{ alignItems: 'center' }}>
-          <label style={{ minWidth: 220 }}>
+        <div className="row row--wrap gap-3 items-center">
+          <label className="min-w-[220px]">
             Filter by day
             <select value={dayFilter} onChange={(e) => setDayFilter(e.target.value)}>
               {WEEKDAY_OPTIONS.map((opt) => (
@@ -334,71 +336,42 @@ export default function PracticeRequestsManager({ leagueId }) {
         </div>
       </div>
 
-      {/* Status Filter Tabs */}
-      <div className="flex gap-2 mb-4 border-b border-gray-200 overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
-        <button
-          className={`px-4 py-2 font-medium transition-colors whitespace-nowrap flex-shrink-0 ${
-            statusFilter === 'Pending'
-              ? 'border-b-2 border-accent text-accent'
-              : 'text-gray-600 hover:text-gray-900'
-          }`}
-          onClick={() => setStatusFilter('Pending')}
-        >
-          Pending {pendingCount > 0 && <span className="badge badge--sm ml-1">{pendingCount}</span>}
+      <div className="navTabs mb-4">
+        <button className={`tabBtn ${statusFilter === 'Pending' ? 'active' : ''}`} onClick={() => setStatusFilter('Pending')}>
+          Pending {pendingCount > 0 ? <span className="statusBadge ml-1">{pendingCount}</span> : null}
         </button>
-        <button
-          className={`px-4 py-2 font-medium transition-colors whitespace-nowrap flex-shrink-0 ${
-            statusFilter === 'Approved'
-              ? 'border-b-2 border-accent text-accent'
-              : 'text-gray-600 hover:text-gray-900'
-          }`}
-          onClick={() => setStatusFilter('Approved')}
-        >
-          Approved {approvedCount > 0 && <span className="badge badge--sm ml-1">{approvedCount}</span>}
+        <button className={`tabBtn ${statusFilter === 'Approved' ? 'active' : ''}`} onClick={() => setStatusFilter('Approved')}>
+          Approved {approvedCount > 0 ? <span className="statusBadge ml-1">{approvedCount}</span> : null}
         </button>
-        <button
-          className={`px-4 py-2 font-medium transition-colors whitespace-nowrap flex-shrink-0 ${
-            statusFilter === 'Rejected'
-              ? 'border-b-2 border-accent text-accent'
-              : 'text-gray-600 hover:text-gray-900'
-          }`}
-          onClick={() => setStatusFilter('Rejected')}
-        >
-          Rejected {rejectedCount > 0 && <span className="badge badge--sm ml-1">{rejectedCount}</span>}
+        <button className={`tabBtn ${statusFilter === 'Rejected' ? 'active' : ''}`} onClick={() => setStatusFilter('Rejected')}>
+          Rejected {rejectedCount > 0 ? <span className="statusBadge ml-1">{rejectedCount}</span> : null}
         </button>
-        <button
-          className={`px-4 py-2 font-medium transition-colors whitespace-nowrap flex-shrink-0 ${
-            statusFilter === ''
-              ? 'border-b-2 border-accent text-accent'
-              : 'text-gray-600 hover:text-gray-900'
-          }`}
-          onClick={() => setStatusFilter('')}
-        >
-          All {requests.length > 0 && <span className="badge badge--sm ml-1">{requests.length}</span>}
+        <button className={`tabBtn ${statusFilter === '' ? 'active' : ''}`} onClick={() => setStatusFilter('')}>
+          All {requests.length > 0 ? <span className="statusBadge ml-1">{requests.length}</span> : null}
         </button>
       </div>
 
       {/* Summary Stats */}
       {statusFilter === '' && (
-        <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-            <div className="text-2xl font-bold text-yellow-900">{pendingCount}</div>
-            <div className="text-sm text-yellow-700">Pending Review</div>
+        <div className="layoutStatRow mb-4">
+          <div className="layoutStat">
+            <div className="layoutStat__value">{pendingCount}</div>
+            <div className="layoutStat__label">Pending Review</div>
           </div>
-          <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-            <div className="text-2xl font-bold text-green-900">{approvedCount}</div>
-            <div className="text-sm text-green-700">Approved</div>
+          <div className="layoutStat">
+            <div className="layoutStat__value">{approvedCount}</div>
+            <div className="layoutStat__label">Approved</div>
           </div>
-          <div className="p-4 bg-red-50 rounded-lg border border-red-200">
-            <div className="text-2xl font-bold text-red-900">{rejectedCount}</div>
-            <div className="text-sm text-red-700">Rejected</div>
+          <div className="layoutStat">
+            <div className="layoutStat__value">{rejectedCount}</div>
+            <div className="layoutStat__label">Rejected</div>
           </div>
         </div>
       )}
 
       {/* Request List */}
       {visibleRequests.length === 0 ? (
-        <div className="text-center py-8 text-gray-600">
+        <div className="callout callout--info">
           {dayFilter
             ? `No ${statusFilter ? statusFilter.toLowerCase() : ''} requests for the selected day`.trim()
             : (statusFilter ? `No ${statusFilter.toLowerCase()} requests` : 'No practice requests yet')}
@@ -408,60 +381,60 @@ export default function PracticeRequestsManager({ leagueId }) {
           {visibleRequests.map((request) => (
             <div
               key={request.requestId}
-              className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              className="layoutPanel"
             >
-              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+              <div className="row row--between row--wrap items-start gap-4">
                 {/* Request Details */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                <div className="min-w-0">
+                  <div className="row row--wrap gap-2 mb-2">
                     <StatusBadge status={request.status} />
-                    {request.priority ? <span className="badge badge--sm">P{request.priority}</span> : null}
-                    <span className="font-bold text-lg">{request.teamId}</span>
-                    <span className="text-sm text-gray-600">{request.division}</span>
+                    {request.priority ? <span className="statusBadge">P{request.priority}</span> : null}
+                    <span className="font-bold">{request.teamId}</span>
+                    <span className="subtle">{request.division}</span>
                   </div>
 
                   {request.slot ? (
                     <div className="grid gap-1 text-sm">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-gray-700">Day:</span>
+                      <div className="row gap-2">
+                        <span className="font-semibold">Day:</span>
                         <span>{weekdayLabelFromDate(request.slot.gameDate) || '-'}</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-gray-700">Date:</span>
+                      <div className="row gap-2">
+                        <span className="font-semibold">Date:</span>
                         <span>{request.slot.gameDate}</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-gray-700">Time:</span>
+                      <div className="row gap-2">
+                        <span className="font-semibold">Time:</span>
                         <span>{request.slot.startTime} - {request.slot.endTime}</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-gray-700">Location:</span>
+                      <div className="row gap-2">
+                        <span className="font-semibold">Location:</span>
                         <span>{request.slot.displayName || request.slot.fieldKey || 'TBD'}</span>
                       </div>
                     </div>
                   ) : (
-                    <div className="text-sm text-gray-600 italic">Slot details unavailable</div>
+                    <div className="subtle italic">Slot details unavailable</div>
                   )}
 
                   {request.reason && (
-                    <div className="mt-2 text-sm text-gray-600">
+                    <div className="mt-2 subtle">
                       <span className="font-semibold">Reason:</span> {request.reason}
                     </div>
                   )}
 
                   {request.openToShareField && (
-                    <div className="mt-2 text-sm text-gray-600">
+                    <div className="mt-2 subtle">
                       <span className="font-semibold">Sharing:</span> Open to share field
                       {request.shareWithTeamId ? ` (proposed team: ${request.shareWithTeamId})` : ''}
                     </div>
                   )}
 
-                  <div className="mt-2 text-xs text-gray-500">
+                  <div className="mt-2 subtle text-xs">
                     Requested: {new Date(request.requestedUtc).toLocaleDateString()} at {new Date(request.requestedUtc).toLocaleTimeString()}
                   </div>
 
                   {request.reviewedUtc && (
-                    <div className="text-xs text-gray-500">
+                    <div className="subtle text-xs">
                       Reviewed: {new Date(request.reviewedUtc).toLocaleDateString()} at {new Date(request.reviewedUtc).toLocaleTimeString()}
                       {request.reviewedBy && ` by ${request.reviewedBy}`}
                     </div>
@@ -470,7 +443,7 @@ export default function PracticeRequestsManager({ leagueId }) {
 
                 {/* Actions */}
                 {request.status === 'Pending' && (
-                  <div className="flex flex-col gap-2">
+                  <div className="grid gap-2">
                     <button
                       className="btn btn--sm btn--primary"
                       onClick={() => approveRequest(request)}
@@ -501,9 +474,9 @@ export default function PracticeRequestsManager({ leagueId }) {
 
 function StatusBadge({ status }) {
   const config = {
-    Pending: { className: 'badge bg-yellow-100 text-yellow-800 border border-yellow-300', label: '⏳ Pending' },
-    Approved: { className: 'badge bg-green-100 text-green-800 border border-green-300', label: '✅ Approved' },
-    Rejected: { className: 'badge bg-red-100 text-red-800 border border-red-300', label: '❌ Rejected' }
+    Pending: { className: 'statusBadge status-open', label: 'Pending' },
+    Approved: { className: 'statusBadge status-confirmed', label: 'Approved' },
+    Rejected: { className: 'statusBadge status-cancelled', label: 'Rejected' }
   };
 
   const { className, label } = config[status] || config.Pending;
