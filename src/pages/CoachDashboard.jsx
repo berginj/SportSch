@@ -2,6 +2,18 @@ import { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../lib/api';
 import StatusCard from '../components/StatusCard';
 
+function isGameSlot(slot) {
+  if (!slot || slot.isAvailability) return false;
+  const gameType = String(slot.gameType || '').trim().toLowerCase();
+  return gameType !== 'practice';
+}
+
+function isOpenOfferSlot(slot) {
+  if (!isGameSlot(slot)) return false;
+  if (String(slot.status || '').trim() !== 'Open') return false;
+  return String(slot.gameType || '').trim().toLowerCase() !== 'request';
+}
+
 /**
  * Coach Dashboard - Personalized home page for coaches
  * Shows:
@@ -42,6 +54,7 @@ export default function CoachDashboard({ me, leagueId, setTab }) {
       // Filter slots for team's upcoming games (confirmed and where team is playing)
       const upcomingGames = (Array.isArray(slots) ? slots : [])
         .filter(slot => {
+          if (!isGameSlot(slot)) return false;
           if (slot.status !== 'Confirmed') return false;
           if (!teamId) return false;
           return slot.offeringTeamId === teamId || slot.confirmedTeamId === teamId ||
@@ -57,7 +70,7 @@ export default function CoachDashboard({ me, leagueId, setTab }) {
       // Count open offers in division
       const openOffersInDivision = (Array.isArray(slots) ? slots : [])
         .filter(slot => {
-          return slot.status === 'Open' &&
+          return isOpenOfferSlot(slot) &&
                  slot.division === division &&
                  slot.offeringTeamId !== teamId; // Not my own offers
         }).length;
@@ -65,7 +78,7 @@ export default function CoachDashboard({ me, leagueId, setTab }) {
       // Count my open offers
       const myOpenOffers = (Array.isArray(slots) ? slots : [])
         .filter(slot => {
-          return slot.status === 'Open' && slot.offeringTeamId === teamId;
+          return isOpenOfferSlot(slot) && slot.offeringTeamId === teamId;
         }).length;
 
       // Find team details

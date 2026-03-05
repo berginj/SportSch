@@ -2,6 +2,18 @@ import { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../lib/api';
 import StatusCard from '../components/StatusCard';
 
+function isGameCapableSlot(slot) {
+  if (!slot || slot.isAvailability) return false;
+  const gameType = String(slot.gameType || '').trim().toLowerCase();
+  return gameType !== 'practice';
+}
+
+function isActiveGameCapableSlot(slot) {
+  if (!isGameCapableSlot(slot)) return false;
+  const status = String(slot.status || '').trim().toLowerCase();
+  return status !== 'cancelled';
+}
+
 /**
  * AdminDashboard - League admin dashboard with health metrics and quick actions
  * Shows:
@@ -42,9 +54,10 @@ export default function AdminDashboard({ leagueId, onNavigate }) {
       const unassignedCoaches = coaches.filter(m => !m.team || !m.team.teamId).length;
 
       const allSlots = Array.isArray(slots) ? slots : [];
-      const confirmedSlots = allSlots.filter(s => s.status === 'Confirmed').length;
-      const openSlots = allSlots.filter(s => s.status === 'Open').length;
-      const totalSlots = allSlots.length;
+      const activeGameSlots = allSlots.filter(isActiveGameCapableSlot);
+      const confirmedSlots = activeGameSlots.filter(s => s.status === 'Confirmed').length;
+      const openSlots = activeGameSlots.filter(s => s.status === 'Open').length;
+      const totalSlots = activeGameSlots.length;
       const scheduleCoverage = totalSlots > 0
         ? Math.round((confirmedSlots / totalSlots) * 100)
         : 0;
@@ -56,7 +69,7 @@ export default function AdminDashboard({ leagueId, onNavigate }) {
       const todayStr = formatDateYMD(today);
       const nextWeekStr = formatDateYMD(nextWeek);
 
-      const upcomingGames = allSlots
+      const upcomingGames = activeGameSlots
         .filter(s => s.status === 'Confirmed' && s.gameDate >= todayStr && s.gameDate <= nextWeekStr)
         .length;
 

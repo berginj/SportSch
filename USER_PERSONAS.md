@@ -945,6 +945,8 @@ Before deploying features, verify against personas:
 
 ## 📝 **CHANGELOG**
 
+- **2026-03-05:** Status correction - Phase 1 Item 2 (guest game auto-balancer) is still pending.
+- **2026-03-05:** Status correction - Phase 1 Item 4 (smart schedule reminders) is still pending.
 - **2026-03-03:** Initial creation based on codebase analysis
 - Document personas as features evolve
 - Add new personas as user types emerge
