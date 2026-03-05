@@ -1,0 +1,13 @@
+name: Push Sanity
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  sanity:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sanity ping
+        run: echo "Push workflow queued"
