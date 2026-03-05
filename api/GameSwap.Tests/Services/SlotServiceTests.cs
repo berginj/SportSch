@@ -308,6 +308,55 @@ public class SlotServiceTests : IDisposable
         _mockSlotRepo.Verify(x => x.CancelSlotAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
     }
 
+    [Fact]
+    public async Task QuerySlotsAsync_WithDateTimeOffsetGameDate_IncludesRowWithinRange()
+    {
+        // Arrange
+        var entity = new TableEntity("SLOT|league-1|AAA", "slot-1")
+        {
+            { "LeagueId", "league-1" },
+            { "Division", "AAA" },
+            { "Status", Constants.Status.SlotConfirmed },
+            { "GameDate", new DateTimeOffset(2026, 3, 20, 0, 0, 0, TimeSpan.Zero) },
+            { "StartTime", "18:00" },
+            { "DisplayName", "Field 1" }
+        };
+
+        _mockSlotRepo
+            .Setup(x => x.QuerySlotsAsync(It.IsAny<SlotQueryFilter>(), null))
+            .ReturnsAsync(new PaginationResult<TableEntity>
+            {
+                Items = new List<TableEntity> { entity },
+                PageSize = 50,
+                ContinuationToken = null
+            });
+
+        var request = new SlotQueryRequest
+        {
+            LeagueId = "league-1",
+            Division = "AAA",
+            Status = $"{Constants.Status.SlotOpen},{Constants.Status.SlotConfirmed}",
+            FromDate = "2026-03-14",
+            ToDate = "2026-06-10",
+            PageSize = 50,
+            ReturnEnvelope = false
+        };
+
+        var context = new CorrelationContext
+        {
+            LeagueId = "league-1",
+            UserId = "user-1",
+            CorrelationId = Guid.NewGuid().ToString()
+        };
+
+        // Act
+        var result = await _service.QuerySlotsAsync(request, context);
+
+        // Assert
+        var list = Assert.IsType<List<object>>(result);
+        Assert.Single(list);
+    }
+
     public void Dispose()
     {
         // Cleanup if needed

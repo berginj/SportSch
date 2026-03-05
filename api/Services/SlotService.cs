@@ -309,7 +309,7 @@ public class SlotService : ISlotService
         if (string.IsNullOrWhiteSpace(fromDate) && string.IsNullOrWhiteSpace(toDate))
             return true;
 
-        if (!DateOnly.TryParseExact(gameDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+        if (!TryParseGameDate(gameDate, out var date))
             return false;
 
         if (!string.IsNullOrWhiteSpace(fromDate) &&
@@ -323,6 +323,33 @@ public class SlotService : ISlotService
             return false;
 
         return true;
+    }
+
+    private static bool TryParseGameDate(string raw, out DateOnly date)
+    {
+        date = default;
+        var value = (raw ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(value)) return false;
+
+        if (DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out date))
+            return true;
+
+        if (DateOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out date))
+            return true;
+
+        if (DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var dto))
+        {
+            date = DateOnly.FromDateTime(dto.UtcDateTime);
+            return true;
+        }
+
+        if (DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out var dt))
+        {
+            date = DateOnly.FromDateTime(dt);
+            return true;
+        }
+
+        return false;
     }
 
     private static string ReadString(TableEntity entity, string key, string defaultValue = "")
