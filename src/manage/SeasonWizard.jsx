@@ -2395,11 +2395,17 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     });
     const guestCounts = Array.from(guestGamesByTeam.values());
     const guestSpread = guestCounts.length > 0 ? Math.max(...guestCounts) - Math.min(...guestCounts) : 0;
+    const hardIssuesCount = Math.max(
+      Number(previewResult.ruleHealth?.hardViolationCount || 0),
+      Array.isArray(previewResult.issues)
+        ? previewResult.issues.filter((issue) => String(issue?.severity || "").toLowerCase() === "error").length
+        : 0
+    );
 
     // Overall quality score (0-100)
     let quality = 100;
     quality -= (summary.unassignedMatchups || 0) * 10;
-    quality -= (previewResult.ruleHealth?.hardViolationCount || 0) * 15;
+    quality -= hardIssuesCount * 15;
     quality -= teamLoadSpread * 5;
     quality -= (100 - pairDiversity);
     quality -= dateSpreadStdDev * 3;
@@ -2410,7 +2416,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     return {
       unassignedMatchups: summary.unassignedMatchups || 0,
       guestGamesScheduled: regularAssignments.filter(a => a.isExternalOffer).length,
-      hardIssues: previewResult.ruleHealth?.hardViolationCount || 0,
+      hardIssues: hardIssuesCount,
       softScore: previewResult.ruleHealth?.softScore || 0,
       doubleheaders: previewResult.issues?.filter(i => i.ruleId === "double-header").length || 0,
       teamLoadSpread,
@@ -3052,13 +3058,21 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   }, [preview]);
   const previewAssignmentCount = previewCollections.assignments.length;
   const previewWarningCount = previewCollections.warnings.length;
+  const previewHardIssueCount = useMemo(
+    () => previewCollections.issues.filter((issue) => String(issue?.severity || "").toLowerCase() === "error").length,
+    [previewCollections.issues]
+  );
+  const previewHardViolationDisplayCount = Math.max(
+    Number(previewRuleHealth?.hardViolationCount || 0),
+    previewHardIssueCount
+  );
   const previewIssueCount = Number(preview?.totalIssues || 0) > 0
     ? Number(preview?.totalIssues || 0)
     : previewCollections.issues.length;
   const previewAllowsSingleMissingMatchupApplyOverride = useMemo(() => {
     if (!previewApplyBlocked || !preview) return false;
 
-    const hardViolationCount = Number(previewRuleHealth?.hardViolationCount || 0);
+    const hardViolationCount = previewHardViolationDisplayCount;
     if (!Number.isFinite(hardViolationCount) || hardViolationCount !== 1) return false;
 
     const hardGroups = (Array.isArray(previewRuleHealth?.groups) ? previewRuleHealth.groups : [])
@@ -3084,7 +3098,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
     const message = String(issue?.message || "").toLowerCase();
     return message.includes("1 required matchup");
-  }, [previewApplyBlocked, preview, previewRuleHealth, previewCollections.issues]);
+  }, [previewApplyBlocked, preview, previewRuleHealth, previewCollections.issues, previewHardViolationDisplayCount]);
   const applyActionBlocked = previewApplyBlocked && !previewAllowsSingleMissingMatchupApplyOverride;
   const stepErrors = useMemo(
     () => [basicsError, postseasonError, slotPlanError, rulesError, previewError],
@@ -3630,7 +3644,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     const minGamesTarget = Math.max(0, Number(minGamesPerTeam) || 0);
     const teamRows = [...teamStats.values()]
       .map((row) => {
-        const target = Math.max(minGamesTarget, row.games + row.unassigned);
+        const target = minGamesTarget;
         const coveragePct = target > 0 ? Math.round((row.games / target) * 100) : 100;
         const homeAwayGap = Math.abs(row.home - row.away);
         const teamWeeks = weeklyActivityByTeam.get(row.teamId) || new Map();
@@ -6267,7 +6281,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                   <div className="font-bold mb-2">Rule Health</div>
                   <div className="subtle">
                     Status: <b>{String(previewRuleHealth.status || "").toUpperCase() || "-"}</b> | Hard:{" "}
-                    <b>{Number(previewRuleHealth.hardViolationCount || 0)}</b> | Soft:{" "}
+                    <b>{previewHardViolationDisplayCount}</b> | Soft:{" "}
                     <b>{Number(previewRuleHealth.softViolationCount || 0)}</b> | Soft score:{" "}
                     <b>{Number(previewRuleHealth.softScore || 0)}</b>
                     {previewApplyBlocked ? " | Apply is blocked until hard violations are resolved." : ""}

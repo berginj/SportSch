@@ -691,6 +691,41 @@ public class ScheduleWizardFunctions
                     details = new Dictionary<string, object?> { ["count"] = bracketAssignments.UnassignedMatchups.Count, ["phase"] = "Bracket" }
                 });
             }
+            var expectedReservedGuestOfferCount = externalOfferPerWeek > 0
+                ? SelectReservedExternalSlots(
+                    regularSlots,
+                    externalOfferPerWeek,
+                    guestAnchors,
+                    seasonStart,
+                    bracketStart,
+                    bracketEnd).Count
+                : 0;
+            var regularExternalOfferAssignments = regularAssignments.Assignments
+                .Where(a => a.IsExternalOffer)
+                .ToList();
+            var explicitHardIssueCount = 0;
+            if (externalOfferPerWeek > 0 &&
+                expectedReservedGuestOfferCount > 0 &&
+                regularExternalOfferAssignments.Count < expectedReservedGuestOfferCount)
+            {
+                explicitHardIssueCount += 1;
+                var scheduledGuestOffers = regularExternalOfferAssignments.Count;
+                var missingGuestOffers = expectedReservedGuestOfferCount - scheduledGuestOffers;
+                issues.Add(new
+                {
+                    phase = "Regular Season",
+                    ruleId = "missing-required-guest-offers",
+                    severity = "error",
+                    message = $"Guest games/week is set to {externalOfferPerWeek}, but only {scheduledGuestOffers} of {expectedReservedGuestOfferCount} required guest offer slot(s) were scheduled ({missingGuestOffers} missing).",
+                    details = new Dictionary<string, object?>
+                    {
+                        ["externalOfferPerWeek"] = externalOfferPerWeek,
+                        ["expectedGuestOffers"] = expectedReservedGuestOfferCount,
+                        ["scheduledGuestOffers"] = scheduledGuestOffers,
+                        ["missingGuestOffers"] = missingGuestOffers
+                    }
+                });
+            }
             var invariantIssues = BuildWizardInvariantIssues(
                 assignments,
                 gameCapableSlots,
@@ -700,9 +735,10 @@ public class ScheduleWizardFunctions
             issues.AddRange(invariantIssues);
             var invariantHardIssueCount = invariantIssues.Count;
             var totalIssues = issues.Count;
-            var hardViolationCount = strictValidation.RuleHealth.HardViolationCount + invariantHardIssueCount;
-            var applyBlocked = strictValidation.RuleHealth.ApplyBlocked || invariantHardIssueCount > 0;
-            var allowApplyOverride = invariantHardIssueCount == 0 && CanApplyWithSingleMissingRequiredMatchupOverride(body, strictValidation.RuleHealth);
+            var additionalHardIssueCount = invariantHardIssueCount + explicitHardIssueCount;
+            var hardViolationCount = strictValidation.RuleHealth.HardViolationCount + additionalHardIssueCount;
+            var applyBlocked = strictValidation.RuleHealth.ApplyBlocked || additionalHardIssueCount > 0;
+            var allowApplyOverride = additionalHardIssueCount == 0 && CanApplyWithSingleMissingRequiredMatchupOverride(body, strictValidation.RuleHealth);
             var effectiveApplyBlocked = applyBlocked && !allowApplyOverride;
             if (allowApplyOverride)
             {
