@@ -167,27 +167,41 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     let continuationToken = "";
     let pageCount = 0;
     const maxPages = 40;
-    const pageSize = 250;
+    const pageSize = 100;
 
     while (pageCount < maxPages) {
       const query = new URLSearchParams(slotsQuery);
       query.set("pageSize", String(pageSize));
       if (continuationToken) query.set("continuationToken", continuationToken);
 
-      const response = await apiFetch(`/api/slots?${query.toString()}`);
-      if (Array.isArray(response)) {
-        merged.push(...response);
+      try {
+        const response = await apiFetch(`/api/slots?${query.toString()}`);
+        if (Array.isArray(response)) {
+          merged.push(...response);
+          break;
+        }
+
+        const items = Array.isArray(response?.items) ? response.items : [];
+        merged.push(...items);
+
+        continuationToken = typeof response?.continuationToken === "string"
+          ? response.continuationToken
+          : "";
+        pageCount += 1;
+        if (!continuationToken) break;
+      } catch (pagedError) {
+        // Fallback to the legacy single-call slots query so calendar still loads.
+        if (merged.length > 0) break;
+        const fallbackQuery = new URLSearchParams(slotsQuery);
+        const fallbackResponse = await apiFetch(`/api/slots?${fallbackQuery.toString()}`);
+        if (Array.isArray(fallbackResponse)) {
+          merged.push(...fallbackResponse);
+          break;
+        }
+        const fallbackItems = Array.isArray(fallbackResponse?.items) ? fallbackResponse.items : [];
+        merged.push(...fallbackItems);
         break;
       }
-
-      const items = Array.isArray(response?.items) ? response.items : [];
-      merged.push(...items);
-
-      continuationToken = typeof response?.continuationToken === "string"
-        ? response.continuationToken
-        : "";
-      pageCount += 1;
-      if (!continuationToken) break;
     }
 
     return merged;
