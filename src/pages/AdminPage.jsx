@@ -424,6 +424,52 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
     }
   }
 
+  async function bulkApproveRequests(requests, roleOverride, skipReload = false) {
+    const role = (roleOverride || "Viewer").trim();
+    const items = (Array.isArray(requests) ? requests : [])
+      .map((r) => ({
+        userId: (r?.userId || "").trim(),
+        leagueId: (r?.leagueId || leagueId || "").trim(),
+      }))
+      .filter((r) => r.userId && r.leagueId)
+      .map((r) => ({ ...r, role }));
+    if (!items.length) return false;
+
+    try {
+      const res = await apiFetch("/api/accessrequests/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "approve",
+          items,
+        }),
+      });
+      if (!skipReload) await load();
+
+      const succeeded = Number(res?.succeeded || 0);
+      const failed = Number(res?.failed || 0);
+      if (failed > 0) {
+        setToast({
+          tone: "error",
+          message: `Approved ${succeeded}; ${failed} failed. Check access request status and retry.`,
+        });
+      } else {
+        setToast({ tone: "success", message: `Approved ${succeeded} access request${succeeded === 1 ? "" : "s"}.` });
+      }
+
+      trackEvent("ui_admin_access_request_bulk_approve", {
+        role,
+        total: Number(res?.total || items.length),
+        succeeded,
+        failed,
+      });
+      return true;
+    } catch (e) {
+      setToast({ tone: "error", message: e?.message || "Bulk approve failed" });
+      return false;
+    }
+  }
+
   async function deny(req, skipReload = false) {
     const userId = req?.userId || "";
     const targetLeagueId = (req?.leagueId || leagueId || "").trim();
@@ -452,6 +498,59 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
       });
     } catch (e) {
       setToast({ tone: "error", message: e?.message || "Deny failed" });
+    }
+  }
+
+  async function bulkDenyRequests(requests, skipReload = false) {
+    const itemsBase = (Array.isArray(requests) ? requests : [])
+      .map((r) => ({
+        userId: (r?.userId || "").trim(),
+        leagueId: (r?.leagueId || leagueId || "").trim(),
+      }))
+      .filter((r) => r.userId && r.leagueId);
+    if (!itemsBase.length) return false;
+
+    const reason = await requestPrompt({
+      title: "Deny selected access requests",
+      message: "Optional reason for denial (applies to all selected requests).",
+      placeholder: "Reason (optional)",
+      confirmLabel: "Deny selected",
+    });
+    if (reason === null) return false;
+
+    const items = itemsBase.map((r) => ({ ...r, reason }));
+
+    try {
+      const res = await apiFetch("/api/accessrequests/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "deny",
+          items,
+        }),
+      });
+      if (!skipReload) await load();
+
+      const succeeded = Number(res?.succeeded || 0);
+      const failed = Number(res?.failed || 0);
+      if (failed > 0) {
+        setToast({
+          tone: "error",
+          message: `Denied ${succeeded}; ${failed} failed. Check access request status and retry.`,
+        });
+      } else {
+        setToast({ tone: "success", message: `Denied ${succeeded} access request${succeeded === 1 ? "" : "s"}.` });
+      }
+
+      trackEvent("ui_admin_access_request_bulk_deny", {
+        total: Number(res?.total || items.length),
+        succeeded,
+        failed,
+      });
+      return true;
+    } catch (e) {
+      setToast({ tone: "error", message: e?.message || "Bulk deny failed" });
+      return false;
     }
   }
 
@@ -719,6 +818,8 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
             memLoading={memLoading}
             approve={approve}
             deny={deny}
+            bulkApproveRequests={bulkApproveRequests}
+            bulkDenyRequests={bulkDenyRequests}
           />
         </Suspense>
       )}

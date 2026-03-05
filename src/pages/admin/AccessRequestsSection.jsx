@@ -30,6 +30,8 @@ export default function AccessRequestsSection({
   memLoading,
   approve,
   deny,
+  bulkApproveRequests,
+  bulkDenyRequests,
 }) {
   const accessAll = accessScope === "all";
 
@@ -66,40 +68,58 @@ export default function AccessRequestsSection({
     if (selectedItems.size === 0) return;
 
     setBulkProcessing(true);
-    const itemsToApprove = sorted.filter((r) => selectedItems.has(requestSelectionKey(r)));
+    try {
+      const itemsToApprove = sorted.filter((r) => selectedItems.has(requestSelectionKey(r)));
+      let completed = true;
 
-    for (const item of itemsToApprove) {
-      try {
-        await approve(item, bulkRole, true); // Pass true to skip reload after each
-      } catch (err) {
-        console.error('Failed to approve:', requestSelectionKey(item), err);
+      if (typeof bulkApproveRequests === "function") {
+        completed = await bulkApproveRequests(itemsToApprove, bulkRole, true);
+      } else {
+        for (const item of itemsToApprove) {
+          try {
+            await approve(item, bulkRole, true); // Skip reload after each
+          } catch (err) {
+            console.error('Failed to approve:', requestSelectionKey(item), err);
+          }
+        }
       }
-    }
 
-    setSelectedItems(new Set());
-    setBulkProcessing(false);
-    load(); // Reload once at the end
-  }, [selectedItems, sorted, bulkRole, approve, load]);
+      if (!completed) return;
+      setSelectedItems(new Set());
+      await load(); // Reload once at the end
+    } finally {
+      setBulkProcessing(false);
+    }
+  }, [selectedItems, sorted, bulkRole, bulkApproveRequests, approve, load]);
 
   // Bulk deny
   const bulkDeny = useCallback(async () => {
     if (selectedItems.size === 0) return;
 
     setBulkProcessing(true);
-    const itemsToDeny = sorted.filter((r) => selectedItems.has(requestSelectionKey(r)));
+    try {
+      const itemsToDeny = sorted.filter((r) => selectedItems.has(requestSelectionKey(r)));
+      let completed = true;
 
-    for (const item of itemsToDeny) {
-      try {
-        await deny(item, true); // Pass true to skip reload after each
-      } catch (err) {
-        console.error('Failed to deny:', requestSelectionKey(item), err);
+      if (typeof bulkDenyRequests === "function") {
+        completed = await bulkDenyRequests(itemsToDeny, true);
+      } else {
+        for (const item of itemsToDeny) {
+          try {
+            await deny(item, true); // Skip reload after each
+          } catch (err) {
+            console.error('Failed to deny:', requestSelectionKey(item), err);
+          }
+        }
       }
-    }
 
-    setSelectedItems(new Set());
-    setBulkProcessing(false);
-    load(); // Reload once at the end
-  }, [selectedItems, sorted, deny, load]);
+      if (!completed) return;
+      setSelectedItems(new Set());
+      await load(); // Reload once at the end
+    } finally {
+      setBulkProcessing(false);
+    }
+  }, [selectedItems, sorted, bulkDenyRequests, deny, load]);
 
   return (
     <div className="card">

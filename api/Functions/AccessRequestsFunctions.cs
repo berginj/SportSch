@@ -35,6 +35,9 @@ public class AccessRequestsFunctions
     public record CreateAccessRequestReq(string? requestedRole, string? notes);
     public record ApproveAccessReq(string? role, CoachTeam? team);
     public record DenyAccessReq(string? reason);
+    public record BulkAccessReq(string? action, List<BulkAccessItem>? items);
+    public record BulkAccessItem(string? userId, string? leagueId, string? role, string? reason, CoachTeam? team);
+    public record BulkAccessResult(string leagueId, string userId, string action, string status, string? error);
     public record CoachTeam(string? division, string? teamId);
 
     public record AccessRequestDto(
@@ -90,6 +93,95 @@ public class AccessRequestsFunctions
         return value.Equals("1", StringComparison.OrdinalIgnoreCase)
                || value.Equals("true", StringComparison.OrdinalIgnoreCase)
                || value.Equals("yes", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void EnsureAuthenticated(IdentityUtil.Me me)
+    {
+        if (string.IsNullOrWhiteSpace(me.UserId) || me.UserId == "UNKNOWN")
+            throw new ApiGuards.HttpError((int)HttpStatusCode.Unauthorized, "UNAUTHENTICATED", "You must be signed in.");
+    }
+
+    private async Task EnsureCanManageAccessForLeagueAsync(string adminUserId, string leagueId)
+    {
+        if (await _membershipRepo.IsGlobalAdminAsync(adminUserId))
+            return;
+
+        var membership = await _membershipRepo.GetMembershipAsync(adminUserId, leagueId);
+        var role = (membership?.GetString("Role") ?? Constants.Roles.Viewer).Trim();
+        if (!string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ApiGuards.HttpError(
+                (int)HttpStatusCode.Forbidden,
+                ErrorCodes.FORBIDDEN,
+                "Only league admins can manage access requests");
+        }
+    }
+
+    private async Task<(HttpStatusCode? ErrorCode, string? ErrorMessage, string Status)> ApproveAccessRequestInternalAsync(
+        string leagueId,
+        string userId,
+        string? roleOverride,
+        CoachTeam? team)
+    {
+        userId = (userId ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(userId))
+            return (HttpStatusCode.BadRequest, "userId is required", "");
+
+        ApiGuards.EnsureValidTableKeyPart("userId", userId);
+
+        var ar = await _accessRequestRepo.GetAccessRequestAsync(leagueId, userId);
+        if (ar is null)
+            return (HttpStatusCode.NotFound, "access request not found", "");
+
+        var requestedRole = (ar.GetString("RequestedRole") ?? Constants.Roles.Viewer).Trim();
+        var role = (roleOverride ?? requestedRole).Trim();
+        if (!IsValidRequestedRole(role))
+            return (HttpStatusCode.BadRequest, "role must be Coach, Viewer, or LeagueAdmin", "");
+
+        var division = (team?.division ?? "").Trim();
+        var teamId = (team?.teamId ?? "").Trim();
+        if (!string.IsNullOrWhiteSpace(division))
+            ApiGuards.EnsureValidTableKeyPart("division", division);
+        if (!string.IsNullOrWhiteSpace(teamId))
+            ApiGuards.EnsureValidTableKeyPart("teamId", teamId);
+
+        var mem = new TableEntity(userId, leagueId)
+        {
+            ["Role"] = role,
+            ["Email"] = (ar.GetString("Email") ?? "").Trim(),
+            ["Division"] = division,
+            ["TeamId"] = teamId,
+            ["UpdatedUtc"] = DateTimeOffset.UtcNow
+        };
+        await _membershipRepo.UpsertMembershipAsync(mem);
+
+        ar["Status"] = Constants.Status.AccessRequestApproved;
+        ar["UpdatedUtc"] = DateTimeOffset.UtcNow;
+        await _accessRequestRepo.UpdateAccessRequestAsync(ar);
+
+        return (null, null, Constants.Status.AccessRequestApproved);
+    }
+
+    private async Task<(HttpStatusCode? ErrorCode, string? ErrorMessage, string Status)> DenyAccessRequestInternalAsync(
+        string leagueId,
+        string userId,
+        string? reason)
+    {
+        userId = (userId ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(userId))
+            return (HttpStatusCode.BadRequest, "userId is required", "");
+
+        ApiGuards.EnsureValidTableKeyPart("userId", userId);
+        var ar = await _accessRequestRepo.GetAccessRequestAsync(leagueId, userId);
+        if (ar is null)
+            return (HttpStatusCode.NotFound, "access request not found", "");
+
+        ar["Status"] = Constants.Status.AccessRequestDenied;
+        ar["DeniedReason"] = (reason ?? "").Trim();
+        ar["UpdatedUtc"] = DateTimeOffset.UtcNow;
+        await _accessRequestRepo.UpdateAccessRequestAsync(ar);
+
+        return (null, null, Constants.Status.AccessRequestDenied);
     }
 
     [Function("CreateAccessRequest")]
@@ -302,65 +394,17 @@ public class AccessRequestsFunctions
         {
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
-            if (string.IsNullOrWhiteSpace(me.UserId) || me.UserId == "UNKNOWN")
-            {
-                return ApiResponses.Error(req, HttpStatusCode.Unauthorized,
-                    "UNAUTHENTICATED", "You must be signed in.");
-            }
-
-            // Authorization - league admin required
-            if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
-            {
-                var membership = await _membershipRepo.GetMembershipAsync(me.UserId, leagueId);
-                var myRole = (membership?.GetString("Role") ?? Constants.Roles.Viewer).Trim();
-                if (!string.Equals(myRole, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
-                {
-                    return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
-                        "Only league admins can approve access requests");
-                }
-            }
+            EnsureAuthenticated(me);
+            await EnsureCanManageAccessForLeagueAsync(me.UserId, leagueId);
 
             userId = (userId ?? "").Trim();
-            ApiGuards.EnsureValidTableKeyPart("userId", userId);
-
-            var ar = await _accessRequestRepo.GetAccessRequestAsync(leagueId, userId);
-            if (ar is null)
-            {
-                return ApiResponses.Error(req, HttpStatusCode.NotFound, "NOT_FOUND", "access request not found");
-            }
-
             var body = await HttpUtil.ReadJsonAsync<ApproveAccessReq>(req) ?? new ApproveAccessReq(null, null);
-
-            // Default: honor requestedRole
-            var requestedRole = (ar.GetString("RequestedRole") ?? Constants.Roles.Viewer).Trim();
-            var role = (body.role ?? requestedRole).Trim();
-
-            if (!IsValidRequestedRole(role))
-                return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "role must be Coach, Viewer, or LeagueAdmin");
-
-            var division = (body.team?.division ?? "").Trim();
-            var teamId = (body.team?.teamId ?? "").Trim();
-            if (!string.IsNullOrWhiteSpace(division))
-                ApiGuards.EnsureValidTableKeyPart("division", division);
-            if (!string.IsNullOrWhiteSpace(teamId))
-                ApiGuards.EnsureValidTableKeyPart("teamId", teamId);
-
-            // Upsert membership (PK=userId, RK=leagueId)
-            var mem = new TableEntity(userId, leagueId)
+            var result = await ApproveAccessRequestInternalAsync(leagueId, userId, body.role, body.team);
+            if (result.ErrorCode.HasValue)
             {
-                ["Role"] = role,
-                ["Email"] = (ar.GetString("Email") ?? "").Trim(),
-                ["Division"] = division,
-                ["TeamId"] = teamId,
-                ["UpdatedUtc"] = DateTimeOffset.UtcNow
-            };
-
-            await _membershipRepo.UpsertMembershipAsync(mem);
-
-            // Mark request approved
-            ar["Status"] = Constants.Status.AccessRequestApproved;
-            ar["UpdatedUtc"] = DateTimeOffset.UtcNow;
-            await _accessRequestRepo.UpdateAccessRequestAsync(ar);
+                var code = result.ErrorCode.Value == HttpStatusCode.NotFound ? ErrorCodes.NOT_FOUND : ErrorCodes.BAD_REQUEST;
+                return ApiResponses.Error(req, result.ErrorCode.Value, code, result.ErrorMessage ?? "Failed to approve access request");
+            }
 
             return ApiResponses.Ok(req, new { leagueId, userId, status = Constants.Status.AccessRequestApproved });
         }
@@ -392,40 +436,17 @@ public class AccessRequestsFunctions
         {
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
-            if (string.IsNullOrWhiteSpace(me.UserId) || me.UserId == "UNKNOWN")
-            {
-                return ApiResponses.Error(req, HttpStatusCode.Unauthorized,
-                    "UNAUTHENTICATED", "You must be signed in.");
-            }
-
-            // Authorization - league admin required
-            if (!await _membershipRepo.IsGlobalAdminAsync(me.UserId))
-            {
-                var membership = await _membershipRepo.GetMembershipAsync(me.UserId, leagueId);
-                var myRole = (membership?.GetString("Role") ?? Constants.Roles.Viewer).Trim();
-                if (!string.Equals(myRole, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
-                {
-                    return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
-                        "Only league admins can deny access requests");
-                }
-            }
+            EnsureAuthenticated(me);
+            await EnsureCanManageAccessForLeagueAsync(me.UserId, leagueId);
 
             userId = (userId ?? "").Trim();
-            ApiGuards.EnsureValidTableKeyPart("userId", userId);
-
-            var ar = await _accessRequestRepo.GetAccessRequestAsync(leagueId, userId);
-            if (ar is null)
-            {
-                return ApiResponses.Error(req, HttpStatusCode.NotFound, "NOT_FOUND", "access request not found");
-            }
-
             var body = await HttpUtil.ReadJsonAsync<DenyAccessReq>(req);
-            var reason = (body?.reason ?? "").Trim();
-
-            ar["Status"] = Constants.Status.AccessRequestDenied;
-            ar["DeniedReason"] = reason;
-            ar["UpdatedUtc"] = DateTimeOffset.UtcNow;
-            await _accessRequestRepo.UpdateAccessRequestAsync(ar);
+            var result = await DenyAccessRequestInternalAsync(leagueId, userId, body?.reason);
+            if (result.ErrorCode.HasValue)
+            {
+                var code = result.ErrorCode.Value == HttpStatusCode.NotFound ? ErrorCodes.NOT_FOUND : ErrorCodes.BAD_REQUEST;
+                return ApiResponses.Error(req, result.ErrorCode.Value, code, result.ErrorMessage ?? "Failed to deny access request");
+            }
 
             return ApiResponses.Ok(req, new { leagueId, userId, status = Constants.Status.AccessRequestDenied });
         }
@@ -436,6 +457,130 @@ public class AccessRequestsFunctions
         catch (Exception ex)
         {
             _log.LogError(ex, "DenyAccessRequest failed");
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
+        }
+    }
+
+    [Function("BulkAccessRequests")]
+    [OpenApiOperation(operationId: "BulkAccessRequests", tags: new[] { "Access Requests" }, Summary = "Bulk approve or deny access requests", Description = "Processes access requests in bulk across one or more leagues. League admins can manage requests for leagues they administer. Global admins can process all leagues.")]
+    [OpenApiRequestBody(contentType: "application/json", bodyType: typeof(BulkAccessReq), Required = true, Description = "Bulk action payload with action and items")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(object), Description = "Bulk operation result with per-item status")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(object), Description = "Invalid action or payload")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Unauthorized, contentType: "application/json", bodyType: typeof(object), Description = "User not signed in")]
+    public async Task<HttpResponseData> Bulk(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "accessrequests/bulk")] HttpRequestData req)
+    {
+        try
+        {
+            var me = IdentityUtil.GetMe(req);
+            EnsureAuthenticated(me);
+
+            var body = await HttpUtil.ReadJsonAsync<BulkAccessReq>(req);
+            if (body is null)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST, "Invalid JSON body");
+
+            var action = (body.action ?? "").Trim().ToLowerInvariant();
+            if (action != "approve" && action != "deny")
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST, "action must be 'approve' or 'deny'");
+
+            var items = body.items ?? new List<BulkAccessItem>();
+            if (items.Count == 0)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST, "items are required");
+            if (items.Count > 250)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST, "items cannot exceed 250 per request");
+
+            var isGlobalAdmin = await _membershipRepo.IsGlobalAdminAsync(me.UserId);
+            var authorizedLeagues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var results = new List<BulkAccessResult>();
+            var succeeded = 0;
+
+            foreach (var item in items)
+            {
+                var leagueId = (item.leagueId ?? "").Trim();
+                var userId = (item.userId ?? "").Trim();
+
+                if (string.IsNullOrWhiteSpace(leagueId) || string.IsNullOrWhiteSpace(userId))
+                {
+                    results.Add(new BulkAccessResult(
+                        leagueId: leagueId,
+                        userId: userId,
+                        action: action,
+                        status: "Error",
+                        error: "leagueId and userId are required"));
+                    continue;
+                }
+
+                try
+                {
+                    ApiGuards.EnsureValidTableKeyPart("leagueId", leagueId);
+                    ApiGuards.EnsureValidTableKeyPart("userId", userId);
+
+                    if (!isGlobalAdmin && !authorizedLeagues.Contains(leagueId))
+                    {
+                        await EnsureCanManageAccessForLeagueAsync(me.UserId, leagueId);
+                        authorizedLeagues.Add(leagueId);
+                    }
+
+                    (HttpStatusCode? ErrorCode, string? ErrorMessage, string Status) result = action == "approve"
+                        ? await ApproveAccessRequestInternalAsync(leagueId, userId, item.role, item.team)
+                        : await DenyAccessRequestInternalAsync(leagueId, userId, item.reason);
+
+                    if (result.ErrorCode.HasValue)
+                    {
+                        results.Add(new BulkAccessResult(
+                            leagueId: leagueId,
+                            userId: userId,
+                            action: action,
+                            status: "Error",
+                            error: result.ErrorMessage ?? $"Failed with status {(int)result.ErrorCode.Value}"));
+                        continue;
+                    }
+
+                    succeeded++;
+                    results.Add(new BulkAccessResult(
+                        leagueId: leagueId,
+                        userId: userId,
+                        action: action,
+                        status: result.Status,
+                        error: null));
+                }
+                catch (ApiGuards.HttpError ex)
+                {
+                    results.Add(new BulkAccessResult(
+                        leagueId: leagueId,
+                        userId: userId,
+                        action: action,
+                        status: "Error",
+                        error: ex.Message));
+                }
+                catch (Exception ex)
+                {
+                    _log.LogWarning(ex, "Bulk access request action failed for {LeagueId}/{UserId}", leagueId, userId);
+                    results.Add(new BulkAccessResult(
+                        leagueId: leagueId,
+                        userId: userId,
+                        action: action,
+                        status: "Error",
+                        error: "Internal error"));
+                }
+            }
+
+            return ApiResponses.Ok(req, new
+            {
+                action,
+                total = results.Count,
+                succeeded,
+                failed = results.Count - succeeded,
+                results
+            });
+        }
+        catch (ApiGuards.HttpError ex)
+        {
+            return ApiResponses.FromHttpError(req, ex);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "BulkAccessRequests failed");
             return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
         }
     }
