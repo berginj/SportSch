@@ -969,7 +969,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
 
         <div className="card">
           <div className="row row--between items-center mb-2">
-            <div className="cardTitle" style={{ marginBottom: 0 }}>Calendar</div>
+            <div className="cardTitle m-0">Calendar</div>
             <button
               className="btn btn--ghost"
               onClick={toggleCalendarView}

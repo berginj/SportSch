@@ -103,13 +103,32 @@ export default function AdminDashboard({ leagueId, onNavigate }) {
 
   return (
     <div className="page">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">League Admin Dashboard</h1>
-        <p className="text-gray-600">Manage your league and monitor key metrics.</p>
+      <div className="card">
+        <div className="card__header">
+          <div className="h1">League Admin Dashboard</div>
+          <div className="subtle">Manage your league and monitor key metrics.</div>
+        </div>
+        <div className="layoutStatRow">
+          <div className="layoutStat">
+            <div className="layoutStat__value">{metrics.divisions}</div>
+            <div className="layoutStat__label">Divisions</div>
+          </div>
+          <div className="layoutStat">
+            <div className="layoutStat__value">{metrics.totalCoaches}</div>
+            <div className="layoutStat__label">Coaches</div>
+          </div>
+          <div className="layoutStat">
+            <div className="layoutStat__value">{metrics.openSlots}</div>
+            <div className="layoutStat__label">Open slots</div>
+          </div>
+          <div className="layoutStat">
+            <div className="layoutStat__value">{metrics.confirmedSlots}</div>
+            <div className="layoutStat__label">Confirmed games</div>
+          </div>
+        </div>
       </div>
 
-      {/* Health Metrics */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <MetricCard
           title="Pending Requests"
           value={metrics.pendingRequests}
@@ -145,88 +164,88 @@ export default function AdminDashboard({ leagueId, onNavigate }) {
         />
       </div>
 
-      {/* Quick Actions Panel */}
-      <div className="card mb-6">
-        <h2 className="text-xl font-bold mb-4">Quick Actions</h2>
+      <div className="card">
+        <div className="card__header">
+          <div className="h2">Quick Actions</div>
+        </div>
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
           <button
             className="btn btn--primary w-full justify-center"
             onClick={() => onNavigate && onNavigate('access-requests')}
           >
-            <span className="mr-2">👥</span>
             Access Requests
           </button>
           <button
             className="btn w-full justify-center"
             onClick={() => onNavigate && onNavigate('coaches')}
           >
-            <span className="mr-2">🎯</span>
             Assign Coaches
           </button>
           <button
             className="btn w-full justify-center"
             onClick={() => onNavigate && onNavigate('import')}
           >
-            <span className="mr-2">📄</span>
             Import CSV
           </button>
           <button
             className="btn w-full justify-center"
             onClick={() => window.location.hash = '#manage'}
           >
-            <span className="mr-2">⚙️</span>
             League Setup
           </button>
         </div>
       </div>
 
-      {/* Additional Info */}
       <div className="grid gap-4 md:grid-cols-2">
         <div className="card">
-          <h3 className="text-lg font-bold mb-3">League Overview</h3>
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-600">Divisions:</span>
+          <div className="card__header">
+            <div className="h2">League Overview</div>
+          </div>
+          <div className="grid gap-2 text-sm">
+            <div className="row row--between">
+              <span className="subtle">Divisions:</span>
               <span className="font-semibold">{metrics.divisions}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Total Coaches:</span>
+            <div className="row row--between">
+              <span className="subtle">Total Coaches:</span>
               <span className="font-semibold">{metrics.totalCoaches}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Open Slots:</span>
+            <div className="row row--between">
+              <span className="subtle">Open Slots:</span>
               <span className="font-semibold">{metrics.openSlots}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Confirmed Games:</span>
+            <div className="row row--between">
+              <span className="subtle">Confirmed Games:</span>
               <span className="font-semibold">{metrics.confirmedSlots}</span>
             </div>
           </div>
         </div>
 
         <div className="card">
-          <h3 className="text-lg font-bold mb-3">Quick Links</h3>
-          <div className="space-y-2">
+          <div className="card__header">
+            <div className="h2">Quick Links</div>
+          </div>
+          <div className="grid gap-2">
             <button
-              className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition-colors"
+              className="layoutItem layoutItem--link"
               onClick={() => window.location.hash = '#manage'}
             >
               <div className="font-semibold text-sm">Teams & Divisions</div>
-              <div className="text-xs text-gray-600">Manage teams and division setup</div>
+              <div className="subtle">Manage teams and division setup</div>
             </button>
             <button
-              className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition-colors"
+              className="layoutItem layoutItem--link"
               onClick={() => window.location.hash = '#manage'}
             >
               <div className="font-semibold text-sm">Fields</div>
-              <div className="text-xs text-gray-600">Manage field locations</div>
+              <div className="subtle">Manage field locations</div>
             </button>
             <button
-              className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 transition-colors"
+              className="layoutItem layoutItem--link"
               onClick={() => window.location.hash = '#calendar'}
             >
               <div className="font-semibold text-sm">Schedule</div>
-              <div className="text-xs text-gray-600">View calendar and manage games</div>
+              <div className="subtle">View calendar and manage games</div>
             </button>
           </div>
         </div>
@@ -236,30 +255,30 @@ export default function AdminDashboard({ leagueId, onNavigate }) {
 }
 
 function MetricCard({ title, value, subtitle, color = 'gray', actionLabel, onAction }) {
-  const colorClasses = {
-    blue: 'bg-blue-50 border-blue-200 text-blue-900',
-    green: 'bg-green-50 border-green-200 text-green-900',
-    yellow: 'bg-yellow-50 border-yellow-200 text-yellow-900',
-    red: 'bg-red-50 border-red-200 text-red-900',
-    gray: 'bg-gray-50 border-gray-200 text-gray-900',
+  const toneBadges = {
+    blue: 'statusBadge status-scheduled',
+    green: 'statusBadge status-confirmed',
+    yellow: 'statusBadge status-open',
+    red: 'statusBadge status-cancelled',
+    gray: 'statusBadge',
   };
-
-  const valueColorClasses = {
-    blue: 'text-blue-600',
-    green: 'text-green-600',
-    yellow: 'text-yellow-600',
-    red: 'text-red-600',
-    gray: 'text-gray-600',
+  const toneLabels = {
+    blue: 'review',
+    green: 'healthy',
+    yellow: 'watch',
+    red: 'urgent',
+    gray: 'info',
   };
 
   return (
-    <div className={`card ${colorClasses[color]}`}>
-      <div className="flex flex-col h-full">
-        <div className="text-sm font-semibold mb-2">{title}</div>
-        <div className={`text-3xl font-bold ${valueColorClasses[color]} mb-1`}>
-          {value}
+    <div className="card">
+      <div className="grid gap-2 h-full">
+        <div className="row row--between">
+          <div className="subtle font-semibold">{title}</div>
+          <span className={toneBadges[color] || toneBadges.gray}>{toneLabels[color] || toneLabels.gray}</span>
         </div>
-        <div className="text-xs opacity-75 mb-3">{subtitle}</div>
+        <div className="h1">{value}</div>
+        <div className="subtle">{subtitle}</div>
         {actionLabel && onAction && (
           <button
             className="btn btn--sm btn--ghost mt-auto"

@@ -287,6 +287,9 @@
   .table th { @apply text-left text-xs uppercase tracking-wide text-muted border-b-2 border-border py-2 px-3 bg-gray-50; }
   .table td { @apply border-b border-border py-2 px-3 align-top; }
   .table tr:last-child td { @apply border-b-0; }
+  .tableRow--selected td {
+    background: rgba(243, 194, 79, 0.14);
+  }
   .table--compact th { @apply py-1.5 px-2 text-[11px]; }
   .table--compact td { @apply py-1.5 px-2; }
   .table--compact tbody tr:nth-child(odd) { @apply bg-gray-50; }

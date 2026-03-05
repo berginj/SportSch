@@ -80,7 +80,9 @@ export default function NotificationSettingsPage({ leagueId }) {
     return (
       <div className="page">
         <div className="card">
-          <h2>Notification Settings</h2>
+          <div className="card__header">
+            <div className="h2">Notification Settings</div>
+          </div>
           <p className="muted">Please select a league to manage notification settings.</p>
         </div>
       </div>
@@ -91,7 +93,9 @@ export default function NotificationSettingsPage({ leagueId }) {
     return (
       <div className="page">
         <div className="card">
-          <h2>Notification Settings</h2>
+          <div className="card__header">
+            <div className="h2">Notification Settings</div>
+          </div>
           <p className="muted">Loading preferences...</p>
         </div>
       </div>
@@ -102,8 +106,10 @@ export default function NotificationSettingsPage({ leagueId }) {
     return (
       <div className="page">
         <div className="card">
-          <h2>Notification Settings</h2>
-          {error && <div className="error">{error}</div>}
+          <div className="card__header">
+            <div className="h2">Notification Settings</div>
+          </div>
+          {error && <div className="callout callout--error">{error}</div>}
           <button className="btn" onClick={loadPreferences}>
             Retry
           </button>
@@ -115,47 +121,47 @@ export default function NotificationSettingsPage({ leagueId }) {
   return (
     <div className="page">
       <div className="card">
-        <h2>Notification Settings</h2>
-        <p className="muted">
-          Configure how you want to be notified about game swaps and schedule changes for this league.
-        </p>
+        <div className="card__header">
+          <div className="h2">Notification Settings</div>
+          <div className="subtle">
+            Configure how you want to be notified about game swaps and schedule changes for this league.
+          </div>
+        </div>
 
-        {error && <div className="error mb-3">{error}</div>}
+        {error && <div className="callout callout--error mb-3">{error}</div>}
         {successMessage && (
-          <div className="callout callout--success mb-3">
+          <div className="callout callout--ok mb-3">
             {successMessage}
           </div>
         )}
 
         {/* Master Toggles */}
         <div className="mb-6">
-          <h3 className="text-lg font-bold mb-3">Master Settings</h3>
+          <div className="font-semibold mb-3">Master Settings</div>
 
-          <label className="flex items-center gap-3 mb-3 cursor-pointer">
+          <label className="inlineCheck inlineCheck--compact mb-3 cursor-pointer">
             <input
               type="checkbox"
               checked={preferences.enableInAppNotifications}
               onChange={() => handleToggle('enableInAppNotifications')}
-              className="w-5 h-5"
             />
             <div>
               <div className="font-semibold">In-App Notifications</div>
-              <div className="text-sm text-gray-600">
+              <div className="subtle">
                 Show notifications in the bell icon at the top of the page
               </div>
             </div>
           </label>
 
-          <label className="flex items-center gap-3 mb-3 cursor-pointer">
+          <label className="inlineCheck inlineCheck--compact mb-3 cursor-pointer">
             <input
               type="checkbox"
               checked={preferences.enableEmailNotifications}
               onChange={() => handleToggle('enableEmailNotifications')}
-              className="w-5 h-5"
             />
             <div>
               <div className="font-semibold">Email Notifications</div>
-              <div className="text-sm text-gray-600">
+              <div className="subtle">
                 Send notifications to {preferences.email || 'your email address'}
               </div>
             </div>
@@ -164,104 +170,98 @@ export default function NotificationSettingsPage({ leagueId }) {
 
         {/* Email Notification Types */}
         <div className="mb-6">
-          <h3 className="text-lg font-bold mb-3">Email Notification Types</h3>
-          <p className="text-sm text-gray-600 mb-4">
+          <div className="font-semibold mb-3">Email Notification Types</div>
+          <p className="subtle mb-4">
             Choose which events trigger email notifications
             {!preferences.enableEmailNotifications && ' (Email notifications are currently disabled)'}
           </p>
 
-          <div className="pl-4 border-l-2 border-gray-200">
-            <label className="flex items-center gap-3 mb-3 cursor-pointer">
+          <div className="pl-4 border-l-2 border-border">
+            <label className="inlineCheck inlineCheck--compact mb-3 cursor-pointer">
               <input
                 type="checkbox"
                 checked={preferences.emailOnSlotCreated}
                 onChange={() => handleToggle('emailOnSlotCreated')}
                 disabled={!preferences.enableEmailNotifications}
-                className="w-4 h-4"
               />
               <div>
                 <div className="font-semibold">New Game Slots</div>
-                <div className="text-sm text-gray-600">
+                <div className="subtle">
                   When a new game slot becomes available in your division
                 </div>
               </div>
             </label>
 
-            <label className="flex items-center gap-3 mb-3 cursor-pointer">
+            <label className="inlineCheck inlineCheck--compact mb-3 cursor-pointer">
               <input
                 type="checkbox"
                 checked={preferences.emailOnSlotCancelled}
                 onChange={() => handleToggle('emailOnSlotCancelled')}
                 disabled={!preferences.enableEmailNotifications}
-                className="w-4 h-4"
               />
               <div>
                 <div className="font-semibold">Cancelled Slots</div>
-                <div className="text-sm text-gray-600">
+                <div className="subtle">
                   When a game slot is cancelled
                 </div>
               </div>
             </label>
 
-            <label className="flex items-center gap-3 mb-3 cursor-pointer">
+            <label className="inlineCheck inlineCheck--compact mb-3 cursor-pointer">
               <input
                 type="checkbox"
                 checked={preferences.emailOnRequestReceived}
                 onChange={() => handleToggle('emailOnRequestReceived')}
                 disabled={!preferences.enableEmailNotifications}
-                className="w-4 h-4"
               />
               <div>
                 <div className="font-semibold">Swap Requests Received</div>
-                <div className="text-sm text-gray-600">
+                <div className="subtle">
                   When another coach requests to take your game slot
                 </div>
               </div>
             </label>
 
-            <label className="flex items-center gap-3 mb-3 cursor-pointer">
+            <label className="inlineCheck inlineCheck--compact mb-3 cursor-pointer">
               <input
                 type="checkbox"
                 checked={preferences.emailOnRequestApproved}
                 onChange={() => handleToggle('emailOnRequestApproved')}
                 disabled={!preferences.enableEmailNotifications}
-                className="w-4 h-4"
               />
               <div>
                 <div className="font-semibold">Requests Approved</div>
-                <div className="text-sm text-gray-600">
+                <div className="subtle">
                   When your swap request is approved
                 </div>
               </div>
             </label>
 
-            <label className="flex items-center gap-3 mb-3 cursor-pointer">
+            <label className="inlineCheck inlineCheck--compact mb-3 cursor-pointer">
               <input
                 type="checkbox"
                 checked={preferences.emailOnRequestDenied}
                 onChange={() => handleToggle('emailOnRequestDenied')}
                 disabled={!preferences.enableEmailNotifications}
-                className="w-4 h-4"
               />
               <div>
                 <div className="font-semibold">Requests Denied</div>
-                <div className="text-sm text-gray-600">
+                <div className="subtle">
                   When your swap request is not approved
                 </div>
               </div>
             </label>
 
-            <label className="flex items-center gap-3 mb-3 cursor-pointer">
+            <label className="inlineCheck inlineCheck--compact mb-3 cursor-pointer">
               <input
                 type="checkbox"
                 checked={preferences.emailOnGameReminder}
                 onChange={() => handleToggle('emailOnGameReminder')}
                 disabled={!preferences.enableEmailNotifications}
-                className="w-4 h-4"
               />
               <div>
                 <div className="font-semibold">Game Reminders</div>
-                <div className="text-sm text-gray-600">
+                <div className="subtle">
                   Reminders about upcoming games
                 </div>
               </div>
@@ -270,7 +270,7 @@ export default function NotificationSettingsPage({ leagueId }) {
         </div>
 
         {/* Save Button */}
-        <div className="flex gap-3">
+        <div className="row gap-3 row--wrap">
           <button
             className="btn btn--primary"
             onClick={handleSave}
@@ -288,13 +288,13 @@ export default function NotificationSettingsPage({ leagueId }) {
           </button>
         </div>
 
-        <div className="mt-6 p-4 bg-gray-50 rounded">
-          <h4 className="font-semibold mb-2">About Notifications</h4>
-          <ul className="text-sm text-gray-600 space-y-1">
-            <li>• In-app notifications appear in the bell icon at the top of the page</li>
-            <li>• Email notifications are sent to your registered email address</li>
-            <li>• These preferences are specific to this league</li>
-            <li>• Changes take effect immediately</li>
+        <div className="callout mt-6">
+          <div className="font-semibold mb-2">About Notifications</div>
+          <ul className="subtle grid gap-1">
+            <li>- In-app notifications appear in the bell icon at the top of the page.</li>
+            <li>- Email notifications are sent to your registered email address.</li>
+            <li>- These preferences are specific to this league.</li>
+            <li>- Changes take effect immediately.</li>
           </ul>
         </div>
       </div>

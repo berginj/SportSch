@@ -95,12 +95,14 @@ export default function AccessRequestsSection({
 
   return (
     <div className="card">
-      <h2>Admin: access requests</h2>
-      <p className="muted">
-        {accessAll
-          ? "Approve or deny access requests across all leagues."
-          : "Approve or deny access requests for the currently selected league."}
-      </p>
+      <div className="card__header">
+        <div className="h2">Admin: access requests</div>
+        <div className="subtle">
+          {accessAll
+            ? "Approve or deny access requests across all leagues."
+            : "Approve or deny access requests for the currently selected league."}
+        </div>
+      </div>
       <div className="row gap-3 row--wrap mb-2">
         <LeaguePicker leagueId={leagueId} setLeagueId={setLeagueId} me={me} label="League" />
         {isGlobalAdmin ? (
@@ -144,20 +146,19 @@ export default function AccessRequestsSection({
         </button>
       </div>
 
-      {err && <div className="error">{err}</div>}
+      {err && <div className="callout callout--error">{err}</div>}
 
       {/* Bulk Action Toolbar */}
       {selectedItems.size > 0 && accessStatus === 'Pending' && (
-        <div className="card bg-blue-50 border-blue-200 mb-4">
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-3">
-              <span className="font-semibold text-blue-900">
+        <div className="callout callout--info mb-4">
+          <div className="row row--between row--wrap gap-4">
+            <div className="row row--wrap gap-3">
+              <span className="font-semibold">
                 {selectedItems.size} {selectedItems.size === 1 ? 'request' : 'requests'} selected
               </span>
-              <label className="flex items-center gap-2">
-                <span className="text-sm text-blue-800">Assign role:</span>
+              <label className="inlineCheck inlineCheck--compact">
+                <span className="subtle">Assign role:</span>
                 <select
-                  className="text-sm"
                   value={bulkRole}
                   onChange={(e) => setBulkRole(e.target.value)}
                   disabled={bulkProcessing}
@@ -168,7 +169,7 @@ export default function AccessRequestsSection({
                 </select>
               </label>
             </div>
-            <div className="flex gap-2">
+            <div className="row gap-2 row--wrap">
               <button
                 className="btn btn--primary btn--sm"
                 onClick={bulkApprove}
@@ -184,7 +185,7 @@ export default function AccessRequestsSection({
                 {bulkProcessing ? 'Processing...' : `Deny ${selectedItems.size}`}
               </button>
               <button
-                className="btn btn--ghost btn--sm"
+                className="btn btn--sm btn--ghost"
                 onClick={() => setSelectedItems(new Set())}
                 disabled={bulkProcessing}
               >
@@ -223,7 +224,7 @@ export default function AccessRequestsSection({
             </thead>
             <tbody>
               {sorted.map((r) => (
-                <tr key={r.userId} className={selectedItems.has(r.userId) ? 'bg-blue-50' : ''}>
+                <tr key={r.userId} className={selectedItems.has(r.userId) ? 'tableRow--selected' : ''}>
                   {accessStatus === 'Pending' && (
                     <td>
                       <input
@@ -272,7 +273,7 @@ export default function AccessRequestsSection({
                         </button>
                       </div>
                     ) : (
-                      <span className="badge">{accessStatus}</span>
+                      <span className="statusBadge">{accessStatus}</span>
                     )}
                   </td>
                 </tr>
