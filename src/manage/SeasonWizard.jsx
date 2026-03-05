@@ -4789,7 +4789,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
           </>
         )}{" "}
         It does <strong>not</strong> clear recurring allocations or field blackouts. If you need a different underlying slot pool, clear or edit availability first, then rerun the wizard.
-        <label className="inlineCheck" style={{ marginTop: "0.75rem" }}>
+        <label className="inlineCheck mt-3">
           <input
             type="checkbox"
             checked={resetGeneratedSlotsBeforeApply}
@@ -4823,7 +4823,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
           boxShadow: "var(--season-wizard-rail-shadow)",
         }}
       >
-        <div className="row row--between gap-2" style={{ alignItems: "center" }}>
+        <div className="row row--between gap-2 items-center">
           <div>
             <div className="font-bold">
               Step {Math.min(step + 1, steps.length)} of {steps.length}: {currentStepMeta?.label || "Wizard"}
@@ -4968,7 +4968,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
           </div>
           <div className="card__body stack gap-3">
             <div className="callout">
-              <div className="row row--wrap gap-2" style={{ alignItems: "center" }}>
+              <div className="row row--wrap gap-2 items-center">
                 <span className="pill">Total: {slotPlanSummary.total}</span>
                 <span className="pill">Practice: {slotPlanSummary.practice}</span>
                 <span className="pill">Game: {slotPlanSummary.game}</span>
@@ -5027,7 +5027,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                     Save Current as Template
                   </button>
                   {getSlotPlanTemplates().map((template) => (
-                    <div key={template.name} className="row gap-1" style={{ alignItems: 'center' }}>
+                    <div key={template.name} className="row gap-1 items-center">
                       <button
                         className="btn btn--ghost"
                         type="button"
@@ -5044,7 +5044,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                             deleteSlotPlanTemplate(template.name);
                           }
                         }}
-                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
+                        className="px-2 py-1 text-xs"
                         title="Delete template"
                       >
                         X
@@ -5099,11 +5099,11 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                     {WEEKDAY_OPTIONS.map((day) => {
                       const dayPatterns = slotPatterns.filter((p) => p.weekday === day);
                       return (
-                        <div key={day} className="card" style={{ border: "1px solid #cbd5e1" }}>
-                          <div className="card__header" style={{ paddingBottom: "0.25rem" }}>
+                        <div key={day} className="card border border-slate-300">
+                          <div className="card__header pb-1">
                             <div className="h5">{day}</div>
                           </div>
-                          <div className="card__body stack gap-1" style={{ paddingTop: 0 }}>
+                          <div className="card__body stack gap-1 pt-0">
                             {!dayPatterns.length ? (
                               <div className="subtle">No openings</div>
                             ) : (
@@ -5283,7 +5283,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                               value={duration}
                               onChange={(e) => updatePatternDurationMinutes(pattern.key, e.target.value)}
                               title={`Changes end time for all ${pattern.count} opening(s) in this pattern.`}
-                              style={{ width: 90 }}
+                              className="w-[90px]"
                             />
                           </td>
                           <td>{pattern.fieldKey}</td>
@@ -5316,7 +5316,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                                 className="btn btn--ghost"
                                 type="button"
                                 onClick={() => quickConvertPattern(pattern.key, "both", effectiveGameSlotMinutes)}
-                                style={{ padding: "0.2rem 0.45rem", fontSize: "0.75rem", lineHeight: 1.2 }}
+                                className="px-2 py-1 text-xs leading-none"
                                 title={`Set to Both and refactor to ${effectiveGameSlotMinutes} minutes`}
                               >
                                 Both + {effectiveGameSlotMinutes}m
@@ -5412,7 +5412,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
             ) : null}
 
             <div className="callout">
-              <div className="row row--between gap-2" style={{ alignItems: "center" }}>
+              <div className="row row--between gap-2 items-center">
                 <div>
                   <div className="font-bold">Rule presets</div>
                   <div className="subtle">Start from a tuned baseline, then fine-tune individual settings below.</div>
@@ -5527,7 +5527,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                   </div>
 
                   <div className="stack gap-1 mt-2">
-                    <div className="font-bold" style={{ fontSize: "0.9rem" }}>Block Common Holidays</div>
+                    <div className="font-bold text-[0.9rem]">Block Common Holidays</div>
                     <div className="subtle mb-1">Automatically exclude these holidays from the schedule</div>
                     {seasonStart ? (
                       <>
@@ -5694,7 +5694,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                               ))}
                             </select>
                           </td>
-                          <td style={{ width: 120 }}>
+                          <td className="w-[120px]">
                             <input
                               type="number"
                               min="1"
@@ -5704,7 +5704,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                               onChange={(e) => updateRivalryMatchupRow(idx, { weight: e.target.value })}
                             />
                           </td>
-                          <td style={{ width: 80 }}>
+                          <td className="w-[80px]">
                             <button
                               type="button"
                               className="btn btn--ghost"
@@ -5833,7 +5833,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                               placeholder="Opponent (optional)"
                             />
                           </td>
-                          <td style={{ width: 90 }}>
+                          <td className="w-[90px]">
                             <button
                               type="button"
                               className="btn btn--ghost"
@@ -5987,22 +5987,13 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                 return (
                   <div
                     key={option.id}
-                    className={`schedule-option ${isSelected ? "schedule-option--selected" : ""}`}
-                    style={{
-                      flex: "1 1 calc(50% - 1rem)",
-                      minWidth: "300px",
-                      border: isSelected ? "2px solid #3b82f6" : "1px solid #e5e7eb",
-                      borderRadius: "8px",
-                      padding: "1rem",
-                      background: isSelected ? "#eff6ff" : "white",
-                      cursor: "pointer"
-                    }}
+                    className={`layoutPanel flex-1 min-w-[300px] cursor-pointer ${isSelected ? "border-2 border-accent bg-amber-50" : ""}`}
                     onClick={() => selectScheduleOption(option.id)}
                   >
                     <div className="row row--between items-center mb-2">
                       <div className="font-bold">Option {option.id}</div>
                       {isBest && option.metrics && (
-                        <span style={{ background: "#fef3c7", color: "#92400e", padding: "2px 8px", borderRadius: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
+                        <span className="statusBadge status-open">
                           Recommended
                         </span>
                       )}
@@ -6014,15 +6005,21 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                       <>
                         <div className="row row--between mb-2">
                           <span className="subtle">Quality Score</span>
-                          <span className="font-bold" style={{ fontSize: "1.2rem", color: option.metrics.overallQuality >= 80 ? "#059669" : option.metrics.overallQuality >= 60 ? "#3b82f6" : "#f59e0b" }}>
+                          <span className={`font-bold text-[1.2rem] ${
+                            option.metrics.overallQuality >= 80
+                              ? "text-green-700"
+                              : option.metrics.overallQuality >= 60
+                                ? "text-blue-700"
+                                : "text-amber-700"
+                          }`}>
                             {option.metrics.overallQuality}/100
                           </span>
                         </div>
 
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", fontSize: "0.85rem" }}>
+                        <div className="grid grid-cols-2 gap-2 text-[0.85rem]">
                           <div>
                             <div className="subtle">Unscheduled</div>
-                            <div className={option.metrics.unassignedMatchups === 0 ? "font-bold" : "font-bold" } style={{ color: option.metrics.unassignedMatchups === 0 ? "#059669" : "#dc2626" }}>
+                            <div className={option.metrics.unassignedMatchups === 0 ? "font-bold text-green-700" : "font-bold text-red-700"}>
                               {option.metrics.unassignedMatchups}
                             </div>
                           </div>
@@ -6034,7 +6031,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
                           <div>
                             <div className="subtle">Hard Issues</div>
-                            <div className="font-bold" style={{ color: option.metrics.hardIssues === 0 ? "#059669" : "#dc2626" }}>
+                            <div className={option.metrics.hardIssues === 0 ? "font-bold text-green-700" : "font-bold text-red-700"}>
                               {option.metrics.hardIssues}
                             </div>
                           </div>
@@ -6046,7 +6043,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
                           <div>
                             <div className="subtle">Team Balance</div>
-                            <div className="font-bold" style={{ color: option.metrics.teamLoadSpread <= 1 ? "#059669" : "#f59e0b" }}>
+                            <div className={option.metrics.teamLoadSpread <= 1 ? "font-bold text-green-700" : "font-bold text-amber-700"}>
                               {option.metrics.teamLoadSpread} spread
                             </div>
                           </div>
@@ -6058,7 +6055,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
                           <div>
                             <div className="subtle">Guest Balance</div>
-                            <div className="font-bold" style={{ color: option.metrics.guestSpread === 0 ? "#059669" : "#f59e0b" }}>
+                            <div className={option.metrics.guestSpread === 0 ? "font-bold text-green-700" : "font-bold text-amber-700"}>
                               {option.metrics.guestSpread} spread
                             </div>
                           </div>
@@ -6070,8 +6067,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                         </div>
 
                         <button
-                          className={`btn ${isSelected ? "btn--primary" : "btn--ghost"} mt-3`}
-                          style={{ width: "100%" }}
+                          className={`btn w-full ${isSelected ? "btn--primary" : "btn--ghost"} mt-3`}
                           onClick={(e) => {
                             e.stopPropagation();
                             selectScheduleOption(option.id);
@@ -6220,9 +6216,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                   </div>
                   {selectedRuleFocusScope ? (
                     <div className="callout mt-2">
-                      <div className="row row--between gap-2" style={{ alignItems: "center" }}>
+                      <div className="row row--between gap-2 items-center">
                         <div>
-                          <div className="font-bold" style={{ fontSize: "0.95rem" }}>Focused rule: {selectedRuleFocusScope.ruleId}</div>
+                          <div className="font-bold text-[0.95rem]">Focused rule: {selectedRuleFocusScope.ruleId}</div>
                           <div className="subtle">
                             Severity: {selectedRuleFocusScope.severity || "-"} | Teams: {selectedRuleFocusScope.teamIds.length} | Weeks: {selectedRuleFocusScope.weekKeys.length} | Slots: {selectedRuleFocusScope.slotIds.length}
                           </div>
@@ -6297,9 +6293,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                   </div>
                   {selectedRepairScope ? (
                     <div className="callout callout--warning mb-2">
-                      <div className="row row--between gap-2" style={{ alignItems: "center" }}>
+                      <div className="row row--between gap-2 items-center">
                         <div>
-                          <div className="font-bold" style={{ fontSize: "0.95rem" }}>Showing affected games: {selectedRepairScope.title || selectedRepairScope.proposalId}</div>
+                          <div className="font-bold text-[0.95rem]">Showing affected games: {selectedRepairScope.title || selectedRepairScope.proposalId}</div>
                           <div className="subtle">
                             Rules: {(selectedRepairScope.ruleIds || []).join(", ") || "-"} | Teams: {(selectedRepairScope.teamIds || []).length} | Weeks: {(selectedRepairScope.weekKeys || []).length} | Slots: {(selectedRepairScope.slotIds || []).length}
                           </div>
@@ -6691,11 +6687,11 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                                 <td key={`matrix-cell-${row.teamId}-${colTeamId}`} title={titleBits.join(" | ")}>
                                   {cell.assigned}/{cell.target}
                                   {priorityTags.length ? (
-                                    <div className="subtle" style={{ whiteSpace: "nowrap" }}>
+                                    <div className="subtle whitespace-nowrap">
                                       [{priorityTags.join("+")}]
                                     </div>
                                   ) : null}
-                                  <div className="subtle" style={{ whiteSpace: "nowrap" }}>
+                                  <div className="subtle whitespace-nowrap">
                                     ({cell.homeForRow}H/{cell.awayForRow}A)
                                   </div>
                                 </td>
@@ -6821,8 +6817,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                                   }}
                                 >
                                   {label}
-                                  {cell.guest > 0 ? <div className="subtle" style={{ fontSize: "0.7rem" }}>G{cell.guest}</div> : null}
-                                  {isDragEligible ? <div className="subtle" style={{ fontSize: "0.65rem" }}>swap</div> : null}
+                                  {cell.guest > 0 ? <div className="subtle text-[0.7rem]">G{cell.guest}</div> : null}
+                                  {isDragEligible ? <div className="subtle text-[0.65rem]">swap</div> : null}
                                 </td>
                               );
                             })}
@@ -6913,8 +6909,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                                   }}
                                 >
                                   {label}
-                                  {cell.guest > 0 ? <div className="subtle" style={{ fontSize: "0.7rem", color: "inherit" }}>G{cell.guest}</div> : null}
-                                  {isDragEligible ? <div className="subtle" style={{ fontSize: "0.65rem", color: "inherit" }}>swap</div> : null}
+                                  {cell.guest > 0 ? <div className="subtle text-[0.7rem] text-inherit">G{cell.guest}</div> : null}
+                                  {isDragEligible ? <div className="subtle text-[0.65rem] text-inherit">swap</div> : null}
                                 </td>
                               );
                             })}
@@ -6968,8 +6964,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                           }}
                           title={`${week.weekKey} | games ${week.totalGames}/${week.totalCapacity || 0} | hard ${week.hardRuleTouches} | soft ${week.softRuleTouches}`}
                         >
-                          <div className="row row--between gap-2" style={{ alignItems: "center" }}>
-                            <div style={{ fontWeight: 700 }}>W{week.weekIndex}</div>
+                          <div className="row row--between gap-2 items-center">
+                            <div className="font-bold">W{week.weekIndex}</div>
                             <span className="pill">{week.phaseBand}</span>
                           </div>
                           <div className="subtle">{week.weekStart}{week.weekEnd ? ` to ${week.weekEnd}` : ""}</div>
@@ -7060,13 +7056,13 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                                   }}
                                   title={`${cell.day} | ${cell.firstDate || week.weekKey} | games ${cell.games} | open ${cell.open}`}
                                 >
-                                  <div style={{ fontWeight: 600 }}>{cell.games > 0 ? `G${cell.games}` : "-"}</div>
+                                  <div className="font-semibold">{cell.games > 0 ? `G${cell.games}` : "-"}</div>
                                   <div className="subtle">
                                     {cell.open > 0 ? `Open ${cell.open}` : "Open 0"}
                                     {cell.guest > 0 ? ` | Guest ${cell.guest}` : ""}
                                   </div>
                                   {cell.firstDate ? <div className="subtle">{cell.firstDate}</div> : null}
-                                  {isDragEligible ? <div className="subtle" style={{ fontSize: "0.65rem" }}>swap</div> : null}
+                                  {isDragEligible ? <div className="subtle text-[0.65rem]">swap</div> : null}
                                 </td>
                               );
                             })}
@@ -7162,7 +7158,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                   Tip: drag one <b>Regular Season</b> game row onto another to try a preview-only swap. Guest/external rows stay locked, and the drop is revalidated immediately.
                 </div>
                 <div className="callout">
-                  <div className="row row--wrap gap-2" style={{ alignItems: "end" }}>
+                  <div className="row row--wrap gap-2 items-end">
                     <label>
                       Phase filter
                       <select
@@ -7204,7 +7200,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                         ))}
                       </select>
                     </label>
-                    <label className="inlineCheck" style={{ marginBottom: "0.35rem" }}>
+                    <label className="inlineCheck mb-[0.35rem]">
                       <input
                         type="checkbox"
                         checked={showHighlightedAssignmentsOnly}
@@ -7342,7 +7338,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                 <div className={`callout mt-2 ${
                   selectedGameExplain?.hardRuleTouches > 0 ? "callout--error" : "callout--ok"
                 }`}>
-                  <div className="row row--between gap-2" style={{ alignItems: "center" }}>
+                  <div className="row row--between gap-2 items-center">
                     <div className="font-bold">Game explainability (preview)</div>
                     {selectedGameExplain ? (
                       <button
@@ -7404,7 +7400,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                                   background: "#fff",
                                 }}
                               >
-                                <div style={{ fontWeight: 600 }}>{factor.label}</div>
+                                <div className="font-semibold">{factor.label}</div>
                                 <div className="subtle">{factor.detail}</div>
                               </div>
                             ))}
@@ -7427,7 +7423,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                                     background: "#fff",
                                   }}
                                 >
-                                  <div className="row gap-2" style={{ alignItems: "center" }}>
+                                  <div className="row gap-2 items-center">
                                     <span
                                       className="pill"
                                       style={group.severity === "hard"
@@ -7518,7 +7514,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                           ) : null}
                           <div className="grid2 mt-2">
                             <div>
-                              <div className="font-bold mb-1" style={{ fontSize: "0.95rem" }}>Top feasible alternatives</div>
+                              <div className="font-bold mb-1 text-[0.95rem]">Top feasible alternatives</div>
                               {Array.isArray(selectedGameExplain.backendExplanation.topFeasibleAlternatives) && selectedGameExplain.backendExplanation.topFeasibleAlternatives.length ? (
                                 <div className="tableWrap">
                                   <table className="table table--compact">
@@ -7543,7 +7539,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                               )}
                             </div>
                             <div>
-                              <div className="font-bold mb-1" style={{ fontSize: "0.95rem" }}>Top rejected alternatives</div>
+                              <div className="font-bold mb-1 text-[0.95rem]">Top rejected alternatives</div>
                               {Array.isArray(selectedGameExplain.backendExplanation.topRejectedAlternatives) && selectedGameExplain.backendExplanation.topRejectedAlternatives.length ? (
                                 <div className="tableWrap">
                                   <table className="table table--compact">
@@ -7625,7 +7621,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
               Back
             </button>
             {previewApplyBlocked ? (
-              <div className="subtle" style={{ alignSelf: "center", marginRight: "0.5rem" }}>
+              <div className="subtle self-center mr-2">
                 Apply blocked by hard rule violations. Use Rule Health to review the failing rules.
               </div>
             ) : null}
