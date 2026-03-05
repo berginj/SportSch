@@ -1672,8 +1672,18 @@ public class ScheduleWizardFunctions
             assignments.AddRange(anchoredResult.Assignments);
             carriedUnassignedSlots.AddRange(anchoredResult.UnassignedSlots);
         }
-        if (externalOfferPerWeek <= 0 || carriedUnassignedSlots.Count == 0)
+        if (externalOfferPerWeek <= 0)
             return new PhaseAssignments(assignments, carriedUnassignedSlots, result.UnassignedMatchups, result.PlacementTraces);
+        if (carriedUnassignedSlots.Count == 0)
+        {
+            var balancedAssignments = ScheduleEngine.BalanceExternalOfferHomes(
+                assignments,
+                teams,
+                maxGamesPerWeek,
+                noDoubleHeaders,
+                maxExternalOffersPerTeamSeason);
+            return new PhaseAssignments(balancedAssignments, carriedUnassignedSlots, result.UnassignedMatchups, result.PlacementTraces);
+        }
 
         var withExternal = AddExternalOffers(
             assignments,
@@ -1685,7 +1695,13 @@ public class ScheduleWizardFunctions
             maxGamesPerWeek,
             maxExternalOffersPerTeamSeason,
             noDoubleHeaders);
-        return new PhaseAssignments(withExternal.Assignments, withExternal.UnassignedSlots, withExternal.UnassignedMatchups, result.PlacementTraces);
+        var balancedWithExternal = ScheduleEngine.BalanceExternalOfferHomes(
+            withExternal.Assignments,
+            teams,
+            maxGamesPerWeek,
+            noDoubleHeaders,
+            maxExternalOffersPerTeamSeason);
+        return new PhaseAssignments(balancedWithExternal, withExternal.UnassignedSlots, withExternal.UnassignedMatchups, result.PlacementTraces);
     }
 
     private static List<SlotInfo> SelectReservedExternalSlots(

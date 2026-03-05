@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using GameSwap.Functions.Scheduling;
 using Xunit;
 
@@ -236,6 +237,61 @@ public class ScheduleEngineTests
         Assert.Contains("B", homes);
         Assert.Single(result.UnassignedSlots);
         Assert.Equal("slot-3", result.UnassignedSlots[0].SlotId);
+    }
+
+    [Fact]
+    public void BalanceExternalOfferHomes_RebalancesWhenSpreadExceedsOne_AndConstraintsAllow()
+    {
+        var teams = new List<string> { "A", "B", "C" };
+        var assignments = new List<ScheduleAssignment>
+        {
+            new("ext-1", "2026-05-03", "10:00", "12:00", "Field-1", "A", "", true),
+            new("ext-2", "2026-05-10", "10:00", "12:00", "Field-1", "A", "", true),
+            new("ext-3", "2026-05-17", "10:00", "12:00", "Field-1", "A", "", true),
+            new("ext-4", "2026-05-24", "10:00", "12:00", "Field-1", "A", "", true),
+        };
+
+        var balanced = ScheduleEngine.BalanceExternalOfferHomes(
+            assignments,
+            teams,
+            maxGamesPerWeek: 2,
+            noDoubleHeaders: true,
+            maxExternalOffersPerTeamSeason: null);
+
+        Assert.Equal(assignments.Count, balanced.Count);
+        var counts = teams.ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
+        foreach (var assignment in balanced.Where(a => a.IsExternalOffer))
+        {
+            counts[assignment.HomeTeamId] = counts.TryGetValue(assignment.HomeTeamId, out var value) ? value + 1 : 1;
+        }
+
+        var spread = counts.Values.Max() - counts.Values.Min();
+        Assert.True(spread <= 1, $"Expected spread <= 1 but got {spread}. Counts: {string.Join(", ", counts.Select(kvp => $"{kvp.Key}:{kvp.Value}"))}");
+    }
+
+    [Fact]
+    public void BalanceExternalOfferHomes_DoesNotMoveIntoNoDoubleHeaderConflicts()
+    {
+        var teams = new List<string> { "A", "B", "C" };
+        var assignments = new List<ScheduleAssignment>
+        {
+            // External offers currently concentrated on A
+            new("ext-1", "2026-05-03", "10:00", "12:00", "Field-1", "A", "", true),
+            new("ext-2", "2026-05-10", "10:00", "12:00", "Field-1", "A", "", true),
+            // B and C already have confirmed games on those dates, so no-doubleheaders prevents reassignment
+            new("g-1", "2026-05-03", "13:00", "15:00", "Field-2", "B", "C", false),
+            new("g-2", "2026-05-10", "13:00", "15:00", "Field-2", "C", "B", false),
+        };
+
+        var balanced = ScheduleEngine.BalanceExternalOfferHomes(
+            assignments,
+            teams,
+            maxGamesPerWeek: 2,
+            noDoubleHeaders: true,
+            maxExternalOffersPerTeamSeason: null);
+
+        var externalHomes = balanced.Where(a => a.IsExternalOffer).Select(a => a.HomeTeamId).ToList();
+        Assert.Equal(new List<string> { "A", "A" }, externalHomes);
     }
 
     [Fact]

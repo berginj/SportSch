@@ -95,6 +95,128 @@ public static class ScheduleEngine
         public int FeasibleCandidateCount { get; init; }
     }
 
+    public static List<ScheduleAssignment> BalanceExternalOfferHomes(
+        IReadOnlyList<ScheduleAssignment> assignments,
+        IReadOnlyList<string> teams,
+        int? maxGamesPerWeek,
+        bool noDoubleHeaders,
+        int? maxExternalOffersPerTeamSeason)
+    {
+        var list = (assignments ?? Array.Empty<ScheduleAssignment>()).ToList();
+        var teamList = (teams ?? Array.Empty<string>())
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (list.Count == 0 || teamList.Count < 2)
+            return list;
+
+        var externalIndexes = list
+            .Select((assignment, idx) => new { assignment, idx })
+            .Where(row => row.assignment.IsExternalOffer && !string.IsNullOrWhiteSpace(row.assignment.HomeTeamId))
+            .Select(row => row.idx)
+            .ToList();
+        if (externalIndexes.Count == 0)
+            return list;
+
+        var teamSet = new HashSet<string>(teamList, StringComparer.OrdinalIgnoreCase);
+        var externalCounts = teamList.ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
+        var weekCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var dateCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var assignment in list)
+        {
+            if (!string.IsNullOrWhiteSpace(assignment.HomeTeamId) && teamSet.Contains(assignment.HomeTeamId))
+            {
+                IncrementTeamWeekCount(weekCounts, assignment.HomeTeamId, WeekKey(assignment.GameDate));
+                IncrementTeamDateCount(dateCounts, assignment.HomeTeamId, assignment.GameDate);
+                if (assignment.IsExternalOffer)
+                {
+                    externalCounts[assignment.HomeTeamId] = externalCounts.TryGetValue(assignment.HomeTeamId, out var current)
+                        ? current + 1
+                        : 1;
+                }
+            }
+            if (!string.IsNullOrWhiteSpace(assignment.AwayTeamId) && teamSet.Contains(assignment.AwayTeamId))
+            {
+                IncrementTeamWeekCount(weekCounts, assignment.AwayTeamId, WeekKey(assignment.GameDate));
+                IncrementTeamDateCount(dateCounts, assignment.AwayTeamId, assignment.GameDate);
+            }
+        }
+
+        var maxIterations = Math.Max(1, externalIndexes.Count * Math.Max(2, teamList.Count) * 4);
+        for (var iteration = 0; iteration < maxIterations; iteration++)
+        {
+            var minExternal = teamList.Min(t => externalCounts.TryGetValue(t, out var count) ? count : 0);
+            var maxExternal = teamList.Max(t => externalCounts.TryGetValue(t, out var count) ? count : 0);
+            if (maxExternal - minExternal <= 1)
+                break;
+
+            var overTeam = teamList
+                .OrderByDescending(t => externalCounts.TryGetValue(t, out var count) ? count : 0)
+                .ThenBy(t => t, StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault() ?? "";
+            if (string.IsNullOrWhiteSpace(overTeam))
+                break;
+
+            var underTeams = teamList
+                .Where(t => !string.Equals(t, overTeam, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(t => externalCounts.TryGetValue(t, out var count) ? count : int.MaxValue)
+                .ThenBy(t => t, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (underTeams.Count == 0)
+                break;
+
+            var moved = false;
+            var candidateIndexes = externalIndexes
+                .Where(i => string.Equals(list[i].HomeTeamId, overTeam, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(i => list[i].GameDate)
+                .ThenBy(i => list[i].StartTime)
+                .ThenBy(i => list[i].FieldKey)
+                .ToList();
+
+            foreach (var index in candidateIndexes)
+            {
+                var candidate = list[index];
+                var weekKey = WeekKey(candidate.GameDate);
+                foreach (var underTeam in underTeams)
+                {
+                    if (!CanReassignExternalHomeToTeam(
+                        underTeam,
+                        candidate.GameDate,
+                        weekKey,
+                        dateCounts,
+                        weekCounts,
+                        externalCounts,
+                        maxGamesPerWeek,
+                        noDoubleHeaders,
+                        maxExternalOffersPerTeamSeason))
+                    {
+                        continue;
+                    }
+
+                    DecrementTeamDateCount(dateCounts, overTeam, candidate.GameDate);
+                    DecrementTeamWeekCount(weekCounts, overTeam, weekKey);
+                    externalCounts[overTeam] = Math.Max(0, (externalCounts.TryGetValue(overTeam, out var priorOver) ? priorOver : 0) - 1);
+
+                    IncrementTeamDateCount(dateCounts, underTeam, candidate.GameDate);
+                    IncrementTeamWeekCount(weekCounts, underTeam, weekKey);
+                    externalCounts[underTeam] = (externalCounts.TryGetValue(underTeam, out var priorUnder) ? priorUnder : 0) + 1;
+
+                    list[index] = candidate with { HomeTeamId = underTeam };
+                    moved = true;
+                    break;
+                }
+
+                if (moved) break;
+            }
+
+            if (!moved)
+                break;
+        }
+
+        return list;
+    }
+
     public static List<MatchupPair> BuildRoundRobin(IReadOnlyList<string> teamIds)
     {
         var teams = new List<string>(teamIds);
@@ -1300,6 +1422,38 @@ public static class ScheduleEngine
         return true;
     }
 
+    private static bool CanReassignExternalHomeToTeam(
+        string teamId,
+        string gameDate,
+        string weekKey,
+        Dictionary<string, int> dateCounts,
+        Dictionary<string, int> weekCounts,
+        Dictionary<string, int> externalCounts,
+        int? maxGamesPerWeek,
+        bool noDoubleHeaders,
+        int? maxExternalOffersPerTeamSeason)
+    {
+        if (string.IsNullOrWhiteSpace(teamId)) return false;
+
+        if (maxExternalOffersPerTeamSeason.HasValue)
+        {
+            var currentExternal = externalCounts.TryGetValue(teamId, out var count) ? count : 0;
+            if (currentExternal >= maxExternalOffersPerTeamSeason.Value) return false;
+        }
+
+        if (maxGamesPerWeek.HasValue && maxGamesPerWeek.Value > 0 && !string.IsNullOrWhiteSpace(weekKey))
+        {
+            if (GetTeamWeekCount(weekCounts, teamId, weekKey) >= maxGamesPerWeek.Value) return false;
+        }
+
+        if (noDoubleHeaders && !string.IsNullOrWhiteSpace(gameDate))
+        {
+            if (GetTeamDateCount(dateCounts, teamId, gameDate) > 0) return false;
+        }
+
+        return true;
+    }
+
     private static int ScoreExternalOfferCandidate(
         string home,
         string gameDate,
@@ -1375,6 +1529,52 @@ public static class ScheduleEngine
         if (string.IsNullOrWhiteSpace(weekKey)) return;
         var key = $"{teamId}|{weekKey}";
         gamesByWeek[key] = gamesByWeek.TryGetValue(key, out var v) ? v + 1 : 1;
+    }
+
+    private static int GetTeamWeekCount(Dictionary<string, int> counts, string teamId, string weekKey)
+    {
+        if (string.IsNullOrWhiteSpace(teamId) || string.IsNullOrWhiteSpace(weekKey)) return 0;
+        var key = $"{teamId}|{weekKey}";
+        return counts.TryGetValue(key, out var value) ? value : 0;
+    }
+
+    private static void IncrementTeamWeekCount(Dictionary<string, int> counts, string teamId, string weekKey)
+    {
+        if (string.IsNullOrWhiteSpace(teamId) || string.IsNullOrWhiteSpace(weekKey)) return;
+        var key = $"{teamId}|{weekKey}";
+        counts[key] = counts.TryGetValue(key, out var value) ? value + 1 : 1;
+    }
+
+    private static void DecrementTeamWeekCount(Dictionary<string, int> counts, string teamId, string weekKey)
+    {
+        if (string.IsNullOrWhiteSpace(teamId) || string.IsNullOrWhiteSpace(weekKey)) return;
+        var key = $"{teamId}|{weekKey}";
+        if (!counts.TryGetValue(key, out var value)) return;
+        if (value <= 1) counts.Remove(key);
+        else counts[key] = value - 1;
+    }
+
+    private static int GetTeamDateCount(Dictionary<string, int> counts, string teamId, string gameDate)
+    {
+        if (string.IsNullOrWhiteSpace(teamId) || string.IsNullOrWhiteSpace(gameDate)) return 0;
+        var key = $"{teamId}|{gameDate}";
+        return counts.TryGetValue(key, out var value) ? value : 0;
+    }
+
+    private static void IncrementTeamDateCount(Dictionary<string, int> counts, string teamId, string gameDate)
+    {
+        if (string.IsNullOrWhiteSpace(teamId) || string.IsNullOrWhiteSpace(gameDate)) return;
+        var key = $"{teamId}|{gameDate}";
+        counts[key] = counts.TryGetValue(key, out var value) ? value + 1 : 1;
+    }
+
+    private static void DecrementTeamDateCount(Dictionary<string, int> counts, string teamId, string gameDate)
+    {
+        if (string.IsNullOrWhiteSpace(teamId) || string.IsNullOrWhiteSpace(gameDate)) return;
+        var key = $"{teamId}|{gameDate}";
+        if (!counts.TryGetValue(key, out var value)) return;
+        if (value <= 1) counts.Remove(key);
+        else counts[key] = value - 1;
     }
 
     private static void AddTeamGameDate(Dictionary<string, List<DateTime>> gamesByTeamDates, string teamId, string gameDate)
