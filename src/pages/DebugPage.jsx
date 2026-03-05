@@ -248,6 +248,15 @@ export default function DebugPage({ leagueId, me }) {
     return counts;
   }, [previewRequests]);
 
+  const debugSummary = useMemo(() => ({
+    memberships: memberships.length,
+    globalAdmins: globalAdmins.length,
+    users: users.length,
+    membershipRows: membershipsAll.length,
+    previewRequests: previewRequests.length,
+    repairRows: repairAuditRows.length,
+  }), [memberships.length, globalAdmins.length, users.length, membershipsAll.length, previewRequests.length, repairAuditRows.length]);
+
   const coachSetupLink = useMemo(() => {
     return buildCoachSetupLink(leagueId, previewTeamId);
   }, [leagueId, previewTeamId]);
@@ -1102,30 +1111,68 @@ export default function DebugPage({ leagueId, me }) {
   }, [isGlobalAdmin]);
 
   return (
-    <div className="stack">
+    <div className="page">
+      <div className="card">
+        <div className="card__header">
+          <div className="h2">Debug workspace</div>
+          <div className="subtle">Operational diagnostics for memberships, coach setup previews, and scheduler repair audit history.</div>
+        </div>
+        <div className="layoutStatRow">
+          <div className="layoutStat">
+            <div className="layoutStat__value">{debugSummary.memberships}</div>
+            <div className="layoutStat__label">League memberships</div>
+          </div>
+          <div className="layoutStat">
+            <div className="layoutStat__value">{debugSummary.globalAdmins}</div>
+            <div className="layoutStat__label">Global admins</div>
+          </div>
+          {isGlobalAdmin ? (
+            <>
+              <div className="layoutStat">
+                <div className="layoutStat__value">{debugSummary.users}</div>
+                <div className="layoutStat__label">Loaded users</div>
+              </div>
+              <div className="layoutStat">
+                <div className="layoutStat__value">{debugSummary.membershipRows}</div>
+                <div className="layoutStat__label">Membership rows</div>
+              </div>
+              <div className="layoutStat">
+                <div className="layoutStat__value">{debugSummary.previewRequests}</div>
+                <div className="layoutStat__label">Preview requests</div>
+              </div>
+              <div className="layoutStat">
+                <div className="layoutStat__value">{debugSummary.repairRows}</div>
+                <div className="layoutStat__label">Repair audit rows</div>
+              </div>
+            </>
+          ) : null}
+        </div>
+      </div>
       {isGlobalAdmin ? (
         <div className="card">
-          <h2>Debug: user management</h2>
-          <p className="muted">
-            Search users, update home league defaults, and assign league roles.
-          </p>
-
-          <div className="row gap-3 row--wrap mb-2">
-            <label>
-              Search
-              <input
-                value={userSearch}
-                onChange={(e) => setUserSearch(e.target.value)}
-                placeholder="userId or email"
-              />
-            </label>
-            <button className="btn" onClick={loadUsers} disabled={usersLoading}>
-              {usersLoading ? "Loading..." : "Refresh users"}
-            </button>
+          <div className="card__header">
+            <div className="h2">Debug: user management</div>
+            <div className="subtle">Search users, update home league defaults, and assign league roles.</div>
           </div>
 
-          {userErr && <div className="error">{userErr}</div>}
-          {userOk && <div className="ok">{userOk}</div>}
+          <div className="controlBand mb-2">
+            <div className="row gap-3 row--wrap">
+              <label>
+                Search
+                <input
+                  value={userSearch}
+                  onChange={(e) => setUserSearch(e.target.value)}
+                  placeholder="userId or email"
+                />
+              </label>
+              <button className="btn" onClick={loadUsers} disabled={usersLoading}>
+                {usersLoading ? "Loading..." : "Refresh users"}
+              </button>
+            </div>
+          </div>
+
+          {userErr && <div className="callout callout--error">{userErr}</div>}
+          {userOk && <div className="callout callout--ok">{userOk}</div>}
 
           {usersLoading ? (
             <div className="muted">Loading...</div>
@@ -1195,10 +1242,10 @@ export default function DebugPage({ leagueId, me }) {
 
       {isGlobalAdmin ? (
         <div className="card">
-          <h2>Debug: league memberships</h2>
-          <p className="muted">
-            Assign users to leagues and adjust roles. Data comes from <code>GameSwapMemberships</code>.
-          </p>
+          <div className="card__header">
+            <div className="h2">Debug: league memberships</div>
+            <div className="subtle">Assign users to leagues and adjust roles from <code>GameSwapMemberships</code>.</div>
+          </div>
 
           <div className="formGrid">
             <label>
@@ -1284,8 +1331,8 @@ export default function DebugPage({ leagueId, me }) {
             </button>
           </div>
 
-          {memberErr && <div className="error">{memberErr}</div>}
-          {memberOk && <div className="ok">{memberOk}</div>}
+          {memberErr && <div className="callout callout--error">{memberErr}</div>}
+          {memberOk && <div className="callout callout--ok">{memberOk}</div>}
 
           {membersLoadingAll ? (
             <div className="muted">Loading...</div>
@@ -1343,11 +1390,12 @@ export default function DebugPage({ leagueId, me }) {
 
       {isGlobalAdmin ? (
         <div className="card">
-          <h2>Debug: coach practice request preview</h2>
-          <p className="muted">
-            Preview exactly what a coach sees in onboarding practice requests using <code>/api/practice-requests</code> and open
-            availability slots from <code>/api/slots</code>.
-          </p>
+          <div className="card__header">
+            <div className="h2">Debug: coach practice request preview</div>
+            <div className="subtle">
+              Preview what a coach sees in onboarding practice requests using <code>/api/practice-requests</code> and open slots from <code>/api/slots</code>.
+            </div>
+          </div>
 
           <div className="row gap-3 row--wrap mb-2">
             <label>
@@ -1410,9 +1458,9 @@ export default function DebugPage({ leagueId, me }) {
             </div>
           ) : null}
 
-          {previewContextErr && <div className="error">{previewContextErr}</div>}
-          {previewErr && <div className="error">{previewErr}</div>}
-          {previewOk && <div className="ok">{previewOk}</div>}
+          {previewContextErr && <div className="callout callout--error">{previewContextErr}</div>}
+          {previewErr && <div className="callout callout--error">{previewErr}</div>}
+          {previewOk && <div className="callout callout--ok">{previewOk}</div>}
 
           {selectedPreviewTeam ? (
             <div className="mb-3">
@@ -1427,22 +1475,22 @@ export default function DebugPage({ leagueId, me }) {
           ) : null}
 
           {normalizeText(previewDivision) && normalizeText(previewTeamId) && !previewLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
-              <div className="p-3 bg-yellow-50 rounded border border-yellow-200">
-                <div className="font-semibold text-yellow-900">{previewStatusCounts.pending}</div>
-                <div className="text-sm text-yellow-700">Pending requests</div>
+            <div className="layoutStatRow mb-4">
+              <div className="layoutStat">
+                <div className="layoutStat__value">{previewStatusCounts.pending}</div>
+                <div className="layoutStat__label">Pending requests</div>
               </div>
-              <div className="p-3 bg-green-50 rounded border border-green-200">
-                <div className="font-semibold text-green-900">{previewStatusCounts.approved}</div>
-                <div className="text-sm text-green-700">Approved requests</div>
+              <div className="layoutStat">
+                <div className="layoutStat__value">{previewStatusCounts.approved}</div>
+                <div className="layoutStat__label">Approved requests</div>
               </div>
-              <div className="p-3 bg-red-50 rounded border border-red-200">
-                <div className="font-semibold text-red-900">{previewStatusCounts.rejected}</div>
-                <div className="text-sm text-red-700">Rejected requests</div>
+              <div className="layoutStat">
+                <div className="layoutStat__value">{previewStatusCounts.rejected}</div>
+                <div className="layoutStat__label">Rejected requests</div>
               </div>
-              <div className="p-3 bg-blue-50 rounded border border-blue-200">
-                <div className="font-semibold text-blue-900">{previewSlots.length}</div>
-                <div className="text-sm text-blue-700">Open practice slots</div>
+              <div className="layoutStat">
+                <div className="layoutStat__value">{previewSlots.length}</div>
+                <div className="layoutStat__label">Open practice slots</div>
               </div>
             </div>
           ) : null}
@@ -1479,7 +1527,9 @@ export default function DebugPage({ leagueId, me }) {
                 Active request count (Pending + Approved): <b>{activePracticeRequests.length}</b> / {PRACTICE_REQUEST_LIMIT}
               </div>
 
-              <h3>Practice requests for this team</h3>
+              <div className="card__header">
+                <div className="h2">Practice requests for this team</div>
+              </div>
               {previewRequests.length === 0 ? (
                 <div className="muted mb-3">No practice requests found.</div>
               ) : (
@@ -1509,7 +1559,9 @@ export default function DebugPage({ leagueId, me }) {
                 </div>
               )}
 
-              <h3>Open availability slots visible to coaches (top 20)</h3>
+              <div className="card__header">
+                <div className="h2">Open availability slots visible to coaches (top 20)</div>
+              </div>
               {previewSlots.length === 0 ? (
                 <div className="muted">No open availability slots found for this division.</div>
               ) : (
@@ -1541,16 +1593,20 @@ export default function DebugPage({ leagueId, me }) {
                 </div>
               )}
 
-              <h3 className="mt-4">Practice selection portal preview (admin override)</h3>
-              <p className="muted">
-                Mirrors the coach practice selection portal layout for this team. Use Select here to apply an admin override for the selected team.
-              </p>
+              <div className="card__header mt-4">
+                <div className="h2">Practice selection portal preview (admin override)</div>
+                <div className="subtle">
+                  Mirrors the coach practice selection portal layout for this team. Use Select here to apply an admin override for the selected team.
+                </div>
+              </div>
 
-              <div className="card" style={{ marginTop: "0.5rem" }}>
-                <h4>Practice selection portal</h4>
-                <p className="muted">
-                  Selecting a slot claims the same field/day/time pattern for matching open weeks in the regular-season availability set.
-                </p>
+              <div className="card mt-2">
+                <div className="card__header">
+                  <div className="h2">Practice selection portal</div>
+                  <div className="subtle">
+                    Selecting a slot claims the same field/day/time pattern for matching open weeks in the regular-season availability set.
+                  </div>
+                </div>
                 <div className="formGrid">
                   <label>
                     Division
@@ -1564,7 +1620,9 @@ export default function DebugPage({ leagueId, me }) {
               </div>
 
               <div className="card">
-                <h4>Your selected practices (preview)</h4>
+                <div className="card__header">
+                  <div className="h2">Your selected practices (preview)</div>
+                </div>
                 {previewPortalSelections.length ? (
                   <div className="tableWrap">
                     <table className="table">
@@ -1594,10 +1652,12 @@ export default function DebugPage({ leagueId, me }) {
               </div>
 
               <div className="card">
-                <h4>Available practice slots (preview)</h4>
+                <div className="card__header">
+                  <div className="h2">Available practice slots (preview)</div>
+                </div>
                 <div className="callout mb-3">
                   <div className="row row--wrap gap-3">
-                    <label className="row row--wrap gap-2" style={{ alignItems: "center" }}>
+                    <label className="inlineCheck inlineCheck--compact">
                       <input
                         type="checkbox"
                         checked={previewPortalOpenToShareField}
@@ -1605,7 +1665,7 @@ export default function DebugPage({ leagueId, me }) {
                       />
                       <span>Open to sharing a field</span>
                     </label>
-                    <label style={{ minWidth: 260 }}>
+                    <label className="min-w-[260px]">
                       Propose sharing with team
                       <select
                         value={previewPortalShareWithTeamId}
@@ -1624,7 +1684,7 @@ export default function DebugPage({ leagueId, me }) {
                         ))}
                       </select>
                     </label>
-                    <label style={{ minWidth: 220 }}>
+                    <label className="min-w-[220px]">
                       Filter by day
                       <select
                         value={previewPortalDayFilter}
@@ -1644,7 +1704,7 @@ export default function DebugPage({ leagueId, me }) {
                 </div>
 
                 <div className="mb-3">
-                  <h5 className="m-0">Coach onboarding recurring choices (debug preview)</h5>
+                  <div className="font-semibold">Coach onboarding recurring choices (debug preview)</div>
                   <div className="muted mt-1">
                     Mirrors the coach setup recurring choices: day + field + time (the recurring season pattern is reserved together on approval).
                   </div>
@@ -1688,7 +1748,7 @@ export default function DebugPage({ leagueId, me }) {
                 )}
 
                 <div className="mb-3">
-                  <h5 className="m-0">Google Form option text (copy/paste)</h5>
+                  <div className="font-semibold">Google Form option text (copy/paste)</div>
                   <div className="muted mt-1">
                     One line per recurring availability pattern using a single representative week date (all days shown).
                   </div>
@@ -1696,12 +1756,12 @@ export default function DebugPage({ leagueId, me }) {
                     readOnly
                     value={previewPortalGoogleFormOptionsText || ""}
                     rows={Math.min(16, Math.max(4, (previewPortalGoogleFormOptionsText || "").split("\n").filter(Boolean).length + 1))}
-                    style={{ width: "100%", marginTop: "0.5rem", fontFamily: "monospace" }}
+                    className="textareaMono mt-2"
                   />
                 </div>
 
                 <div className="mb-3">
-                  <h5 className="m-0">Recurring option summary (Day | Field | Time)</h5>
+                  <div className="font-semibold">Recurring option summary (Day | Field | Time)</div>
                   <div className="muted mt-1">
                     One line per recurring pattern for quick review{previewPortalDayFilter ? " (filtered by selected day)" : ""}.
                   </div>
@@ -1709,7 +1769,7 @@ export default function DebugPage({ leagueId, me }) {
                     readOnly
                     value={previewPortalGoogleFormPatternOptionsText || ""}
                     rows={Math.min(16, Math.max(4, (previewPortalGoogleFormPatternOptionsText || "").split("\n").filter(Boolean).length + 1))}
-                    style={{ width: "100%", marginTop: "0.5rem", fontFamily: "monospace" }}
+                    className="textareaMono mt-2"
                   />
                 </div>
 
@@ -1777,11 +1837,12 @@ export default function DebugPage({ leagueId, me }) {
 
       {isGlobalAdmin ? (
         <div className="card">
-          <h2>Debug: wizard preview repair audit history</h2>
-          <p className="muted">
-            Preview repair actions saved to <code>GameSwapScheduleRuns</code> with <code>RecordType = WizardPreviewRepair</code>.
-            Use this to review what fixes commissioners applied in Wizard Preview and how rule health changed.
-          </p>
+          <div className="card__header">
+            <div className="h2">Debug: wizard preview repair audit history</div>
+            <div className="subtle">
+              Review <code>GameSwapScheduleRuns</code> records with <code>RecordType = WizardPreviewRepair</code> to inspect fixes and rule-health deltas.
+            </div>
+          </div>
 
           <div className="row gap-3 row--wrap mb-2">
             <label>
@@ -1798,10 +1859,10 @@ export default function DebugPage({ leagueId, me }) {
                 value={repairAuditLimit}
                 onChange={(e) => setRepairAuditLimit(e.target.value)}
                 inputMode="numeric"
-                style={{ width: 110 }}
+                className="w-[110px]"
               />
             </label>
-            <label className="row row--wrap gap-2" style={{ alignItems: "center", paddingTop: "1.8rem" }}>
+            <label className="inlineCheck inlineCheck--compact pt-7">
               <input
                 type="checkbox"
                 checked={repairAuditIncludeWizardRuns}
@@ -1814,7 +1875,7 @@ export default function DebugPage({ leagueId, me }) {
             </button>
           </div>
 
-          {repairAuditErr && <div className="error">{repairAuditErr}</div>}
+          {repairAuditErr && <div className="callout callout--error">{repairAuditErr}</div>}
 
           {repairAuditRowsNormalized.length === 0 ? (
             <div className="muted">
@@ -1838,7 +1899,7 @@ export default function DebugPage({ leagueId, me }) {
               </div>
 
               <div className="mb-3">
-                <h4 className="m-0">Audit export (summary copy/paste)</h4>
+                <div className="font-semibold">Audit export (summary copy/paste)</div>
                 <div className="muted mt-1">
                   One line per audit row showing proposal and rule-health before/after.
                 </div>
@@ -1846,12 +1907,12 @@ export default function DebugPage({ leagueId, me }) {
                   readOnly
                   value={repairAuditExportSummaryText || ""}
                   rows={Math.min(14, Math.max(4, (repairAuditExportSummaryText || "").split("\n").filter(Boolean).length + 1))}
-                  style={{ width: "100%", marginTop: "0.5rem", fontFamily: "monospace" }}
+                  className="textareaMono mt-2"
                 />
               </div>
 
               <div className="mb-3">
-                <h4 className="m-0">Audit export CSV</h4>
+                <div className="font-semibold">Audit export CSV</div>
                 <div className="muted mt-1">
                   Copy into Sheets/Excel for sorting and review.
                 </div>
@@ -1859,7 +1920,7 @@ export default function DebugPage({ leagueId, me }) {
                   readOnly
                   value={repairAuditExportCsv || ""}
                   rows={8}
-                  style={{ width: "100%", marginTop: "0.5rem", fontFamily: "monospace" }}
+                  className="textareaMono mt-2"
                 />
               </div>
 
@@ -1923,10 +1984,10 @@ export default function DebugPage({ leagueId, me }) {
       ) : null}
 
       <div className="card">
-        <h2>Debug: global admins</h2>
-        <p className="muted">
-          Data comes from <code>GameSwapGlobalAdmins</code> via <code>/api/globaladmins</code>.
-        </p>
+        <div className="card__header">
+          <div className="h2">Debug: global admins</div>
+          <div className="subtle">Data comes from <code>GameSwapGlobalAdmins</code> via <code>/api/globaladmins</code>.</div>
+        </div>
 
         <div className="formGrid">
           <label>
@@ -1956,8 +2017,8 @@ export default function DebugPage({ leagueId, me }) {
           </button>
         </div>
 
-        {globalErr && <div className="error">{globalErr}</div>}
-        {globalOk && <div className="ok">{globalOk}</div>}
+        {globalErr && <div className="callout callout--error">{globalErr}</div>}
+        {globalOk && <div className="callout callout--ok">{globalOk}</div>}
         {globalLoading ? (
           <div className="muted">Loading...</div>
         ) : globalAdmins.length === 0 ? (
@@ -1994,10 +2055,10 @@ export default function DebugPage({ leagueId, me }) {
       </div>
 
       <div className="card">
-        <h2>Debug: memberships table</h2>
-        <p className="muted">
-          Data comes from <code>GameSwapMemberships</code> for the active league via <code>/api/memberships</code>.
-        </p>
+        <div className="card__header">
+          <div className="h2">Debug: memberships table</div>
+          <div className="subtle">Data comes from <code>GameSwapMemberships</code> for the active league via <code>/api/memberships</code>.</div>
+        </div>
 
         <div className="row gap-3 row--wrap mb-2">
           <button className="btn" onClick={loadMemberships} disabled={loading}>
@@ -2005,7 +2066,7 @@ export default function DebugPage({ leagueId, me }) {
           </button>
         </div>
 
-        {err && <div className="error">{err}</div>}
+        {err && <div className="callout callout--error">{err}</div>}
         {loading ? (
           <div className="muted">Loading...</div>
         ) : memberships.length === 0 ? (
