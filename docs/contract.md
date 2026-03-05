@@ -244,34 +244,10 @@ export function useKeyboardShortcuts(shortcuts) {
 }
 ```
 
-**useAccessRequests, useCoachAssignments, useCsvImport** - Domain-specific hooks that encapsulate business logic and state for admin sections.
+Use domain-specific hooks for repeated admin flows (for example, coach assignment and CSV import flows), and keep fetch/state logic out of large page components.
 
 ### Form validation pattern
-Use the validation library (`lib/validation.js`) for all form inputs:
-
-```javascript
-import { validateField, validateForm, schemas } from '../lib/validation';
-
-// Validate single field
-const error = validateField('email', 'invalid-email', schemas.email);
-if (error) {
-  setEmailError(error);
-}
-
-// Validate entire form
-const errors = validateForm(formData, schemas.league);
-if (Object.keys(errors).length > 0) {
-  setFormErrors(errors);
-  return;
-}
-```
-
-**Available validators:**
-- required, email, minLength, maxLength
-- pattern, number, min, max
-- date, time, custom
-
-**Predefined schemas:** league, team, field, slot, user, division, event
+Validate form inputs with local validators near each feature and keep error messages actionable. Use shared helpers only when the same rule is used in multiple places.
 
 ### Keyboard shortcuts
 Application-wide shortcuts for common navigation:
@@ -307,7 +283,7 @@ Implementation: Include KeyboardShortcutsModal in your layout and register short
 ### State management
 **Local state:** Use useState for component-specific state
 **Shared state:** Pass via props or use custom hooks
-**Server state:** Use custom hooks (usePagination, useAccessRequests, etc.) that encapsulate fetch logic
+**Server state:** Use custom hooks (for example `usePagination`) that encapsulate fetch logic
 
 **Avoid:**
 - Global state libraries (Redux, Zustand) unless absolutely necessary
@@ -1901,7 +1877,7 @@ Requires: LeagueAdmin or global admin.
 1. Start with a single page component (don't prematurely split)
 2. If the component exceeds ~300 lines, extract sub-components
 3. Extract stateful logic into custom hooks when reused 2+ times
-4. Use predefined validation schemas from `lib/validation.js`
+4. Keep validation logic close to the page/feature and extract shared validators only when reused
 5. Add keyboard shortcuts for common actions
 6. Include loading, empty, and error states
 
