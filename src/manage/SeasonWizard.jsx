@@ -2583,16 +2583,15 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
     // Warn user that this will overwrite existing schedule
     const confirmed = window.confirm(
-      "WARNING: Applying this schedule will OVERWRITE all existing game assignments in this division.\n\n" +
+      "Apply this schedule preview to the selected division and season window.\n\n" +
       "This action:\n" +
-      "- Replaces all current slot assignments\n" +
+      "- Writes the current preview assignments to matching slots in that window\n" +
       (resetGeneratedSlotsBeforeApply
-        ? "- Resets existing non-practice game, guest, and request slots in this season window before previewing and applying\n"
-        : "- Leaves existing non-practice game, guest, and request slots untouched before previewing and applying\n") +
-      "- Does NOT remove recurring allocations or field blackouts\n" +
-      "- Cannot be undone\n" +
-      "- May still require allocation cleanup if you need a different underlying slot pool\n\n" +
-      "Are you sure you want to continue?"
+        ? "- Attempts to reset existing non-practice game, guest, and request rows in this season window before preview/apply\n"
+        : "- Leaves existing non-practice game, guest, and request rows untouched before preview/apply\n") +
+      "- Does not change recurring allocations or field blackouts\n" +
+      "- Cannot be undone\n\n" +
+      "Continue?"
     );
 
     if (!confirmed) return;
@@ -4737,26 +4736,26 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       {err ? <div className="callout callout--error">{err}</div> : null}
 
       <div className="callout callout--warning seasonWizard__heroCallout">
-        <strong>Important:</strong> This wizard will <strong>OVERWRITE all existing game assignments</strong> in the selected division when you click "Apply schedule" at the end.
+        <strong>Important:</strong> This wizard applies the current preview into slots for the selected division and season window when you click "Apply schedule."
         {resetGeneratedSlotsBeforeApply ? (
           <>
             {" "}
-            It will also reset existing <strong>non-practice game, guest, and request rows</strong> in this season window before previewing and applying the new run.
+            It also attempts to reset existing <strong>non-practice game, guest, and request rows</strong> in this same window before preview/apply.
           </>
         ) : (
           <>
             {" "}
-            It will <strong>not</strong> reset existing non-practice game, guest, and request rows before previewing or applying.
+            It will <strong>not</strong> run that reset step before preview/apply.
           </>
         )}{" "}
-        It does <strong>not</strong> clear recurring allocations or field blackouts. If you need a different underlying slot pool, clear or edit availability first, then rerun the wizard.
+        It does <strong>not</strong> clear recurring allocations or field blackouts. If you need a different slot pool, edit availability first, then rerun the wizard.
         <label className="inlineCheck mt-3">
           <input
             type="checkbox"
             checked={resetGeneratedSlotsBeforeApply}
             onChange={(e) => setResetGeneratedSlotsBeforeApply(e.target.checked)}
           />
-          Reset existing non-practice game, guest, and request slots in this season window before preview and apply
+          Attempt reset of existing non-practice game, guest, and request slots in this season window before preview and apply
         </label>
       </div>
 

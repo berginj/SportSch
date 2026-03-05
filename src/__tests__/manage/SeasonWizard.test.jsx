@@ -499,9 +499,9 @@ describe("SeasonWizard", () => {
   it("makes clear that rerunning the wizard does not clear availability", async () => {
     await renderWizard();
 
-    expect(screen.getByText(/OVERWRITE all existing game assignments/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Reset existing non-practice game, guest, and request slots in this season window before preview and apply/i)).toBeChecked();
-    expect(document.body.textContent).toContain("reset existing non-practice game, guest, and request rows in this season window before previewing and applying the new run");
+    expect(screen.getByText(/applies the current preview into slots for the selected division and season window/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Attempt reset of existing non-practice game, guest, and request slots in this season window before preview and apply/i)).toBeChecked();
+    expect(document.body.textContent).toContain("attempts to reset existing non-practice game, guest, and request rows");
     expect(document.body.textContent).toContain("does not clear recurring allocations or field blackouts");
   });
 
@@ -521,7 +521,7 @@ describe("SeasonWizard", () => {
   it("sends the reset-before-apply toggle with the apply request", async () => {
     await advanceToPreview();
 
-    const resetToggle = screen.getByLabelText(/Reset existing non-practice game, guest, and request slots in this season window before preview and apply/i);
+    const resetToggle = screen.getByLabelText(/Attempt reset of existing non-practice game, guest, and request slots in this season window before preview and apply/i);
     fireEvent.click(resetToggle);
 
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
