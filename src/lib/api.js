@@ -25,7 +25,16 @@ export async function apiFetch(path, options = {}) {
   const headers = new Headers(options.headers || {});
 
   // Always attach active league id
-  const leagueId = (localStorage.getItem(LEAGUE_STORAGE_KEY) || "").trim();
+  const primaryLeagueId = (localStorage.getItem(LEAGUE_STORAGE_KEY) || "").trim();
+  const legacyLeagueId = (localStorage.getItem("activeLeagueId") || "").trim();
+  const leagueId = primaryLeagueId || legacyLeagueId;
+  if (!primaryLeagueId && legacyLeagueId) {
+    try {
+      localStorage.setItem(LEAGUE_STORAGE_KEY, legacyLeagueId);
+    } catch {
+      // ignore storage errors
+    }
+  }
   if (leagueId && !headers.has(LEAGUE_HEADER_NAME)) {
     headers.set(LEAGUE_HEADER_NAME, leagueId);
   }

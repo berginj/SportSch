@@ -6,8 +6,10 @@ export function persistLeagueId(leagueId) {
   try {
     if (!leagueId) {
       localStorage.removeItem(LEAGUE_STORAGE_KEY);
+      localStorage.removeItem("activeLeagueId");
     } else {
       localStorage.setItem(LEAGUE_STORAGE_KEY, leagueId);
+      localStorage.setItem("activeLeagueId", leagueId);
     }
   } catch {
     // ignore
@@ -19,6 +21,8 @@ export function getInitialLeagueId(me) {
   try {
     const saved = (localStorage.getItem(LEAGUE_STORAGE_KEY) || "").trim();
     if (saved) return saved;
+    const legacySaved = (localStorage.getItem("activeLeagueId") || "").trim();
+    if (legacySaved) return legacySaved;
   } catch {
     // ignore
   }
