@@ -41,6 +41,48 @@
     --neo-inset: inset 4px 4px 10px rgba(148, 163, 184, 0.16), inset -4px -4px 10px rgba(255, 255, 255, 0.88);
   }
 
+  :root[data-theme="dark"] {
+    --bg: #101b28;
+    --panel: #162738;
+    --card: #1b2f42;
+    --text: #e5edf5;
+    --muted: #9cb2c6;
+    --border: rgba(255, 255, 255, 0.14);
+
+    --accent: #f3c24f;
+    --accent-soft: rgba(243, 194, 79, 0.24);
+    --accent-strong: #f8d87a;
+
+    --green: #57b48a;
+    --green-soft: rgba(87, 180, 138, 0.25);
+
+    --blue: #6ca9e2;
+    --blue-soft: rgba(108, 169, 226, 0.24);
+
+    --danger: #e0837a;
+    --danger-soft: rgba(224, 131, 122, 0.22);
+    --warn: #f0b84b;
+    --warn-soft: rgba(240, 184, 75, 0.24);
+    --ok: #57b48a;
+    --ok-soft: rgba(87, 180, 138, 0.24);
+
+    --neo-light: rgba(255, 255, 255, 0.05);
+    --neo-dark: rgba(0, 0, 0, 0.42);
+    --neo-shadow-sm: 8px 8px 16px rgba(0, 0, 0, 0.38), -8px -8px 16px rgba(255, 255, 255, 0.03);
+    --neo-shadow-md: 14px 14px 28px rgba(0, 0, 0, 0.46), -14px -14px 28px rgba(255, 255, 255, 0.02);
+    --neo-inset: inset 4px 4px 10px rgba(0, 0, 0, 0.48), inset -4px -4px 10px rgba(255, 255, 255, 0.04);
+
+    --season-wizard-shell: #16283b;
+    --season-wizard-panel: #1a2e43;
+    --season-wizard-panel-strong: #1f3449;
+    --season-wizard-border: rgba(255, 255, 255, 0.16);
+    --season-wizard-shadow-light: rgba(255, 255, 255, 0.04);
+    --season-wizard-shadow-dark: rgba(0, 0, 0, 0.48);
+    --season-wizard-shadow-soft: rgba(0, 0, 0, 0.28);
+    --season-wizard-rail-bg: linear-gradient(145deg, #22384e, #182a3d);
+    --season-wizard-rail-shadow: 14px 14px 28px rgba(0, 0, 0, 0.42), -14px -14px 28px rgba(255, 255, 255, 0.03);
+  }
+
   * { box-sizing: border-box; }
   html, body { height: 100%; }
 
@@ -53,6 +95,15 @@
                 linear-gradient(145deg, #e8eef4, #dbe4ec),
                 var(--bg);
     color: var(--text);
+    transition: background 0.2s ease, color 0.2s ease;
+  }
+
+  :root[data-theme="dark"] body {
+    background: radial-gradient(1200px 760px at 12% -8%, rgba(243, 194, 79, 0.1), transparent 58%),
+                radial-gradient(1000px 700px at 90% 8%, rgba(108, 169, 226, 0.11), transparent 56%),
+                radial-gradient(900px 640px at 50% 110%, rgba(87, 180, 138, 0.08), transparent 60%),
+                linear-gradient(145deg, #132334, #0f1b28),
+                var(--bg);
   }
 
   a { color: inherit; }
@@ -1994,6 +2045,143 @@
   .layoutTitle,
   .slotTitle {
     color: var(--text);
+  }
+
+  :root[data-theme="dark"] input,
+  :root[data-theme="dark"] select,
+  :root[data-theme="dark"] textarea,
+  :root[data-theme="dark"] button {
+    background: linear-gradient(145deg, #22384e, #1a2f44);
+    border-color: rgba(255, 255, 255, 0.16);
+    color: var(--text);
+  }
+
+  :root[data-theme="dark"] input:hover:not(:focus),
+  :root[data-theme="dark"] select:hover:not(:focus),
+  :root[data-theme="dark"] textarea:hover:not(:focus),
+  :root[data-theme="dark"] button:hover:not(:disabled) {
+    background: linear-gradient(145deg, #27415a, #1d344b);
+    border-color: rgba(255, 255, 255, 0.24);
+  }
+
+  :root[data-theme="dark"] input:focus,
+  :root[data-theme="dark"] select:focus,
+  :root[data-theme="dark"] textarea:focus {
+    box-shadow: 0 0 0 3px rgba(243, 194, 79, 0.18);
+  }
+
+  :root[data-theme="dark"] input::placeholder,
+  :root[data-theme="dark"] textarea::placeholder {
+    color: rgba(209, 220, 232, 0.65);
+  }
+
+  :root[data-theme="dark"] .topNav,
+  :root[data-theme="dark"] .topnav {
+    background: rgba(15, 27, 40, 0.9);
+    border-color: rgba(255, 255, 255, 0.12);
+    box-shadow: 0 10px 18px rgba(0, 0, 0, 0.32);
+  }
+
+  :root[data-theme="dark"] .topnav__league-select {
+    box-shadow: none;
+  }
+
+  :root[data-theme="dark"] .topnav__theme-toggle {
+    min-width: 70px;
+  }
+
+  :root[data-theme="dark"] .card,
+  :root[data-theme="dark"] .slotCard,
+  :root[data-theme="dark"] .timelineItem,
+  :root[data-theme="dark"] .layoutPanel,
+  :root[data-theme="dark"] .layoutStat,
+  :root[data-theme="dark"] .layoutPreview,
+  :root[data-theme="dark"] .controlBand {
+    background: linear-gradient(145deg, #22384e, #1a2f44);
+    border-color: rgba(255, 255, 255, 0.14);
+    box-shadow: var(--neo-shadow-sm);
+  }
+
+  :root[data-theme="dark"] .card:hover,
+  :root[data-theme="dark"] .slotCard:hover {
+    border-color: rgba(243, 194, 79, 0.5);
+    box-shadow: 0 10px 16px rgba(0, 0, 0, 0.32);
+  }
+
+  :root[data-theme="dark"] .btn.btn--ghost,
+  :root[data-theme="dark"] .tab,
+  :root[data-theme="dark"] .pill,
+  :root[data-theme="dark"] .layoutItem,
+  :root[data-theme="dark"] .layoutPill,
+  :root[data-theme="dark"] .msg,
+  :root[data-theme="dark"] .statusBadge {
+    background: linear-gradient(145deg, #1f3449, #182a3d);
+    border-color: rgba(255, 255, 255, 0.14);
+    color: var(--text);
+  }
+
+  :root[data-theme="dark"] .btn.btn--primary,
+  :root[data-theme="dark"] .tab--active,
+  :root[data-theme="dark"] .tabBtn.active,
+  :root[data-theme="dark"] .pill.is-active,
+  :root[data-theme="dark"] .btn.is-active {
+    background: linear-gradient(145deg, #f8d87a, #ecb53a);
+    color: #112233;
+    border-color: rgba(243, 194, 79, 0.48);
+  }
+
+  :root[data-theme="dark"] .table th {
+    background: rgba(20, 34, 49, 0.92);
+    border-bottom-color: rgba(255, 255, 255, 0.16);
+  }
+
+  :root[data-theme="dark"] .table td {
+    border-bottom-color: rgba(255, 255, 255, 0.1);
+  }
+
+  :root[data-theme="dark"] .table--compact tbody tr:nth-child(odd),
+  :root[data-theme="dark"] .table--sticky thead th {
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  :root[data-theme="dark"] .callout {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.16);
+    color: var(--text);
+  }
+
+  :root[data-theme="dark"] .callout--error {
+    background: rgba(224, 131, 122, 0.16);
+    border-color: rgba(224, 131, 122, 0.34);
+    color: #ffd2cd;
+  }
+
+  :root[data-theme="dark"] .callout--ok {
+    background: rgba(87, 180, 138, 0.16);
+    border-color: rgba(87, 180, 138, 0.32);
+    color: #cbf3df;
+  }
+
+  :root[data-theme="dark"] .callout--info {
+    background: rgba(108, 169, 226, 0.16);
+    border-color: rgba(108, 169, 226, 0.34);
+    color: #d9ebff;
+  }
+
+  :root[data-theme="dark"] .callout--warning {
+    background: rgba(240, 184, 75, 0.16);
+    border-color: rgba(240, 184, 75, 0.36);
+    color: #ffeabf;
+  }
+
+  :root[data-theme="dark"] .layoutMeta,
+  :root[data-theme="dark"] .slotMeta,
+  :root[data-theme="dark"] .slotMatchup,
+  :root[data-theme="dark"] .slotDivision,
+  :root[data-theme="dark"] .statusCard__message,
+  :root[data-theme="dark"] .subtle,
+  :root[data-theme="dark"] .muted {
+    color: var(--muted);
   }
 
   @media (max-width: 640px) {

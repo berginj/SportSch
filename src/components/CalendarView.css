@@ -430,6 +430,60 @@
   border-left-color: #a66e16;
 }
 
+/* Dark mode overrides (MVP pass) */
+:root[data-theme="dark"] .calendar-view-toggle {
+  background: linear-gradient(145deg, #22384e, #1a2f44);
+}
+
+:root[data-theme="dark"] .week-card,
+:root[data-theme="dark"] .agenda-day,
+:root[data-theme="dark"] .calendar-item,
+:root[data-theme="dark"] .agenda-item {
+  background: linear-gradient(145deg, #22384e, #1a2f44);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: var(--text);
+}
+
+:root[data-theme="dark"] .week-card__header,
+:root[data-theme="dark"] .agenda-day__header,
+:root[data-theme="dark"] .week-card__details {
+  background: linear-gradient(145deg, rgba(34, 56, 78, 0.94), rgba(26, 47, 68, 0.94));
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+:root[data-theme="dark"] .week-day-cell,
+:root[data-theme="dark"] .week-card__toggle {
+  background: linear-gradient(145deg, #1f3449, #182a3d);
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+:root[data-theme="dark"] .calendar-item:hover,
+:root[data-theme="dark"] .agenda-item:hover {
+  border-color: rgba(255, 255, 255, 0.24);
+  box-shadow: 14px 14px 24px rgba(0, 0, 0, 0.42), -10px -10px 20px rgba(255, 255, 255, 0.04);
+}
+
+:root[data-theme="dark"] .calendar-item--open {
+  background: linear-gradient(145deg, rgba(243, 194, 79, 0.2), rgba(243, 194, 79, 0.12));
+}
+
+:root[data-theme="dark"] .calendar-item--confirmed,
+:root[data-theme="dark"] .agenda-item--confirmed,
+:root[data-theme="dark"] .calendar-item--availability {
+  background: linear-gradient(145deg, rgba(87, 180, 138, 0.2), rgba(87, 180, 138, 0.12));
+}
+
+:root[data-theme="dark"] .calendar-item--cancelled,
+:root[data-theme="dark"] .agenda-item--cancelled {
+  background: linear-gradient(145deg, rgba(224, 131, 122, 0.2), rgba(224, 131, 122, 0.12));
+}
+
+:root[data-theme="dark"] .calendar-item--event,
+:root[data-theme="dark"] .agenda-item--event {
+  background: linear-gradient(145deg, rgba(108, 169, 226, 0.2), rgba(108, 169, 226, 0.12));
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .week-day-grid {

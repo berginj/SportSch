@@ -3,6 +3,7 @@ import StatusCard from "./components/StatusCard";
 import { useSession } from "./lib/useSession";
 import { trackPageView } from "./lib/telemetry";
 import { useKeyboardShortcuts, COMMON_SHORTCUTS } from "./lib/hooks/useKeyboardShortcuts";
+import { THEME_MODE, THEME_STORAGE_KEY } from "./lib/constants";
 
 const TopNav = lazy(() => import("./components/TopNav"));
 const OffersPage = lazy(() => import("./pages/OffersPage"));
@@ -38,11 +39,22 @@ function readTabFromHash() {
   return VALID_TABS.has(hash) ? hash : "home";
 }
 
+function readThemePreference() {
+  if (typeof window === "undefined") return THEME_MODE.LIGHT;
+  const stored = (window.localStorage.getItem(THEME_STORAGE_KEY) || "").trim().toLowerCase();
+  if (stored === THEME_MODE.DARK || stored === THEME_MODE.LIGHT) return stored;
+  if (typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+    return THEME_MODE.DARK;
+  }
+  return THEME_MODE.LIGHT;
+}
+
 export default function App() {
   const { me, memberships, activeLeagueId, setActiveLeagueId, refreshMe } = useSession();
   const [tab, setTab] = useState(() => readTabFromHash());
   const [invite, setInvite] = useState(() => readInviteFromUrl());
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [theme, setTheme] = useState(() => readThemePreference());
   const tableView = "A";
 
   const isSignedIn = !!me && me.userId && me.userId !== "UNKNOWN";
@@ -101,6 +113,18 @@ export default function App() {
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.setAttribute("data-theme", theme);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    }
+  }, [theme]);
+
+  function toggleTheme() {
+    setTheme((prev) => (prev === THEME_MODE.DARK ? THEME_MODE.LIGHT : THEME_MODE.DARK));
+  }
 
   if (!me) {
     return (
@@ -194,6 +218,8 @@ export default function App() {
           me={me}
           leagueId={activeLeagueId}
           setLeagueId={setActiveLeagueId}
+          theme={theme}
+          onToggleTheme={toggleTheme}
         />
       </Suspense>
 

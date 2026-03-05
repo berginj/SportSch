@@ -3,6 +3,11 @@
 // Canonical league scoping
 export const LEAGUE_STORAGE_KEY = "gameswap_leagueId";
 export const LEAGUE_HEADER_NAME = "x-league-id";
+export const THEME_STORAGE_KEY = "gameswap_theme";
+export const THEME_MODE = {
+  LIGHT: "light",
+  DARK: "dark",
+};
 
 // Canonical status strings (must match API)
 export const ACCESS_REQUEST_STATUS = {

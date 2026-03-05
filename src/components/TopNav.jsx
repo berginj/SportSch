@@ -3,7 +3,7 @@ import { apiFetch } from "../lib/api";
 
 const NotificationBell = lazy(() => import("./NotificationBell"));
 
-export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
+export default function TopNav({ tab, setTab, me, leagueId, setLeagueId, theme = "light", onToggleTheme }) {
   const memberships = useMemo(
     () => (Array.isArray(me?.memberships) ? me.memberships : []),
     [me]
@@ -156,6 +156,15 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId }) {
         </nav>
 
         <div className="topnav__account">
+          <button
+            type="button"
+            className={`btn btn--sm btn--ghost topnav__theme-toggle ${theme === "dark" ? "is-active" : ""}`}
+            onClick={onToggleTheme}
+            title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+          >
+            {theme === "dark" ? "Dark" : "Light"}
+          </button>
           <span className="topnav__user" title={email}>
             {email || "Signed in"}
           </span>
