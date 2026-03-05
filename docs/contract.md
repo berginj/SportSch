@@ -3,6 +3,13 @@
 This document is the single source of truth for UI/API integration.
 It lives at `docs/contract.md` in this repo and must be kept current.
 
+## Specialized Behavioral Contracts
+
+Use these alongside this API contract for workflow-critical behavior:
+
+- `docs/SCHEDULING_ENGINE_BEHAVIORAL_CONTRACT.md`
+- `docs/SLOT_LIFECYCLE_BEHAVIORAL_CONTRACT.md`
+
 ## Cross-cutting rules
 
 ### Auth
