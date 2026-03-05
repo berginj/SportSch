@@ -1679,45 +1679,6 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     updatePatternPlanWithLaneShift(patternKey, { endTime: end });
   }
 
-  function quickConvertPattern(patternKey, nextTypeRaw, durationMinutes) {
-    const representative = slotPatterns.find((p) => p.key === patternKey);
-    if (!representative) return;
-    const startMin = parseMinutes(representative.startTime);
-    if (startMin == null) {
-      setErr("Start time must be valid before converting slot pattern.");
-      return;
-    }
-    const endTime = formatMinutesAsTime(startMin + Number(durationMinutes || 0));
-    if (!endTime) {
-      setErr(`Could not convert ${representative.weekday} ${representative.fieldKey}: invalid duration.`);
-      return;
-    }
-    const nextType = normalizeSlotType(nextTypeRaw);
-    const priorType = normalizeSlotType(representative.slotType);
-    const priorEndTime = representative.endTime || "";
-    const priorPriority = representative.priorityRank || "";
-    const nextPriority = nextType === "practice" ? "" : normalizePriorityRank(representative.priorityRank);
-    const updateResult = updatePatternPlanWithLaneShift(patternKey, {
-      slotType: nextType,
-      priorityRank: nextPriority,
-      endTime,
-    });
-    if (!updateResult) {
-      return;
-    }
-    const changed =
-      priorType !== nextType ||
-      priorEndTime !== endTime ||
-      String(priorPriority || "") !== String(nextPriority || "");
-    setToast({
-      tone: changed ? "success" : "info",
-      duration: 2800,
-      message: changed
-        ? `${representative.weekday} ${representative.fieldKey}: set to ${nextType.toUpperCase()} (${Number(durationMinutes || 0)}m). Updated ${representative.count || 1} opening(s)${updateResult.shiftedPatternCount ? ` and shifted ${updateResult.shiftedPatternCount} later pattern(s).` : "."}`
-        : `${representative.weekday} ${representative.fieldKey} is already ${nextType.toUpperCase()} at ${Number(durationMinutes || 0)}m.`,
-    });
-  }
-
   function setAllSlotTypes(nextType) {
     const normalized = normalizeSlotType(nextType);
     setSlotPlan((prev) => prev.map((item) => ({ ...item, slotType: normalized })));
@@ -5191,22 +5152,6 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                                       />
                                     </label>
                                   </div>
-                                  <div className="row row--wrap gap-1 mt-1">
-                                    <button className="btn btn--ghost" type="button" onClick={() => quickConvertPattern(p.key, "practice", 90)}>
-                                      Practice 90m
-                                    </button>
-                                    <button className="btn btn--ghost" type="button" onClick={() => quickConvertPattern(p.key, "game", 120)}>
-                                      Game 120m
-                                    </button>
-                                    <button
-                                      className="btn btn--ghost"
-                                      type="button"
-                                      onClick={() => quickConvertPattern(p.key, "both", effectiveGameSlotMinutes)}
-                                      title={`Set to Both and refactor to ${effectiveGameSlotMinutes} minutes`}
-                                    >
-                                      Both + {effectiveGameSlotMinutes}m
-                                    </button>
-                                  </div>
                                       </>
                                     );
                                   })()}
@@ -5311,17 +5256,6 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                                 </option>
                               ))}
                             </select>
-                            <div className="mt-1">
-                              <button
-                                className="btn btn--ghost"
-                                type="button"
-                                onClick={() => quickConvertPattern(pattern.key, "both", effectiveGameSlotMinutes)}
-                                className="px-2 py-1 text-xs leading-none"
-                                title={`Set to Both and refactor to ${effectiveGameSlotMinutes} minutes`}
-                              >
-                                Both + {effectiveGameSlotMinutes}m
-                              </button>
-                            </div>
                           </td>
                           <td>
                             <input

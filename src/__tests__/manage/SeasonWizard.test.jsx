@@ -839,12 +839,12 @@ describe("SeasonWizard", () => {
     }
   });
 
-  it("pushes later slot times when a pattern is expanded to game length", async () => {
+  it("pushes later slot times when a pattern duration is expanded", async () => {
     installApiMock({ slotsResponse: SEQUENTIAL_SLOT_AVAILABILITY });
 
     await advanceToSlotPlan();
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Game 120m" })[0]);
+    fireEvent.change(screen.getAllByDisplayValue("90")[0], { target: { value: "120" } });
 
     await waitFor(() => {
       expect(screen.queryByDisplayValue("21:00")).not.toBeInTheDocument();
@@ -852,6 +852,5 @@ describe("SeasonWizard", () => {
     });
 
     expect(screen.getAllByDisplayValue("20:00").length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByText(/shifted 1 later pattern/i)).toBeInTheDocument();
   });
 });
