@@ -54,6 +54,24 @@ function isPracticeSlot(slot) {
   return (slot?.gameType || "").trim().toLowerCase() === "practice";
 }
 
+function isPlaceholderTeamId(value) {
+  const normalized = (value || "").trim().toUpperCase();
+  return !normalized || normalized === "AVAILABLE" || normalized === "OPEN" || normalized === "TBD";
+}
+
+function isUnscheduledOpenCapacity(slot) {
+  if (!slot) return false;
+  if ((slot.status || "").trim() !== SLOT_STATUS.OPEN) return false;
+  if (slot.isAvailability) return true;
+  if (slot.isExternalOffer) return false;
+
+  const away = (slot.awayTeamId || "").trim();
+  if (away) return false;
+
+  const homeOrOffering = (slot.homeTeamId || slot.offeringTeamId || "").trim();
+  return isPlaceholderTeamId(homeOrOffering);
+}
+
 function canAcceptSlot(slot) {
   if (!slot || (slot.status || "") !== "Open") return false;
   if (slot.isAvailability) return false;
@@ -364,6 +382,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
 
     for (const s of slots || []) {
       if (s.isAvailability) continue;
+      if (isUnscheduledOpenCapacity(s)) continue;
       if (!matchesSlotType(s.gameType, slotTypeFilter)) continue;
       const matchup = slotMatchupLabel(s);
       const label = `${matchup || s.offeringTeamId || ""} @ ${s.displayName || `${s.parkName || ""} ${s.fieldName || ""}`}`.trim();
@@ -1033,7 +1052,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
 
           {useNewCalendarView ? (
             <CalendarView
-              slots={slots.filter((s) => !s.isAvailability && matchesSlotType(s.gameType, slotTypeFilter))}
+              slots={slots.filter((s) => !s.isAvailability && !isUnscheduledOpenCapacity(s) && matchesSlotType(s.gameType, slotTypeFilter))}
               events={events}
               defaultView="week-cards"
               onSlotClick={(slot) => {
