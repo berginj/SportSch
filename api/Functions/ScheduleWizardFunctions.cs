@@ -521,7 +521,17 @@ public class ScheduleWizardFunctions
                 ? FilterSlots(gameCapableSlots, bracketStart.Value, bracketEnd.Value)
                 : new List<SlotInfo>();
 
-            var regularMatchups = BuildRepeatedMatchups(teams, minGamesPerTeam);
+            var regularMaxTotalGamesPerTeam = minGamesPerTeam > 0 ? minGamesPerTeam : (int?)null;
+            var regularLeagueGamesPerTeamTarget = ComputeLeagueMatchupTargetPerTeam(
+                minGamesPerTeam,
+                teams.Count,
+                regularSlots,
+                externalOfferPerWeek,
+                guestAnchors,
+                seasonStart,
+                bracketStart,
+                bracketEnd);
+            var regularMatchups = BuildRepeatedMatchups(teams, regularLeagueGamesPerTeamTarget);
             var poolMatchups = BuildTargetMatchups(teams, poolGamesPerTeam);
             var bracketMatchups = BuildBracketMatchups();
             var regularMatchupPriorityByPair = BuildRegularSeasonMatchupPriorityMap(regularMatchups, body.rivalryMatchups);
@@ -542,7 +552,6 @@ public class ScheduleWizardFunctions
                 externalOfferPerWeek,
                 slots: regularSlots.Select(ToScheduleSlot).ToList());
 
-            var regularMaxTotalGamesPerTeam = minGamesPerTeam > 0 ? minGamesPerTeam : (int?)null;
             var regularAssignments = AssignPhaseSlots("Regular Season", regularSlots, regularMatchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek, hardLeagueRules.MaxExternalOffersPerTeamSeason, regularMaxTotalGamesPerTeam, preferredDays, strictPreferredWeeknights, guestAnchors, scheduleBackward: useBackwardRegularSeason, tieBreakSeed: seed, seasonStart: seasonStart, bracketStart: bracketStart, bracketEnd: bracketEnd, matchupPriorityByPair: regularMatchupPriorityByPair, fixedAssignments: regularRequestAssignments);
             var poolAssignments = AssignPhaseSlots("Pool Play", poolSlots, poolMatchups, teams, null, noDoubleHeaders, balanceHomeAway, 0, hardLeagueRules.MaxExternalOffersPerTeamSeason, null, preferredDays: new List<DayOfWeek>(), strictPreferredWeeknights: false, guestAnchors: null, scheduleBackward: false, tieBreakSeed: seed, seasonStart: seasonStart, bracketStart: bracketStart, bracketEnd: bracketEnd, fixedAssignments: poolRequestAssignments);
             var bracketAssignments = AssignBracketSlots(bracketSlots, bracketMatchups, bracketRequestAssignments);
@@ -582,6 +591,14 @@ public class ScheduleWizardFunctions
             if (regularSlots.Count == 0) warnings.Add(new { code = "NO_REGULAR_SLOTS", message = "No regular season slots available." });
             if (poolStart.HasValue && poolSlots.Count == 0) warnings.Add(new { code = "NO_POOL_SLOTS", message = "No pool play slots available." });
             if (bracketStart.HasValue && bracketSlots.Count == 0) warnings.Add(new { code = "NO_BRACKET_SLOTS", message = "No bracket slots available." });
+            if (externalOfferPerWeek > 0 && regularLeagueGamesPerTeamTarget < minGamesPerTeam)
+            {
+                warnings.Add(new
+                {
+                    code = "LEAGUE_TARGET_REDUCED_FOR_GUEST_CAPACITY",
+                    message = $"Regular league matchup target was reduced to {regularLeagueGamesPerTeamTarget} game(s)/team (from {minGamesPerTeam}) to reserve guest-slot capacity while keeping the total regular-season target at {minGamesPerTeam}."
+                });
+            }
             if (blockedOutSlots > 0) warnings.Add(new { code = "SLOTS_BLOCKED_BY_DATES", message = $"{blockedOutSlots} slot(s) were excluded by blocked date ranges." });
             if (leagueRuleFilteredOutSlots > 0) warnings.Add(new { code = "SLOTS_FILTERED_BY_RULES", message = $"{leagueRuleFilteredOutSlots} slot(s) were excluded by no-games date/time rules." });
             if (requestGameAssignments.Count > 0)
@@ -674,9 +691,18 @@ public class ScheduleWizardFunctions
                     details = new Dictionary<string, object?> { ["count"] = bracketAssignments.UnassignedMatchups.Count, ["phase"] = "Bracket" }
                 });
             }
+            var invariantIssues = BuildWizardInvariantIssues(
+                assignments,
+                gameCapableSlots,
+                regularAssignments.Assignments,
+                teams,
+                minGamesPerTeam);
+            issues.AddRange(invariantIssues);
+            var invariantHardIssueCount = invariantIssues.Count;
             var totalIssues = issues.Count;
-            var applyBlocked = strictValidation.RuleHealth.ApplyBlocked;
-            var allowApplyOverride = CanApplyWithSingleMissingRequiredMatchupOverride(body, strictValidation.RuleHealth);
+            var hardViolationCount = strictValidation.RuleHealth.HardViolationCount + invariantHardIssueCount;
+            var applyBlocked = strictValidation.RuleHealth.ApplyBlocked || invariantHardIssueCount > 0;
+            var allowApplyOverride = invariantHardIssueCount == 0 && CanApplyWithSingleMissingRequiredMatchupOverride(body, strictValidation.RuleHealth);
             var effectiveApplyBlocked = applyBlocked && !allowApplyOverride;
             if (allowApplyOverride)
             {
@@ -708,7 +734,7 @@ public class ScheduleWizardFunctions
                         {
                             requestId,
                             ruleHealth = strictValidation.RuleHealth,
-                            hardViolations = strictValidation.RuleHealth.HardViolationCount,
+                            hardViolations = hardViolationCount,
                             totalIssues
                         });
                 }
@@ -727,6 +753,7 @@ public class ScheduleWizardFunctions
                 slotsTotal = summary.totalSlots,
                 assignedTotal = summary.totalAssigned,
                 issues = totalIssues,
+                hardViolations = hardViolationCount,
                 applyBlocked = effectiveApplyBlocked,
                 constructionStrategy,
                 seed
@@ -771,6 +798,113 @@ public class ScheduleWizardFunctions
         var hardGroup = hardGroups[0];
         return string.Equals(hardGroup.RuleId, "unscheduled-required-matchups", StringComparison.OrdinalIgnoreCase)
             && hardGroup.Count == 1;
+    }
+
+    private static List<object> BuildWizardInvariantIssues(
+        IReadOnlyList<WizardSlotDto> assignments,
+        IReadOnlyList<SlotInfo> gameCapableSlots,
+        IReadOnlyList<ScheduleAssignment> regularAssignments,
+        IReadOnlyList<string> teams,
+        int regularTargetGamesPerTeam)
+    {
+        var issues = new List<object>();
+
+        var gameCapableSlotIds = gameCapableSlots
+            .Select(slot => slot.slotId)
+            .Where(slotId => !string.IsNullOrWhiteSpace(slotId))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var nonGameSlotAssignments = assignments
+            .Where(a => a is not null)
+            .Where(a => !a.isRequestGame)
+            .Where(a => !string.IsNullOrWhiteSpace(a.slotId) && !gameCapableSlotIds.Contains(a.slotId))
+            .ToList();
+        if (nonGameSlotAssignments.Count > 0)
+        {
+            var sample = nonGameSlotAssignments
+                .Take(6)
+                .Select(a => new Dictionary<string, object?>
+                {
+                    ["phase"] = a.phase,
+                    ["slotId"] = a.slotId,
+                    ["gameDate"] = a.gameDate,
+                    ["startTime"] = a.startTime,
+                    ["endTime"] = a.endTime,
+                    ["fieldKey"] = a.fieldKey
+                })
+                .ToList();
+            issues.Add(new
+            {
+                phase = "All Phases",
+                ruleId = "non-game-slot-assignment",
+                severity = "error",
+                message = $"{nonGameSlotAssignments.Count} assignment(s) landed on slots that are not game-capable.",
+                details = new Dictionary<string, object?>
+                {
+                    ["count"] = nonGameSlotAssignments.Count,
+                    ["sampleAssignments"] = sample
+                }
+            });
+        }
+
+        if (regularTargetGamesPerTeam > 0 && teams.Count > 0)
+        {
+            var counts = teams
+                .Where(teamId => !string.IsNullOrWhiteSpace(teamId))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(teamId => teamId, _ => 0, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var assignment in regularAssignments)
+            {
+                if (assignment.IsExternalOffer)
+                {
+                    IncrementTeamCount(counts, assignment.HomeTeamId);
+                    continue;
+                }
+
+                if (assignment.IsRequestGame)
+                {
+                    IncrementTeamCount(counts, assignment.AwayTeamId);
+                    continue;
+                }
+
+                IncrementTeamCount(counts, assignment.HomeTeamId);
+                IncrementTeamCount(counts, assignment.AwayTeamId);
+            }
+
+            var overflow = counts
+                .Where(kvp => kvp.Value > regularTargetGamesPerTeam)
+                .OrderByDescending(kvp => kvp.Value)
+                .ThenBy(kvp => kvp.Key, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (overflow.Count > 0)
+            {
+                var offenders = overflow
+                    .Take(10)
+                    .Select(kvp => new Dictionary<string, object?>
+                    {
+                        ["teamId"] = kvp.Key,
+                        ["assignedGames"] = kvp.Value,
+                        ["targetGames"] = regularTargetGamesPerTeam,
+                        ["overflowGames"] = kvp.Value - regularTargetGamesPerTeam
+                    })
+                    .ToList();
+                issues.Add(new
+                {
+                    phase = "Regular Season",
+                    ruleId = "regular-team-target-overflow",
+                    severity = "error",
+                    message = $"{overflow.Count} team(s) exceed the regular-season target of {regularTargetGamesPerTeam} games.",
+                    details = new Dictionary<string, object?>
+                    {
+                        ["count"] = overflow.Count,
+                        ["targetGames"] = regularTargetGamesPerTeam,
+                        ["offenders"] = offenders
+                    }
+                });
+            }
+        }
+
+        return issues;
     }
 
     private static DateOnly? OptionalDate(string? raw)
@@ -1235,7 +1369,10 @@ public class ScheduleWizardFunctions
                 .ToList();
             var lockedRequestAssignments = regularAssignments.Where(a => a.IsRequestGame).ToList();
             var replaySnapshotAssignments = regularAssignments.Where(a => !a.IsRequestGame).ToList();
-            var regularMatchups = BuildRepeatedMatchups(teams, Math.Max(0, wizard.minGamesPerTeam ?? 0));
+            var regularTargetGamesPerTeam = Math.Max(0, wizard.minGamesPerTeam ?? 0);
+            var expectedGuestGamesPerTeam = teams.Count > 0 ? reservedExternalSlots.Count / teams.Count : 0;
+            var regularLeagueGamesPerTeamTarget = Math.Max(0, regularTargetGamesPerTeam - expectedGuestGamesPerTeam);
+            var regularMatchups = BuildRepeatedMatchups(teams, regularLeagueGamesPerTeamTarget);
             var resolvedSeed = seed ?? StableWizardSeed(division, seasonStart, seasonEnd);
             var replayProblem = BuildRegularSeasonSchedulingProblem(
                 leagueId,
@@ -2966,6 +3103,38 @@ public class ScheduleWizardFunctions
         if (key.StartsWith("fri")) return DayOfWeek.Friday;
         if (key.StartsWith("sat")) return DayOfWeek.Saturday;
         return null;
+    }
+
+    private static int ComputeLeagueMatchupTargetPerTeam(
+        int regularTargetGamesPerTeam,
+        int teamCount,
+        IReadOnlyList<SlotInfo> regularSlots,
+        int externalOfferPerWeek,
+        GuestAnchorSet? guestAnchors,
+        DateOnly seasonStart,
+        DateOnly? bracketStart,
+        DateOnly? bracketEnd)
+    {
+        if (regularTargetGamesPerTeam <= 0 || teamCount <= 0)
+            return 0;
+        if (externalOfferPerWeek <= 0 || regularSlots.Count == 0)
+            return regularTargetGamesPerTeam;
+
+        var reservedExternalSlots = SelectReservedExternalSlots(
+            regularSlots.ToList(),
+            externalOfferPerWeek,
+            guestAnchors,
+            seasonStart,
+            bracketStart,
+            bracketEnd);
+        if (reservedExternalSlots.Count == 0)
+            return regularTargetGamesPerTeam;
+
+        var expectedGuestGamesPerTeam = reservedExternalSlots.Count / teamCount;
+        if (expectedGuestGamesPerTeam <= 0)
+            return regularTargetGamesPerTeam;
+
+        return Math.Max(0, regularTargetGamesPerTeam - expectedGuestGamesPerTeam);
     }
 
     private static List<MatchupPair> BuildRepeatedMatchups(IReadOnlyList<string> teams, int gamesPerTeam)
