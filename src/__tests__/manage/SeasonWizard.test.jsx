@@ -661,9 +661,9 @@ describe("SeasonWizard", () => {
     installApiMock({
       previewResponses: [
         { ...BASE_PREVIEW, seed: 101, constructionStrategy: "backward_greedy_v1+strict_validation_v2" },
-        { ...BASE_PREVIEW, seed: 202, constructionStrategy: "forward_greedy_v1+strict_validation_v2" },
+        { ...BASE_PREVIEW, seed: 202, constructionStrategy: "backward_greedy_v1+strict_validation_v2" },
         { ...BASE_PREVIEW, seed: 303, constructionStrategy: "backward_greedy_v1+strict_validation_v2" },
-        { ...BASE_PREVIEW, seed: 404, constructionStrategy: "forward_greedy_v1+strict_validation_v2" },
+        { ...BASE_PREVIEW, seed: 404, constructionStrategy: "backward_greedy_v1+strict_validation_v2" },
       ],
     });
 
@@ -690,7 +690,7 @@ describe("SeasonWizard", () => {
       const applyCall = api.apiFetch.mock.calls.find(([path]) => path === "/api/schedule/wizard/apply");
       const payload = JSON.parse(applyCall?.[1]?.body || "{}");
       expect(payload.seed).toBe(202);
-      expect(payload.constructionStrategy).toBe("forward_greedy_v1");
+      expect(payload.constructionStrategy).toBe("backward_greedy_v1");
     } finally {
       confirmSpy.mockRestore();
     }

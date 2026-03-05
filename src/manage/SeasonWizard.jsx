@@ -2433,12 +2433,12 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     const basePayload = buildWizardPayload();
     const options = [];
 
-    // Generate 4 schedules with different strategies
+    // Generate 4 schedules with different seeds under the canonical backward strategy.
     for (let i = 0; i < 4; i++) {
       const payload = {
         ...basePayload,
         seed: Date.now() + (i * 1000),
-        constructionStrategy: i % 2 === 0 ? "backward_greedy_v1" : "forward_greedy_v1"
+        constructionStrategy: "backward_greedy_v1"
       };
 
       try {
@@ -6209,7 +6209,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                     {previewIssueCount > 0 ? " | Apply remains available; review warnings/issues before applying." : ""}
                   </div>
                   <div className="subtle">
-                    Strategy: <b>{preview.constructionStrategy || "legacy_greedy_v1"}</b> | Seed: <b>{preview.seed ?? "-"}</b>
+                    Strategy: <b>{preview.constructionStrategy || "backward_greedy_v1"}</b> | Seed: <b>{preview.seed ?? "-"}</b>
                   </div>
                   {selectedRuleFocusScope ? (
                     <div className="callout mt-2">
@@ -7368,7 +7368,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                         {selectedGameExplain.selected.fieldKey || "(Unknown field)"}
                       </div>
                       <div className="subtle">
-                        Strategy: <b>{selectedGameExplain.constructionStrategy || "legacy"}</b>
+                        Strategy: <b>{selectedGameExplain.constructionStrategy || "backward_greedy_v1"}</b>
                         {selectedGameExplain.seed != null ? <> | Seed: <b>{selectedGameExplain.seed}</b></> : null}
                         {selectedGameExplain.weekNumber && selectedGameExplain.weekCount ? (
                           <> | Regular season week: <b>W{selectedGameExplain.weekNumber}</b> of {selectedGameExplain.weekCount}</>

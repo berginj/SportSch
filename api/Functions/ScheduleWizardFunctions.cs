@@ -467,7 +467,6 @@ public class ScheduleWizardFunctions
             var hardLeagueRules = NormalizeHardLeagueRules(body);
             var normalizedConstructionStrategy = NormalizeConstructionStrategy(body.constructionStrategy);
             var useBackwardRegularSeason = string.Equals(normalizedConstructionStrategy, "backward_greedy_v1", StringComparison.OrdinalIgnoreCase);
-            var resetGeneratedSlotsBeforeApply = body.resetGeneratedSlotsBeforeApply ?? true;
             var requestedSeed = body.seed.HasValue ? Math.Abs(body.seed.Value) : (int?)null;
             var seed = requestedSeed ?? StableWizardSeed(division, seasonStart, seasonEnd);
             var planningDateTo = ResolvePlanningDateTo(seasonEnd, bracketEnd);
@@ -944,9 +943,10 @@ public class ScheduleWizardFunctions
         var value = (raw ?? "").Trim().ToLowerInvariant();
         return value switch
         {
-            "legacy" or "legacy_greedy" or "legacy_greedy_v1" => "legacy_greedy_v1",
             "backward" or "backward_greedy" or "backward_greedy_v1" => "backward_greedy_v1",
-            "forward" or "forward_greedy" or "forward_greedy_v1" => "forward_greedy_v1",
+            // Contract enforcement: regular-season construction is canonical backward-only.
+            "legacy" or "legacy_greedy" or "legacy_greedy_v1" => "backward_greedy_v1",
+            "forward" or "forward_greedy" or "forward_greedy_v1" => "backward_greedy_v1",
             _ => "backward_greedy_v1" // Default to backward construction for regular-season scheduling.
         };
     }
@@ -1304,7 +1304,7 @@ public class ScheduleWizardFunctions
                 outcome = "request-game",
                 slotOrderDirection,
                 seed,
-                note = "Request games are fixed away events. They stay locked and count against the away team's weekly load before regular matchups are placed."
+                note = "Request games are fixed away events. They stay locked and are treated as extra rows that do not affect generated matchup totals or weekly-cap checks."
             };
         }
 
