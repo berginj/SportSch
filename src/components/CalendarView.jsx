@@ -388,6 +388,16 @@ function getWeekEnd(dateStr) {
 
 function getDayName(dateStr) {
   const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  // Parse as local date to avoid timezone offset issues
+  const parts = dateStr.split("-");
+  if (parts.length === 3) {
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
+    const day = parseInt(parts[2], 10);
+    const date = new Date(year, month, day); // Local time
+    return days[date.getDay()];
+  }
+  // Fallback to direct parsing
   const date = new Date(dateStr);
   return days[date.getDay()];
 }
