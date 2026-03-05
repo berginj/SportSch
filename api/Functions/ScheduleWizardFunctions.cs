@@ -1874,7 +1874,10 @@ public class ScheduleWizardFunctions
             maxGamesPerWeek,
             maxExternalOffersPerTeamSeason,
             maxTotalGamesPerTeam,
-            noDoubleHeaders);
+            noDoubleHeaders,
+            seasonStart,
+            bracketStart,
+            bracketEnd);
         var balancedWithExternal = ScheduleEngine.BalanceExternalOfferHomes(
             withExternal.Assignments,
             teams,
@@ -1901,26 +1904,11 @@ public class ScheduleWizardFunctions
         if (requiredAnchors.Count == 0)
             return new List<SlotInfo>();
 
-        // Calculate week 1 end (first 7 calendar days from season start)
-        var weekOneEnd = seasonStart.AddDays(6);
-
         // Filter out week 1 and bracket weeks (per Little League requirements)
         var validSlots = slots.Where(s => {
             if (!DateOnly.TryParseExact(s.gameDate, "yyyy-MM-dd", out var date))
                 return false;
-
-            // Exclude week 1 (first 7 calendar days)
-            if (date >= seasonStart && date <= weekOneEnd)
-                return false;
-
-            // Exclude bracket weeks (all days in bracket range)
-            if (bracketStart.HasValue && bracketEnd.HasValue)
-            {
-                if (date >= bracketStart.Value && date <= bracketEnd.Value)
-                    return false;
-            }
-
-            return true;
+            return IsGuestEligibleDate(date, seasonStart, bracketStart, bracketEnd);
         }).ToList();
 
         var picked = new List<SlotInfo>();
@@ -2297,7 +2285,10 @@ public class ScheduleWizardFunctions
         int? maxGamesPerWeek,
         int? maxExternalOffersPerTeamSeason,
         int? maxTotalGamesPerTeam,
-        bool noDoubleHeaders)
+        bool noDoubleHeaders,
+        DateOnly seasonStart,
+        DateOnly? bracketStart,
+        DateOnly? bracketEnd)
     {
         if (externalOfferPerWeek <= 0 || unassignedSlots.Count == 0 || teams.Count == 0)
             return new PhaseAssignments(assignments, unassignedSlots, unassignedMatchups);
@@ -2306,6 +2297,23 @@ public class ScheduleWizardFunctions
 
         var nextAssignments = new List<ScheduleAssignment>(assignments);
         var remainingSlots = new List<ScheduleAssignment>();
+        var eligibleSlots = new List<ScheduleAssignment>();
+        foreach (var slot in unassignedSlots)
+        {
+            if (!TryParseIsoDate(slot.GameDate, out var slotDate))
+            {
+                remainingSlots.Add(slot);
+                continue;
+            }
+
+            if (!IsGuestEligibleDate(slotDate, seasonStart, bracketStart, bracketEnd))
+            {
+                remainingSlots.Add(slot);
+                continue;
+            }
+
+            eligibleSlots.Add(slot);
+        }
 
         var totalCounts = teams
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -2333,7 +2341,7 @@ public class ScheduleWizardFunctions
             }
         }
 
-        var byWeek = unassignedSlots
+        var byWeek = eligibleSlots
             .GroupBy(s => WeekKey(s.GameDate))
             .OrderBy(g => g.Key)
             .ToList();
@@ -2416,6 +2424,29 @@ public class ScheduleWizardFunctions
         }
 
         return new PhaseAssignments(nextAssignments, remainingSlots, unassignedMatchups);
+    }
+
+    private static bool IsGuestEligibleDate(DateOnly date, DateOnly seasonStart, DateOnly? bracketStart, DateOnly? bracketEnd)
+    {
+        var weekOneEnd = seasonStart.AddDays(6);
+        if (date >= seasonStart && date <= weekOneEnd)
+            return false;
+
+        if (bracketStart.HasValue && bracketEnd.HasValue &&
+            date >= bracketStart.Value && date <= bracketEnd.Value)
+            return false;
+
+        return true;
+    }
+
+    private static bool TryParseIsoDate(string raw, out DateOnly date)
+    {
+        return DateOnly.TryParseExact(
+            raw ?? "",
+            "yyyy-MM-dd",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out date);
     }
 
     private static List<ScheduleAssignment> OrderGuestCandidates(List<ScheduleAssignment> slots, GuestAnchorSet? guestAnchors)
