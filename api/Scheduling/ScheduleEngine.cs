@@ -357,7 +357,7 @@ public static class ScheduleEngine
 
             var home = pick.HomeTeamId;
             var away = pick.AwayTeamId;
-            remainingMatchups.Remove(pick);
+            RemoveRemainingMatchup(remainingMatchups, home, away);
             ApplyCounts(home, away, slot.GameDate, homeCounts, awayCounts, gamesByDate, gamesByWeek, pairCounts, gamesByTeamDates);
             assignments.Add(new ScheduleAssignment(slot.SlotId, slot.GameDate, slot.StartTime, slot.EndTime, slot.FieldKey, home, away, false));
             if (placementTraces is not null)
