@@ -158,7 +158,8 @@ public class PracticeRequestService : IPracticeRequestService
                 "Team already has 3 pending/approved practice requests. Maximum is 3 slots per team.");
         }
 
-        var activeRequests = (await _practiceRequestRepo.QueryRequestsAsync(leagueId, null, division, teamId, null))
+        var queryResult = await _practiceRequestRepo.QueryRequestsAsync(leagueId, null, division, teamId, null);
+        var activeRequests = (queryResult ?? Enumerable.Empty<TableEntity>())
             .Where(e => ActiveRequestStatuses.Contains((e.GetString("Status") ?? "").Trim(), StringComparer.OrdinalIgnoreCase))
             .ToList();
         var usedPriorities = new HashSet<int>(
