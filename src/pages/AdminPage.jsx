@@ -398,7 +398,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
     }
   }
 
-  async function approve(req, roleOverride) {
+  async function approve(req, roleOverride, skipReload = false) {
     const userId = req?.userId || "";
     const role = (roleOverride || req?.requestedRole || "Viewer").trim();
     const targetLeagueId = (req?.leagueId || leagueId || "").trim();
@@ -412,7 +412,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
         },
         body: JSON.stringify({ role }),
       });
-      await load();
+      if (!skipReload) await load();
       setToast({ tone: "success", message: "Access request approved." });
       trackEvent("ui_admin_access_request_approve", {
         leagueId: targetLeagueId,
@@ -424,7 +424,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
     }
   }
 
-  async function deny(req) {
+  async function deny(req, skipReload = false) {
     const userId = req?.userId || "";
     const targetLeagueId = (req?.leagueId || leagueId || "").trim();
     if (!userId) return;
@@ -444,7 +444,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
         },
         body: JSON.stringify({ reason }),
       });
-      await load();
+      if (!skipReload) await load();
       setToast({ tone: "success", message: "Access request denied." });
       trackEvent("ui_admin_access_request_deny", {
         leagueId: targetLeagueId,

@@ -3,6 +3,13 @@ import LeaguePicker from "../../components/LeaguePicker";
 
 const ROLE_OPTIONS = ["LeagueAdmin", "Coach", "Viewer"];
 
+function requestSelectionKey(request) {
+  const userId = String(request?.userId || "").trim();
+  const leagueId = String(request?.leagueId || "").trim();
+  if (!userId) return "";
+  return leagueId ? `${leagueId}::${userId}` : userId;
+}
+
 export default function AccessRequestsSection({
   leagueId,
   setLeagueId,
@@ -32,13 +39,14 @@ export default function AccessRequestsSection({
   const [bulkProcessing, setBulkProcessing] = useState(false);
 
   // Toggle single item selection
-  const toggleSelection = useCallback((userId) => {
+  const toggleSelection = useCallback((selectionKey) => {
+    if (!selectionKey) return;
     setSelectedItems(prev => {
       const next = new Set(prev);
-      if (next.has(userId)) {
-        next.delete(userId);
+      if (next.has(selectionKey)) {
+        next.delete(selectionKey);
       } else {
-        next.add(userId);
+        next.add(selectionKey);
       }
       return next;
     });
@@ -49,7 +57,7 @@ export default function AccessRequestsSection({
     if (selectedItems.size === sorted.length) {
       setSelectedItems(new Set());
     } else {
-      setSelectedItems(new Set(sorted.map(r => r.userId)));
+      setSelectedItems(new Set(sorted.map((r) => requestSelectionKey(r)).filter(Boolean)));
     }
   }, [selectedItems.size, sorted]);
 
@@ -58,13 +66,13 @@ export default function AccessRequestsSection({
     if (selectedItems.size === 0) return;
 
     setBulkProcessing(true);
-    const itemsToApprove = sorted.filter(r => selectedItems.has(r.userId));
+    const itemsToApprove = sorted.filter((r) => selectedItems.has(requestSelectionKey(r)));
 
     for (const item of itemsToApprove) {
       try {
         await approve(item, bulkRole, true); // Pass true to skip reload after each
       } catch (err) {
-        console.error('Failed to approve:', item.userId, err);
+        console.error('Failed to approve:', requestSelectionKey(item), err);
       }
     }
 
@@ -78,13 +86,13 @@ export default function AccessRequestsSection({
     if (selectedItems.size === 0) return;
 
     setBulkProcessing(true);
-    const itemsToDeny = sorted.filter(r => selectedItems.has(r.userId));
+    const itemsToDeny = sorted.filter((r) => selectedItems.has(requestSelectionKey(r)));
 
     for (const item of itemsToDeny) {
       try {
         await deny(item, true); // Pass true to skip reload after each
       } catch (err) {
-        console.error('Failed to deny:', item.userId, err);
+        console.error('Failed to deny:', requestSelectionKey(item), err);
       }
     }
 
@@ -223,15 +231,17 @@ export default function AccessRequestsSection({
               </tr>
             </thead>
             <tbody>
-              {sorted.map((r) => (
-                <tr key={r.userId} className={selectedItems.has(r.userId) ? 'tableRow--selected' : ''}>
+              {sorted.map((r) => {
+                const selectionKey = requestSelectionKey(r);
+                return (
+                <tr key={selectionKey || r.userId} className={selectedItems.has(selectionKey) ? 'tableRow--selected' : ''}>
                   {accessStatus === 'Pending' && (
                     <td>
                       <input
                         type="checkbox"
-                        checked={selectedItems.has(r.userId)}
-                        onChange={() => toggleSelection(r.userId)}
-                        aria-label={`Select ${r.email || r.userId}`}
+                        checked={selectedItems.has(selectionKey)}
+                        onChange={() => toggleSelection(selectionKey)}
+                        aria-label={`Select ${r.email || r.userId}${r.leagueId ? ` in ${r.leagueId}` : ''}`}
                       />
                     </td>
                   )}
@@ -277,7 +287,7 @@ export default function AccessRequestsSection({
                     )}
                   </td>
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         </div>

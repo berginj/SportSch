@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiFetch } from '../lib/api';
 
 /**
@@ -11,6 +11,7 @@ export default function NotificationSettingsPage({ leagueId }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const successTimerRef = useRef(null);
 
   const loadPreferences = useCallback(async () => {
     if (!leagueId) {
@@ -35,6 +36,15 @@ export default function NotificationSettingsPage({ leagueId }) {
   useEffect(() => {
     loadPreferences();
   }, [loadPreferences]);
+
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) {
+        clearTimeout(successTimerRef.current);
+        successTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const handleToggle = (field) => {
     setPreferences(prev => ({
@@ -68,7 +78,13 @@ export default function NotificationSettingsPage({ leagueId }) {
       });
 
       setSuccessMessage('Notification preferences saved successfully!');
-      setTimeout(() => setSuccessMessage(''), 3000);
+      if (successTimerRef.current) {
+        clearTimeout(successTimerRef.current);
+      }
+      successTimerRef.current = setTimeout(() => {
+        setSuccessMessage('');
+        successTimerRef.current = null;
+      }, 3000);
     } catch (err) {
       setError(err.message || 'Failed to save preferences');
     } finally {

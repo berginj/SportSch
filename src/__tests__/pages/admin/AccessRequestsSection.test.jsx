@@ -229,4 +229,26 @@ describe('AccessRequestsSection', () => {
     // Verify the value changed
     expect(roleSelect.value).toBe('LeagueAdmin');
   });
+
+  it('treats same user in different leagues as independent bulk selections', () => {
+    const mockRequests = [
+      { userId: 'user-2', email: 'user2@example.com', status: 'Pending', leagueId: 'league-a' },
+      { userId: 'user-2', email: 'user2@example.com', status: 'Pending', leagueId: 'league-b' }
+    ];
+
+    render(
+      <AccessRequestsSection
+        {...mockProps}
+        isGlobalAdmin={true}
+        accessScope="all"
+        sorted={mockRequests}
+      />
+    );
+
+    const checkboxes = screen.getAllByRole('checkbox');
+    fireEvent.click(checkboxes[1]);
+    fireEvent.click(checkboxes[2]);
+
+    expect(screen.getByText(/2 requests selected/i)).toBeInTheDocument();
+  });
 });
