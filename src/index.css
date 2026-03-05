@@ -63,6 +63,10 @@
     --status-cancelled-bg: linear-gradient(145deg, #fff1ef, #f8ddda);
     --status-cancelled-border: rgba(198, 83, 74, 0.26);
     --status-cancelled-text: #a74138;
+
+    --status-event-bg: linear-gradient(145deg, #f1ecfb, #e7dff7);
+    --status-event-border: rgba(138, 94, 167, 0.24);
+    --status-event-text: #654285;
   }
 
   :root[data-theme="dark"] {
@@ -117,6 +121,10 @@
     --status-cancelled-bg: linear-gradient(145deg, rgba(224, 131, 122, 0.22), rgba(224, 131, 122, 0.14));
     --status-cancelled-border: rgba(224, 131, 122, 0.42);
     --status-cancelled-text: #ffd2cd;
+
+    --status-event-bg: linear-gradient(145deg, rgba(169, 132, 205, 0.22), rgba(169, 132, 205, 0.14));
+    --status-event-border: rgba(169, 132, 205, 0.38);
+    --status-event-text: #efe1ff;
 
     --season-wizard-shell: #16283b;
     --season-wizard-panel: #1a2e43;
@@ -770,7 +778,7 @@
     padding: 0.55rem 0.9rem 0.55rem 1.1rem;
     border: 1px solid rgba(255, 255, 255, 0.8);
     border-radius: 999px;
-    background: linear-gradient(145deg, #edf3f8, #e3eaf1);
+    background: var(--surface-raised);
     box-shadow: var(--neo-shadow-sm);
   }
 
@@ -814,30 +822,30 @@
 
   .overlayTypeBadge--matchup,
   .overlayMiniBadge--matchup {
-    background: linear-gradient(145deg, #e9f1fb, #d9e6f5);
-    border-color: rgba(46, 111, 174, 0.26);
-    color: #1f5584;
+    background: var(--status-pending-bg);
+    border-color: var(--status-pending-border);
+    color: var(--status-pending-text);
   }
 
   .overlayTypeBadge--external,
   .overlayMiniBadge--external {
-    background: linear-gradient(145deg, #fff4dd, #fbe6b7);
-    border-color: rgba(204, 138, 29, 0.3);
-    color: #8a5a11;
+    background: var(--status-open-bg);
+    border-color: var(--status-open-border);
+    color: var(--status-open-text);
   }
 
   .overlayTypeBadge--availability,
   .overlayMiniBadge--availability {
-    background: linear-gradient(145deg, #eef9f3, #e4f4eb);
-    border-color: rgba(47, 143, 102, 0.24);
-    color: #1f6e4d;
+    background: var(--status-confirmed-bg);
+    border-color: var(--status-confirmed-border);
+    color: var(--status-confirmed-text);
   }
 
   .overlayTypeBadge--event,
   .overlayMiniBadge--event {
-    background: linear-gradient(145deg, #f1ecfb, #e7dff7);
-    border-color: rgba(138, 94, 167, 0.24);
-    color: #654285;
+    background: var(--status-event-bg);
+    border-color: var(--status-event-border);
+    color: var(--status-event-text);
   }
 
   .overlayDetailTitle {
@@ -852,7 +860,7 @@
     padding: 0.65rem 0.75rem;
     border: 1px solid rgba(255, 255, 255, 0.82);
     border-radius: 16px;
-    background: linear-gradient(145deg, #edf3f8, #e3eaf1);
+    background: var(--surface-raised);
     box-shadow: var(--neo-shadow-sm);
   }
 
@@ -876,22 +884,22 @@
 
   .overlayDayEntry--external {
     border-left: 4px solid rgba(204, 138, 29, 0.6);
-    background: linear-gradient(145deg, #fff6e4, #f9ebc5);
+    background: var(--status-open-bg);
   }
 
   .overlayDayEntry--availability {
     border-left: 4px solid rgba(47, 143, 102, 0.55);
-    background: linear-gradient(145deg, #edf8f1, #e2f0e8);
+    background: var(--status-confirmed-bg);
   }
 
   .overlayDayEntry--event {
     border-left: 4px solid rgba(138, 94, 167, 0.5);
-    background: linear-gradient(145deg, #f1ecfb, #e7dff7);
+    background: var(--status-event-bg);
   }
 
   .seasonWeekColumn {
     border-radius: 22px;
-    background: linear-gradient(145deg, rgba(237, 243, 248, 0.92), rgba(227, 234, 241, 0.92));
+    background: var(--surface-panel);
   }
 
   .seasonWeekColumn__header {
@@ -911,12 +919,12 @@
 
   .availabilityPatternCard--steady {
     border-left-color: rgba(47, 143, 102, 0.7);
-    background: linear-gradient(145deg, #eef9f3, #e4f4eb);
+    background: var(--status-confirmed-bg);
   }
 
   .availabilityPatternCard--warning {
     border-left-color: rgba(204, 138, 29, 0.8);
-    background: linear-gradient(145deg, #fff6e4, #f9ebc5);
+    background: var(--status-open-bg);
   }
 
   .availabilityPatternCard__top {
@@ -2245,6 +2253,146 @@
   :root[data-theme="dark"] .subtle,
   :root[data-theme="dark"] .muted {
     color: var(--muted);
+  }
+
+  :root[data-theme="dark"] .overlayFilterChip::before,
+  :root[data-theme="dark"] .overlayDivisionPill::before {
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.12);
+  }
+
+  :root[data-theme="dark"] .seasonWizard {
+    background:
+      radial-gradient(circle at top left, rgba(108, 169, 226, 0.12), transparent 40%),
+      radial-gradient(circle at 82% 20%, rgba(87, 180, 138, 0.1), transparent 36%),
+      linear-gradient(145deg, #1d3146, #16283b);
+    border-color: rgba(255, 255, 255, 0.16);
+    box-shadow:
+      18px 18px 36px rgba(0, 0, 0, 0.42),
+      -18px -18px 36px rgba(255, 255, 255, 0.03);
+  }
+
+  :root[data-theme="dark"] .seasonWizard::before {
+    border-color: rgba(255, 255, 255, 0.12);
+  }
+
+  :root[data-theme="dark"] .seasonWizard label,
+  :root[data-theme="dark"] .seasonWizard .subtle,
+  :root[data-theme="dark"] .seasonWizard .muted {
+    color: var(--muted);
+  }
+
+  :root[data-theme="dark"] .seasonWizard .h4,
+  :root[data-theme="dark"] .seasonWizard .h3,
+  :root[data-theme="dark"] .seasonWizard .font-bold,
+  :root[data-theme="dark"] .seasonWizard strong,
+  :root[data-theme="dark"] .seasonWizard .h2 {
+    color: var(--text);
+  }
+
+  :root[data-theme="dark"] .seasonWizard .seasonWizard__heroCallout {
+    background:
+      radial-gradient(circle at top right, rgba(243, 194, 79, 0.14), transparent 34%),
+      var(--surface-panel);
+  }
+
+  :root[data-theme="dark"] .seasonWizard .seasonWizard__stepStrip {
+    background: var(--surface-inset-bg);
+    box-shadow: var(--neo-inset);
+  }
+
+  :root[data-theme="dark"] .seasonWizard .seasonWizard__statusRail {
+    border-color: rgba(255, 255, 255, 0.2);
+    color: var(--text);
+  }
+
+  :root[data-theme="dark"] .seasonWizard .pill {
+    background: var(--surface-inset-bg);
+    border-color: rgba(255, 255, 255, 0.18);
+    color: var(--text);
+  }
+
+  :root[data-theme="dark"] .seasonWizard .btn,
+  :root[data-theme="dark"] .seasonWizard .seasonWizard__stepButton,
+  :root[data-theme="dark"] .seasonWizard .btn.btn--ghost {
+    color: var(--text);
+  }
+
+  :root[data-theme="dark"] .seasonWizard input:not([type="checkbox"]),
+  :root[data-theme="dark"] .seasonWizard select,
+  :root[data-theme="dark"] .seasonWizard textarea {
+    color: var(--text);
+  }
+
+  :root[data-theme="dark"] .seasonWizard .tableWrap {
+    background: var(--surface-inset-bg);
+    box-shadow: var(--neo-inset);
+  }
+
+  :root[data-theme="dark"] .seasonWizard .table th {
+    background: rgba(20, 34, 49, 0.88);
+    color: var(--muted);
+    border-bottom-color: rgba(255, 255, 255, 0.16);
+  }
+
+  :root[data-theme="dark"] .seasonWizard .table td {
+    color: var(--text);
+    border-bottom-color: rgba(255, 255, 255, 0.12);
+  }
+
+  :root[data-theme="dark"] .seasonWizard .table--compact tbody tr:nth-child(odd) {
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  :root[data-theme="dark"] .notificationDropdown {
+    border-color: rgba(255, 255, 255, 0.16);
+    background: var(--surface-raised);
+    box-shadow: 18px 18px 32px rgba(0, 0, 0, 0.48), -14px -14px 28px rgba(255, 255, 255, 0.03);
+  }
+
+  :root[data-theme="dark"] .notificationDropdown__header,
+  :root[data-theme="dark"] .notificationDropdown__footer {
+    background: var(--surface-panel);
+    border-color: rgba(255, 255, 255, 0.14);
+  }
+
+  :root[data-theme="dark"] .notificationDropdown__refreshButton {
+    background: var(--surface-inset-bg);
+    border-color: rgba(255, 255, 255, 0.16);
+    color: var(--text);
+  }
+
+  :root[data-theme="dark"] .notificationDropdown__textButton:hover {
+    background: rgba(108, 169, 226, 0.16);
+  }
+
+  :root[data-theme="dark"] .notificationDropdown__item {
+    border-bottom-color: rgba(255, 255, 255, 0.12);
+  }
+
+  :root[data-theme="dark"] .notificationDropdown__item.is-read {
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  :root[data-theme="dark"] .notificationDropdown__item.is-unread {
+    background: rgba(108, 169, 226, 0.15);
+  }
+
+  :root[data-theme="dark"] .notificationDropdown__item.is-link:hover {
+    background: rgba(243, 194, 79, 0.18);
+  }
+
+  :root[data-theme="dark"] .notificationDropdown__state--error {
+    color: var(--status-cancelled-text);
+  }
+
+  :root[data-theme="dark"] .notificationCenterItem {
+    background: var(--surface-raised);
+    border-color: rgba(255, 255, 255, 0.16);
+  }
+
+  :root[data-theme="dark"] .notificationCenterItem.is-unread {
+    background: var(--status-pending-bg);
+    border-color: var(--status-pending-border);
   }
 
   @media (max-width: 640px) {

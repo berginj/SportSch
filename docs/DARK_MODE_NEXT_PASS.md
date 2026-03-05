@@ -9,6 +9,12 @@ This is the follow-up scope after the MVP dark mode toggle.
 3. Improved top-nav toggle accessibility (`aria-pressed`) and label clarity.
 4. Added theme persistence/toggle tests in [`src/__tests__/App.theme.test.jsx`](../src/__tests__/App.theme.test.jsx).
 
+## Completed in pass 3
+
+1. Added legibility-focused dark overrides for `SeasonWizard` typography, controls, tables, and status rails.
+2. Improved overlay contrast by tokenizing badge/day-entry backgrounds and text colors.
+3. Improved notification dropdown/center dark-mode readability (item states, header/footer, action buttons).
+
 ## Remaining UI coverage gaps
 
 1. Convert remaining hard-coded light gradients/colors in [`src/index.css`](../src/index.css) to semantic variables.
