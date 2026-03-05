@@ -543,6 +543,34 @@ describe("SeasonWizard", () => {
     }
   });
 
+  it("shows apply outcome details and opens calendar with matching filters", async () => {
+    await advanceToPreview();
+
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const replaceStateSpy = vi.spyOn(window.history, "replaceState");
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Apply schedule" }));
+
+      await waitFor(() => {
+        expect(screen.getByText("Apply result")).toBeInTheDocument();
+      });
+      expect(document.body.textContent).toContain("Assignments written: 1");
+
+      fireEvent.click(screen.getByRole("button", { name: /Open calendar with these filters/i }));
+
+      expect(replaceStateSpy).toHaveBeenCalled();
+      const nextPath = replaceStateSpy.mock.calls.at(-1)?.[2];
+      expect(nextPath).toContain("#calendar");
+      expect(nextPath).toContain("status=Open%2CConfirmed");
+      expect(nextPath).toContain("division=U12");
+      expect(nextPath).toContain("dateFrom=2026-04-01");
+      expect(nextPath).toContain("dateTo=2026-06-30");
+    } finally {
+      replaceStateSpy.mockRestore();
+      confirmSpy.mockRestore();
+    }
+  });
+
   it("applies the selected generated schedule option using that option's seed and strategy", async () => {
     installApiMock({
       previewResponses: [

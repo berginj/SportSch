@@ -1028,6 +1028,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [assignmentTeamFilter, setAssignmentTeamFilter] = useState("");
   const [assignmentFieldFilter, setAssignmentFieldFilter] = useState("");
   const [showHighlightedAssignmentsOnly, setShowHighlightedAssignmentsOnly] = useState(false);
+  const [lastApplySummary, setLastApplySummary] = useState(null);
   const availabilityCacheRef = useRef(new Map());
   const availabilityRequestIdRef = useRef(0);
   const autoPostseasonDefaultsRef = useRef({ ...EMPTY_POSTSEASON_DATES });
@@ -2533,6 +2534,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
   async function runPreview() {
     setErr("");
+    setLastApplySummary(null);
     const dateError = validateIsoDates([
       { label: "Season start", value: seasonStart, required: true },
       { label: "Season end", value: seasonEnd, required: true },
@@ -2625,18 +2627,73 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     try {
       const refreshedSlotPlan = await resetGeneratedSlotsForRerun();
       const payload = buildWizardPayload(refreshedSlotPlan);
-      await apiFetch("/api/schedule/wizard/apply", {
+      const data = await apiFetch("/api/schedule/wizard/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      setToast({ tone: "success", message: "Wizard schedule applied." });
+      const appliedPreview = data && typeof data === "object" ? data : null;
+      if (appliedPreview) setPreview(appliedPreview);
+
+      const summarySource = appliedPreview?.summary || preview?.summary || {};
+      const regularAssigned = Number(summarySource?.regularSeason?.slotsAssigned || 0);
+      const poolAssigned = Number(summarySource?.poolPlay?.slotsAssigned || 0);
+      const bracketAssigned = Number(summarySource?.bracket?.slotsAssigned || 0);
+      const assignmentCountFromPayload = Array.isArray(appliedPreview?.assignments)
+        ? appliedPreview.assignments.length
+        : (Array.isArray(preview?.assignments) ? preview.assignments.length : 0);
+      const totalAssignedFromSummary = Number(summarySource?.totalAssigned);
+      const totalAssigned = Number.isFinite(totalAssignedFromSummary)
+        ? totalAssignedFromSummary
+        : Math.max(assignmentCountFromPayload, regularAssigned + poolAssigned + bracketAssigned);
+      const totalSlots = Number(summarySource?.totalSlots || 0);
+      const planningDateTo = maxIsoDate(seasonEnd, bracketEnd) || seasonEnd;
+
+      setLastApplySummary({
+        division,
+        dateFrom: seasonStart,
+        dateTo: planningDateTo,
+        regularAssigned,
+        poolAssigned,
+        bracketAssigned,
+        totalAssigned,
+        totalSlots,
+      });
+
+      setToast({
+        tone: totalAssigned > 0 ? "success" : "warning",
+        message:
+          totalAssigned > 0
+            ? `Schedule applied: ${totalAssigned} assignment${totalAssigned === 1 ? "" : "s"} written.`
+            : "Apply completed but no assignments were written for this preview.",
+      });
       trackEvent("ui_season_wizard_apply", { leagueId, division });
     } catch (e) {
       setErr(normalizeRequestErrorMessage(e, "Apply request failed."));
     } finally {
       setLoading(false);
     }
+  }
+
+  function openCalendarWithApplyFilters() {
+    if (!lastApplySummary || typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const targetDivision = String(lastApplySummary.division || "").trim();
+    const targetDateFrom = String(lastApplySummary.dateFrom || "").trim();
+    const targetDateTo = String(lastApplySummary.dateTo || "").trim();
+    if (targetDivision) params.set("division", targetDivision);
+    else params.delete("division");
+    if (targetDateFrom) params.set("dateFrom", targetDateFrom);
+    if (targetDateTo) params.set("dateTo", targetDateTo);
+    params.set("showSlots", "1");
+    params.set("showEvents", "1");
+    params.set("status", "Open,Confirmed");
+    params.delete("slotType");
+
+    const pathname = window.location.pathname || "/";
+    window.history.replaceState({}, "", `${pathname}?${params.toString()}#calendar`);
+    window.dispatchEvent(new Event("hashchange"));
+    window.dispatchEvent(new Event("popstate"));
   }
 
   async function applyPreviewRepairProposal(proposal) {
@@ -6100,6 +6157,29 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                     </div>
                   </div>
                 </div>
+
+                {lastApplySummary ? (
+                  <div className={lastApplySummary.totalAssigned > 0 ? "callout callout--ok" : "callout callout--warning"}>
+                    <div className="font-bold mb-1">Apply result</div>
+                    <div className="subtle">
+                      Division <b>{lastApplySummary.division || "-"}</b> | Window <b>{lastApplySummary.dateFrom || "-"}</b> to <b>{lastApplySummary.dateTo || "-"}</b>
+                      {" | "}Assignments written: <b>{Number(lastApplySummary.totalAssigned || 0)}</b>
+                      {" | "}Regular: <b>{Number(lastApplySummary.regularAssigned || 0)}</b>
+                      {" | "}Pool: <b>{Number(lastApplySummary.poolAssigned || 0)}</b>
+                      {" | "}Bracket: <b>{Number(lastApplySummary.bracketAssigned || 0)}</b>
+                    </div>
+                    {Number(lastApplySummary.totalAssigned || 0) <= 0 ? (
+                      <div className="subtle mt-1">
+                        No assignments were written, so the calendar may look empty for this division/date range.
+                      </div>
+                    ) : null}
+                    <div className="row row--wrap gap-2 mt-2">
+                      <button className="btn btn--ghost" type="button" onClick={openCalendarWithApplyFilters}>
+                        Open calendar with these filters
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
 
                 <div className="row row--wrap gap-2">
                   <button
