@@ -2634,8 +2634,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     }
     setLoading(true);
     try {
-      const refreshedSlotPlan = await resetGeneratedSlotsForRerun();
-      const payload = buildWizardPayload(refreshedSlotPlan);
+      const payload = buildWizardPayload();
       if (applyWithSingleMissingMatchupOverride) {
         payload.allowApplyWithSingleMissingRequiredMatchup = true;
       }

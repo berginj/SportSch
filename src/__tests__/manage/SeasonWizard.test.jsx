@@ -574,6 +574,7 @@ describe("SeasonWizard", () => {
 
     const resetToggle = screen.getByLabelText(/Attempt reset of existing non-practice game, guest, and request slots in this season window before preview and apply/i);
     fireEvent.click(resetToggle);
+    const resetCallsBeforeApply = api.apiFetch.mock.calls.filter(([path]) => path === "/api/schedule/wizard/reset-generated").length;
 
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     try {
@@ -589,6 +590,8 @@ describe("SeasonWizard", () => {
       const applyCall = api.apiFetch.mock.calls.find(([path]) => path === "/api/schedule/wizard/apply");
       const payload = JSON.parse(applyCall?.[1]?.body || "{}");
       expect(payload.resetGeneratedSlotsBeforeApply).toBe(false);
+      const resetCallsAfterApply = api.apiFetch.mock.calls.filter(([path]) => path === "/api/schedule/wizard/reset-generated").length;
+      expect(resetCallsAfterApply).toBe(resetCallsBeforeApply);
     } finally {
       confirmSpy.mockRestore();
     }
