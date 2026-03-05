@@ -273,10 +273,10 @@ public class ScheduleWizardFunctions
             var regularRangeEnd = poolStart.HasValue ? poolStart.Value.AddDays(-1) : seasonEnd;
             var regularSlots = FilterSlots(gameCapableSlots, seasonStart, regularRangeEnd);
             var poolSlots = poolStart.HasValue && poolEnd.HasValue
-                ? FilterSlots(gameCapableSlots, poolStart.Value, poolEnd.Value)
+                ? FilterSlots(filteredAllSlots, poolStart.Value, poolEnd.Value)
                 : new List<SlotInfo>();
             var bracketSlots = bracketStart.HasValue && bracketEnd.HasValue
-                ? FilterSlots(gameCapableSlots, bracketStart.Value, bracketEnd.Value)
+                ? FilterSlots(filteredAllSlots, bracketStart.Value, bracketEnd.Value)
                 : new List<SlotInfo>();
 
             // Calculate active weeks in regular season from usable slots after blackouts.
@@ -515,10 +515,10 @@ public class ScheduleWizardFunctions
             var regularRangeEnd = poolStart.HasValue ? poolStart.Value.AddDays(-1) : seasonEnd;
             var regularSlots = FilterSlots(gameCapableSlots, seasonStart, regularRangeEnd);
             var poolSlots = poolStart.HasValue && poolEnd.HasValue
-                ? FilterSlots(gameCapableSlots, poolStart.Value, poolEnd.Value)
+                ? FilterSlots(filteredAllSlots, poolStart.Value, poolEnd.Value)
                 : new List<SlotInfo>();
             var bracketSlots = bracketStart.HasValue && bracketEnd.HasValue
-                ? FilterSlots(gameCapableSlots, bracketStart.Value, bracketEnd.Value)
+                ? FilterSlots(filteredAllSlots, bracketStart.Value, bracketEnd.Value)
                 : new List<SlotInfo>();
 
             var regularMaxTotalGamesPerTeam = minGamesPerTeam > 0 ? minGamesPerTeam : (int?)null;
@@ -816,6 +816,7 @@ public class ScheduleWizardFunctions
         var nonGameSlotAssignments = assignments
             .Where(a => a is not null)
             .Where(a => !a.isRequestGame)
+            .Where(a => string.Equals(a.phase, "Regular Season", StringComparison.OrdinalIgnoreCase))
             .Where(a => !string.IsNullOrWhiteSpace(a.slotId) && !gameCapableSlotIds.Contains(a.slotId))
             .ToList();
         if (nonGameSlotAssignments.Count > 0)
@@ -834,10 +835,10 @@ public class ScheduleWizardFunctions
                 .ToList();
             issues.Add(new
             {
-                phase = "All Phases",
+                phase = "Regular Season",
                 ruleId = "non-game-slot-assignment",
                 severity = "error",
-                message = $"{nonGameSlotAssignments.Count} assignment(s) landed on slots that are not game-capable.",
+                message = $"{nonGameSlotAssignments.Count} regular-season assignment(s) landed on slots that are not game-capable.",
                 details = new Dictionary<string, object?>
                 {
                     ["count"] = nonGameSlotAssignments.Count,
