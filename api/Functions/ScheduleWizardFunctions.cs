@@ -1956,7 +1956,7 @@ public class ScheduleWizardFunctions
         var picked = new List<SlotInfo>();
         foreach (var weekGroup in validSlots
             .GroupBy(s => WeekKey(s.gameDate))
-            .OrderByDescending(g => g.Key))  // Changed to descending for backward/end-loading
+            .OrderBy(g => g.Key))  // Keep ascending - guest games should be WEEKLY throughout season
         {
             if (string.IsNullOrWhiteSpace(weekGroup.Key))
                 continue;
