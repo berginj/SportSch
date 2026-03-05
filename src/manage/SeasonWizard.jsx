@@ -2582,6 +2582,12 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
   async function applySchedule() {
     if (!preview) return;
+    const applyWithSingleMissingMatchupOverride =
+      previewApplyBlocked && previewAllowsSingleMissingMatchupApplyOverride;
+    if (previewApplyBlocked && !applyWithSingleMissingMatchupOverride) {
+      setErr("Apply blocked by hard rule violations. Resolve blockers in Rule Health first.");
+      return;
+    }
 
     // Warn user that this will overwrite existing schedule
     const confirmed = window.confirm(
@@ -2591,6 +2597,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       (resetGeneratedSlotsBeforeApply
         ? "- Attempts to reset existing non-practice game, guest, and request rows in this season window before preview/apply\n"
         : "- Leaves existing non-practice game, guest, and request rows untouched before preview/apply\n") +
+      (applyWithSingleMissingMatchupOverride
+        ? "- Acknowledges 1 unscheduled required matchup and applies anyway\n"
+        : "") +
       "- Does not change recurring allocations or field blackouts\n" +
       "- Cannot be undone\n\n" +
       "Continue?"
@@ -2627,6 +2636,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     try {
       const refreshedSlotPlan = await resetGeneratedSlotsForRerun();
       const payload = buildWizardPayload(refreshedSlotPlan);
+      if (applyWithSingleMissingMatchupOverride) {
+        payload.allowApplyWithSingleMissingRequiredMatchup = true;
+      }
       const data = await apiFetch("/api/schedule/wizard/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -3044,6 +3056,37 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const previewIssueCount = Number(preview?.totalIssues || 0) > 0
     ? Number(preview?.totalIssues || 0)
     : previewCollections.issues.length;
+  const previewAllowsSingleMissingMatchupApplyOverride = useMemo(() => {
+    if (!previewApplyBlocked || !preview) return false;
+
+    const hardViolationCount = Number(previewRuleHealth?.hardViolationCount || 0);
+    if (!Number.isFinite(hardViolationCount) || hardViolationCount !== 1) return false;
+
+    const hardGroups = (Array.isArray(previewRuleHealth?.groups) ? previewRuleHealth.groups : [])
+      .filter((group) => String(group?.severity || "").toLowerCase() === "hard");
+    if (hardGroups.length === 1) {
+      const hardGroup = hardGroups[0];
+      const groupRuleId = String(hardGroup?.ruleId || "").toLowerCase();
+      const groupCount = Number(hardGroup?.count);
+      if (groupRuleId === "unscheduled-required-matchups" && Number.isFinite(groupCount) && groupCount === 1) {
+        return true;
+      }
+    }
+
+    const hardIssues = previewCollections.issues
+      .filter((issue) => String(issue?.severity || "").toLowerCase() === "error");
+    if (hardIssues.length !== 1) return false;
+
+    const issue = hardIssues[0];
+    if (String(issue?.ruleId || "").toLowerCase() !== "unscheduled-required-matchups") return false;
+
+    const detailCount = Number(issue?.details?.count);
+    if (Number.isFinite(detailCount)) return detailCount === 1;
+
+    const message = String(issue?.message || "").toLowerCase();
+    return message.includes("1 required matchup");
+  }, [previewApplyBlocked, preview, previewRuleHealth, previewCollections.issues]);
+  const applyActionBlocked = previewApplyBlocked && !previewAllowsSingleMissingMatchupApplyOverride;
   const stepErrors = useMemo(
     () => [basicsError, postseasonError, slotPlanError, rulesError, previewError],
     [basicsError, postseasonError, slotPlanError, rulesError, previewError]
@@ -4721,14 +4764,20 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     if (currentStepIssue) return "Resolve the blocking issue in this step before moving on.";
     if (step === 3) return 'Next checkpoint: run "Preview schedule" to validate these rules.';
     if (step === 4 && !preview) return 'Next checkpoint: go back to Rules and run "Preview schedule".';
-    if (step === 4 && (previewApplyBlocked || previewIssueCount > 0)) {
+    if (step === 4 && applyActionBlocked) {
       return "Next checkpoint: use Health & fixes to resolve the remaining blockers.";
+    }
+    if (step === 4 && previewApplyBlocked && previewAllowsSingleMissingMatchupApplyOverride) {
+      return "Next checkpoint: one required matchup remains unassigned; apply anyway or resolve it in Health & fixes.";
+    }
+    if (step === 4 && previewIssueCount > 0) {
+      return "Next checkpoint: review Health & fixes and apply once you accept the remaining warnings.";
     }
     if (step === 4) return 'Next checkpoint: review the preview, then use "Apply schedule" when ready.';
     const nextMeta = steps[step + 1];
     if (!nextMeta) return "Next checkpoint: apply the schedule once the preview looks right.";
     return `Next checkpoint: ${nextMeta.label}.`;
-  }, [currentStepIssue, step, steps, preview, previewApplyBlocked, previewIssueCount]);
+  }, [currentStepIssue, step, steps, preview, previewApplyBlocked, previewAllowsSingleMissingMatchupApplyOverride, previewIssueCount, applyActionBlocked]);
 
   function goToStep(targetStep) {
     const nextStep = Math.max(0, Math.min(steps.length - 1, Number(targetStep)));
@@ -7633,13 +7682,22 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
             <button className="btn btn--ghost" type="button" onClick={() => setStep(3)}>
               Back
             </button>
-            {previewApplyBlocked ? (
+            {previewApplyBlocked && applyActionBlocked ? (
               <div className="subtle self-center mr-2">
                 Apply blocked by hard rule violations. Use Rule Health to review the failing rules.
               </div>
             ) : null}
-            <button className="btn btn--primary" type="button" onClick={applySchedule} disabled={loading || !preview || previewApplyBlocked}>
-              {loading ? "Applying..." : (previewApplyBlocked ? "Apply blocked" : "Apply schedule")}
+            {previewApplyBlocked && previewAllowsSingleMissingMatchupApplyOverride ? (
+              <div className="subtle self-center mr-2">
+                One required matchup is still unassigned. You can acknowledge it and apply anyway.
+              </div>
+            ) : null}
+            <button className="btn btn--primary" type="button" onClick={applySchedule} disabled={loading || !preview || applyActionBlocked}>
+              {loading
+                ? "Applying..."
+                : (applyActionBlocked
+                  ? "Apply blocked"
+                  : (previewApplyBlocked ? "Apply with 1 missing matchup" : "Apply schedule"))}
             </button>
           </div>
         </div>

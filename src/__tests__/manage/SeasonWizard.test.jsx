@@ -241,6 +241,57 @@ const ODD_TEAM_GUEST_PREVIEW = {
   unassignedSlots: [],
   unassignedMatchups: [],
 };
+const SINGLE_MISSING_MATCHUP_PREVIEW = {
+  ...BASE_PREVIEW,
+  summary: {
+    ...BASE_PREVIEW.summary,
+    teamCount: 9,
+  },
+  issues: [
+    {
+      phase: "Regular Season",
+      ruleId: "unscheduled-required-matchups",
+      severity: "error",
+      message: "1 required matchup(s) could not be assigned.",
+      details: { count: 1 },
+    },
+  ],
+  totalIssues: 1,
+  applyBlocked: true,
+  ruleHealth: {
+    status: "red",
+    hardViolationCount: 1,
+    softViolationCount: 0,
+    softScore: 980,
+    groups: [
+      {
+        ruleId: "unscheduled-required-matchups",
+        severity: "hard",
+        count: 1,
+        summary: "1 required matchup(s) could not be assigned.",
+        violations: [
+          {
+            ruleId: "unscheduled-required-matchups",
+            severity: "hard",
+            message: "1 required matchup(s) could not be assigned.",
+            teamIds: ["TEAM-1", "TEAM-2"],
+            slotIds: [],
+            weekKeys: [],
+            details: { count: 1 },
+          },
+        ],
+        smallestAffectedSet: {
+          teams: ["TEAM-1", "TEAM-2"],
+          slots: [],
+          weeks: [],
+          teamCount: 2,
+          slotCount: 0,
+          weekCount: 0,
+        },
+      },
+    ],
+  },
+};
 const RULE_HINT_PREVIEW = {
   ...BASE_PREVIEW,
   summary: {
@@ -541,6 +592,39 @@ describe("SeasonWizard", () => {
     } finally {
       confirmSpy.mockRestore();
     }
+  });
+
+  it("allows apply with explicit acknowledgement when exactly one required matchup is unassigned", async () => {
+    installApiMock({ previewResponse: SINGLE_MISSING_MATCHUP_PREVIEW });
+    await advanceToPreview();
+
+    expect(screen.getByText(/One required matchup is still unassigned/i)).toBeInTheDocument();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Apply with 1 missing matchup" }));
+
+      await waitFor(() => {
+        expect(api.apiFetch).toHaveBeenCalledWith(
+          "/api/schedule/wizard/apply",
+          expect.objectContaining({ method: "POST" })
+        );
+      });
+
+      const applyCall = api.apiFetch.mock.calls.find(([path]) => path === "/api/schedule/wizard/apply");
+      const payload = JSON.parse(applyCall?.[1]?.body || "{}");
+      expect(payload.allowApplyWithSingleMissingRequiredMatchup).toBe(true);
+      expect(String(confirmSpy.mock.calls[0]?.[0] || "")).toContain("Acknowledges 1 unscheduled required matchup");
+    } finally {
+      confirmSpy.mockRestore();
+    }
+  });
+
+  it("keeps apply blocked for other hard-rule failures", async () => {
+    installApiMock({ previewResponse: RULE_HINT_PREVIEW });
+    await advanceToPreview();
+
+    expect(screen.getByRole("button", { name: "Apply blocked" })).toBeDisabled();
+    expect(screen.getByText(/Apply blocked by hard rule violations/i)).toBeInTheDocument();
   });
 
   it("shows apply outcome details and opens calendar with matching filters", async () => {
