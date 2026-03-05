@@ -49,13 +49,14 @@ public class ScheduleWizardFunctions
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "seasonStart must be before seasonEnd.");
 
             var bracketEnd = OptionalDate(body.bracketEnd);
-            var resetCount = await ResetGeneratedSlotsBeforeApplyAsync(leagueId, division, seasonStart, bracketEnd ?? seasonEnd);
+            var planningDateTo = ResolvePlanningDateTo(seasonEnd, bracketEnd);
+            var resetCount = await ResetGeneratedSlotsBeforeApplyAsync(leagueId, division, seasonStart, planningDateTo);
             return ApiResponses.Ok(req, new
             {
                 division,
                 resetCount,
                 dateFrom = seasonStart.ToString("yyyy-MM-dd"),
-                dateTo = (bracketEnd ?? seasonEnd).ToString("yyyy-MM-dd")
+                dateTo = planningDateTo.ToString("yyyy-MM-dd")
             });
         }
         catch (ApiGuards.HttpError ex) { return ApiResponses.FromHttpError(req, ex); }
@@ -251,7 +252,8 @@ public class ScheduleWizardFunctions
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "Need at least two teams to schedule.");
 
             // Load and filter slots
-            var rawSlots = await LoadAvailabilitySlotsAsync(leagueId, division, seasonStart, bracketEnd ?? seasonEnd);
+            var planningDateTo = ResolvePlanningDateTo(seasonEnd, bracketEnd);
+            var rawSlots = await LoadAvailabilitySlotsAsync(leagueId, division, seasonStart, planningDateTo);
             if (rawSlots.Count == 0)
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "No availability slots found for this division.");
 
@@ -467,6 +469,7 @@ public class ScheduleWizardFunctions
             var resetGeneratedSlotsBeforeApply = body.resetGeneratedSlotsBeforeApply ?? true;
             var requestedSeed = body.seed.HasValue ? Math.Abs(body.seed.Value) : (int?)null;
             var seed = requestedSeed ?? StableWizardSeed(division, seasonStart, seasonEnd);
+            var planningDateTo = ResolvePlanningDateTo(seasonEnd, bracketEnd);
 
             var teams = await LoadTeamsAsync(leagueId, division);
             if (teams.Count < 2)
@@ -485,7 +488,7 @@ public class ScheduleWizardFunctions
                 .Select(ToScheduleAssignment)
                 .ToList();
 
-            var rawSlots = await LoadAvailabilitySlotsAsync(leagueId, division, seasonStart, bracketEnd ?? seasonEnd);
+            var rawSlots = await LoadAvailabilitySlotsAsync(leagueId, division, seasonStart, planningDateTo);
             if (rawSlots.Count == 0)
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "No availability slots found for this division.");
 
@@ -700,7 +703,7 @@ public class ScheduleWizardFunctions
                 var runId = Guid.NewGuid().ToString("N");
                 if (resetGeneratedSlotsBeforeApply)
                 {
-                    await ResetGeneratedSlotsBeforeApplyAsync(leagueId, division, seasonStart, bracketEnd ?? seasonEnd);
+                    await ResetGeneratedSlotsBeforeApplyAsync(leagueId, division, seasonStart, planningDateTo);
                 }
                 await ApplyAssignmentsAsync(leagueId, division, runId, assignments);
                 await SaveWizardRunAsync(leagueId, division, runId, me.Email ?? me.UserId, summary, body);
@@ -1169,7 +1172,8 @@ public class ScheduleWizardFunctions
             var regularRangeEnd = poolStart.HasValue ? poolStart.Value.AddDays(-1) : seasonEnd;
             if (regularRangeEnd < seasonStart) return null;
 
-            var rawSlots = await LoadAvailabilitySlotsAsync(leagueId, division, seasonStart, bracketEnd ?? seasonEnd);
+            var planningDateTo = ResolvePlanningDateTo(seasonEnd, bracketEnd);
+            var rawSlots = await LoadAvailabilitySlotsAsync(leagueId, division, seasonStart, planningDateTo);
             if (rawSlots.Count == 0) return null;
 
             var slotPlanLookup = BuildSlotPlanLookup(wizard.slotPlan);
@@ -3224,22 +3228,30 @@ public class ScheduleWizardFunctions
     {
         var table = await TableClients.GetTableAsync(_svc, Constants.Tables.Slots);
         var slotRequestsTable = await TableClients.GetTableAsync(_svc, Constants.Tables.SlotRequests);
+        var practiceRequestsTable = await TableClients.GetTableAsync(_svc, Constants.Tables.PracticeRequests);
         var pk = Constants.Pk.Slots(leagueId, division);
         var filter = $"PartitionKey eq '{ApiGuards.EscapeOData(pk)}'";
         filter += $" and GameDate ge '{ApiGuards.EscapeOData(dateFrom.ToString("yyyy-MM-dd"))}'";
         filter += $" and GameDate le '{ApiGuards.EscapeOData(dateTo.ToString("yyyy-MM-dd"))}'";
         var resetCount = 0;
+        var practiceRequestPk = PracticeRequestPk(leagueId);
+        var nowUtc = DateTimeOffset.UtcNow;
 
         await foreach (var slot in table.QueryAsync<TableEntity>(filter: filter))
         {
             if (SlotEntityUtil.IsPractice(slot)) continue;
-            if (SlotEntityUtil.IsAvailability(slot)) continue;
+
+            var status = SlotEntityUtil.ReadString(slot, "Status", Constants.Status.SlotOpen);
+            if (string.Equals(status, Constants.Status.SlotCancelled, StringComparison.OrdinalIgnoreCase))
+                continue;
 
             var slotId = (SlotEntityUtil.ReadString(slot, "SlotId", slot.RowKey) ?? "").Trim();
             var isRequestGame = string.Equals(
                 SlotEntityUtil.ReadString(slot, "GameType"),
                 "Request",
                 StringComparison.OrdinalIgnoreCase);
+            var shouldReset = isRequestGame || SlotHasWizardUsageToClear(slot);
+            if (!shouldReset) continue;
 
             if (isRequestGame)
             {
@@ -3247,7 +3259,7 @@ public class ScheduleWizardFunctions
             }
             else
             {
-                SlotEntityUtil.ResetSchedulerSlotToAvailability(slot, DateTimeOffset.UtcNow);
+                SlotEntityUtil.ResetSchedulerSlotToAvailability(slot, nowUtc);
                 await table.UpdateEntityAsync(slot, slot.ETag, TableUpdateMode.Merge);
             }
             if (!string.IsNullOrWhiteSpace(slotId))
@@ -3258,12 +3270,47 @@ public class ScheduleWizardFunctions
                 {
                     await slotRequestsTable.DeleteEntityAsync(slotRequest.PartitionKey, slotRequest.RowKey, ETag.All);
                 }
+
+                var practiceRequestFilter = ODataFilterBuilder.And(
+                    ODataFilterBuilder.PartitionKeyExact(practiceRequestPk),
+                    ODataFilterBuilder.PropertyEquals("Division", division),
+                    ODataFilterBuilder.PropertyEquals("SlotId", slotId));
+                await foreach (var practiceRequest in practiceRequestsTable.QueryAsync<TableEntity>(filter: practiceRequestFilter))
+                {
+                    await practiceRequestsTable.DeleteEntityAsync(practiceRequest.PartitionKey, practiceRequest.RowKey, ETag.All);
+                }
             }
             resetCount += 1;
         }
 
         return resetCount;
     }
+
+    private static bool SlotHasWizardUsageToClear(TableEntity slot)
+    {
+        if (!SlotEntityUtil.IsAvailability(slot)) return true;
+
+        var status = SlotEntityUtil.ReadString(slot, "Status", Constants.Status.SlotOpen);
+        if (!string.Equals(status, Constants.Status.SlotOpen, StringComparison.OrdinalIgnoreCase)) return true;
+        if (SlotEntityUtil.ReadBool(slot, "IsExternalOffer", false)) return true;
+        if (!string.IsNullOrWhiteSpace(SlotEntityUtil.ReadString(slot, "HomeTeamId"))) return true;
+        if (!string.IsNullOrWhiteSpace(SlotEntityUtil.ReadString(slot, "AwayTeamId"))) return true;
+        if (!string.IsNullOrWhiteSpace(SlotEntityUtil.ReadString(slot, "ConfirmedTeamId"))) return true;
+        if (!string.IsNullOrWhiteSpace(SlotEntityUtil.ReadString(slot, "ConfirmedRequestId"))) return true;
+        if (!string.IsNullOrWhiteSpace(SlotEntityUtil.ReadString(slot, "PendingTeamId"))) return true;
+        if (!string.IsNullOrWhiteSpace(SlotEntityUtil.ReadString(slot, "PendingRequestId"))) return true;
+        if (!string.IsNullOrWhiteSpace(SlotEntityUtil.ReadString(slot, "ScheduleRunId"))) return true;
+
+        return false;
+    }
+
+    private static DateOnly ResolvePlanningDateTo(DateOnly seasonEnd, DateOnly? bracketEnd)
+    {
+        if (!bracketEnd.HasValue) return seasonEnd;
+        return bracketEnd.Value > seasonEnd ? bracketEnd.Value : seasonEnd;
+    }
+
+    private static string PracticeRequestPk(string leagueId) => $"PRACTICEREQ|{leagueId}";
 
     private async Task SaveWizardRunAsync(string leagueId, string division, string runId, string createdBy, WizardSummary summary, WizardRequest request)
     {
