@@ -552,8 +552,8 @@ public class ScheduleWizardFunctions
                 externalOfferPerWeek,
                 slots: regularSlots.Select(ToScheduleSlot).ToList());
 
-            var regularAssignments = AssignPhaseSlots("Regular Season", regularSlots, regularMatchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek, hardLeagueRules.MaxExternalOffersPerTeamSeason, regularMaxTotalGamesPerTeam, preferredDays, strictPreferredWeeknights, guestAnchors, scheduleBackward: useBackwardRegularSeason, tieBreakSeed: seed, seasonStart: seasonStart, bracketStart: bracketStart, bracketEnd: bracketEnd, matchupPriorityByPair: regularMatchupPriorityByPair, fixedAssignments: regularRequestAssignments);
-            var poolAssignments = AssignPhaseSlots("Pool Play", poolSlots, poolMatchups, teams, null, noDoubleHeaders, balanceHomeAway, 0, hardLeagueRules.MaxExternalOffersPerTeamSeason, null, preferredDays: new List<DayOfWeek>(), strictPreferredWeeknights: false, guestAnchors: null, scheduleBackward: false, tieBreakSeed: seed, seasonStart: seasonStart, bracketStart: bracketStart, bracketEnd: bracketEnd, fixedAssignments: poolRequestAssignments);
+            var regularAssignments = AssignPhaseSlots("Regular Season", regularSlots, regularMatchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek, hardLeagueRules.MaxExternalOffersPerTeamSeason, regularMaxTotalGamesPerTeam, regularLeagueGamesPerTeamTarget > 0 ? regularLeagueGamesPerTeamTarget : null, preferredDays, strictPreferredWeeknights, guestAnchors, scheduleBackward: useBackwardRegularSeason, tieBreakSeed: seed, seasonStart: seasonStart, bracketStart: bracketStart, bracketEnd: bracketEnd, matchupPriorityByPair: regularMatchupPriorityByPair, fixedAssignments: regularRequestAssignments);
+            var poolAssignments = AssignPhaseSlots("Pool Play", poolSlots, poolMatchups, teams, null, noDoubleHeaders, balanceHomeAway, 0, hardLeagueRules.MaxExternalOffersPerTeamSeason, null, null, preferredDays: new List<DayOfWeek>(), strictPreferredWeeknights: false, guestAnchors: null, scheduleBackward: false, tieBreakSeed: seed, seasonStart: seasonStart, bracketStart: bracketStart, bracketEnd: bracketEnd, fixedAssignments: poolRequestAssignments);
             var bracketAssignments = AssignBracketSlots(bracketSlots, bracketMatchups, bracketRequestAssignments);
             var regularScheduledCount = regularAssignments.Assignments.Count(a => !a.IsRequestGame);
             var poolScheduledCount = poolAssignments.Assignments.Count(a => !a.IsRequestGame);
@@ -1784,6 +1784,7 @@ public class ScheduleWizardFunctions
         int externalOfferPerWeek,
         int? maxExternalOffersPerTeamSeason,
         int? maxTotalGamesPerTeam,
+        int? maxLeagueGamesPerTeam,
         List<DayOfWeek> preferredDays,
         bool strictPreferredWeeknights,
         GuestAnchorSet? guestAnchors,
@@ -1817,7 +1818,13 @@ public class ScheduleWizardFunctions
 
         var orderedSlots = OrderSlotsByPreference(slots, preferredDays, scheduleBackward);
 
-        var constraints = new ScheduleConstraints(maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, 0);
+        var constraints = new ScheduleConstraints(
+            MaxGamesPerWeek: maxGamesPerWeek,
+            NoDoubleHeaders: noDoubleHeaders,
+            BalanceHomeAway: balanceHomeAway,
+            ExternalOfferPerWeek: 0,
+            MaxExternalOffersPerTeamSeason: null,
+            MaxGamesPerTeam: maxLeagueGamesPerTeam);
         var includePlacementTraces = string.Equals(phase, "Regular Season", StringComparison.OrdinalIgnoreCase);
         var result = ScheduleEngine.AssignMatchups(
             orderedSlots,
@@ -3354,7 +3361,8 @@ public class ScheduleWizardFunctions
                 startTime: SlotEntityUtil.ReadString(e, "StartTime"),
                 endTime: SlotEntityUtil.ReadString(e, "EndTime"),
                 fieldKey: SlotEntityUtil.ReadString(e, "FieldKey"),
-                offeringTeamId: SlotEntityUtil.ReadString(e, "OfferingTeamId"),
+                // Availability inventory should not force a home team during wizard construction.
+                offeringTeamId: "",
                 slotType: normalizedSlotType,
                 priorityRank: priorityRank
             ));
@@ -3717,6 +3725,11 @@ public class ScheduleWizardFunctions
     private static bool SlotHasWizardUsageToClear(TableEntity slot)
     {
         if (!SlotEntityUtil.IsAvailability(slot)) return true;
+
+        var offeringTeamId = SlotEntityUtil.ReadString(slot, "OfferingTeamId");
+        if (!string.IsNullOrWhiteSpace(offeringTeamId) &&
+            !string.Equals(offeringTeamId, "AVAILABLE", StringComparison.OrdinalIgnoreCase))
+            return true;
 
         var status = SlotEntityUtil.ReadString(slot, "Status", Constants.Status.SlotOpen);
         if (!string.Equals(status, Constants.Status.SlotOpen, StringComparison.OrdinalIgnoreCase)) return true;

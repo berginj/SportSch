@@ -7,7 +7,8 @@ public record ScheduleConstraints(
     bool NoDoubleHeaders,
     bool BalanceHomeAway,
     int ExternalOfferPerWeek,
-    int? MaxExternalOffersPerTeamSeason = null);
+    int? MaxExternalOffersPerTeamSeason = null,
+    int? MaxGamesPerTeam = null);
 
 public record ScheduleSlot(
     string SlotId,
@@ -314,6 +315,7 @@ public static class ScheduleEngine
                     constraints.MaxGamesPerWeek,
                     constraints.NoDoubleHeaders,
                     constraints.BalanceHomeAway,
+                    constraints.MaxGamesPerTeam,
                     tieBreakSeed);
                 pick = tracedPick.Pick;
                 selectedScoreBreakdown = tracedPick.SelectedScoreBreakdown;
@@ -324,7 +326,7 @@ public static class ScheduleEngine
             }
             else
             {
-                pick = PickMatchup(slot.GameDate, slot.SlotId, fixedHome, remainingMatchups, teams, homeCounts, awayCounts, gamesByDate, gamesByWeek, pairCounts, gamesByTeamDates, matchupPriorityByPair, slotDateRange, constraints.MaxGamesPerWeek, constraints.NoDoubleHeaders, constraints.BalanceHomeAway, tieBreakSeed);
+                pick = PickMatchup(slot.GameDate, slot.SlotId, fixedHome, remainingMatchups, teams, homeCounts, awayCounts, gamesByDate, gamesByWeek, pairCounts, gamesByTeamDates, matchupPriorityByPair, slotDateRange, constraints.MaxGamesPerWeek, constraints.NoDoubleHeaders, constraints.BalanceHomeAway, constraints.MaxGamesPerTeam, tieBreakSeed);
             }
 
             if (pick is null)
@@ -574,6 +576,7 @@ public static class ScheduleEngine
                 constraints.MaxGamesPerWeek,
                 constraints.NoDoubleHeaders,
                 constraints.BalanceHomeAway,
+                constraints.MaxGamesPerTeam,
                 tieBreakSeed);
 
             traces.Add(new SchedulePlacementTrace(
@@ -618,6 +621,7 @@ public static class ScheduleEngine
         int? maxGamesPerWeek,
         bool noDoubleHeaders,
         bool balanceHomeAway,
+        int? maxGamesPerTeam,
         int? tieBreakSeed)
     {
         MatchupPair? best = null;
@@ -642,7 +646,7 @@ public static class ScheduleEngine
                 }
             }
 
-            if (!CanAssign(home, away, gameDate, gamesByDate, gamesByWeek, maxGamesPerWeek, noDoubleHeaders)) continue;
+            if (!CanAssign(home, away, gameDate, homeCounts, awayCounts, gamesByDate, gamesByWeek, maxGamesPerWeek, noDoubleHeaders, maxGamesPerTeam)) continue;
 
             var score = ScoreCandidate(home, away, gameDate, teams, homeCounts, awayCounts, gamesByWeek, pairCounts, gamesByTeamDates, matchupPriorityByPair, slotDateRange, balanceHomeAway);
             var tieBreakValue = tieBreakSeed.HasValue
@@ -683,6 +687,7 @@ public static class ScheduleEngine
         int? maxGamesPerWeek,
         bool noDoubleHeaders,
         bool balanceHomeAway,
+        int? maxGamesPerTeam,
         int? tieBreakSeed)
     {
         MatchupPair? best = null;
@@ -718,7 +723,7 @@ public static class ScheduleEngine
                 }
             }
 
-            var rejectReason = GetConstraintRejectReason(home, away, gameDate, gamesByDate, gamesByWeek, maxGamesPerWeek, noDoubleHeaders);
+            var rejectReason = GetConstraintRejectReason(home, away, gameDate, homeCounts, awayCounts, gamesByDate, gamesByWeek, maxGamesPerWeek, noDoubleHeaders, maxGamesPerTeam);
             if (!string.IsNullOrWhiteSpace(rejectReason))
             {
                 candidates.Add(new ScheduleCandidateTrace(
@@ -804,6 +809,7 @@ public static class ScheduleEngine
         int? maxGamesPerWeek,
         bool noDoubleHeaders,
         bool balanceHomeAway,
+        int? maxGamesPerTeam,
         int? tieBreakSeed)
     {
         MatchupPair? best = null;
@@ -840,7 +846,7 @@ public static class ScheduleEngine
                 }
             }
 
-            var rejectReason = GetConstraintRejectReason(home, away, gameDate, gamesByDate, gamesByWeek, maxGamesPerWeek, noDoubleHeaders);
+            var rejectReason = GetConstraintRejectReason(home, away, gameDate, homeCounts, awayCounts, gamesByDate, gamesByWeek, maxGamesPerWeek, noDoubleHeaders, maxGamesPerTeam);
             if (!string.IsNullOrWhiteSpace(rejectReason))
             {
                 candidates.Add(new ScheduleCandidateTrace(
@@ -1120,11 +1126,24 @@ public static class ScheduleEngine
         string home,
         string away,
         string gameDate,
+        Dictionary<string, int> homeCounts,
+        Dictionary<string, int> awayCounts,
         Dictionary<string, HashSet<string>> gamesByDate,
         Dictionary<string, int> gamesByWeek,
         int? maxGamesPerWeek,
-        bool noDoubleHeaders)
+        bool noDoubleHeaders,
+        int? maxGamesPerTeam)
     {
+        if (maxGamesPerTeam.HasValue)
+        {
+            var homeTotal = (homeCounts.TryGetValue(home, out var homeAsHome) ? homeAsHome : 0)
+                + (awayCounts.TryGetValue(home, out var homeAsAway) ? homeAsAway : 0);
+            var awayTotal = (homeCounts.TryGetValue(away, out var awayAsHome) ? awayAsHome : 0)
+                + (awayCounts.TryGetValue(away, out var awayAsAway) ? awayAsAway : 0);
+            if (homeTotal >= maxGamesPerTeam.Value) return false;
+            if (awayTotal >= maxGamesPerTeam.Value) return false;
+        }
+
         if (noDoubleHeaders)
         {
             if (gamesByDate[home].Contains(gameDate)) return false;
@@ -1148,11 +1167,24 @@ public static class ScheduleEngine
         string home,
         string away,
         string gameDate,
+        Dictionary<string, int> homeCounts,
+        Dictionary<string, int> awayCounts,
         Dictionary<string, HashSet<string>> gamesByDate,
         Dictionary<string, int> gamesByWeek,
         int? maxGamesPerWeek,
-        bool noDoubleHeaders)
+        bool noDoubleHeaders,
+        int? maxGamesPerTeam)
     {
+        if (maxGamesPerTeam.HasValue)
+        {
+            var homeTotal = (homeCounts.TryGetValue(home, out var homeAsHome) ? homeAsHome : 0)
+                + (awayCounts.TryGetValue(home, out var homeAsAway) ? homeAsAway : 0);
+            var awayTotal = (homeCounts.TryGetValue(away, out var awayAsHome) ? awayAsHome : 0)
+                + (awayCounts.TryGetValue(away, out var awayAsAway) ? awayAsAway : 0);
+            if (homeTotal >= maxGamesPerTeam.Value) return $"max-games-per-team:{home}";
+            if (awayTotal >= maxGamesPerTeam.Value) return $"max-games-per-team:{away}";
+        }
+
         if (noDoubleHeaders)
         {
             if (gamesByDate[home].Contains(gameDate)) return $"double-header:{home}";

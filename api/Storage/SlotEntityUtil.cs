@@ -117,6 +117,7 @@ public static class SlotEntityUtil
 
     public static void ResetSchedulerSlotToAvailability(TableEntity slot, DateTimeOffset nowUtc)
     {
+        slot["OfferingTeamId"] = "AVAILABLE";
         slot["HomeTeamId"] = "";
         slot["AwayTeamId"] = "";
         slot["IsExternalOffer"] = false;
