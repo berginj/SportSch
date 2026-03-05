@@ -1953,7 +1953,7 @@ public class ScheduleWizardFunctions
         var picked = new List<SlotInfo>();
         foreach (var weekGroup in validSlots
             .GroupBy(s => WeekKey(s.gameDate))
-            .OrderBy(g => g.Key))
+            .OrderByDescending(g => g.Key))  // Changed to descending for backward/end-loading
         {
             if (string.IsNullOrWhiteSpace(weekGroup.Key))
                 continue;
@@ -3024,19 +3024,24 @@ public class ScheduleWizardFunctions
     private static List<ScheduleSlot> OrderSlotsByPreference(List<SlotInfo> slots, List<DayOfWeek> preferredDays, bool scheduleBackward)
     {
         var slotDateRange = GetSlotDateRange(slots);
-        var ordered = slots
-            .OrderBy(s => SlotTypeSchedulingPriority(s))
-            .ThenBy(s => s.priorityRank.HasValue ? 0 : 1)
-            .ThenBy(s => s.priorityRank ?? int.MaxValue)
-            .ThenBy(s => PreferredDayRank(s.gameDate, preferredDays));
+        var ordered = slots.OrderBy(s => SlotTypeSchedulingPriority(s));
 
+        // For backward strategy, prioritize DATE first (end-loading), then priority rank within each date
+        // For forward strategy, use priority rank first, then date
         ordered = scheduleBackward
             ? ordered
                 .ThenByDescending(s => WeatherReliabilityOrderWeight(s.gameDate, slotDateRange))
-                .ThenByDescending(s => s.gameDate)
+                .ThenByDescending(s => s.gameDate)  // DATE FIRST for backward
+                .ThenBy(s => s.priorityRank ?? int.MaxValue)  // PRIORITY SECOND within date
                 .ThenByDescending(s => s.startTime)
                 .ThenBy(s => s.fieldKey)
-            : ordered.ThenBy(s => s.gameDate).ThenBy(s => s.startTime).ThenBy(s => s.fieldKey);
+            : ordered
+                .ThenBy(s => s.priorityRank.HasValue ? 0 : 1)
+                .ThenBy(s => s.priorityRank ?? int.MaxValue)  // PRIORITY FIRST for forward
+                .ThenBy(s => PreferredDayRank(s.gameDate, preferredDays))
+                .ThenBy(s => s.gameDate)  // DATE SECOND for forward
+                .ThenBy(s => s.startTime)
+                .ThenBy(s => s.fieldKey);
 
         return ordered
             .Select(s => new ScheduleSlot(s.slotId, s.gameDate, s.startTime, s.endTime, s.fieldKey, s.offeringTeamId))
