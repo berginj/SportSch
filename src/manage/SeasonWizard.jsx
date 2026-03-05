@@ -5987,7 +5987,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                 return (
                   <div
                     key={option.id}
-                    className={`layoutPanel flex-1 min-w-[300px] cursor-pointer ${isSelected ? "border-2 border-accent bg-amber-50" : ""}`}
+                    className={`layoutPanel seasonWizardOption flex-1 min-w-[300px] cursor-pointer ${isSelected ? "seasonWizardOption--selected" : ""}`}
                     onClick={() => selectScheduleOption(option.id)}
                   >
                     <div className="row row--between items-center mb-2">
@@ -6007,10 +6007,10 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                           <span className="subtle">Quality Score</span>
                           <span className={`font-bold text-[1.2rem] ${
                             option.metrics.overallQuality >= 80
-                              ? "text-green-700"
+                              ? "wizardMetric wizardMetric--good"
                               : option.metrics.overallQuality >= 60
-                                ? "text-blue-700"
-                                : "text-amber-700"
+                                ? "wizardMetric wizardMetric--info"
+                                : "wizardMetric wizardMetric--warn"
                           }`}>
                             {option.metrics.overallQuality}/100
                           </span>
@@ -6019,7 +6019,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                         <div className="grid grid-cols-2 gap-2 text-[0.85rem]">
                           <div>
                             <div className="subtle">Unscheduled</div>
-                            <div className={option.metrics.unassignedMatchups === 0 ? "font-bold text-green-700" : "font-bold text-red-700"}>
+                            <div className={option.metrics.unassignedMatchups === 0 ? "font-bold wizardMetric wizardMetric--good" : "font-bold wizardMetric wizardMetric--bad"}>
                               {option.metrics.unassignedMatchups}
                             </div>
                           </div>
@@ -6031,7 +6031,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
                           <div>
                             <div className="subtle">Hard Issues</div>
-                            <div className={option.metrics.hardIssues === 0 ? "font-bold text-green-700" : "font-bold text-red-700"}>
+                            <div className={option.metrics.hardIssues === 0 ? "font-bold wizardMetric wizardMetric--good" : "font-bold wizardMetric wizardMetric--bad"}>
                               {option.metrics.hardIssues}
                             </div>
                           </div>
@@ -6043,7 +6043,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
                           <div>
                             <div className="subtle">Team Balance</div>
-                            <div className={option.metrics.teamLoadSpread <= 1 ? "font-bold text-green-700" : "font-bold text-amber-700"}>
+                            <div className={option.metrics.teamLoadSpread <= 1 ? "font-bold wizardMetric wizardMetric--good" : "font-bold wizardMetric wizardMetric--warn"}>
                               {option.metrics.teamLoadSpread} spread
                             </div>
                           </div>
@@ -6055,7 +6055,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
                           <div>
                             <div className="subtle">Guest Balance</div>
-                            <div className={option.metrics.guestSpread === 0 ? "font-bold text-green-700" : "font-bold text-amber-700"}>
+                            <div className={option.metrics.guestSpread === 0 ? "font-bold wizardMetric wizardMetric--good" : "font-bold wizardMetric wizardMetric--warn"}>
                               {option.metrics.guestSpread} spread
                             </div>
                           </div>

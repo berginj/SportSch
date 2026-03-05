@@ -941,6 +941,70 @@
     gap: 0.15rem;
   }
 
+  .coachLinks__toolbar {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .coachLinks__stat {
+    padding: 1rem;
+    border-radius: 0.75rem;
+    border: 1px solid var(--border);
+    background: var(--surface-raised);
+    box-shadow: var(--neo-shadow-sm);
+  }
+
+  .coachLinks__statValue,
+  .coachLinks__statLabel {
+    color: var(--text);
+  }
+
+  .coachLinks__stat--info {
+    background: var(--status-pending-bg);
+    border-color: var(--status-pending-border);
+  }
+
+  .coachLinks__stat--info .coachLinks__statValue,
+  .coachLinks__stat--info .coachLinks__statLabel {
+    color: var(--status-pending-text);
+  }
+
+  .coachLinks__stat--ok {
+    background: var(--status-confirmed-bg);
+    border-color: var(--status-confirmed-border);
+  }
+
+  .coachLinks__stat--ok .coachLinks__statValue,
+  .coachLinks__stat--ok .coachLinks__statLabel {
+    color: var(--status-confirmed-text);
+  }
+
+  .coachLinks__stat--warn {
+    background: var(--status-open-bg);
+    border-color: var(--status-open-border);
+  }
+
+  .coachLinks__stat--warn .coachLinks__statValue,
+  .coachLinks__stat--warn .coachLinks__statLabel {
+    color: var(--status-open-text);
+  }
+
+  .coachLinks__teamCard {
+    border: 1px solid var(--border);
+    background: var(--surface-raised);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .coachLinks__teamCard:hover {
+    border-color: rgba(243, 194, 79, 0.44);
+    box-shadow: var(--neo-shadow-sm);
+  }
+
+  .coachLinks__linkInput {
+    background: var(--surface-inset-bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+
   /* Skeleton loaders */
   .skeleton {
     @apply bg-gray-200 rounded animate-pulse;
@@ -1532,6 +1596,28 @@
 
   .seasonWizard .callout--warning {
     color: #9a6700;
+  }
+
+  .seasonWizardOption--selected {
+    border-width: 2px;
+    border-color: var(--accent);
+    background: var(--status-open-bg);
+  }
+
+  .wizardMetric--good {
+    color: var(--status-confirmed-text);
+  }
+
+  .wizardMetric--warn {
+    color: var(--status-open-text);
+  }
+
+  .wizardMetric--bad {
+    color: var(--status-cancelled-text);
+  }
+
+  .wizardMetric--info {
+    color: var(--status-pending-text);
   }
 
   @media (max-width: 768px) {
