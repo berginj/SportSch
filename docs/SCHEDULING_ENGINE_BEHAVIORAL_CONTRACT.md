@@ -28,7 +28,9 @@ This contract is the authoritative behavioral specification for scheduling.
 ## 4. Slot Priority and Ordering
 
 - Slot priority rank MUST use `1` as highest priority.
-- Regular Season assignment MUST schedule from back to front in time (later dates first), while respecting slot priority.
+- Regular Season assignment MUST schedule from back to front in time.
+- In Regular Season backward ordering, later dates MUST outrank earlier dates before slot priority is considered.
+- In Regular Season backward ordering, slot priority MUST break ties within the same date.
 - Pool Play and Championship Bracket are not required to use back-to-front ordering.
 
 ## 5. Hard vs Soft Constraints by Phase
@@ -61,6 +63,7 @@ This contract is the authoritative behavioral specification for scheduling.
   - week 1 of the season,
   - all Pool Play weeks,
   - all Championship Bracket weeks.
+- Regular-season weeks that are fully covered by blocked date ranges MUST be excluded from guest-anchor missing-slot warnings.
 - A league home team MUST be assigned for each scheduled guest slot so an opponent exists.
 - Guest assignment does not need to execute before all regular matchup placement, but anchored guest requirements remain mandatory.
 - Guest games MUST count toward team game totals and no-doubleheader constraints.

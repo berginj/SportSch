@@ -478,6 +478,9 @@ function installApiMock({ previewResponse = BASE_PREVIEW, previewResponses = nul
       if (Array.isArray(previewResponses) && previewResponses.length > 0) {
         const next = previewResponses[Math.min(previewIndex, previewResponses.length - 1)];
         previewIndex += 1;
+        if (next instanceof Error) {
+          return Promise.reject(next);
+        }
         return Promise.resolve(next);
       }
       return Promise.resolve(previewResponse);
@@ -694,6 +697,45 @@ describe("SeasonWizard", () => {
     } finally {
       confirmSpy.mockRestore();
     }
+  });
+
+  it("shows an error toast when every generated schedule option fails", async () => {
+    installApiMock({
+      previewResponses: [
+        new Error("Generation failed"),
+        new Error("Generation failed"),
+        new Error("Generation failed"),
+        new Error("Generation failed"),
+      ],
+    });
+
+    await advanceToRules();
+
+    fireEvent.click(screen.getByRole("button", { name: /Generate 4 Options/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Failed to generate schedule options. No valid previews were returned.")).toBeInTheDocument();
+    });
+  });
+
+  it("shows a warning toast when only some generated schedule options succeed", async () => {
+    installApiMock({
+      previewResponses: [
+        { ...BASE_PREVIEW, seed: 101, constructionStrategy: "backward_greedy_v1+strict_validation_v2" },
+        new Error("Generation failed"),
+        { ...BASE_PREVIEW, seed: 303, constructionStrategy: "backward_greedy_v1+strict_validation_v2" },
+        new Error("Generation failed"),
+      ],
+    });
+
+    await advanceToRules();
+
+    fireEvent.click(screen.getByRole("button", { name: /Generate 4 Options/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Generated 2 valid schedule options out of 4. Review the usable results before continuing.")).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Schedule Comparison - Pick Your Favorite/i)).toBeInTheDocument();
   });
 
   it("sends fixed request games in the preview payload and shows them as locked preview rows", async () => {

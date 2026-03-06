@@ -356,8 +356,27 @@ function AgendaView({ weekGroups, onSlotClick, onEventClick }) {
 }
 
 // Helper functions
+function parseLocalIsoDate(dateStr) {
+  const parts = String(dateStr || "").split("-");
+  if (parts.length !== 3) return null;
+  const year = Number(parts[0]);
+  const month = Number(parts[1]) - 1;
+  const day = Number(parts[2]);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
+  const date = new Date(year, month, day);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatLocalIsoDate(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function getWeekKey(dateStr) {
-  const date = new Date(dateStr);
+  const date = parseLocalIsoDate(dateStr) || new Date(dateStr);
   const year = date.getFullYear();
   const week = getWeekNumber(date);
   return `${year}-W${String(week).padStart(2, "0")}`;
@@ -372,31 +391,25 @@ function getWeekNumber(date) {
 }
 
 function getWeekStart(dateStr) {
-  const date = new Date(dateStr);
+  const date = parseLocalIsoDate(dateStr);
+  if (!date) return "";
   const day = date.getDay();
   const diff = date.getDate() - day + (day === 0 ? -6 : 1); // Adjust to Monday
   const monday = new Date(date.setDate(diff));
-  return monday.toISOString().split("T")[0];
+  return formatLocalIsoDate(monday);
 }
 
 function getWeekEnd(dateStr) {
-  const start = getWeekStart(dateStr);
-  const date = new Date(start);
+  const date = parseLocalIsoDate(getWeekStart(dateStr));
+  if (!date) return "";
   date.setDate(date.getDate() + 6);
-  return date.toISOString().split("T")[0];
+  return formatLocalIsoDate(date);
 }
 
 function getDayName(dateStr) {
   const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  // Parse as local date to avoid timezone offset issues
-  const parts = dateStr.split("-");
-  if (parts.length === 3) {
-    const year = parseInt(parts[0], 10);
-    const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
-    const day = parseInt(parts[2], 10);
-    const date = new Date(year, month, day); // Local time
-    return days[date.getDay()];
-  }
+  const localDate = parseLocalIsoDate(dateStr);
+  if (localDate) return days[localDate.getDay()];
   // Fallback to direct parsing
   const date = new Date(dateStr);
   return days[date.getDay()];

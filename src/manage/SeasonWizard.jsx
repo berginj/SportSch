@@ -2481,7 +2481,6 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     setGeneratingOptions(false);
 
     if (options.length > 0) {
-      // Auto-select best option
       const validOptions = options.filter(o => !o.error && o.metrics);
       if (validOptions.length > 0) {
         const best = validOptions.reduce((a, b) =>
@@ -2490,6 +2489,23 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         setSelectedScheduleOption(best.id);
         setPreview(best.preview);
       }
+
+      if (validOptions.length === 0) {
+        setToast({
+          tone: "error",
+          message: "Failed to generate schedule options. No valid previews were returned."
+        });
+        return;
+      }
+
+      if (validOptions.length < options.length) {
+        setToast({
+          tone: "warning",
+          message: `Generated ${validOptions.length} valid schedule option${validOptions.length === 1 ? "" : "s"} out of ${options.length}. Review the usable results before continuing.`
+        });
+        return;
+      }
+
       setToast({
         tone: "success",
         message: `Generated ${options.length} schedule options. Review and select the best one.`
