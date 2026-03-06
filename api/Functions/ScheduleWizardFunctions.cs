@@ -610,7 +610,7 @@ public class ScheduleWizardFunctions
                     message = $"{requestGameAssignments.Count} request game(s) were added as fixed away events and stay locked in preview/apply."
                 });
             }
-            warnings.AddRange(BuildRequiredGuestAnchorWarnings(seasonStart, regularRangeEnd, regularSlots, externalOfferPerWeek, guestAnchors));
+            warnings.AddRange(BuildRequiredGuestAnchorWarnings(seasonStart, regularRangeEnd, regularSlots, externalOfferPerWeek, guestAnchors, blockedRanges));
             if (externalOfferPerWeek > 0)
             {
                 var externalAssignments = regularAssignments.Assignments.Where(a => a.IsExternalOffer).ToList();
@@ -2005,7 +2005,8 @@ public class ScheduleWizardFunctions
         DateOnly regularRangeEnd,
         IReadOnlyList<SlotInfo> regularSlots,
         int externalOfferPerWeek,
-        GuestAnchorSet? guestAnchors)
+        GuestAnchorSet? guestAnchors,
+        List<BlockedDateRange> blockedRanges)
     {
         var warnings = new List<object>();
         if (externalOfferPerWeek <= 0 || regularRangeEnd < seasonStart)
@@ -2051,7 +2052,9 @@ public class ScheduleWizardFunctions
             .GroupBy(slot => WeekKey(slot.gameDate))
             .Where(group => !string.IsNullOrWhiteSpace(group.Key))
             .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
-        var weekStarts = BuildRegularSeasonWeekStarts(firstGuestEligibleDate, regularRangeEnd);
+        var weekStarts = BuildRegularSeasonWeekStarts(firstGuestEligibleDate, regularRangeEnd)
+            .Where(weekStart => !IsWeekBlocked(weekStart, blockedRanges))
+            .ToList();
 
         foreach (var required in requiredAnchors)
         {
@@ -2093,6 +2096,23 @@ public class ScheduleWizardFunctions
             safety += 1;
         }
         return list;
+    }
+
+    private static bool IsWeekBlocked(string weekStartIso, List<BlockedDateRange> blockedRanges)
+    {
+        if (blockedRanges.Count == 0) return false;
+        if (!DateOnly.TryParseExact(weekStartIso, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var weekStart))
+            return false;
+
+        var weekEnd = weekStart.AddDays(6);
+        foreach (var range in blockedRanges)
+        {
+            if (range.EndDate < weekStart) continue;
+            if (range.StartDate > weekEnd) continue;
+            return true;
+        }
+
+        return false;
     }
 
     private static string FormatGuestAnchor(GuestAnchor anchor)
