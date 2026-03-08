@@ -1309,23 +1309,47 @@ public class FieldInventoryImportService : IFieldInventoryImportService
         {
             var normalizedUrl = GoogleSheetUrlParser.NormalizeWorkbookUrl(sourceWorkbookUrl);
             var spreadsheetId = GoogleSheetUrlParser.ExtractSpreadsheetId(normalizedUrl);
-            var resourceKey = GoogleSheetUrlParser.ExtractResourceKey(normalizedUrl);
-            var exportUrl = $"https://docs.google.com/spreadsheets/d/{spreadsheetId}/export?format=xlsx";
-            if (!string.IsNullOrWhiteSpace(resourceKey))
-            {
-                exportUrl += $"&resourcekey={Uri.EscapeDataString(resourceKey)}";
-            }
-
             using var client = _httpClientFactory.CreateClient(nameof(FieldInventoryImportService));
-            using var response = await client.GetAsync(exportUrl);
-            if (!response.IsSuccessStatusCode)
+            HttpStatusCode? lastStatusCode = null;
+
+            foreach (var exportUrl in GoogleSheetUrlParser.BuildWorkbookExportUrls(normalizedUrl))
             {
-                throw new ApiGuards.HttpError((int)HttpStatusCode.BadGateway, ErrorCodes.WORKBOOK_LOAD_FAILED,
-                    $"Workbook export failed with status {(int)response.StatusCode}.");
+                using var request = new HttpRequestMessage(HttpMethod.Get, exportUrl);
+                request.Headers.TryAddWithoutValidation("User-Agent",
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
+                request.Headers.TryAddWithoutValidation("Accept",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/octet-stream;q=0.9,*/*;q=0.8");
+                request.Headers.Referrer = new Uri(normalizedUrl);
+
+                using var response = await client.SendAsync(request);
+                if (!response.IsSuccessStatusCode)
+                {
+                    lastStatusCode = response.StatusCode;
+                    continue;
+                }
+
+                await using var responseStream = await response.Content.ReadAsStreamAsync();
+                await using var workbookBuffer = new MemoryStream();
+                await responseStream.CopyToAsync(workbookBuffer);
+                workbookBuffer.Position = 0;
+
+                try
+                {
+                    return WorkbookXlsxReader.Read(workbookBuffer, normalizedUrl, spreadsheetId);
+                }
+                catch (InvalidDataException)
+                {
+                    workbookBuffer.Position = 0;
+                }
+                catch (InvalidOperationException)
+                {
+                    workbookBuffer.Position = 0;
+                }
             }
 
-            await using var stream = await response.Content.ReadAsStreamAsync();
-            return WorkbookXlsxReader.Read(stream, normalizedUrl, spreadsheetId);
+            var statusCode = (int)(lastStatusCode ?? HttpStatusCode.BadGateway);
+            throw new ApiGuards.HttpError((int)HttpStatusCode.BadGateway, ErrorCodes.WORKBOOK_LOAD_FAILED,
+                $"Workbook export failed with status {statusCode}.");
         }
     }
 
@@ -1379,6 +1403,23 @@ public class FieldInventoryImportService : IFieldInventoryImportService
             }
 
             return GetQueryValue(uri.Query, "resourcekey");
+        }
+
+        public static IReadOnlyList<string> BuildWorkbookExportUrls(string workbookUrl)
+        {
+            var spreadsheetId = ExtractSpreadsheetId(workbookUrl);
+            var resourceKey = ExtractResourceKey(workbookUrl);
+            var resourceKeyQuery = string.IsNullOrWhiteSpace(resourceKey)
+                ? ""
+                : $"&resourcekey={Uri.EscapeDataString(resourceKey)}";
+
+            return new List<string>
+            {
+                $"https://docs.google.com/spreadsheets/d/{spreadsheetId}/export?format=xlsx&id={Uri.EscapeDataString(spreadsheetId)}{resourceKeyQuery}",
+                $"https://docs.google.com/spreadsheets/d/{spreadsheetId}/export?exportFormat=xlsx&format=xlsx&id={Uri.EscapeDataString(spreadsheetId)}{resourceKeyQuery}",
+                $"https://docs.google.com/spreadsheets/d/{spreadsheetId}/export?format=xlsx{resourceKeyQuery}",
+                $"https://docs.google.com/spreadsheets/d/{spreadsheetId}/pub?output=xlsx"
+            };
         }
 
         private static string? GetQueryValue(string query, string key)

@@ -43,6 +43,19 @@ public class FieldInventoryImportServiceTests
     }
 
     [Fact]
+    public void BuildWorkbookExportUrls_IncludesFallbackVariants()
+    {
+        var urls = FieldInventoryImportService.GoogleSheetUrlParser.BuildWorkbookExportUrls(
+            "https://docs.google.com/spreadsheets/d/test-sheet/edit?resourcekey=abc-123");
+
+        Assert.Equal(4, urls.Count);
+        Assert.Equal("https://docs.google.com/spreadsheets/d/test-sheet/export?format=xlsx&id=test-sheet&resourcekey=abc-123", urls[0]);
+        Assert.Equal("https://docs.google.com/spreadsheets/d/test-sheet/export?exportFormat=xlsx&format=xlsx&id=test-sheet&resourcekey=abc-123", urls[1]);
+        Assert.Equal("https://docs.google.com/spreadsheets/d/test-sheet/export?format=xlsx&resourcekey=abc-123", urls[2]);
+        Assert.Equal("https://docs.google.com/spreadsheets/d/test-sheet/pub?output=xlsx", urls[3]);
+    }
+
+    [Fact]
     public async Task InspectWorkbookAsync_ClassifiesKnownTabs()
     {
         var service = CreateService(new StaticWorkbookConnector(BuildWorkbook()));
