@@ -552,10 +552,13 @@ function SummaryCard({ label, value }) {
 function formatImportError(error) {
   const message = error?.message || "Request failed.";
   const originalMessage = error?.originalMessage || "";
-  const combined = `${message} ${originalMessage}`;
+  const detailMessage = typeof error?.details?.exception === "string" ? error.details.exception : "";
+  const combined = `${message} ${originalMessage} ${detailMessage}`.trim();
   if ((error?.status === 502 || error?.code === "WORKBOOK_LOAD_FAILED") && /\b401\b|\b403\b/.test(combined)) {
     return `${message} This usually means Google Sheets is not allowing anonymous view/download for the workbook. Set the workbook to "Anyone with the link can view" and try again.`;
   }
 
-  return message;
+  return detailMessage && detailMessage !== message
+    ? `${message} ${detailMessage}`
+    : message;
 }

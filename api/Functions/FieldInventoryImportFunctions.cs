@@ -210,7 +210,9 @@ public class FieldInventoryImportFunctions
         catch (Exception ex)
         {
             _log.LogError(ex, "Field inventory import request failed");
-            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, ErrorCodes.INTERNAL_ERROR, "An unexpected error occurred.");
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, ErrorCodes.INTERNAL_ERROR,
+                "Field inventory import failed.",
+                new { exception = ex.Message });
         }
     }
 }
