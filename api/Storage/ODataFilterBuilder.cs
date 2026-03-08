@@ -40,6 +40,14 @@ public static class ODataFilterBuilder
     }
 
     /// <summary>
+    /// Creates a non-equality filter for a property.
+    /// </summary>
+    public static string PropertyNotEquals(string propertyName, string value)
+    {
+        return $"{propertyName} ne '{ApiGuards.EscapeOData(value)}'";
+    }
+
+    /// <summary>
     /// Creates a date range filter (inclusive).
     /// </summary>
     public static string DateRange(string dateField, string? fromDate, string? toDate)

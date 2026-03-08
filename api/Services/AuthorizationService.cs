@@ -87,8 +87,8 @@ public class AuthorizationService : IAuthorizationService
                     "No membership found");
             }
 
-            var coachDivision = membership.GetString("CoachDivision") ?? "";
-            var coachTeamId = membership.GetString("CoachTeamId") ?? "";
+            var coachDivision = ReadMembershipDivision(membership);
+            var coachTeamId = ReadMembershipTeamId(membership);
 
             if (coachDivision != division)
             {
@@ -124,50 +124,6 @@ public class AuthorizationService : IAuthorizationService
         }
     }
 
-    public async Task<bool> CanApproveRequestAsync(string userId, string leagueId, string division, string slotId)
-    {
-        try
-        {
-            await ValidateNotViewerAsync(userId, leagueId);
-
-            var role = await GetUserRoleAsync(userId, leagueId);
-
-            // Admins can approve any request
-            if (role == Constants.Roles.LeagueAdmin)
-            {
-                return true;
-            }
-
-            // Coaches can only approve requests for their own slots
-            if (role == Constants.Roles.Coach)
-            {
-                var slot = await _slotRepo.GetSlotAsync(leagueId, division, slotId);
-                if (slot == null)
-                {
-                    return false;
-                }
-
-                var membership = await _membershipRepo.GetMembershipAsync(userId, leagueId);
-                if (membership == null)
-                {
-                    return false;
-                }
-
-                var coachTeamId = membership.GetString("CoachTeamId") ?? "";
-                var offeringTeamId = slot.GetString("OfferingTeamId") ?? "";
-
-                // Coach must own the slot being requested
-                return coachTeamId == offeringTeamId;
-            }
-
-            return false;
-        }
-        catch (ApiGuards.HttpError)
-        {
-            return false;
-        }
-    }
-
     public async Task<bool> CanCancelSlotAsync(string userId, string leagueId, string offeringTeamId, string? confirmedTeamId)
     {
         try
@@ -191,7 +147,7 @@ public class AuthorizationService : IAuthorizationService
                     return false;
                 }
 
-                var coachTeamId = membership.GetString("CoachTeamId") ?? "";
+                var coachTeamId = ReadMembershipTeamId(membership);
 
                 // Coach must own the slot (either offering or confirmed team)
                 return coachTeamId == offeringTeamId || coachTeamId == confirmedTeamId;
@@ -234,7 +190,7 @@ public class AuthorizationService : IAuthorizationService
                     return false;
                 }
 
-                var coachTeamId = membership.GetString("CoachTeamId") ?? "";
+                var coachTeamId = ReadMembershipTeamId(membership);
                 var offeringTeamId = slot.GetString("OfferingTeamId") ?? "";
 
                 // Coach must own the slot
@@ -247,5 +203,15 @@ public class AuthorizationService : IAuthorizationService
         {
             return false;
         }
+    }
+
+    private static string ReadMembershipDivision(TableEntity? membership)
+    {
+        return (membership?.GetString("Division") ?? "").Trim();
+    }
+
+    private static string ReadMembershipTeamId(TableEntity? membership)
+    {
+        return (membership?.GetString("TeamId") ?? "").Trim();
     }
 }

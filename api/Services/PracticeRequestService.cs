@@ -1037,16 +1037,12 @@ public class PracticeRequestService : IPracticeRequestService
 
     private static string ReadMembershipDivision(TableEntity? membership)
     {
-        return (membership?.GetString("Division")
-            ?? membership?.GetString("CoachDivision")
-            ?? "").Trim();
+        return (membership?.GetString("Division") ?? "").Trim();
     }
 
     private static string ReadMembershipTeamId(TableEntity? membership)
     {
-        return (membership?.GetString("TeamId")
-            ?? membership?.GetString("CoachTeamId")
-            ?? "").Trim();
+        return (membership?.GetString("TeamId") ?? "").Trim();
     }
 
     private static string PracticeRequestPk(string leagueId) => $"PRACTICEREQ|{leagueId}";

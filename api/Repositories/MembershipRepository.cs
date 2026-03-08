@@ -155,17 +155,12 @@ public class MembershipRepository : IMembershipRepository
 
     public async Task<List<TableEntity>> GetLeagueMembershipsAsync(string leagueId)
     {
-        var table = await TableClients.GetTableAsync(_tableService, MembershipsTable);
-
-        // Query using the partition key pattern
-        var pkPrefix = $"MEMBERSHIP|{leagueId}|";
-        var filter = ODataFilterBuilder.PartitionKeyPrefix(pkPrefix);
-
-        var result = new List<TableEntity>();
-        await foreach (var entity in table.QueryAsync<TableEntity>(filter: filter))
+        if (string.IsNullOrWhiteSpace(leagueId))
         {
-            result.Add(entity);
+            return new List<TableEntity>();
         }
+
+        var result = await QueryAllMembershipsAsync(leagueId);
 
         _logger.LogDebug("Retrieved {Count} memberships for league {LeagueId}", result.Count, leagueId);
         return result;

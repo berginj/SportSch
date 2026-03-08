@@ -68,31 +68,27 @@ public class GetEvents
 
             var table = await TableClients.GetTableAsync(_svc, EventsTableName);
             var pk = Constants.Pk.Events(leagueId);
-            // Query by partition only and apply filters in-memory. Legacy events can contain
-            // mixed property types (e.g., DateTime vs string), which can break OData filters.
-            var filter = $"PartitionKey eq '{ApiGuards.EscapeOData(pk)}'";
+            var filters = new List<string> { ODataFilterBuilder.PartitionKeyExact(pk) };
+            if (!string.IsNullOrWhiteSpace(dateFrom) || !string.IsNullOrWhiteSpace(dateTo))
+            {
+                filters.Add(ODataFilterBuilder.DateRange("EventDate", dateFrom, dateTo));
+            }
+            if (!string.IsNullOrWhiteSpace(division))
+            {
+                filters.Add(ODataFilterBuilder.Or(
+                    ODataFilterBuilder.PropertyEquals("Division", division),
+                    ODataFilterBuilder.PropertyEquals("Division", "")));
+            }
+
+            var filter = ODataFilterBuilder.And(filters.ToArray());
 
             var list = new List<EventDto>();
             await foreach (var e in table.QueryAsync<TableEntity>(filter: filter))
             {
                 var eventDivision = ReadString(e, "Division");
-                if (!string.IsNullOrWhiteSpace(division) &&
-                    !string.Equals(eventDivision, division, StringComparison.OrdinalIgnoreCase) &&
-                    !string.IsNullOrWhiteSpace(eventDivision))
-                {
-                    continue;
-                }
-
-                var eventDate = ReadIsoDate(e, "EventDate");
-                if (!PassesDateRange(eventDate, dateFrom, dateTo))
-                {
-                    continue;
-                }
-
+                var eventDate = ReadString(e, "EventDate");
                 var createdUtc = e.TryGetValue("CreatedUtc", out var cu) ? (cu?.ToString() ?? "") : "";
                 var updatedUtc = e.TryGetValue("UpdatedUtc", out var uu) ? (uu?.ToString() ?? "") : "";
-                var createdBy = ReadString(e, "CreatedByUserId");
-                if (string.IsNullOrWhiteSpace(createdBy)) createdBy = ReadString(e, "CreatedBy");
                 list.Add(new EventDto(
                     eventId: e.RowKey,
                     type: ReadString(e, "Type"),
@@ -106,7 +102,7 @@ public class GetEvents
                     endTime: ReadString(e, "EndTime"),
                     location: ReadString(e, "Location"),
                     notes: ReadString(e, "Notes"),
-                    createdByUserId: createdBy.Trim(),
+                    createdByUserId: ReadString(e, "CreatedByUserId"),
                     acceptedByUserId: ReadString(e, "AcceptedByUserId"),
                     createdUtc: createdUtc,
                     updatedUtc: updatedUtc
@@ -139,46 +135,4 @@ public class GetEvents
         return (raw?.ToString() ?? "").Trim();
     }
 
-    private static string ReadIsoDate(TableEntity e, string propertyName)
-    {
-        if (!e.TryGetValue(propertyName, out var raw) || raw is null) return "";
-
-        return raw switch
-        {
-            DateTime dt => dt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-            DateTimeOffset dto => dto.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-            _ => NormalizeDateString(raw.ToString())
-        };
-    }
-
-    private static string NormalizeDateString(string? value)
-    {
-        var text = (value ?? "").Trim();
-        if (string.IsNullOrWhiteSpace(text)) return "";
-
-        if (DateOnly.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dateOnly))
-            return dateOnly.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-
-        if (DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dateTime))
-            return dateTime.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-
-        return text;
-    }
-
-    private static bool PassesDateRange(string eventDate, string dateFrom, string dateTo)
-    {
-        if (!string.IsNullOrWhiteSpace(dateFrom))
-        {
-            if (string.IsNullOrWhiteSpace(eventDate)) return false;
-            if (string.CompareOrdinal(eventDate, dateFrom) < 0) return false;
-        }
-
-        if (!string.IsNullOrWhiteSpace(dateTo))
-        {
-            if (string.IsNullOrWhiteSpace(eventDate)) return false;
-            if (string.CompareOrdinal(eventDate, dateTo) > 0) return false;
-        }
-
-        return true;
-    }
 }

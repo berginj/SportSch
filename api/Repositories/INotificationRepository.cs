@@ -38,7 +38,7 @@ public interface INotificationRepository
     Task UpdateNotificationAsync(TableEntity notification);
 
     /// <summary>
-    /// Deletes old read notifications (cleanup task).
+    /// Deletes old read notifications across all users (cleanup task).
     /// </summary>
-    Task DeleteOldNotificationsAsync(string userId, int daysOld = 30);
+    Task<int> DeleteOldNotificationsAsync(int daysOld = 30);
 }

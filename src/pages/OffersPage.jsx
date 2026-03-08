@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
+import { readPagedItems } from "../lib/pagedResults";
 import LeaguePicker from "../components/LeaguePicker";
 import StatusCard from "../components/StatusCard";
 import Toast from "../components/Toast";
@@ -179,7 +180,7 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
       status: "Open",
     });
     const data = await apiFetch(`/api/slots?${params.toString()}`);
-    return Array.isArray(data) ? data : [];
+    return readPagedItems(data);
   }, []);
 
   async function loadAll(selectedDivision) {
@@ -418,7 +419,7 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
         }),
       });
       await reloadSlots(division);
-      setToast({ tone: "success", message: "Slot accepted." });
+      setToast({ tone: "success", message: "Open game accepted and confirmed." });
       trackEvent("ui_slot_request_success", {
         leagueId,
         division: div,

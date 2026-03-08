@@ -52,8 +52,8 @@ public class GetMe
             await foreach (var e in memTable.QueryAsync<TableEntity>(filter: filter))
             {
                 var role = (e.GetString("Role") ?? "").Trim();
-                var division = (e.GetString("Division") ?? "").Trim();
-                var teamId = (e.GetString("TeamId") ?? "").Trim();
+                var division = ReadMembershipDivision(e);
+                var teamId = ReadMembershipTeamId(e);
 
                 // Coach includes team assignment if present
                 if (string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase)
@@ -103,5 +103,15 @@ public class GetMe
             _log.LogError(ex, "GetMe failed");
             return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
         }
+    }
+
+    private static string ReadMembershipDivision(TableEntity membership)
+    {
+        return (membership.GetString("Division") ?? "").Trim();
+    }
+
+    private static string ReadMembershipTeamId(TableEntity membership)
+    {
+        return (membership.GetString("TeamId") ?? "").Trim();
     }
 }

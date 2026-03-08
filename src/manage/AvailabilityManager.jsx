@@ -66,7 +66,7 @@ export default function AvailabilityManager({ leagueId }) {
             if (prev.division) return prev;
             return {
               ...prev,
-              division: divList[0].code || divList[0].division || "",
+              division: divList[0].code || "",
             };
           });
         }
@@ -296,7 +296,7 @@ export default function AvailabilityManager({ leagueId }) {
   }
 
   const divisionOptions = useMemo(
-    () => divisions.map((d) => d.code || d.division).filter(Boolean),
+    () => divisions.map((d) => d.code || "").filter(Boolean),
     [divisions]
   );
 

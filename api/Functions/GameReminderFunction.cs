@@ -164,8 +164,8 @@ public class GameReminderFunction
 
             var userId = (member.PartitionKey ?? "").Trim();
             var email = (member.GetString("Email") ?? "").Trim();
-            var division = (member.GetString("Division") ?? "").Trim();
-            var teamId = (member.GetString("TeamId") ?? "").Trim();
+            var division = ReadMembershipDivision(member);
+            var teamId = ReadMembershipTeamId(member);
             if (string.IsNullOrWhiteSpace(userId) ||
                 string.IsNullOrWhiteSpace(email) ||
                 string.IsNullOrWhiteSpace(division) ||
@@ -261,6 +261,16 @@ public class GameReminderFunction
 
     private static string TeamKey(string division, string teamId)
         => $"{division}|{teamId}";
+
+    private static string ReadMembershipDivision(TableEntity membership)
+    {
+        return (membership.GetString("Division") ?? "").Trim();
+    }
+
+    private static string ReadMembershipTeamId(TableEntity membership)
+    {
+        return (membership.GetString("TeamId") ?? "").Trim();
+    }
 
     private static bool IsWithinReminderWindow(DateTime nowUtc, DateTime gameDateTime, ReminderWindow window)
     {

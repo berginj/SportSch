@@ -8,9 +8,7 @@ import { THEME_MODE, THEME_STORAGE_KEY } from "./lib/constants";
 const TopNav = lazy(() => import("./components/TopNav"));
 const OffersPage = lazy(() => import("./pages/OffersPage"));
 const CalendarPage = lazy(() => import("./pages/CalendarPage"));
-const SchedulePage = lazy(() => import("./pages/SchedulePage"));
 const ManagePage = lazy(() => import("./pages/ManagePage"));
-const HelpPage = lazy(() => import("./pages/HelpPage"));
 const AccessPage = lazy(() => import("./pages/AccessPage"));
 const AdminPage = lazy(() => import("./pages/AdminPage"));
 const InviteAcceptPage = lazy(() => import("./pages/InviteAcceptPage"));
@@ -22,7 +20,7 @@ const NotificationSettingsPage = lazy(() => import("./pages/NotificationSettings
 const NotificationCenterPage = lazy(() => import("./pages/NotificationCenterPage"));
 const KeyboardShortcutsModal = lazy(() => import("./components/KeyboardShortcutsModal"));
 
-const VALID_TABS = new Set(["home", "calendar", "schedule", "offers", "manage", "admin", "debug", "help", "practice", "coach-setup", "settings", "notifications"]);
+const VALID_TABS = new Set(["home", "calendar", "offers", "manage", "admin", "debug", "practice", "coach-setup", "settings", "notifications"]);
 
 function readInviteFromUrl() {
   if (typeof window === "undefined") return null;
@@ -53,7 +51,7 @@ function readSystemPrefersDark() {
 }
 
 export default function App() {
-  const { me, memberships, activeLeagueId, setActiveLeagueId, refreshMe } = useSession();
+  const { me, memberships, leagueId, setLeagueId, refreshMe } = useSession();
   const [tab, setTab] = useState(() => readTabFromHash());
   const [invite, setInvite] = useState(() => readInviteFromUrl());
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -69,10 +67,10 @@ export default function App() {
   const isGlobalAdmin = !!me?.isGlobalAdmin;
   const hasMemberships = (memberships?.length || 0) > 0;
   const activeMembership = useMemo(() => {
-    const id = (activeLeagueId || "").trim();
+    const id = (leagueId || "").trim();
     if (!id) return null;
     return (memberships || []).find((m) => (m?.leagueId || "").trim() === id) || null;
-  }, [memberships, activeLeagueId]);
+  }, [memberships, leagueId]);
   const activeRole = (activeMembership?.role || "").trim();
   const canManage = isGlobalAdmin || activeRole === "LeagueAdmin";
   const pageFallback = <StatusCard title="Loading" message="Loading page..." />;
@@ -88,14 +86,14 @@ export default function App() {
   }, isSignedIn && hasMemberships);
 
   // When global admins have no memberships, default them into the admin view,
-  // but allow navigation to non-league-specific pages (help, debug, admin).
+  // but allow navigation to non-league-specific pages (debug, admin, settings).
   const effectiveTab = useMemo(() => {
-    const nonLeaguePages = new Set(["help", "debug", "admin", "settings", "notifications"]);
-    const hasLeagueContext = !!(activeLeagueId || "").trim();
+    const nonLeaguePages = new Set(["debug", "admin", "settings", "notifications"]);
+    const hasLeagueContext = !!(leagueId || "").trim();
     if (tab === "manage" && !canManage) return "home";
     if (!hasMemberships && isGlobalAdmin && !hasLeagueContext && !nonLeaguePages.has(tab)) return "admin";
     return tab;
-  }, [tab, hasMemberships, isGlobalAdmin, canManage, activeLeagueId]);
+  }, [tab, hasMemberships, isGlobalAdmin, canManage, leagueId]);
 
   useEffect(() => {
     if (!me) return;
@@ -180,14 +178,14 @@ export default function App() {
           invite={invite}
           me={me}
           refreshMe={refreshMe}
-          setLeagueId={setActiveLeagueId}
+          setLeagueId={setLeagueId}
           onDone={clearInvite}
         />
       </Suspense>
     );
   }
 
-  // Not signed in: show public landing with recent offers + sign-up.
+  // Not signed in: show the authenticated sign-in landing.
   if (!isSignedIn) {
     return (
       <div className="appShell">
@@ -221,16 +219,11 @@ export default function App() {
         <Suspense fallback={pageFallback}>
           <AccessPage
             me={me}
-            leagueId={activeLeagueId}
-            setLeagueId={setActiveLeagueId}
+            leagueId={leagueId}
+            setLeagueId={setLeagueId}
             refreshMe={refreshMe}
           />
         </Suspense>
-        <div className="card">
-          <Suspense fallback={pageFallback}>
-            <HelpPage minimal />
-          </Suspense>
-        </div>
       </div>
     );
   }
@@ -245,8 +238,8 @@ export default function App() {
           tab={effectiveTab}
           setTab={setTab}
           me={me}
-          leagueId={activeLeagueId}
-          setLeagueId={setActiveLeagueId}
+          leagueId={leagueId}
+          setLeagueId={setLeagueId}
           theme={theme}
           themeMode={themeMode}
           onToggleTheme={toggleTheme}
@@ -258,35 +251,31 @@ export default function App() {
           {effectiveTab === "home" && (
             <HomePage
               me={me}
-              leagueId={activeLeagueId}
-              setLeagueId={setActiveLeagueId}
+              leagueId={leagueId}
+              setLeagueId={setLeagueId}
               setTab={setTab}
             />
           )}
           {effectiveTab === "offers" && (
-            <OffersPage me={me} leagueId={activeLeagueId} setLeagueId={setActiveLeagueId} />
+            <OffersPage me={me} leagueId={leagueId} setLeagueId={setLeagueId} />
           )}
           {effectiveTab === "calendar" && (
-            <CalendarPage me={me} leagueId={activeLeagueId} setLeagueId={setActiveLeagueId} />
-          )}
-          {effectiveTab === "schedule" && (
-            <SchedulePage me={me} leagueId={activeLeagueId} setLeagueId={setActiveLeagueId} />
+            <CalendarPage me={me} leagueId={leagueId} setLeagueId={setLeagueId} />
           )}
           {effectiveTab === "manage" && (
             <ManagePage
               me={me}
-              leagueId={activeLeagueId}
-              setLeagueId={setActiveLeagueId}
+              leagueId={leagueId}
+              setLeagueId={setLeagueId}
               tableView={tableView}
             />
           )}
-          {effectiveTab === "help" && <HelpPage />}
           {effectiveTab === "admin" && (
-            <AdminPage me={me} leagueId={activeLeagueId} setLeagueId={setActiveLeagueId} />
+            <AdminPage me={me} leagueId={leagueId} setLeagueId={setLeagueId} />
           )}
           {effectiveTab === "debug" && (
             isGlobalAdmin ? (
-              <DebugPage me={me} leagueId={activeLeagueId} />
+              <DebugPage me={me} leagueId={leagueId} />
             ) : (
               <div className="card">
                 <h2>Debug</h2>
@@ -295,16 +284,16 @@ export default function App() {
             )
           )}
           {effectiveTab === "practice" && (
-            <PracticePortalPage me={me} leagueId={activeLeagueId} />
+            <PracticePortalPage me={me} leagueId={leagueId} />
           )}
           {effectiveTab === "coach-setup" && (
-            <CoachOnboardingPage me={me} leagueId={activeLeagueId} />
+            <CoachOnboardingPage me={me} leagueId={leagueId} setTab={setTab} />
           )}
           {effectiveTab === "settings" && (
-            <NotificationSettingsPage leagueId={activeLeagueId} />
+            <NotificationSettingsPage leagueId={leagueId} />
           )}
           {effectiveTab === "notifications" && (
-            <NotificationCenterPage leagueId={activeLeagueId} />
+            <NotificationCenterPage leagueId={leagueId} />
           )}
         </Suspense>
       </main>

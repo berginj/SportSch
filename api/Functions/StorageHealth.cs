@@ -20,11 +20,6 @@ public class StorageHealth
         _svc = tableServiceClient;
     }
 
-    [Function("StorageHealthAdmin")]
-    public Task<HttpResponseData> RunAdmin(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "admin/storage/health")] HttpRequestData req)
-        => RunInternalAsync(req);
-
     [Function("StorageHealth")]
     public Task<HttpResponseData> Run(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "storage/health")] HttpRequestData req)

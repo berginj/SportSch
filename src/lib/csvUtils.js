@@ -20,7 +20,7 @@ export function buildTeamsTemplateCsv(divisions) {
       if (!d) return "";
       if (typeof d === "string") return d;
       if (d.isActive === false) return "";
-      return d.code || d.division || "";
+      return d.code || "";
     })
     .filter(Boolean)
     .map((code) => [code, "", "", "", "", ""]);

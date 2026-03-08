@@ -69,8 +69,6 @@ public class GetSlots
             var continuationToken = ApiGuards.GetQueryParam(req, "continuationToken");
             var pageSizeStr = ApiGuards.GetQueryParam(req, "pageSize");
             var pageSize = int.TryParse(pageSizeStr, out var ps) ? ps : 50;
-            var returnEnvelope = !string.IsNullOrWhiteSpace(continuationToken) || !string.IsNullOrWhiteSpace(pageSizeStr);
-
             var excludeAvailability = false;
             if (!string.IsNullOrWhiteSpace(excludeAvailabilityRaw))
             {
@@ -89,8 +87,7 @@ public class GetSlots
                 ToDate = dateTo,
                 FieldKey = fieldKey,
                 ContinuationToken = continuationToken,
-                PageSize = pageSize,
-                ReturnEnvelope = returnEnvelope
+                PageSize = pageSize
             };
 
             var context = CorrelationContext.FromRequest(req, leagueId);

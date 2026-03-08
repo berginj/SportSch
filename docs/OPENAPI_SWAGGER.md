@@ -18,15 +18,15 @@ The API automatically exposes OpenAPI/Swagger endpoints via the `Microsoft.Azure
 
 ## Coverage
 
-The API documentation covers **42 of 43 user-facing functions** (98% coverage):
+The API documentation covers the active user-facing functions.
 
 ### Documented Endpoints
 
 **Slots (3)**
 - CreateSlot, GetSlots, CancelSlot
 
-**Slot Requests (3)**
-- CreateSlotRequest, ApproveSlotRequest, GetSlotRequests
+**Slot Requests (2)**
+- CreateSlotRequest, GetSlotRequests
 
 **Availability Rules (9)**
 - Create, Get, Update, Deactivate, Exceptions (CRUD), Preview

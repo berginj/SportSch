@@ -120,13 +120,14 @@ public static class EntityMappers
     /// </summary>
     public static object MapMembership(TableEntity e)
     {
+        var (division, teamId) = ReadAssignedTeam(e);
         return new
         {
             userId = e.PartitionKey,
             leagueId = e.RowKey,
             role = ReadString(e, "Role", Constants.Roles.Viewer),
-            coachDivision = ReadString(e, "CoachDivision"),
-            coachTeamId = ReadString(e, "CoachTeamId"),
+            division,
+            teamId,
             joinedUtc = ReadDateTimeOffset(e, "JoinedUtc")
         };
     }
@@ -140,6 +141,14 @@ public static class EntityMappers
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(v => !string.IsNullOrWhiteSpace(v))
             .ToList();
+    }
+
+    private static (string division, string teamId) ReadAssignedTeam(TableEntity entity)
+    {
+        return (
+            ReadString(entity, "Division"),
+            ReadString(entity, "TeamId")
+        );
     }
 
     private static object? ReadValue(TableEntity entity, string key)

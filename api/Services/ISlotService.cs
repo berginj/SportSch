@@ -21,7 +21,7 @@ public interface ISlotService
     /// <summary>
     /// Queries slots with filtering and pagination.
     /// </summary>
-    Task<object> QuerySlotsAsync(SlotQueryRequest request, CorrelationContext context);
+    Task<SlotQueryResponse> QuerySlotsAsync(SlotQueryRequest request, CorrelationContext context);
 
     /// <summary>
     /// Cancels a slot (marks as cancelled, notifies requesters).
@@ -65,5 +65,12 @@ public class SlotQueryRequest
     public string? FieldKey { get; set; }
     public string? ContinuationToken { get; set; }
     public int PageSize { get; set; } = 50;
-    public bool ReturnEnvelope { get; set; }
+}
+
+public class SlotQueryResponse
+{
+    public List<object> Items { get; set; } = new();
+    public string? ContinuationToken { get; set; }
+    public int PageSize { get; set; }
+    public bool HasMore { get; set; }
 }

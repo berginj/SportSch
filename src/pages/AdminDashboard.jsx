@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../lib/api';
+import { readPagedItems } from '../lib/pagedResults';
 import StatusCard from '../components/StatusCard';
 
 function isGameCapableSlot(slot) {
@@ -17,7 +18,7 @@ function isActiveGameCapableSlot(slot) {
 /**
  * AdminDashboard - League admin dashboard with health metrics and quick actions
  * Shows:
- * - League health metrics (pending requests, unassigned coaches, schedule coverage)
+ * - League health metrics (pending access requests, unassigned coaches, schedule coverage)
  * - Quick action buttons
  * - Recent activity feed (future enhancement)
  */
@@ -53,7 +54,7 @@ export default function AdminDashboard({ leagueId, onNavigate }) {
         .filter(m => m.role === 'Coach');
       const unassignedCoaches = coaches.filter(m => !m.team || !m.team.teamId).length;
 
-      const allSlots = Array.isArray(slots) ? slots : [];
+      const allSlots = readPagedItems(slots);
       const activeGameSlots = allSlots.filter(isActiveGameCapableSlot);
       const confirmedSlots = activeGameSlots.filter(s => s.status === 'Confirmed').length;
       const openSlots = activeGameSlots.filter(s => s.status === 'Open').length;
@@ -143,7 +144,7 @@ export default function AdminDashboard({ leagueId, onNavigate }) {
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <MetricCard
-          title="Pending Requests"
+          title="Pending Access"
           value={metrics.pendingRequests}
           subtitle={metrics.pendingRequests === 1 ? 'access request' : 'access requests'}
           color={metrics.pendingRequests > 0 ? 'blue' : 'gray'}

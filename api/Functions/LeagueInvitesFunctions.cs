@@ -23,7 +23,7 @@ public class LeagueInvitesFunctions
     }
 
     public record InviteTeam(string? division, string? teamId);
-    public record CreateInviteReq(string? leagueId, string? inviteEmail, string? role, int? expiresHours, InviteTeam? team);
+    public record CreateInviteReq(string? inviteEmail, string? role, int? expiresHours, InviteTeam? team);
     public record InviteDto(
         string leagueId,
         string inviteId,
@@ -42,13 +42,6 @@ public class LeagueInvitesFunctions
         return await CreateCore(req);
     }
 
-    [Function("CreateInvite_Alt")]
-    public async Task<HttpResponseData> CreateAlt(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "invites")] HttpRequestData req)
-    {
-        return await CreateCore(req);
-    }
-
     private async Task<HttpResponseData> CreateCore(HttpRequestData req)
     {
         try
@@ -57,15 +50,7 @@ public class LeagueInvitesFunctions
             var body = await HttpUtil.ReadJsonAsync<CreateInviteReq>(req);
             if (body is null) return HttpUtil.Json(req, HttpStatusCode.BadRequest, new { error = "Invalid JSON body" });
 
-            var leagueId = (body.leagueId ?? "").Trim();
-            if (string.IsNullOrWhiteSpace(leagueId))
-            {
-                leagueId = ApiGuards.RequireLeagueId(req);
-            }
-            else
-            {
-                ApiGuards.EnsureValidTableKeyPart("leagueId", leagueId);
-            }
+            var leagueId = ApiGuards.RequireLeagueId(req);
 
             if (await ApiGuards.IsGlobalAdminAsync(_svc, me.UserId))
             {
@@ -134,7 +119,7 @@ public class LeagueInvitesFunctions
         }
     }
 
-    public record AcceptInviteReq(string? leagueId, string? inviteId);
+    public record AcceptInviteReq(string? inviteId);
 
     [Function("AcceptInvite")]
     public async Task<HttpResponseData> Accept(
@@ -145,16 +130,11 @@ public class LeagueInvitesFunctions
             var me = IdentityUtil.GetMe(req);
 
             var body = await HttpUtil.ReadJsonAsync<AcceptInviteReq>(req);
-            var leagueId = (body?.leagueId ?? "").Trim();
+            var leagueId = ApiGuards.RequireLeagueId(req);
             var inviteId = (body?.inviteId ?? "").Trim();
 
-            if (string.IsNullOrWhiteSpace(leagueId))
-                leagueId = (ApiGuards.GetQueryParam(req, "leagueId") ?? "").Trim();
             if (string.IsNullOrWhiteSpace(inviteId))
-                inviteId = (ApiGuards.GetQueryParam(req, "inviteId") ?? "").Trim();
-
-            if (string.IsNullOrWhiteSpace(leagueId) || string.IsNullOrWhiteSpace(inviteId))
-                return HttpUtil.Json(req, HttpStatusCode.BadRequest, new { error = "leagueId and inviteId are required" });
+                return HttpUtil.Json(req, HttpStatusCode.BadRequest, new { error = "inviteId is required" });
 
             var pk = $"LEAGUEINVITE|{leagueId}";
             var table = await TableClients.GetTableAsync(_svc, InvitesTableName);
@@ -220,7 +200,7 @@ public class LeagueInvitesFunctions
                     }
                 }
 
-                await memberships.UpsertEntityAsync(mem, TableUpdateMode.Merge);
+                await SaveCanonicalMembershipAsync(memberships, mem);
             }
 
             var res = req.CreateResponse(HttpStatusCode.OK);
@@ -267,5 +247,49 @@ public class LeagueInvitesFunctions
             Fragment = fragment
         };
         return baseUri.Uri.ToString();
+    }
+
+    private static async Task SaveCanonicalMembershipAsync(TableClient memberships, TableEntity membership)
+    {
+        try
+        {
+            var existing = (await memberships.GetEntityAsync<TableEntity>(membership.PartitionKey, membership.RowKey)).Value;
+            var replacement = new TableEntity(membership.PartitionKey, membership.RowKey)
+            {
+                ETag = existing.ETag
+            };
+
+            foreach (var kvp in existing)
+            {
+                if (string.Equals(kvp.Key, "PartitionKey", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(kvp.Key, "RowKey", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(kvp.Key, "Timestamp", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(kvp.Key, "CoachDivision", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(kvp.Key, "CoachTeamId", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                replacement[kvp.Key] = kvp.Value;
+            }
+
+            foreach (var kvp in membership)
+            {
+                if (string.Equals(kvp.Key, "PartitionKey", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(kvp.Key, "RowKey", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(kvp.Key, "Timestamp", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                replacement[kvp.Key] = kvp.Value;
+            }
+
+            await memberships.UpdateEntityAsync(replacement, existing.ETag, TableUpdateMode.Replace);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            await memberships.AddEntityAsync(membership);
+        }
     }
 }

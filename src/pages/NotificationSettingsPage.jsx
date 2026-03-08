@@ -140,7 +140,7 @@ export default function NotificationSettingsPage({ leagueId }) {
         <div className="card__header">
           <div className="h2">Notification Settings</div>
           <div className="subtle">
-            Configure how you want to be notified about game swaps and schedule changes for this league.
+            Configure how you want to be notified about open games, confirmed games, and schedule changes for this league.
           </div>
         </div>
 
@@ -216,9 +216,9 @@ export default function NotificationSettingsPage({ leagueId }) {
                 disabled={!preferences.enableEmailNotifications}
               />
               <div>
-                <div className="font-semibold">Cancelled Slots</div>
+                <div className="font-semibold">Cancelled Games</div>
                 <div className="subtle">
-                  When a game slot is cancelled
+                  When a scheduled game is cancelled
                 </div>
               </div>
             </label>
@@ -231,9 +231,9 @@ export default function NotificationSettingsPage({ leagueId }) {
                 disabled={!preferences.enableEmailNotifications}
               />
               <div>
-                <div className="font-semibold">Swap Requests Received</div>
+                <div className="font-semibold">Open Games Accepted</div>
                 <div className="subtle">
-                  When another coach requests to take your game slot
+                  When another coach accepts one of your open game offers or requests
                 </div>
               </div>
             </label>
@@ -246,9 +246,9 @@ export default function NotificationSettingsPage({ leagueId }) {
                 disabled={!preferences.enableEmailNotifications}
               />
               <div>
-                <div className="font-semibold">Requests Approved</div>
+                <div className="font-semibold">Game Confirmations</div>
                 <div className="subtle">
-                  When your swap request is approved
+                  When your team accepts an open game and it becomes confirmed
                 </div>
               </div>
             </label>
@@ -261,9 +261,9 @@ export default function NotificationSettingsPage({ leagueId }) {
                 disabled={!preferences.enableEmailNotifications}
               />
               <div>
-                <div className="font-semibold">Requests Denied</div>
+                <div className="font-semibold">Acceptance Conflicts</div>
                 <div className="subtle">
-                  When your swap request is not approved
+                  When a game you tried to accept is no longer available
                 </div>
               </div>
             </label>

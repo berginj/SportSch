@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
-import LeaguePicker from "../components/LeaguePicker";
+import { readPagedItems } from "../lib/pagedResults";
 import StatusCard from "../components/StatusCard";
 import CoachDashboard from "./CoachDashboard";
 import { SLOT_STATUS } from "../lib/constants";
@@ -190,7 +190,7 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
       const [divs, slotList, eventList, accessList] = await Promise.all(reqs);
 
       setDivisions(Array.isArray(divs) ? divs : []);
-      setSlots(Array.isArray(slotList) ? slotList : []);
+      setSlots(readPagedItems(slotList));
       setEvents(Array.isArray(eventList) ? eventList : []);
       setAccessRequests(Array.isArray(accessList) ? accessList : []);
     } catch (e) {
@@ -284,90 +284,6 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
       .sort((a, b) => a.date.localeCompare(b.date))
       .slice(0, 5);
   }, [openSlots, today]);
-
-  const layoutKey = isMobile ? "mobile" : isAdmin ? "admin" : role === "Coach" ? "filters" : "coach";
-
-  function renderFilters() {
-    return (
-      <div className="layoutPanel">
-        <div className="layoutPanel__title">Filters</div>
-        <div className="layoutForm">
-          <label>
-            League
-            <LeaguePicker leagueId={leagueId} setLeagueId={setLeagueId} me={me} label="League" />
-          </label>
-          <label>
-            Division
-            <select value={division} onChange={(e) => setDivision(e.target.value)}>
-              <option value="">All</option>
-              {divisions.map((d) => (
-                <option key={d.code} value={d.code}>
-                  {d.name} ({d.code})
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            From
-            <input value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-          </label>
-          <label>
-            To
-            <input value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-          </label>
-          <label>
-            Status
-            <div className="layoutRow">
-              {[SLOT_STATUS.OPEN, SLOT_STATUS.CONFIRMED, SLOT_STATUS.CANCELLED].map((status) => (
-                <button
-                  key={status}
-                  className={`btn btn--ghost ${slotStatusFilter[status] ? "is-active" : ""}`}
-                  onClick={() =>
-                    setSlotStatusFilter((prev) => ({ ...prev, [status]: !prev[status] }))
-                  }
-                >
-                  {status}
-                </button>
-              ))}
-            </div>
-          </label>
-          <div className="layoutRow">
-            <label className="inlineCheck">
-              <input type="checkbox" checked={showSlots} onChange={(e) => setShowSlots(e.target.checked)} />
-              Slots
-            </label>
-            <label className="inlineCheck">
-              <input type="checkbox" checked={showEvents} onChange={(e) => setShowEvents(e.target.checked)} />
-              Events
-            </label>
-          </div>
-          <button className="btn" onClick={load}>
-            Apply
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  function renderFiltersResults() {
-    return (
-      <div className="layoutPanel">
-        <div className="layoutPanel__title">Results</div>
-        <div className="layoutList">
-          {openSlots.slice(0, 6).map((s) => (
-            <div className="layoutItem" key={s.slotId}>
-              <div className="layoutRow layoutRow--space">
-                <div>{s.gameDate} - {s.offeringTeamId}</div>
-                <div className="layoutBadge">Open</div>
-              </div>
-              <div className="layoutMeta">{s.displayName || s.fieldKey}</div>
-            </div>
-          ))}
-          {openSlots.length === 0 ? <div className="layoutMeta">No open offers.</div> : null}
-        </div>
-      </div>
-    );
-  }
 
   function renderAdmin() {
     return (
@@ -514,7 +430,7 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
                     <div className="layoutBadge">Open</div>
                   </div>
                   <div className="layoutMeta">{s.gameDate} {s.startTime}-{s.endTime}</div>
-                  <button className="btn">Accept</button>
+                  <button className="btn" type="button" onClick={() => setTab("calendar")}>Open Calendar</button>
                 </div>
               ))}
               {openSlots.length === 0 ? <div className="layoutMeta">No open offers.</div> : null}
@@ -523,8 +439,10 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
           <div className="layoutPhone__nav">
             <button className="btn btn--ghost" onClick={() => setTab("calendar")}>Calendar</button>
             <button className="btn btn--ghost" onClick={() => setTab("offers")}>Offer/Request</button>
-            <button className="btn btn--ghost" onClick={() => setTab("manage")}>Teams</button>
-            <button className="btn btn--ghost" onClick={() => setTab("help")}>Help</button>
+            <button className="btn btn--ghost" onClick={() => setTab(isAdmin ? "manage" : "practice")}>
+              {isAdmin ? "Manage" : "Practice"}
+            </button>
+            <button className="btn btn--ghost" onClick={() => setTab("notifications")}>Notifications</button>
           </div>
         </div>
       </div>
@@ -544,17 +462,7 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
     return <CoachDashboard me={me} leagueId={leagueId} setTab={setTab} />;
   }
 
-  if (layoutKey === "mobile") return renderMobile();
-  if (layoutKey === "admin") return renderAdmin();
-  if (layoutKey === "filters") {
-    return (
-      <div className="layoutPreview layoutPreview--filters">
-        <div className="layoutSplit">
-          {renderFilters()}
-          {renderFiltersResults()}
-        </div>
-      </div>
-    );
-  }
+  if (isMobile) return renderMobile();
+  if (isAdmin) return renderAdmin();
   return renderCoachHub();
 }

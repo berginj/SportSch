@@ -134,8 +134,8 @@ public class AuthorizationServiceTests : IDisposable
         var membership = new TableEntity("pk", "rk")
         {
             { "Role", Constants.Roles.Coach },
-            { "CoachDivision", division },
-            { "CoachTeamId", teamId }
+            { "Division", division },
+            { "TeamId", teamId }
         };
 
         _mockMembershipRepo
@@ -146,6 +146,30 @@ public class AuthorizationServiceTests : IDisposable
         await _service.ValidateCoachAccessAsync(userId, leagueId, division, teamId);
 
         // Assert - Implicit success if no exception thrown
+    }
+
+    [Fact]
+    public async Task ValidateCoachAccessAsync_WithAssignedCoach_Succeeds()
+    {
+        // Arrange
+        var userId = "coach-user";
+        var leagueId = "league-1";
+        var division = "10U";
+        var teamId = "team-1";
+
+        var membership = new TableEntity("pk", "rk")
+        {
+            { "Role", Constants.Roles.Coach },
+            { "Division", division },
+            { "TeamId", teamId }
+        };
+
+        _mockMembershipRepo
+            .Setup(x => x.GetMembershipAsync(userId, leagueId))
+            .ReturnsAsync(membership);
+
+        // Act - Should not throw
+        await _service.ValidateCoachAccessAsync(userId, leagueId, division, teamId);
     }
 
     [Fact]
@@ -161,8 +185,8 @@ public class AuthorizationServiceTests : IDisposable
         var membership = new TableEntity("pk", "rk")
         {
             { "Role", Constants.Roles.Coach },
-            { "CoachDivision", assignedDivision },
-            { "CoachTeamId", teamId }
+            { "Division", assignedDivision },
+            { "TeamId", teamId }
         };
 
         _mockMembershipRepo
@@ -191,8 +215,8 @@ public class AuthorizationServiceTests : IDisposable
         var membership = new TableEntity("pk", "rk")
         {
             { "Role", Constants.Roles.Coach },
-            { "CoachDivision", division },
-            { "CoachTeamId", assignedTeamId }
+            { "Division", division },
+            { "TeamId", assignedTeamId }
         };
 
         _mockMembershipRepo
@@ -220,8 +244,8 @@ public class AuthorizationServiceTests : IDisposable
         var membership = new TableEntity("pk", "rk")
         {
             { "Role", Constants.Roles.Coach },
-            { "CoachDivision", division },
-            { "CoachTeamId", "team-1" }
+            { "Division", division },
+            { "TeamId", "team-1" }
         };
 
         _mockMembershipRepo
@@ -302,7 +326,33 @@ public class AuthorizationServiceTests : IDisposable
         var membership = new TableEntity("pk", "rk")
         {
             { "Role", Constants.Roles.Coach },
-            { "CoachTeamId", offeringTeamId }
+            { "TeamId", offeringTeamId }
+        };
+
+        _mockMembershipRepo
+            .Setup(x => x.GetMembershipAsync(userId, leagueId))
+            .ReturnsAsync(membership);
+
+        // Act
+        var canCancel = await _service.CanCancelSlotAsync(userId, leagueId, offeringTeamId, confirmedTeamId);
+
+        // Assert
+        Assert.True(canCancel);
+    }
+
+    [Fact]
+    public async Task CanCancelSlotAsync_WithAssignedCoachTeam_ReturnsTrue()
+    {
+        // Arrange
+        var userId = "user-1";
+        var leagueId = "league-1";
+        var offeringTeamId = "team-1";
+        string? confirmedTeamId = null;
+
+        var membership = new TableEntity("pk", "rk")
+        {
+            { "Role", Constants.Roles.Coach },
+            { "TeamId", offeringTeamId }
         };
 
         _mockMembershipRepo
@@ -354,7 +404,7 @@ public class AuthorizationServiceTests : IDisposable
         var membership = new TableEntity("pk", "rk")
         {
             { "Role", Constants.Roles.Coach },
-            { "CoachTeamId", userTeamId }
+            { "TeamId", userTeamId }
         };
 
         _mockMembershipRepo

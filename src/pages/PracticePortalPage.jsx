@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
+import { readPagedItems } from "../lib/pagedResults";
 import StatusCard from "../components/StatusCard";
 import Toast from "../components/Toast";
 import { ConfirmDialog } from "../components/Dialogs";
@@ -96,8 +97,8 @@ export default function PracticePortalPage({ me, leagueId }) {
   const coachTeam = useMemo(() => {
     const inLeague = memberships.filter((m) => (m?.leagueId || "").trim() === (leagueId || "").trim());
     const coach = inLeague.find((m) => normalizeRole(m?.role) === "Coach");
-    const division = (coach?.team?.division || coach?.division || "").trim();
-    const teamId = (coach?.team?.teamId || coach?.teamId || "").trim();
+    const division = (coach?.team?.division || "").trim();
+    const teamId = (coach?.team?.teamId || "").trim();
     return { division, teamId };
   }, [memberships, leagueId]);
 
@@ -162,7 +163,7 @@ export default function PracticePortalPage({ me, leagueId }) {
             : Promise.resolve([]),
           apiFetch(`/api/practice-portal/settings?${portalParams.toString()}`).catch(() => null),
         ]);
-        setSlots(Array.isArray(s) ? s : []);
+        setSlots(readPagedItems(s));
         setDivisionTeams(Array.isArray(teams) ? teams : []);
         setPracticeRequests(Array.isArray(requests) ? requests : []);
         setPortalSettings(settings && typeof settings === "object" ? settings : null);
@@ -208,7 +209,7 @@ export default function PracticePortalPage({ me, leagueId }) {
             : Promise.resolve([]),
           apiFetch(`/api/practice-portal/settings?${portalParams.toString()}`).catch(() => null),
         ]);
-        setSlots(Array.isArray(s) ? s : []);
+        setSlots(readPagedItems(s));
         setDivisionTeams(Array.isArray(teams) ? teams : []);
         setPracticeRequests(Array.isArray(requests) ? requests : []);
         setPortalSettings(settings && typeof settings === "object" ? settings : null);

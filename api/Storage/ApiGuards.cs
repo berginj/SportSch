@@ -212,8 +212,5 @@ public static class ApiGuards
                 $"{name} contains invalid characters. Table keys cannot contain: {InvalidTableKeyCharsMessage}.");
     }
 
-    // Back-compat alias (some of your funcs referenced GetQueryValue earlier)
-    public static string? GetQueryValue(HttpRequestData req, string key) => GetQueryParam(req, key);
-
     public static string EscapeOData(string s) => (s ?? "").Replace("'", "''");
 }

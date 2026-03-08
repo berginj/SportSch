@@ -104,5 +104,4 @@ traces
 - `api_schedule_wizard_apply` (leagueId, division, slotsTotal, assignedTotal, issues)
 - `api_slot_create` (leagueId, division, slotId, fieldKey, gameDate, startTime, endTime, gameType)
 - `api_slot_request_accept` (leagueId, division, slotId, requestingTeamId)
-- `api_slot_request_approve` (leagueId, division, slotId, requestId)
 - `api_slot_cancel` (leagueId, division, slotId)

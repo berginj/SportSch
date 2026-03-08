@@ -58,6 +58,8 @@ public class SlotQueryFilter
     public string LeagueId { get; set; } = "";
     public string? Division { get; set; }
     public string? Status { get; set; }
+    public List<string> Statuses { get; set; } = new();
+    public bool ExcludeCancelled { get; set; }
     public bool ExcludeAvailability { get; set; }
     public string? FromDate { get; set; }
     public string? ToDate { get; set; }

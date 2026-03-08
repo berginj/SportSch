@@ -29,7 +29,7 @@ function buildAvailabilityTemplateCsv(divisions, fields) {
   const header = ["division", "gameDate", "startTime", "endTime", "fieldKey", "notes", "parkName", "fieldName", "displayName"];
   const divs = (divisions || [])
     .filter((d) => d && d.isActive !== false)
-    .map((d) => (typeof d === "string" ? d : d.code || d.division || ""))
+    .map((d) => (typeof d === "string" ? d : d.code || ""))
     .filter(Boolean)
     .sort((a, b) => a.localeCompare(b));
   const rows = [];
@@ -258,7 +258,7 @@ export default function SlotGeneratorManager({ leagueId }) {
         setFields(Array.isArray(flds) ? flds : []);
         setLeagueSeason(league?.season || null);
         if (list.length) {
-          setSlotGenDivision((prev) => prev || list[0].code || list[0].division || "");
+          setSlotGenDivision((prev) => prev || list[0].code || "");
         }
         if (Array.isArray(flds) && flds.length) {
           setSlotGenFieldKey((prev) => prev || ALL_FIELDS_VALUE);
@@ -297,7 +297,7 @@ export default function SlotGeneratorManager({ leagueId }) {
 
   useEffect(() => {
     if (!slotGenDivision && divisions.length) {
-      setSlotGenDivision(divisions[0].code || divisions[0].division || "");
+      setSlotGenDivision(divisions[0].code || "");
     }
   }, [divisions, slotGenDivision]);
 
@@ -632,7 +632,7 @@ export default function SlotGeneratorManager({ leagueId }) {
 
       const knownDivisions = new Set(
         (divisions || [])
-          .map((d) => (d?.code || d?.division || "").trim())
+          .map((d) => (d?.code || "").trim())
           .filter(Boolean)
       );
       if (knownDivisions.size === 0) {
@@ -1006,7 +1006,7 @@ export default function SlotGeneratorManager({ leagueId }) {
                 >
                   <option value="">Select division</option>
                   {divisions.map((d) => {
-                    const code = d.code || d.division;
+                    const code = d.code || "";
                     if (!code) return null;
                     return (
                       <option key={code} value={code}>
@@ -1026,7 +1026,7 @@ export default function SlotGeneratorManager({ leagueId }) {
                     >
                       <option value="">Select division</option>
                       {divisions.map((d) => {
-                        const code = d.code || d.division;
+                        const code = d.code || "";
                         if (!code) return null;
                         return (
                           <option key={code} value={code}>
@@ -1120,8 +1120,8 @@ export default function SlotGeneratorManager({ leagueId }) {
             <select value={availDivision} onChange={(e) => setAvailDivision(e.target.value)}>
               <option value="">All divisions</option>
               {divisions.map((d) => (
-                <option key={d.code || d.division} value={d.code || d.division}>
-                  {d.name ? `${d.name} (${d.code || d.division})` : d.code || d.division}
+                <option key={d.code || ""} value={d.code || ""}>
+                  {d.name ? `${d.name} (${d.code || ""})` : d.code || ""}
                 </option>
               ))}
             </select>
@@ -1376,8 +1376,8 @@ export default function SlotGeneratorManager({ leagueId }) {
             Division
             <select value={slotGenDivision} onChange={(e) => setSlotGenDivision(e.target.value)}>
               {divisions.map((d) => (
-                <option key={d.code || d.division} value={d.code || d.division}>
-                  {d.name ? `${d.name} (${d.code || d.division})` : d.code || d.division}
+                <option key={d.code || ""} value={d.code || ""}>
+                  {d.name ? `${d.name} (${d.code || ""})` : d.code || ""}
                 </option>
               ))}
             </select>

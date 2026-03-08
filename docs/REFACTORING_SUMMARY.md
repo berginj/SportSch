@@ -154,7 +154,7 @@ public async Task<HttpResponseData> Run([HttpTrigger(...)] HttpRequestData req)
 **Functions Verified:**
 - `CreateSlot.cs` - Uses SlotService
 - `GetSlots.cs` - Has pagination
-- `ApproveSlotRequest.cs` - Uses RequestService with retry logic
+- `CreateSlotRequest.cs` - Uses RequestService for immediate-confirm slot acceptance
 - 37+ other functions
 
 ### Phase 5: Frontend Constants & Components (Frontend)

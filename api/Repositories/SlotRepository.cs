@@ -2,6 +2,7 @@ using Azure;
 using Azure.Data.Tables;
 using GameSwap.Functions.Storage;
 using Microsoft.Extensions.Logging;
+using System.Linq;
 
 namespace GameSwap.Functions.Repositories;
 
@@ -40,28 +41,13 @@ public class SlotRepository : ISlotRepository
     public async Task<PaginationResult<TableEntity>> QuerySlotsAsync(SlotQueryFilter filter, string? continuationToken = null)
     {
         var table = await TableClients.GetTableAsync(_tableService, TableName);
-        var fullFilter = BuildSlotFilter(filter, includePropertyFilters: true);
+        var fullFilter = BuildSlotFilter(filter);
 
         _logger.LogDebug("Querying slots with filter: {Filter}", fullFilter);
-
-        try
-        {
-            return await PaginationUtil.QueryWithPaginationAsync(table, fullFilter, continuationToken, filter.PageSize);
-        }
-        catch (RequestFailedException ex) when (ex.Status == 400 || ex.Status == 422)
-        {
-            // Some legacy rows were persisted with mixed property types.
-            // If OData property comparisons fail, retry with a safe partition-only filter
-            // and let service-layer filtering finish the request.
-            var safeFilter = BuildSlotFilter(filter, includePropertyFilters: false);
-            _logger.LogWarning(ex,
-                "QuerySlotsAsync failed with property filter. Retrying partition-only query. League={LeagueId}, Division={Division}",
-                filter.LeagueId, filter.Division);
-            return await PaginationUtil.QueryWithPaginationAsync(table, safeFilter, continuationToken, filter.PageSize);
-        }
+        return await PaginationUtil.QueryWithPaginationAsync(table, fullFilter, continuationToken, filter.PageSize);
     }
 
-    private static string BuildSlotFilter(SlotQueryFilter filter, bool includePropertyFilters)
+    private static string BuildSlotFilter(SlotQueryFilter filter)
     {
         var filters = new List<string>();
 
@@ -76,11 +62,17 @@ public class SlotRepository : ISlotRepository
             filters.Add(ODataFilterBuilder.PartitionKeyPrefix(pkPrefix));
         }
 
-        if (!includePropertyFilters)
-            return ODataFilterBuilder.And(filters.ToArray());
+        var statuses = (filter.Statuses ?? new List<string>())
+            .Where((value) => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
-        if (!string.IsNullOrEmpty(filter.Status))
+        if (statuses.Count > 0)
+            filters.Add(ODataFilterBuilder.Or(statuses.Select(ODataFilterBuilder.StatusEquals).ToArray()));
+        else if (!string.IsNullOrEmpty(filter.Status))
             filters.Add(ODataFilterBuilder.StatusEquals(filter.Status));
+        else if (filter.ExcludeCancelled)
+            filters.Add(ODataFilterBuilder.PropertyNotEquals("Status", Constants.Status.SlotCancelled));
 
         if (!string.IsNullOrEmpty(filter.FromDate) || !string.IsNullOrEmpty(filter.ToDate))
             filters.Add(ODataFilterBuilder.DateRange("GameDate", filter.FromDate, filter.ToDate));

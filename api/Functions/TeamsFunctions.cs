@@ -243,8 +243,8 @@ public class TeamsFunctions
             var isCoach = string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase);
 
             // Check if coach is assigned to this specific team
-            var coachTeamDivision = (membership?.GetString("Division") ?? "").Trim();
-            var coachTeamId = (membership?.GetString("TeamId") ?? "").Trim();
+            var coachTeamDivision = ReadMembershipDivision(membership);
+            var coachTeamId = ReadMembershipTeamId(membership);
             var isOwnTeam = isCoach &&
                             string.Equals(coachTeamDivision, division, StringComparison.OrdinalIgnoreCase) &&
                             string.Equals(coachTeamId, teamId, StringComparison.OrdinalIgnoreCase);
@@ -353,5 +353,15 @@ public class TeamsFunctions
             _log.LogError(ex, "DeleteTeam failed");
             return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
         }
+    }
+
+    private static string ReadMembershipDivision(TableEntity? membership)
+    {
+        return (membership?.GetString("Division") ?? "").Trim();
+    }
+
+    private static string ReadMembershipTeamId(TableEntity? membership)
+    {
+        return (membership?.GetString("TeamId") ?? "").Trim();
     }
 }

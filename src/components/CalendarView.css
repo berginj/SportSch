@@ -169,12 +169,15 @@
   border: 1px solid var(--border);
   border-left: 5px solid rgba(96, 116, 137, 0.32);
   border-radius: 16px;
-  cursor: pointer;
   transition: all 0.18s ease;
   box-shadow: var(--neo-shadow-sm);
 }
 
-.calendar-item:hover {
+.calendar-item--interactive {
+  cursor: pointer;
+}
+
+.calendar-item--interactive:hover {
   border-color: rgba(255, 255, 255, 0.28);
   box-shadow: 12px 12px 20px rgba(148, 163, 184, 0.22), -10px -10px 18px rgba(255, 255, 255, 0.9);
 }
@@ -222,6 +225,20 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 0.4rem;
+}
+
+.calendar-item__subtitle,
+.agenda-item__subtitle {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.calendar-item__actions,
+.agenda-item__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
 }
 
 .calendar-item__status,
@@ -389,13 +406,16 @@
   background: var(--surface-raised);
   border-left: 4px solid var(--blue);
   border-radius: 16px;
-  cursor: pointer;
   transition: all 0.18s ease;
   margin-left: 1rem;
   box-shadow: var(--neo-shadow-sm);
 }
 
-.agenda-item:hover {
+.agenda-item--interactive {
+  cursor: pointer;
+}
+
+.agenda-item--interactive:hover {
   border-left-color: #245a8d;
   transform: translateX(2px);
   box-shadow: 12px 12px 20px rgba(148, 163, 184, 0.22), -10px -10px 18px rgba(255, 255, 255, 0.9);
@@ -412,6 +432,13 @@
   color: var(--text);
 }
 
+.agenda-item__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
 .agenda-item__meta {
   display: flex;
   flex-direction: column;
@@ -426,8 +453,18 @@
   background: var(--status-open-bg);
 }
 
-.agenda-item--event:hover {
+.agenda-item--event.agenda-item--interactive:hover {
   border-left-color: var(--accent-strong);
+}
+
+.agenda-item__title {
+  font-weight: 700;
+  color: var(--text);
+}
+
+.agenda-item__description {
+  font-size: 0.84rem;
+  color: var(--muted);
 }
 
 /* Responsive */

@@ -33,32 +33,16 @@ public class GlobalAdminsFunctions
 
     [Function("ListGlobalAdmins")]
     public Task<HttpResponseData> List(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "admin/globaladmins")] HttpRequestData req)
-        => ListCore(req);
-
-    [Function("ListGlobalAdmins_Alt")]
-    public Task<HttpResponseData> ListAlt(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "globaladmins")] HttpRequestData req)
         => ListCore(req);
 
     [Function("UpsertGlobalAdmin")]
     public Task<HttpResponseData> Upsert(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/globaladmins")] HttpRequestData req)
-        => UpsertCore(req);
-
-    [Function("UpsertGlobalAdmin_Alt")]
-    public Task<HttpResponseData> UpsertAlt(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "globaladmins")] HttpRequestData req)
         => UpsertCore(req);
 
     [Function("DeleteGlobalAdmin")]
     public Task<HttpResponseData> Delete(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "admin/globaladmins/{userId}")] HttpRequestData req,
-        string userId)
-        => DeleteCore(req, userId);
-
-    [Function("DeleteGlobalAdmin_Alt")]
-    public Task<HttpResponseData> DeleteAlt(
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "globaladmins/{userId}")] HttpRequestData req,
         string userId)
         => DeleteCore(req, userId);
@@ -75,18 +59,16 @@ public class GlobalAdminsFunctions
             await foreach (var e in table.QueryAsync<TableEntity>(x => x.PartitionKey == "GLOBAL"))
                 list.Add(ToDto(e));
 
-            var res = req.CreateResponse(HttpStatusCode.OK);
-            await res.WriteAsJsonAsync(list.OrderBy(x => x.email).ThenBy(x => x.userId));
-            return res;
+            return ApiResponses.Ok(req, list.OrderBy(x => x.email).ThenBy(x => x.userId).ToList());
         }
         catch (ApiGuards.HttpError ex)
         {
-            return await Err(req, ex.Message, (HttpStatusCode)ex.Status);
+            return ApiResponses.FromHttpError(req, ex);
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "ListGlobalAdmins failed");
-            return await Err(req, "Internal Server Error", HttpStatusCode.InternalServerError);
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, ErrorCodes.INTERNAL_ERROR, "Internal Server Error");
         }
     }
 
@@ -99,13 +81,13 @@ public class GlobalAdminsFunctions
 
             UpsertReq? body;
             try { body = await req.ReadFromJsonAsync<UpsertReq>(); }
-            catch { return await Err(req, "Invalid JSON body", HttpStatusCode.BadRequest); }
+            catch { return ApiResponses.Error(req, HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST, "Invalid JSON body"); }
 
             var userId = (body?.userId ?? "").Trim();
             var email = (body?.email ?? "").Trim();
 
             if (string.IsNullOrWhiteSpace(userId))
-                return await Err(req, "userId is required", HttpStatusCode.BadRequest);
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST, "userId is required");
             ApiGuards.EnsureValidTableKeyPart("userId", userId);
 
             var table = await TableClients.GetTableAsync(_svc, TableName);
@@ -136,18 +118,16 @@ public class GlobalAdminsFunctions
                 details: null
             );
 
-            var res = req.CreateResponse(HttpStatusCode.OK);
-            await res.WriteAsJsonAsync(ToDto(entity));
-            return res;
+            return ApiResponses.Ok(req, ToDto(entity));
         }
         catch (ApiGuards.HttpError ex)
         {
-            return await Err(req, ex.Message, (HttpStatusCode)ex.Status);
+            return ApiResponses.FromHttpError(req, ex);
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "UpsertGlobalAdmin failed");
-            return await Err(req, "Internal Server Error", HttpStatusCode.InternalServerError);
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, ErrorCodes.INTERNAL_ERROR, "Internal Server Error");
         }
     }
 
@@ -160,7 +140,7 @@ public class GlobalAdminsFunctions
 
             userId = (userId ?? "").Trim();
             if (string.IsNullOrWhiteSpace(userId))
-                return await Err(req, "userId is required", HttpStatusCode.BadRequest);
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST, "userId is required");
             ApiGuards.EnsureValidTableKeyPart("userId", userId);
 
             var table = await TableClients.GetTableAsync(_svc, TableName);
@@ -191,25 +171,16 @@ public class GlobalAdminsFunctions
                 details: null
             );
 
-            var res = req.CreateResponse(HttpStatusCode.OK);
-            await res.WriteAsJsonAsync(new { ok = true });
-            return res;
+            return ApiResponses.Ok(req, new { userId, removed = true });
         }
         catch (ApiGuards.HttpError ex)
         {
-            return await Err(req, ex.Message, (HttpStatusCode)ex.Status);
+            return ApiResponses.FromHttpError(req, ex);
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "DeleteGlobalAdmin failed");
-            return await Err(req, "Internal Server Error", HttpStatusCode.InternalServerError);
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, ErrorCodes.INTERNAL_ERROR, "Internal Server Error");
         }
-    }
-
-    private static async Task<HttpResponseData> Err(HttpRequestData req, string msg, HttpStatusCode code)
-    {
-        var res = req.CreateResponse(code);
-        await res.WriteAsJsonAsync(new { error = msg });
-        return res;
     }
 }

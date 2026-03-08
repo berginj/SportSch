@@ -150,7 +150,7 @@ export default function LeagueSettings({ leagueId }) {
       setLeagueDraft(normalizeSeason(league?.season));
       setBackupInfo(backup?.backup || null);
       if (!division && list.length) {
-        setDivision(list[0].code || list[0].division || "");
+        setDivision(list[0].code || "");
       }
       if (!fieldKey && Array.isArray(flds) && flds.length) {
         setFieldKey(flds[0].fieldKey || "");
@@ -211,8 +211,8 @@ export default function LeagueSettings({ leagueId }) {
 
   const divisionOptions = useMemo(
     () => (divisions || []).map((d) => ({
-      code: d.code || d.division || "",
-      name: d.name || d.code || d.division || "",
+      code: d.code || "",
+      name: d.name || d.code || "",
     })),
     [divisions]
   );

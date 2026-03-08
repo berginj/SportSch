@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
+import { readContinuationToken, readPagedItems } from "../lib/pagedResults";
 import { getDefaultRangeFallback, getSeasonRange } from "../lib/season";
 import { SLOT_STATUS } from "../lib/constants";
 import LeaguePicker from "../components/LeaguePicker";
@@ -9,6 +10,25 @@ import CalendarView from "../components/CalendarView";
 import { ConfirmDialog, PromptDialog } from "../components/Dialogs";
 import { useConfirmDialog, usePromptDialog } from "../lib/useDialogs";
 import { trackEvent } from "../lib/telemetry";
+
+function createSlotStatusFilter({ open = true, confirmed = true, cancelled = false } = {}) {
+  return {
+    [SLOT_STATUS.OPEN]: open,
+    [SLOT_STATUS.CONFIRMED]: confirmed,
+    [SLOT_STATUS.CANCELLED]: cancelled,
+  };
+}
+
+const CALENDAR_QUERY_FILTER_KEYS = [
+  "division",
+  "dateFrom",
+  "dateTo",
+  "showSlots",
+  "showEvents",
+  "status",
+  "slotType",
+  "teamId",
+];
 
 function normalizeRole(role) {
   return (role || "").trim();
@@ -23,18 +43,14 @@ function parseBoolParam(params, key, fallback) {
 function parseStatusFilter(params) {
   const raw = (params.get("status") || "").trim();
   if (!raw) {
-    return {
-      [SLOT_STATUS.OPEN]: true,
-      [SLOT_STATUS.CONFIRMED]: true,
-      [SLOT_STATUS.CANCELLED]: false,
-    };
+    return createSlotStatusFilter();
   }
   const set = new Set(raw.split(",").map((s) => s.trim()).filter(Boolean));
-  return {
-    [SLOT_STATUS.OPEN]: set.has(SLOT_STATUS.OPEN),
-    [SLOT_STATUS.CONFIRMED]: set.has(SLOT_STATUS.CONFIRMED),
-    [SLOT_STATUS.CANCELLED]: set.has(SLOT_STATUS.CANCELLED),
-  };
+  return createSlotStatusFilter({
+    open: set.has(SLOT_STATUS.OPEN),
+    confirmed: set.has(SLOT_STATUS.CONFIRMED),
+    cancelled: set.has(SLOT_STATUS.CANCELLED),
+  });
 }
 
 function normalizeSlotTypeFilter(raw) {
@@ -102,6 +118,119 @@ function slotMatchupLabel(slot) {
   return "";
 }
 
+function buildServerFilters({ division, dateFrom, dateTo, showSlots, showEvents, slotStatusFilter }) {
+  return {
+    division: (division || "").trim(),
+    dateFrom: (dateFrom || "").trim(),
+    dateTo: (dateTo || "").trim(),
+    showSlots: !!showSlots,
+    showEvents: !!showEvents,
+    slotStatusFilter: {
+      [SLOT_STATUS.OPEN]: !!slotStatusFilter?.[SLOT_STATUS.OPEN],
+      [SLOT_STATUS.CONFIRMED]: !!slotStatusFilter?.[SLOT_STATUS.CONFIRMED],
+      [SLOT_STATUS.CANCELLED]: !!slotStatusFilter?.[SLOT_STATUS.CANCELLED],
+    },
+  };
+}
+
+function getServerFilterSignature(filters) {
+  const activeStatuses = [SLOT_STATUS.OPEN, SLOT_STATUS.CONFIRMED, SLOT_STATUS.CANCELLED]
+    .filter((status) => filters?.slotStatusFilter?.[status])
+    .join(",");
+  return [
+    filters?.division || "",
+    filters?.dateFrom || "",
+    filters?.dateTo || "",
+    filters?.showSlots ? "1" : "0",
+    filters?.showEvents ? "1" : "0",
+    activeStatuses,
+  ].join("|");
+}
+
+function collectTeamIds(item) {
+  const teamIds = new Set();
+  [
+    item?.teamId,
+    item?.homeTeamId,
+    item?.awayTeamId,
+    item?.offeringTeamId,
+    item?.confirmedTeamId,
+  ]
+    .map((value) => (value || "").trim())
+    .filter(Boolean)
+    .forEach((value) => teamIds.add(value));
+  return Array.from(teamIds);
+}
+
+function matchesTeamFilter(item, teamFilter) {
+  const selectedTeamId = (teamFilter || "").trim();
+  if (!selectedTeamId) return true;
+  return collectTeamIds(item).includes(selectedTeamId);
+}
+
+function hasExplicitCalendarFilters(params) {
+  return CALENDAR_QUERY_FILTER_KEYS.some((key) => params.has(key));
+}
+
+function getRoleDefaultCalendarFilters({ defaults, role, isGlobalAdmin, myCoachTeamId }) {
+  const seasonRange = defaults || getDefaultRangeFallback();
+  const upcomingRange = getDefaultRangeFallback(new Date(), 30);
+
+  if (role === "LeagueAdmin" || isGlobalAdmin) {
+    return {
+      division: "",
+      dateFrom: seasonRange.from,
+      dateTo: seasonRange.to,
+      showSlots: true,
+      showEvents: false,
+      slotTypeFilter: "offer",
+      teamFilter: "",
+      slotStatusFilter: createSlotStatusFilter({ open: true, confirmed: false, cancelled: false }),
+    };
+  }
+
+  if (role === "Coach") {
+    return {
+      division: "",
+      dateFrom: seasonRange.from,
+      dateTo: seasonRange.to,
+      showSlots: true,
+      showEvents: true,
+      slotTypeFilter: "all",
+      teamFilter: "",
+      slotStatusFilter: createSlotStatusFilter(),
+    };
+  }
+
+  return {
+    division: "",
+    dateFrom: upcomingRange.from,
+    dateTo: upcomingRange.to,
+    showSlots: true,
+    showEvents: true,
+    slotTypeFilter: "all",
+    teamFilter: "",
+    slotStatusFilter: createSlotStatusFilter({ open: false, confirmed: true, cancelled: false }),
+  };
+}
+
+function readCalendarFiltersFromQuery(params, defaults, context) {
+  if (!hasExplicitCalendarFilters(params)) {
+    return getRoleDefaultCalendarFilters({ defaults, ...context });
+  }
+
+  return {
+    division: (params.get("division") || "").trim(),
+    dateFrom: (params.get("dateFrom") || "").trim() || defaults.from,
+    dateTo: (params.get("dateTo") || "").trim() || defaults.to,
+    showSlots: parseBoolParam(params, "showSlots", true),
+    showEvents: parseBoolParam(params, "showEvents", true),
+    slotTypeFilter: normalizeSlotTypeFilter(params.get("slotType")),
+    teamFilter: (params.get("teamId") || "").trim(),
+    slotStatusFilter: parseStatusFilter(params),
+  };
+}
+
 export default function CalendarPage({ me, leagueId, setLeagueId }) {
   const isGlobalAdmin = !!me?.isGlobalAdmin;
   const memberships = useMemo(
@@ -119,7 +248,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
   const myCoachTeamId = useMemo(() => {
     const inLeague = memberships.filter((m) => (m?.leagueId || "").trim() === (leagueId || "").trim());
     const coach = inLeague.find((m) => normalizeRole(m?.role) === "Coach");
-    return (coach?.teamId || coach?.team?.teamId || "").trim();
+    return (coach?.team?.teamId || "").trim();
   }, [memberships, leagueId]);
 
   const [divisions, setDivisions] = useState([]);
@@ -130,11 +259,8 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
   const [showSlots, setShowSlots] = useState(true);
   const [showEvents, setShowEvents] = useState(true);
   const [slotTypeFilter, setSlotTypeFilter] = useState("all");
-  const [slotStatusFilter, setSlotStatusFilter] = useState({
-    [SLOT_STATUS.OPEN]: true,
-    [SLOT_STATUS.CONFIRMED]: true,
-    [SLOT_STATUS.CANCELLED]: false,
-  });
+  const [teamFilter, setTeamFilter] = useState("");
+  const [slotStatusFilter, setSlotStatusFilter] = useState(createSlotStatusFilter);
 
   const [events, setEvents] = useState([]);
   const [slots, setSlots] = useState([]);
@@ -145,6 +271,8 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
   const [err, setErr] = useState("");
   const initializedRef = useRef(false);
   const defaultsRef = useRef(getDefaultRangeFallback());
+  const loadRequestIdRef = useRef(0);
+  const locationSearchRef = useRef(typeof window !== "undefined" ? window.location.search : "");
   const [toast, setToast] = useState(null);
   const { confirmState, requestConfirm, handleConfirm: confirmYes, handleCancel: confirmNo } = useConfirmDialog();
   const { promptState, promptValue, setPromptValue, requestPrompt, handleConfirm, handleCancel } = usePromptDialog();
@@ -179,6 +307,17 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
   };
 
   const canPickTeam = isGlobalAdmin || role === "LeagueAdmin";
+  if (typeof window !== "undefined") {
+    locationSearchRef.current = window.location.search;
+  }
+  const currentServerFilters = useMemo(
+    () => buildServerFilters({ division, dateFrom, dateTo, showSlots, showEvents, slotStatusFilter }),
+    [division, dateFrom, dateTo, showSlots, showEvents, slotStatusFilter]
+  );
+  const currentServerFilterSignature = useMemo(
+    () => getServerFilterSignature(currentServerFilters),
+    [currentServerFilters]
+  );
 
   async function loadAllSlots(slotsQuery) {
     const merged = [];
@@ -191,35 +330,13 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
       const query = new URLSearchParams(slotsQuery);
       query.set("pageSize", String(pageSize));
       if (continuationToken) query.set("continuationToken", continuationToken);
+      const response = await apiFetch(`/api/slots?${query.toString()}`);
+      const items = readPagedItems(response);
+      merged.push(...items);
 
-      try {
-        const response = await apiFetch(`/api/slots?${query.toString()}`);
-        if (Array.isArray(response)) {
-          merged.push(...response);
-          break;
-        }
-
-        const items = Array.isArray(response?.items) ? response.items : [];
-        merged.push(...items);
-
-        continuationToken = typeof response?.continuationToken === "string"
-          ? response.continuationToken
-          : "";
-        pageCount += 1;
-        if (!continuationToken) break;
-      } catch (pagedError) {
-        // Fallback to the legacy single-call slots query so calendar still loads.
-        if (merged.length > 0) break;
-        const fallbackQuery = new URLSearchParams(slotsQuery);
-        const fallbackResponse = await apiFetch(`/api/slots?${fallbackQuery.toString()}`);
-        if (Array.isArray(fallbackResponse)) {
-          merged.push(...fallbackResponse);
-          break;
-        }
-        const fallbackItems = Array.isArray(fallbackResponse?.items) ? fallbackResponse.items : [];
-        merged.push(...fallbackItems);
-        break;
-      }
+      continuationToken = readContinuationToken(response);
+      pageCount += 1;
+      if (!continuationToken || items.length === 0) break;
     }
 
     return merged;
@@ -238,27 +355,27 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     }
   }
 
-  const applyFiltersFromUrl = useCallback((defaults) => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    setDivision((params.get("division") || "").trim());
-    setDateFrom((params.get("dateFrom") || "").trim() || defaults.from);
-    setDateTo((params.get("dateTo") || "").trim() || defaults.to);
-    setShowSlots(parseBoolParam(params, "showSlots", true));
-    setShowEvents(parseBoolParam(params, "showEvents", true));
-    setSlotTypeFilter(normalizeSlotTypeFilter(params.get("slotType")));
-    setSlotStatusFilter(parseStatusFilter(params));
-  }, []);
+  const applyFiltersFromUrl = useCallback((defaults, search = null) => {
+    if (typeof window === "undefined" && typeof search !== "string") return;
+    const params = new URLSearchParams(typeof search === "string" ? search : window.location.search);
+    const next = readCalendarFiltersFromQuery(params, defaults, {
+      role,
+      isGlobalAdmin,
+      myCoachTeamId,
+    });
+    setDivision(next.division);
+    setDateFrom(next.dateFrom);
+    setDateTo(next.dateTo);
+    setShowSlots(next.showSlots);
+    setShowEvents(next.showEvents);
+    setSlotTypeFilter(next.slotTypeFilter);
+    setTeamFilter(next.teamFilter);
+    setSlotStatusFilter(next.slotStatusFilter);
+  }, [isGlobalAdmin, myCoachTeamId, role]);
 
   async function loadData(overrides = null) {
-    const current = overrides || {
-      division,
-      dateFrom,
-      dateTo,
-      showSlots,
-      showEvents,
-      slotStatusFilter,
-    };
+    const current = overrides ? buildServerFilters(overrides) : currentServerFilters;
+    const requestId = ++loadRequestIdRef.current;
     setErr("");
     setLoading(true);
     try {
@@ -280,17 +397,23 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
         current.showEvents ? apiFetch(`/api/events?${baseQuery.toString()}`) : Promise.resolve([]),
         shouldLoadSlots ? loadAllSlots(slotsQuery) : Promise.resolve([]),
       ]);
+      if (requestId !== loadRequestIdRef.current) return;
       setEvents(Array.isArray(ev) ? ev : []);
       setSlots(Array.isArray(sl) ? sl : []);
     } catch (e) {
+      if (requestId !== loadRequestIdRef.current) return;
       setErr(e?.message || String(e));
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   }
 
   useEffect(() => {
     (async () => {
+      initializedRef.current = false;
+      const currentSearch = locationSearchRef.current;
       let defaults = getDefaultRangeFallback();
       try {
         const league = await apiFetch("/api/league");
@@ -300,21 +423,18 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
         // ignore season config
       }
       defaultsRef.current = defaults;
-      applyFiltersFromUrl(defaults);
+      applyFiltersFromUrl(defaults, currentSearch);
       try {
         await loadMeta();
       } catch {
         // ignore
       }
-      const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
-      const initialFilters = {
-        division: (params.get("division") || "").trim(),
-        dateFrom: (params.get("dateFrom") || "").trim() || defaults.from,
-        dateTo: (params.get("dateTo") || "").trim() || defaults.to,
-        showSlots: parseBoolParam(params, "showSlots", true),
-        showEvents: parseBoolParam(params, "showEvents", true),
-        slotStatusFilter: parseStatusFilter(params),
-      };
+      const params = new URLSearchParams(currentSearch);
+      const initialFilters = readCalendarFiltersFromQuery(params, defaults, {
+        role,
+        isGlobalAdmin,
+        myCoachTeamId,
+      });
       await loadData(initialFilters);
       initializedRef.current = true;
     })();
@@ -343,6 +463,8 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     else params.delete("showEvents");
     if (slotTypeFilter && slotTypeFilter !== "all") params.set("slotType", slotTypeFilter);
     else params.delete("slotType");
+    if (teamFilter) params.set("teamId", teamFilter);
+    else params.delete("teamId");
 
     const activeStatuses = [
       SLOT_STATUS.OPEN,
@@ -354,12 +476,37 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
 
     const next = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
     window.history.replaceState({}, "", next);
-  }, [division, dateFrom, dateTo, showSlots, showEvents, slotStatusFilter, slotTypeFilter]);
+  }, [division, dateFrom, dateTo, showSlots, showEvents, slotStatusFilter, slotTypeFilter, teamFilter]);
+
+  useEffect(() => {
+    if (!initializedRef.current) return;
+    const timer = setTimeout(() => {
+      loadData(currentServerFilters);
+    }, 250);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentServerFilterSignature, currentServerFilters]);
+  const visibleSlots = useMemo(
+    () =>
+      (slots || []).filter(
+        (slot) =>
+          !slot.isAvailability &&
+          !isUnscheduledOpenCapacity(slot) &&
+          matchesSlotType(slot.gameType, slotTypeFilter) &&
+          matchesTeamFilter(slot, teamFilter)
+      ),
+    [slots, slotTypeFilter, teamFilter]
+  );
+
+  const visibleEvents = useMemo(
+    () => (events || []).filter((event) => matchesTeamFilter(event, teamFilter)),
+    [events, teamFilter]
+  );
 
   const timeline = useMemo(() => {
     const items = [];
 
-    for (const e of events || []) {
+    for (const e of visibleEvents) {
       items.push({
         kind: "event",
         id: e.eventId,
@@ -380,10 +527,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
       });
     }
 
-    for (const s of slots || []) {
-      if (s.isAvailability) continue;
-      if (isUnscheduledOpenCapacity(s)) continue;
-      if (!matchesSlotType(s.gameType, slotTypeFilter)) continue;
+    for (const s of visibleSlots) {
       const matchup = slotMatchupLabel(s);
       const label = `${matchup || s.offeringTeamId || ""} @ ${s.displayName || `${s.parkName || ""} ${s.fieldName || ""}`}`.trim();
       items.push({
@@ -412,7 +556,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
         const bd = `${b.date}T${b.start || "00:00"}`;
         return ad.localeCompare(bd) || a.kind.localeCompare(b.kind) || (a.title || "").localeCompare(b.title || "");
       });
-  }, [events, slots, slotTypeFilter]);
+  }, [visibleEvents, visibleSlots]);
 
   const teamsByDivision = useMemo(() => {
     const map = new Map();
@@ -429,6 +573,149 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     return map;
   }, [teams]);
 
+  const teamNameMap = useMemo(() => {
+    const map = new Map();
+    for (const team of teams || []) {
+      const teamId = (team?.teamId || "").trim();
+      if (!teamId || map.has(teamId)) continue;
+      map.set(teamId, (team?.name || teamId).trim());
+    }
+    return map;
+  }, [teams]);
+
+  const availableTeamOptions = useMemo(() => {
+    const options = new Map();
+    const divisionKey = (division || "").trim().toUpperCase();
+
+    const addOption = (teamId, label) => {
+      const normalizedTeamId = (teamId || "").trim();
+      if (!normalizedTeamId) return;
+      options.set(normalizedTeamId, label || teamNameMap.get(normalizedTeamId) || normalizedTeamId);
+    };
+
+    for (const team of teams || []) {
+      const teamDivision = (team?.division || "").trim().toUpperCase();
+      if (divisionKey && teamDivision && teamDivision !== divisionKey) continue;
+      addOption(team?.teamId, (team?.name || team?.teamId || "").trim());
+    }
+
+    for (const item of [...(slots || []), ...(events || [])]) {
+      collectTeamIds(item).forEach((teamId) => addOption(teamId));
+    }
+
+    if (myCoachTeamId) {
+      addOption(myCoachTeamId);
+    }
+
+    return Array.from(options.entries())
+      .map(([teamId, label]) => ({ teamId, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [division, events, myCoachTeamId, slots, teamNameMap, teams]);
+  const quickViews = (() => {
+    const upcomingRange = getDefaultRangeFallback(new Date(), 30);
+    const seasonRange = defaultsRef.current || upcomingRange;
+    const views = [];
+
+    if (role === "Coach" && myCoachTeamId) {
+      views.push({
+        id: "my-team",
+        label: "My Team",
+        title: "Focus the current page view on your team.",
+        state: {
+          showSlots: true,
+          showEvents: true,
+          slotTypeFilter: "all",
+          teamFilter: myCoachTeamId,
+          slotStatusFilter: createSlotStatusFilter(),
+        },
+      });
+    }
+
+    if (role === "Coach") {
+      views.push({
+        id: "open-games",
+        label: "Open Games",
+        title: "Focus on open game opportunities to accept.",
+        state: {
+          showSlots: true,
+          showEvents: false,
+          slotTypeFilter: "offer",
+          teamFilter: "",
+          slotStatusFilter: createSlotStatusFilter({ open: true, confirmed: false, cancelled: false }),
+        },
+      });
+    } else if (role === "LeagueAdmin" || isGlobalAdmin) {
+      views.push(
+        {
+          id: "open-slots",
+          label: "Open Slots",
+          title: "Focus on open slots that still need action.",
+          state: {
+            showSlots: true,
+            showEvents: false,
+            slotTypeFilter: "offer",
+            teamFilter: "",
+            slotStatusFilter: createSlotStatusFilter({ open: true, confirmed: false, cancelled: false }),
+          },
+        },
+        {
+          id: "confirmed-games",
+          label: "Confirmed Games",
+          title: "Focus on confirmed games only.",
+          state: {
+            showSlots: true,
+            showEvents: false,
+            slotTypeFilter: "all",
+            teamFilter: "",
+            slotStatusFilter: createSlotStatusFilter({ open: false, confirmed: true, cancelled: false }),
+          },
+        }
+      );
+    } else {
+      views.push({
+        id: "upcoming",
+        label: "Upcoming",
+        title: "Show upcoming confirmed games and events.",
+        state: {
+          dateFrom: upcomingRange.from,
+          dateTo: upcomingRange.to,
+          showSlots: true,
+          showEvents: true,
+          slotTypeFilter: "all",
+          teamFilter: "",
+          slotStatusFilter: createSlotStatusFilter({ open: false, confirmed: true, cancelled: false }),
+        },
+      });
+    }
+
+    views.push(
+      {
+        id: "next-30",
+        label: "Next 30 Days",
+        title: "Set the calendar window to the next 30 days.",
+        state: {
+          dateFrom: upcomingRange.from,
+          dateTo: upcomingRange.to,
+        },
+      },
+      {
+        id: "full-season",
+        label: "Full Season",
+        title: "Reset to the season window and the full calendar view.",
+        state: {
+          dateFrom: seasonRange.from,
+          dateTo: seasonRange.to,
+          showSlots: true,
+          showEvents: true,
+          slotTypeFilter: "all",
+          teamFilter: "",
+          slotStatusFilter: createSlotStatusFilter(),
+        },
+      }
+    );
+
+    return views;
+  })();
   // --- Create events ---
   const canCreateEvents = role === "LeagueAdmin";
   const canDeleteAnyEvent = role === "LeagueAdmin";
@@ -618,7 +905,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
       params.set("fieldKey", next.fieldKey);
       params.set("status", `${SLOT_STATUS.OPEN},${SLOT_STATUS.CONFIRMED}`);
       const result = await apiFetch(`/api/slots?${params.toString()}`);
-      const candidates = Array.isArray(result) ? result : [];
+      const candidates = readPagedItems(result);
       const overlaps = candidates.filter((candidate) => {
         if (!candidate || candidate.slotId === editingSlot.slotId) return false;
         if ((candidate.status || "") === SLOT_STATUS.CANCELLED) return false;
@@ -689,15 +976,137 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
 
   function activateSlotFilter(status) {
     setShowSlots(true);
-    setSlotStatusFilter({
-      [SLOT_STATUS.OPEN]: status === SLOT_STATUS.OPEN,
-      [SLOT_STATUS.CONFIRMED]: status === SLOT_STATUS.CONFIRMED,
-      [SLOT_STATUS.CANCELLED]: status === SLOT_STATUS.CANCELLED,
-    });
+    setSlotStatusFilter(
+      createSlotStatusFilter({
+        open: status === SLOT_STATUS.OPEN,
+        confirmed: status === SLOT_STATUS.CONFIRMED,
+        cancelled: status === SLOT_STATUS.CANCELLED,
+      })
+    );
   }
 
   function setAcceptTeam(slotId, teamId) {
     setAcceptTeamBySlot((prev) => ({ ...prev, [slotId]: teamId }));
+  }
+
+  function applyQuickView(state) {
+    if (!state) return;
+    if (Object.prototype.hasOwnProperty.call(state, "dateFrom")) setDateFrom(state.dateFrom || "");
+    if (Object.prototype.hasOwnProperty.call(state, "dateTo")) setDateTo(state.dateTo || "");
+    if (Object.prototype.hasOwnProperty.call(state, "showSlots")) setShowSlots(!!state.showSlots);
+    if (Object.prototype.hasOwnProperty.call(state, "showEvents")) setShowEvents(!!state.showEvents);
+    if (Object.prototype.hasOwnProperty.call(state, "slotTypeFilter")) {
+      setSlotTypeFilter(state.slotTypeFilter || "all");
+    }
+    if (Object.prototype.hasOwnProperty.call(state, "teamFilter")) setTeamFilter(state.teamFilter || "");
+    if (Object.prototype.hasOwnProperty.call(state, "slotStatusFilter")) {
+      const nextSlotStatus = state.slotStatusFilter || {};
+      setSlotStatusFilter(
+        createSlotStatusFilter({
+          open: Object.prototype.hasOwnProperty.call(nextSlotStatus, SLOT_STATUS.OPEN)
+            ? !!nextSlotStatus[SLOT_STATUS.OPEN]
+            : !!nextSlotStatus.open,
+          confirmed: Object.prototype.hasOwnProperty.call(nextSlotStatus, SLOT_STATUS.CONFIRMED)
+            ? !!nextSlotStatus[SLOT_STATUS.CONFIRMED]
+            : !!nextSlotStatus.confirmed,
+          cancelled: Object.prototype.hasOwnProperty.call(nextSlotStatus, SLOT_STATUS.CANCELLED)
+            ? !!nextSlotStatus[SLOT_STATUS.CANCELLED]
+            : !!nextSlotStatus.cancelled,
+        })
+      );
+    }
+  }
+
+  function renderSlotActions(slot) {
+    if (!slot?.slotId) return null;
+    const actionKey = slot.slotId;
+    const canAdminAccept = canPickTeam && canAcceptSlot(slot);
+    const canCoachAccept =
+      !canPickTeam && role !== "Viewer" && canAcceptSlot(slot) && (slot?.offeringTeamId || "") !== myCoachTeamId;
+    const canEdit = canEditSlot(slot);
+    const canCancel = canCancelSlot(slot) && (slot?.status || "") !== "Cancelled";
+
+    if (!canAdminAccept && !canCoachAccept && !canEdit && !canCancel) {
+      return null;
+    }
+
+    const divisionKey = (slot?.division || "").trim().toUpperCase();
+    const teamsForDivision = teamsByDivision.get(divisionKey) || [];
+    const selectedTeamId = acceptTeamBySlot[actionKey] || "";
+
+    return (
+      <>
+        {canAdminAccept ? (
+          <>
+            <select
+              value={selectedTeamId}
+              onChange={(e) => setAcceptTeam(actionKey, e.target.value)}
+              title="Pick a team to accept this offer as."
+            >
+              <option value="">Select team</option>
+              {teamsForDivision.map((team) => (
+                <option key={team.teamId} value={team.teamId}>
+                  {team.name || team.teamId}
+                </option>
+              ))}
+            </select>
+            <button
+              className="btn btn--primary"
+              type="button"
+              onClick={() => requestSlot(slot, selectedTeamId)}
+              disabled={!selectedTeamId}
+              title="Accept this offer on behalf of the selected team."
+            >
+              Accept as
+            </button>
+          </>
+        ) : null}
+        {canCoachAccept ? (
+          <button
+            className="btn btn--primary"
+            type="button"
+            onClick={() => requestSlot(slot)}
+            title="Accept this open slot and confirm the game."
+          >
+            Accept
+          </button>
+        ) : null}
+        {canEdit ? (
+          <button
+            className="btn"
+            type="button"
+            onClick={() => openEditSlot(slot)}
+            title="Edit date, time, or field for this game."
+          >
+            Edit
+          </button>
+        ) : null}
+        {canCancel ? (
+          <button
+            className="btn"
+            type="button"
+            onClick={() => cancelSlot(slot)}
+            title="Cancel this game/slot."
+          >
+            Cancel
+          </button>
+        ) : null}
+      </>
+    );
+  }
+
+  function renderEventActions(event) {
+    if (!canDeleteAnyEvent || !event?.eventId) return null;
+    return (
+      <button
+        className="btn"
+        type="button"
+        onClick={() => deleteEvent(event.eventId)}
+        title="Delete this event from the calendar."
+      >
+        Delete
+      </button>
+    );
   }
 
   useEffect(() => {
@@ -718,41 +1127,6 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     () => Object.entries(slotStatusFilter).filter(([, on]) => on).map(([k]) => k),
     [slotStatusFilter]
   );
-
-  const subscribeInfo = useMemo(() => {
-    if (!leagueId) return { url: "", webcal: "" };
-    const params = new URLSearchParams();
-    params.set("leagueId", leagueId);
-    if (division) params.set("division", division);
-    if (dateFrom) params.set("dateFrom", dateFrom);
-    if (dateTo) params.set("dateTo", dateTo);
-    const shouldIncludeSlots = showSlots && activeSlotStatuses.length > 0;
-    params.set("includeSlots", String(shouldIncludeSlots));
-    params.set("includeEvents", String(showEvents));
-    if (shouldIncludeSlots && activeSlotStatuses.length) params.set("status", activeSlotStatuses.join(","));
-
-    const origin = typeof window !== "undefined" ? window.location.origin : "";
-    const url = origin ? `${origin}/api/calendar/ics?${params.toString()}` : "";
-    const webcal = url ? url.replace(/^https?:\/\//i, "webcal://") : "";
-    return { url, webcal };
-  }, [leagueId, division, dateFrom, dateTo, showSlots, showEvents, activeSlotStatuses]);
-
-  async function copySubscribeUrl() {
-    if (!subscribeInfo.url) return;
-    try {
-      await navigator.clipboard.writeText(subscribeInfo.url);
-      setToast({ tone: "success", message: "Subscribe link copied." });
-    } catch {
-      await requestPrompt({
-        title: "Copy subscribe link",
-        message: "Copy the link below.",
-        defaultValue: subscribeInfo.url,
-        readOnly: true,
-        confirmLabel: "Close",
-        cancelLabel: "Close",
-      });
-    }
-  }
 
   async function exportSchedule() {
     if (!division) {
@@ -925,8 +1299,29 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
         <div className="card">
         <div className="cardTitle">
           Calendar filters
-          <span className="hint" title="Filter what appears on the calendar and subscription link.">?</span>
+          <span
+            className="hint"
+            title="Calendar results update automatically. Exports follow league, division, date, slots/events, and status filters. Slot type and team only affect the current page view."
+          >
+            ?
+          </span>
         </div>
+        {quickViews.length > 0 ? (
+          <div className="row row--wrap mt-2">
+            <div className="pill">Quick views</div>
+            {quickViews.map((view) => (
+              <button
+                key={view.id}
+                className="btn btn--ghost"
+                type="button"
+                onClick={() => applyQuickView(view.state)}
+                title={view.title}
+              >
+                {view.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
         <div className="row filterRow row--wrap">
           <LeaguePicker leagueId={leagueId} setLeagueId={setLeagueId} me={me} label="League" />
           <label title="Limit the calendar to one division, or show all.">
@@ -936,6 +1331,21 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
               {divisions.map((d) => (
                 <option key={d.code} value={d.code}>
                   {d.name} ({d.code})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label title="Filter the current page view to one team." className={showSlots || showEvents ? "" : "opacity-50"}>
+            Team
+            <select
+              value={teamFilter}
+              onChange={(e) => setTeamFilter(e.target.value)}
+              disabled={!showSlots && !showEvents}
+            >
+              <option value="">All</option>
+              {availableTeamOptions.map((team) => (
+                <option key={team.teamId} value={team.teamId}>
+                  {team.label}
                 </option>
               ))}
             </select>
@@ -956,7 +1366,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
             <input type="checkbox" checked={showEvents} onChange={(e) => setShowEvents(e.target.checked)} />
             Events
           </label>
-          <label title="Filter offers vs requests." className={showSlots ? "" : "opacity-50"}>
+          <label title="Filter offers vs requests in the current page view." className={showSlots ? "" : "opacity-50"}>
             Slot type
             <select
               value={slotTypeFilter}
@@ -968,8 +1378,12 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
               <option value="request">Requests</option>
             </select>
           </label>
-          <button className="btn" onClick={loadData} title="Refresh the calendar list with the current filters.">
-            Refresh
+          <button
+            className="btn"
+            onClick={() => loadData(currentServerFilters)}
+            title="Reload the calendar with the current filters."
+          >
+            Reload
           </button>
           {(role === "LeagueAdmin" || isGlobalAdmin) && (
             <>
@@ -1014,21 +1428,9 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
           <div className="muted">
             Showing calendar items for <b>{leagueId || "(no league)"}</b>.
           </div>
-          <div className="row">
-            {subscribeInfo.webcal ? (
-              <a className="btn" href={subscribeInfo.webcal} title="Open the subscription link in your calendar app.">
-                Subscribe
-              </a>
-            ) : null}
-            {subscribeInfo.url ? (
-              <button className="btn btn--ghost" onClick={copySubscribeUrl} title="Copy the filtered calendar link.">
-                Copy link
-              </button>
-            ) : null}
-          </div>
         </div>
         <div className="muted mt-2">
-          Subscribe link reflects the current filters and date range.
+          Calendar updates automatically when filters change. Schedule exports follow league, division, date, slots/events, and status filters. Slot type and team only affect the current page view.
         </div>
         </div>
 
@@ -1052,19 +1454,12 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
 
           {useNewCalendarView ? (
             <CalendarView
-              slots={slots.filter((s) => !s.isAvailability && !isUnscheduledOpenCapacity(s) && matchesSlotType(s.gameType, slotTypeFilter))}
-              events={events}
+              slots={visibleSlots}
+              events={visibleEvents}
               defaultView="week-cards"
-              onSlotClick={(slot) => {
-                if (canEditSlot(slot)) {
-                  openEditSlot(slot);
-                }
-              }}
-              onEventClick={(event) => {
-                if (canDeleteAnyEvent) {
-                  deleteEvent(event.eventId);
-                }
-              }}
+              onSlotClick={isGlobalAdmin || role === "LeagueAdmin" ? openEditSlot : undefined}
+              renderSlotActions={renderSlotActions}
+              renderEventActions={renderEventActions}
               showViewToggle={true}
             />
           ) : (
@@ -1120,52 +1515,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
                         )}
                       </div>
                       <div className="slotBody__actions">
-                        {canPickTeam && canAcceptSlot(slot) ? (
-                          (() => {
-                            const divisionKey = (slot?.division || "").trim().toUpperCase();
-                            const teamsForDivision = teamsByDivision.get(divisionKey) || [];
-                            const selectedTeamId = acceptTeamBySlot[it.id] || "";
-                            return (
-                              <>
-                                <select
-                                  value={selectedTeamId}
-                                  onChange={(e) => setAcceptTeam(it.id, e.target.value)}
-                                  title="Pick a team to accept this offer as."
-                                >
-                                  <option value="">Select team</option>
-                                  {teamsForDivision.map((t) => (
-                                    <option key={t.teamId} value={t.teamId}>
-                                      {t.name || t.teamId}
-                                    </option>
-                                  ))}
-                                </select>
-                                <button
-                                  className="btn btn--primary"
-                                  onClick={() => requestSlot(slot, selectedTeamId)}
-                                  disabled={!selectedTeamId}
-                                  title="Accept this offer on behalf of the selected team."
-                                >
-                                  Accept as
-                                </button>
-                              </>
-                            );
-                          })()
-                        ) : null}
-                        {!canPickTeam && role !== "Viewer" && canAcceptSlot(slot) && (slot?.offeringTeamId || "") !== myCoachTeamId ? (
-                          <button className="btn btn--primary" onClick={() => requestSlot(slot)} title="Accept this open slot and confirm the game.">
-                            Accept
-                          </button>
-                        ) : null}
-                        {canEditSlot(slot) ? (
-                          <button className="btn" onClick={() => openEditSlot(slot)} title="Edit date, time, or field for this game.">
-                            Edit
-                          </button>
-                        ) : null}
-                        {canCancelSlot(slot) && (slot?.status || "") !== "Cancelled" ? (
-                          <button className="btn" onClick={() => cancelSlot(slot)} title="Cancel this game/slot.">
-                            Cancel
-                          </button>
-                        ) : null}
+                        {renderSlotActions(slot)}
                       </div>
                     </div>
                   </div>
@@ -1187,11 +1537,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
                       <span className={`statusBadge status-${(statusLabelForItem(it) || "").toLowerCase()}`}>
                         {statusLabelForItem(it)}
                       </span>
-                      {canDeleteAnyEvent ? (
-                        <button className="btn" onClick={() => deleteEvent(it.id)} title="Delete this event from the calendar.">
-                          Delete
-                        </button>
-                      ) : null}
+                      {renderEventActions(it.raw)}
                     </div>
                   </div>
                 </div>

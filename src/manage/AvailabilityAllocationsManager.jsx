@@ -42,7 +42,7 @@ function buildAllocationTemplateCsv(divisions, fields) {
   ];
   const divs = (divisions || [])
     .filter((d) => d && d.isActive !== false)
-    .map((d) => (typeof d === "string" ? d : d.code || d.division || ""))
+    .map((d) => (typeof d === "string" ? d : d.code || ""))
     .filter(Boolean)
     .sort((a, b) => a.localeCompare(b));
   const scopes = ["LEAGUE", ...divs];
@@ -198,7 +198,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
         setFields(Array.isArray(flds) ? flds : []);
         setLeagueSeason(league?.season || null);
         if (list.length) {
-          setGenDivision((prev) => prev || list[0].code || list[0].division || "");
+          setGenDivision((prev) => prev || list[0].code || "");
         }
       } catch (e) {
         setAllocErr(formatApiError(e, "Failed to load divisions/fields."));
@@ -232,7 +232,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
 
   useEffect(() => {
     if (!genDivision && divisions.length) {
-      setGenDivision(divisions[0].code || divisions[0].division || "");
+      setGenDivision(divisions[0].code || "");
     }
   }, [divisions, genDivision]);
 
@@ -804,7 +804,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
   const scopes = useMemo(() => {
     const divs = (divisions || [])
       .filter((d) => d && d.isActive !== false)
-      .map((d) => (typeof d === "string" ? d : d.code || d.division || ""))
+      .map((d) => (typeof d === "string" ? d : d.code || ""))
       .filter(Boolean)
       .sort((a, b) => a.localeCompare(b));
     return ["LEAGUE", ...divs];
@@ -1384,8 +1384,8 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
             Division
             <select value={genDivision} onChange={(e) => setGenDivision(e.target.value)}>
               {divisions.map((d) => (
-                <option key={d.code || d.division} value={d.code || d.division}>
-                  {d.name ? `${d.name} (${d.code || d.division})` : d.code || d.division}
+                <option key={d.code || ""} value={d.code || ""}>
+                  {d.name ? `${d.name} (${d.code || ""})` : d.code || ""}
                 </option>
               ))}
             </select>

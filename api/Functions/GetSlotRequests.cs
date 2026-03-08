@@ -30,7 +30,7 @@ public class GetSlotRequests
     }
 
     [Function("GetSlotRequests")]
-    [OpenApiOperation(operationId: "GetSlotRequests", tags: new[] { "Slot Requests" }, Summary = "Get requests for a slot", Description = "Retrieves all requests for a specific slot. Returns pending, approved, and denied requests.")]
+    [OpenApiOperation(operationId: "GetSlotRequests", tags: new[] { "Slot Requests" }, Summary = "Get requests for a slot", Description = "Retrieves all request records for a specific slot. Game-slot accepts are created in approved status and replaced requests may remain as denied history.")]
     [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
     [OpenApiParameter(name: "division", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Division code (e.g., '10U', '12U')")]
     [OpenApiParameter(name: "slotId", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Unique slot identifier")]

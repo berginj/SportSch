@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
+import { readPagedItems } from "../lib/pagedResults";
 
 const ROLE_OPTIONS = ["", "LeagueAdmin", "Coach", "Viewer"];
 const PRACTICE_REQUEST_LIMIT = 3;
@@ -816,7 +817,7 @@ export default function DebugPage({ leagueId, me }) {
       const requests = Array.isArray(requestsRaw)
         ? [...requestsRaw].sort((a, b) => String(b?.requestedUtc || "").localeCompare(String(a?.requestedUtc || "")))
         : [];
-      const allOpenSlots = Array.isArray(slotsRaw) ? slotsRaw : [];
+      const allOpenSlots = readPagedItems(slotsRaw);
       const availabilitySlots = allOpenSlots.filter(
         (slot) => slot?.isAvailability === true && normalizeText(slot?.status) === "Open"
       );

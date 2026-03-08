@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Azure;
 using Azure.Data.Tables;
@@ -284,6 +285,121 @@ public class SlotServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CancelSlotAsync_WithConfirmedGame_NotifiesBothTeamCoaches()
+    {
+        // Arrange
+        var leagueId = "league-1";
+        var division = "10U";
+        var slotId = "slot-123";
+        var userId = "admin-user";
+        var notifications = new List<(string userId, string type, string message)>();
+        var cancelledEmails = new List<string>();
+
+        var existingSlot = new TableEntity("pk", slotId)
+        {
+            { "Status", Constants.Status.SlotConfirmed },
+            { "OfferingTeamId", "team-1" },
+            { "ConfirmedTeamId", "team-2" },
+            { "GameDate", "2026-06-15" },
+            { "StartTime", "18:00" },
+            { "DisplayName", "Diamond 1" }
+        };
+        existingSlot.ETag = new ETag("etag-123");
+
+        _mockSlotRepo
+            .Setup(x => x.GetSlotAsync(leagueId, division, slotId))
+            .ReturnsAsync(existingSlot);
+
+        _mockAuthService
+            .Setup(x => x.CanCancelSlotAsync(userId, leagueId, "team-1", "team-2"))
+            .ReturnsAsync(true);
+
+        _mockSlotRepo
+            .Setup(x => x.CancelSlotAsync(leagueId, division, slotId))
+            .Returns(Task.CompletedTask);
+
+        _mockMembershipRepo
+            .Setup(x => x.GetLeagueMembershipsAsync(leagueId))
+            .ReturnsAsync(new List<TableEntity>
+            {
+                new("offer-coach", leagueId)
+                {
+                    { "Role", Constants.Roles.Coach },
+                    { "Division", division },
+                    { "TeamId", "team-1" },
+                    { "Email", "offer@example.com" }
+                },
+                new("confirm-coach", leagueId)
+                {
+                    { "Role", Constants.Roles.Coach },
+                    { "Division", division },
+                    { "TeamId", "team-2" },
+                    { "Email", "confirm@example.com" }
+                }
+            });
+
+        _mockNotificationService
+            .Setup(x => x.CreateNotificationAsync(
+                It.IsAny<string>(),
+                leagueId,
+                "SlotCancelled",
+                It.IsAny<string>(),
+                "#calendar",
+                slotId,
+                "Slot"))
+            .Callback<string, string, string, string, string?, string?, string?>((recipientUserId, _, type, message, _, _, _) =>
+            {
+                notifications.Add((recipientUserId, type, message));
+            })
+            .ReturnsAsync(Guid.NewGuid().ToString());
+
+        _mockPreferencesService
+            .Setup(x => x.ShouldSendEmailAsync("offer-coach", leagueId, "SlotCancelled"))
+            .ReturnsAsync(true);
+        _mockPreferencesService
+            .Setup(x => x.ShouldSendEmailAsync("confirm-coach", leagueId, "SlotCancelled"))
+            .ReturnsAsync(true);
+
+        _mockEmailService
+            .Setup(x => x.SendGameCancelledEmailAsync(
+                It.IsAny<string>(),
+                leagueId,
+                "2026-06-15",
+                "18:00",
+                "Diamond 1",
+                It.IsAny<string>()))
+            .Callback<string, string, string, string, string, string>((to, _, _, _, _, _) =>
+            {
+                cancelledEmails.Add(to);
+            })
+            .Returns(Task.CompletedTask);
+
+        // Act
+        await _service.CancelSlotAsync(leagueId, division, slotId, userId);
+        await WaitForConditionAsync(() => notifications.Count == 2 && cancelledEmails.Count == 2);
+
+        // Assert
+        Assert.Collection(
+            notifications.OrderBy(x => x.userId),
+            item =>
+            {
+                Assert.Equal("confirm-coach", item.userId);
+                Assert.Equal("SlotCancelled", item.type);
+                Assert.Contains("Game cancelled", item.message);
+            },
+            item =>
+            {
+                Assert.Equal("offer-coach", item.userId);
+                Assert.Equal("SlotCancelled", item.type);
+                Assert.Contains("Game cancelled", item.message);
+            });
+
+        Assert.Equal(2, cancelledEmails.Count);
+        Assert.Contains("offer@example.com", cancelledEmails);
+        Assert.Contains("confirm@example.com", cancelledEmails);
+    }
+
+    [Fact]
     public async Task CancelSlotAsync_WithNonExistentSlot_ThrowsNotFoundError()
     {
         // Arrange
@@ -309,21 +425,22 @@ public class SlotServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task QuerySlotsAsync_WithDateTimeOffsetGameDate_IncludesRowWithinRange()
+    public async Task QuerySlotsAsync_WithMultipleStatuses_PassesCanonicalFilterToRepository()
     {
-        // Arrange
+        SlotQueryFilter? capturedFilter = null;
         var entity = new TableEntity("SLOT|league-1|AAA", "slot-1")
         {
             { "LeagueId", "league-1" },
             { "Division", "AAA" },
             { "Status", Constants.Status.SlotConfirmed },
-            { "GameDate", new DateTimeOffset(2026, 3, 20, 0, 0, 0, TimeSpan.Zero) },
+            { "GameDate", "2026-03-20" },
             { "StartTime", "18:00" },
             { "DisplayName", "Field 1" }
         };
 
         _mockSlotRepo
             .Setup(x => x.QuerySlotsAsync(It.IsAny<SlotQueryFilter>(), null))
+            .Callback<SlotQueryFilter, string?>((filter, _) => capturedFilter = filter)
             .ReturnsAsync(new PaginationResult<TableEntity>
             {
                 Items = new List<TableEntity> { entity },
@@ -338,8 +455,7 @@ public class SlotServiceTests : IDisposable
             Status = $"{Constants.Status.SlotOpen},{Constants.Status.SlotConfirmed}",
             FromDate = "2026-03-14",
             ToDate = "2026-06-10",
-            PageSize = 50,
-            ReturnEnvelope = false
+            PageSize = 50
         };
 
         var context = new CorrelationContext
@@ -353,24 +469,20 @@ public class SlotServiceTests : IDisposable
         var result = await _service.QuerySlotsAsync(request, context);
 
         // Assert
-        var list = Assert.IsType<List<object>>(result);
-        Assert.Single(list);
+        Assert.NotNull(capturedFilter);
+        Assert.Equal(new[] { Constants.Status.SlotOpen, Constants.Status.SlotConfirmed }, capturedFilter!.Statuses);
+        Assert.False(capturedFilter.ExcludeCancelled);
+        Assert.Equal("2026-03-14", capturedFilter.FromDate);
+        Assert.Equal("2026-06-10", capturedFilter.ToDate);
+        Assert.Single(result.Items);
+        Assert.Null(result.ContinuationToken);
+        Assert.Equal(50, result.PageSize);
     }
 
     [Fact]
-    public async Task QuerySlotsAsync_WithExcludeAvailability_FiltersAvailabilityRows()
+    public async Task QuerySlotsAsync_WithExcludeAvailability_PassesCanonicalFilterToRepository()
     {
-        // Arrange
-        var availability = new TableEntity("SLOT|league-1|AAA", "slot-a")
-        {
-            { "LeagueId", "league-1" },
-            { "Division", "AAA" },
-            { "Status", Constants.Status.SlotOpen },
-            { "IsAvailability", true },
-            { "GameDate", "2026-03-21" },
-            { "StartTime", "18:00" },
-            { "DisplayName", "Field A" }
-        };
+        SlotQueryFilter? capturedFilter = null;
 
         var scheduledGame = new TableEntity("SLOT|league-1|AAA", "slot-b")
         {
@@ -385,9 +497,10 @@ public class SlotServiceTests : IDisposable
 
         _mockSlotRepo
             .Setup(x => x.QuerySlotsAsync(It.IsAny<SlotQueryFilter>(), null))
+            .Callback<SlotQueryFilter, string?>((filter, _) => capturedFilter = filter)
             .ReturnsAsync(new PaginationResult<TableEntity>
             {
-                Items = new List<TableEntity> { availability, scheduledGame },
+                Items = new List<TableEntity> { scheduledGame },
                 PageSize = 50,
                 ContinuationToken = null
             });
@@ -400,8 +513,7 @@ public class SlotServiceTests : IDisposable
             ExcludeAvailability = true,
             FromDate = "2026-03-14",
             ToDate = "2026-06-10",
-            PageSize = 50,
-            ReturnEnvelope = false
+            PageSize = 50
         };
 
         var context = new CorrelationContext
@@ -415,13 +527,31 @@ public class SlotServiceTests : IDisposable
         var result = await _service.QuerySlotsAsync(request, context);
 
         // Assert
-        var list = Assert.IsType<List<object>>(result);
-        Assert.Single(list);
+        Assert.NotNull(capturedFilter);
+        Assert.True(capturedFilter!.ExcludeAvailability);
+        Assert.Equal(new[] { Constants.Status.SlotOpen, Constants.Status.SlotConfirmed }, capturedFilter.Statuses);
+        Assert.Single(result.Items);
+        Assert.Null(result.ContinuationToken);
+        Assert.Equal(50, result.PageSize);
     }
 
     public void Dispose()
     {
         // Cleanup if needed
         GC.SuppressFinalize(this);
+    }
+
+    private static async Task WaitForConditionAsync(Func<bool> condition, int timeoutMs = 1000)
+    {
+        var started = DateTime.UtcNow;
+        while (!condition())
+        {
+            if ((DateTime.UtcNow - started).TotalMilliseconds >= timeoutMs)
+            {
+                throw new TimeoutException("Condition was not met within the allotted time.");
+            }
+
+            await Task.Delay(25);
+        }
     }
 }

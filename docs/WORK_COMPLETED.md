@@ -137,10 +137,9 @@ npm run test:ci       # CI mode with coverage
 - `GetSlots` - List/query slots
 - `CancelSlot` - Cancel slot
 
-**Slot Requests (3)**
-- `CreateSlotRequest` - Request slot swap
-- `ApproveSlotRequest` - Approve request
-- `GetSlotRequests` - List requests
+**Slot Requests (2)**
+- `CreateSlotRequest` - Accept open slot and confirm game
+- `GetSlotRequests` - List slot request history
 
 **Availability Rules (9)**
 - `CreateAvailabilityRule` - Create field availability rule

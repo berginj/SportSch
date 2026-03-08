@@ -27,64 +27,69 @@ describe("CoachDashboard", () => {
     api.apiFetch.mockImplementation((path) => {
       const url = String(path || "");
       if (url.startsWith("/api/slots?")) {
-        return Promise.resolve([
-          {
-            slotId: "open-offer-other",
-            status: "Open",
-            division: "AAA",
-            gameType: "Swap",
-            offeringTeamId: "TEAM-2",
-          },
-          {
-            slotId: "open-request-other",
-            status: "Open",
-            division: "AAA",
-            gameType: "Request",
-            offeringTeamId: "TEAM-3",
-          },
-          {
-            slotId: "open-practice-other",
-            status: "Open",
-            division: "AAA",
-            gameType: "Practice",
-            offeringTeamId: "TEAM-4",
-          },
-          {
-            slotId: "open-availability",
-            status: "Open",
-            division: "AAA",
-            isAvailability: true,
-            offeringTeamId: "TEAM-5",
-          },
-          {
-            slotId: "open-offer-mine",
-            status: "Open",
-            division: "AAA",
-            gameType: "Swap",
-            offeringTeamId: "TEAM-1",
-          },
-          {
-            slotId: "confirmed-game",
-            status: "Confirmed",
-            division: "AAA",
-            gameType: "Swap",
-            gameDate: isoInDays(2),
-            startTime: "18:00",
-            fieldKey: "FIELD-1",
-            homeTeamId: "TEAM-1",
-            awayTeamId: "TEAM-2",
-          },
-          {
-            slotId: "confirmed-practice",
-            status: "Confirmed",
-            division: "AAA",
-            gameType: "Practice",
-            gameDate: isoInDays(2),
-            startTime: "19:00",
-            fieldKey: "FIELD-2",
-            homeTeamId: "TEAM-1",
-          },
-        ]);
+        return Promise.resolve({
+          items: [
+            {
+              slotId: "open-offer-other",
+              status: "Open",
+              division: "AAA",
+              gameType: "Swap",
+              offeringTeamId: "TEAM-2",
+            },
+            {
+              slotId: "open-request-other",
+              status: "Open",
+              division: "AAA",
+              gameType: "Request",
+              offeringTeamId: "TEAM-3",
+            },
+            {
+              slotId: "open-practice-other",
+              status: "Open",
+              division: "AAA",
+              gameType: "Practice",
+              offeringTeamId: "TEAM-4",
+            },
+            {
+              slotId: "open-availability",
+              status: "Open",
+              division: "AAA",
+              isAvailability: true,
+              offeringTeamId: "TEAM-5",
+            },
+            {
+              slotId: "open-offer-mine",
+              status: "Open",
+              division: "AAA",
+              gameType: "Swap",
+              offeringTeamId: "TEAM-1",
+            },
+            {
+              slotId: "confirmed-game",
+              status: "Confirmed",
+              division: "AAA",
+              gameType: "Swap",
+              gameDate: isoInDays(2),
+              startTime: "18:00",
+              fieldKey: "FIELD-1",
+              homeTeamId: "TEAM-1",
+              awayTeamId: "TEAM-2",
+            },
+            {
+              slotId: "confirmed-practice",
+              status: "Confirmed",
+              division: "AAA",
+              gameType: "Practice",
+              gameDate: isoInDays(2),
+              startTime: "19:00",
+              fieldKey: "FIELD-2",
+              homeTeamId: "TEAM-1",
+            },
+          ],
+          continuationToken: "",
+          hasMore: false,
+          pageSize: 7,
+        });
       }
       if (url === "/api/teams?division=AAA") {
         return Promise.resolve([

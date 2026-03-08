@@ -22,7 +22,6 @@ public class PracticePortalSettingsFunctions
     private readonly ILogger _log;
 
     private const string DivisionOneOffEnabledProp = "PracticeOneOffRequestsEnabled";
-    private const string LegacyLeagueOneOffEnabledProp = "PracticeOneOffRequestsEnabled";
 
     public PracticePortalSettingsFunctions(
         ILeagueRepository leagueRepo,
@@ -85,12 +84,8 @@ public class PracticePortalSettingsFunctions
             DivisionRecurringCoverageDto? divisionStatus = null;
             if (!string.IsNullOrWhiteSpace(division))
             {
-                oneOffEnabled = await ReadDivisionOneOffEnabledAsync(leagueId, division, leagueFallback: league);
+                oneOffEnabled = await ReadDivisionOneOffEnabledAsync(leagueId, division);
                 divisionStatus = await BuildDivisionCoverageAsync(leagueId, division);
-            }
-            else
-            {
-                oneOffEnabled = league.GetBoolean(LegacyLeagueOneOffEnabledProp) ?? false;
             }
 
             return ApiResponses.Ok(req, new PracticePortalSettingsDto(
@@ -216,14 +211,10 @@ public class PracticePortalSettingsFunctions
             missingTeams: missingTeams);
     }
 
-    private async Task<bool> ReadDivisionOneOffEnabledAsync(string leagueId, string division, TableEntity? leagueFallback)
+    private async Task<bool> ReadDivisionOneOffEnabledAsync(string leagueId, string division)
     {
         var divisionEntity = await _divisionRepo.GetDivisionAsync(leagueId, division);
-        if (divisionEntity is not null && divisionEntity.TryGetValue(DivisionOneOffEnabledProp, out var _))
-        {
-            return divisionEntity.GetBoolean(DivisionOneOffEnabledProp) ?? false;
-        }
-
-        return leagueFallback?.GetBoolean(LegacyLeagueOneOffEnabledProp) ?? false;
+        if (divisionEntity is null) return false;
+        return divisionEntity.GetBoolean(DivisionOneOffEnabledProp) ?? false;
     }
 }

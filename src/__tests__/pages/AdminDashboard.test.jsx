@@ -36,38 +36,43 @@ describe("AdminDashboard", () => {
         ]);
       }
       if (url === "/api/slots") {
-        return Promise.resolve([
-          {
-            slotId: "game-open",
-            status: "Open",
-            gameType: "Swap",
-            gameDate: isoInDays(3),
-          },
-          {
-            slotId: "game-confirmed",
-            status: "Confirmed",
-            gameType: "Swap",
-            gameDate: isoInDays(1),
-          },
-          {
-            slotId: "practice-confirmed",
-            status: "Confirmed",
-            gameType: "Practice",
-            gameDate: isoInDays(1),
-          },
-          {
-            slotId: "availability-open",
-            status: "Open",
-            isAvailability: true,
-            gameDate: isoInDays(2),
-          },
-          {
-            slotId: "game-cancelled",
-            status: "Cancelled",
-            gameType: "Swap",
-            gameDate: isoInDays(2),
-          },
-        ]);
+        return Promise.resolve({
+          items: [
+            {
+              slotId: "game-open",
+              status: "Open",
+              gameType: "Swap",
+              gameDate: isoInDays(3),
+            },
+            {
+              slotId: "game-confirmed",
+              status: "Confirmed",
+              gameType: "Swap",
+              gameDate: isoInDays(1),
+            },
+            {
+              slotId: "practice-confirmed",
+              status: "Confirmed",
+              gameType: "Practice",
+              gameDate: isoInDays(1),
+            },
+            {
+              slotId: "availability-open",
+              status: "Open",
+              isAvailability: true,
+              gameDate: isoInDays(2),
+            },
+            {
+              slotId: "game-cancelled",
+              status: "Cancelled",
+              gameType: "Swap",
+              gameDate: isoInDays(2),
+            },
+          ],
+          continuationToken: "",
+          hasMore: false,
+          pageSize: 5,
+        });
       }
       if (url === "/api/divisions") {
         return Promise.resolve([{ code: "AAA" }, { code: "AA" }]);

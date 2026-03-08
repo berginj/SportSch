@@ -143,12 +143,12 @@ public class NotificationService : INotificationService
 
     public Task DeleteOldNotificationsAsync(int daysOld = 30)
     {
-        // This would typically be called by a timer function for all users
-        // For now, it's a placeholder that would need to be enhanced
-        _logger.LogInformation("DeleteOldNotificationsAsync called with daysOld={DaysOld}", daysOld);
+        return DeleteOldNotificationsInternalAsync(daysOld);
+    }
 
-        // TODO: Implement user iteration or make this per-user via timer function
-        // await _notificationRepo.DeleteOldNotificationsAsync(userId, daysOld);
-        return Task.CompletedTask;
+    private async Task DeleteOldNotificationsInternalAsync(int daysOld)
+    {
+        var deletedCount = await _notificationRepo.DeleteOldNotificationsAsync(daysOld);
+        _logger.LogInformation("Deleted {Count} old notifications older than {DaysOld} days", deletedCount, daysOld);
     }
 }

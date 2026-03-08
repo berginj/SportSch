@@ -10,6 +10,12 @@ function getNotificationTypeBadgeClass(type) {
 }
 
 function formatNotificationType(type) {
+  const value = String(type || "").trim();
+  if (value === "SlotCreated") return "Open Game Posted";
+  if (value === "SlotCancelled") return "Game Cancelled";
+  if (value === "RequestReceived") return "Open Game Accepted";
+  if (value === "RequestApproved") return "Game Confirmed";
+  if (value === "RequestDenied") return "Acceptance Conflict";
   return String(type || "Notification").replace(/([A-Z])/g, " $1").trim();
 }
 
@@ -203,11 +209,11 @@ export default function NotificationCenterPage({ leagueId }) {
               Type
               <select value={filterType} onChange={(e) => setFilterType(e.target.value)}>
                 <option value="all">All Types</option>
-                <option value="SlotCreated">Slot Created</option>
-                <option value="SlotCancelled">Slot Cancelled</option>
-                <option value="RequestReceived">Request Received</option>
-                <option value="RequestApproved">Request Approved</option>
-                <option value="RequestDenied">Request Denied</option>
+                <option value="SlotCreated">Open Game Posted</option>
+                <option value="SlotCancelled">Game Cancelled</option>
+                <option value="RequestReceived">Open Game Accepted</option>
+                <option value="RequestApproved">Game Confirmed</option>
+                <option value="RequestDenied">Acceptance Conflict</option>
                 <option value="GameReminder">Game Reminder</option>
               </select>
             </label>

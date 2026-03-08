@@ -42,7 +42,7 @@ public class CalendarFeed
     {
         try
         {
-            var leagueId = GetLeagueId(req);
+            var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
             await ApiGuards.RequireMemberAsync(_svc, me.UserId, leagueId);
 
@@ -53,7 +53,7 @@ public class CalendarFeed
             var includeSlots = GetBoolQuery(req, "includeSlots", defaultValue: true);
             var includeEvents = GetBoolQuery(req, "includeEvents", defaultValue: true);
 
-            var statusRaw = (ApiGuards.GetQueryParam(req, "status") ?? ApiGuards.GetQueryParam(req, "slotStatus") ?? "").Trim();
+            var statusRaw = (ApiGuards.GetQueryParam(req, "status") ?? "").Trim();
             var includeCancelled = GetBoolQuery(req, "includeCancelled", defaultValue: false);
             var slotStatuses = ParseStatusList(statusRaw);
             if (slotStatuses.Count == 0)
@@ -176,20 +176,6 @@ public class CalendarFeed
             _log.LogError(ex, "CalendarFeed failed");
             return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
         }
-    }
-
-    private static string GetLeagueId(HttpRequestData req)
-    {
-        if (req.Headers.TryGetValues("x-league-id", out var vals))
-        {
-            var header = vals.FirstOrDefault();
-            if (!string.IsNullOrWhiteSpace(header)) return header.Trim();
-        }
-
-        var q = (ApiGuards.GetQueryParam(req, "leagueId") ?? "").Trim();
-        if (string.IsNullOrWhiteSpace(q))
-            throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, "Missing x-league-id header.");
-        return q;
     }
 
     private static bool GetBoolQuery(HttpRequestData req, string key, bool defaultValue)

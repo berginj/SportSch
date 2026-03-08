@@ -980,15 +980,7 @@ public class ScheduleWizardFunctions
 
     private static string NormalizeConstructionStrategy(string? raw)
     {
-        var value = (raw ?? "").Trim().ToLowerInvariant();
-        return value switch
-        {
-            "backward" or "backward_greedy" or "backward_greedy_v1" => "backward_greedy_v1",
-            // Contract enforcement: regular-season construction is canonical backward-only.
-            "legacy" or "legacy_greedy" or "legacy_greedy_v1" => "backward_greedy_v1",
-            "forward" or "forward_greedy" or "forward_greedy_v1" => "backward_greedy_v1",
-            _ => "backward_greedy_v1" // Default to backward construction for regular-season scheduling.
-        };
+        return "backward_greedy_v1";
     }
 
     private static ScheduleValidationV2Config BuildValidationConfig(SchedulingProblem problem)

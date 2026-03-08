@@ -91,7 +91,7 @@ export default function PracticeRequestsManager({ leagueId }) {
 
       let resolvedDivision = nextDivision;
       if (!resolvedDivision && divisionList.length) {
-        resolvedDivision = (divisionList[0]?.code || divisionList[0]?.division || '').trim();
+        resolvedDivision = (divisionList[0]?.code || '').trim();
       }
       if (resolvedDivision && resolvedDivision !== nextDivision) {
         try {
@@ -267,7 +267,7 @@ export default function PracticeRequestsManager({ leagueId }) {
             >
               <option value="">Select division</option>
               {divisions.map((d) => {
-                const code = (d?.code || d?.division || '').trim();
+                const code = (d?.code || '').trim();
                 const name = (d?.name || code || '').trim();
                 return (
                   <option key={code} value={code}>

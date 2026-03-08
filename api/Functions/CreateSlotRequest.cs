@@ -30,9 +30,9 @@ public class CreateSlotRequest
     public record CreateReq(string? notes, string? requestingTeamId, string? requestingDivision);
 
     // POST /slots/{division}/{slotId}/requests
-    // Accepting a slot immediately confirms it (no approval step).
+    // Canonical game-slot accept path: accepting a slot immediately confirms it.
     [Function("CreateSlotRequest")]
-    [OpenApiOperation(operationId: "CreateSlotRequest", tags: new[] { "Slot Requests" }, Summary = "Create a slot request", Description = "Creates a request to accept/swap a slot. The requesting team takes over the slot, and the original team receives the requesting team's slot.")]
+    [OpenApiOperation(operationId: "CreateSlotRequest", tags: new[] { "Slot Requests" }, Summary = "Accept an open slot", Description = "Canonical immediate-confirm path for open game slots. Creates an approved request row for compatibility and confirms the slot for the requesting team.")]
     [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
     [OpenApiParameter(name: "division", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Division code (e.g., '10U', '12U')")]
     [OpenApiParameter(name: "slotId", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Unique slot identifier")]

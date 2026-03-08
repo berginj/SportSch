@@ -11,6 +11,8 @@ namespace GameSwap.Functions.Services;
 /// </summary>
 public class SlotService : ISlotService
 {
+    private readonly record struct CoachRecipient(string UserId, string Email);
+
     private readonly ISlotRepository _slotRepo;
     private readonly IFieldRepository _fieldRepo;
     private readonly IAuthorizationService _authService;
@@ -213,9 +215,8 @@ public class SlotService : ISlotService
         return EntityMappers.MapSlot(entity);
     }
 
-    public async Task<object> QuerySlotsAsync(SlotQueryRequest request, CorrelationContext context)
+    public async Task<SlotQueryResponse> QuerySlotsAsync(SlotQueryRequest request, CorrelationContext context)
     {
-        // Parse multiple status values if provided
         var statusList = ParseStatusList(request.Status);
         var fieldKeyFilter = (request.FieldKey ?? "").Trim();
         var fromDateNorm = NormalizeIsoDate(request.FromDate);
@@ -225,67 +226,29 @@ public class SlotService : ISlotService
         {
             LeagueId = request.LeagueId,
             Division = request.Division,
-            Status = statusList.Count == 1 ? statusList[0] : null, // Single status can use OData filter
+            Statuses = statusList,
+            ExcludeCancelled = statusList.Count == 0,
             ExcludeAvailability = request.ExcludeAvailability,
-            FromDate = request.FromDate,
-            ToDate = request.ToDate,
-            FieldKey = request.FieldKey,
+            FromDate = fromDateNorm,
+            ToDate = toDateNorm,
+            FieldKey = fieldKeyFilter,
             PageSize = request.PageSize
         };
 
         var result = await _slotRepo.QuerySlotsAsync(filter, request.ContinuationToken);
 
-        // Apply filtering in memory as a safety net for legacy mixed-typed rows.
-        var filteredItems = result.Items.Where(e =>
-        {
-            var status = ReadString(e, "Status", Constants.Status.SlotOpen);
-            if (statusList.Count > 0)
-            {
-                if (!statusList.Contains(status, StringComparer.OrdinalIgnoreCase))
-                    return false;
-            }
-            else if (string.IsNullOrWhiteSpace(request.Status))
-            {
-                if (string.Equals(status, Constants.Status.SlotCancelled, StringComparison.OrdinalIgnoreCase))
-                    return false;
-            }
-
-            if (!string.IsNullOrWhiteSpace(fieldKeyFilter))
-            {
-                var fieldKey = ReadString(e, "FieldKey");
-                if (!string.Equals(fieldKey, fieldKeyFilter, StringComparison.OrdinalIgnoreCase))
-                    return false;
-            }
-
-            if (request.ExcludeAvailability && ReadBool(e, "IsAvailability", false))
-                return false;
-
-            var gameDate = ReadString(e, "GameDate");
-            if (!IsWithinDateRange(gameDate, fromDateNorm, toDateNorm))
-                return false;
-
-            return true;
-        }).ToList();
-
-        // Sort by date, time, then field
-        var sortedItems = filteredItems
-            .OrderBy(e => ReadString(e, "GameDate"))
-            .ThenBy(e => ReadString(e, "StartTime"))
-            .ThenBy(e => ReadString(e, "DisplayName"))
+        var sortedItems = result.Items
+            .OrderBy(e => (e.GetString("GameDate") ?? "").Trim())
+            .ThenBy(e => (e.GetString("StartTime") ?? "").Trim())
+            .ThenBy(e => (e.GetString("DisplayName") ?? "").Trim())
             .ToList();
 
-        var mapped = sortedItems.Select(EntityMappers.MapSlot).ToList();
-        if (!request.ReturnEnvelope)
+        return new SlotQueryResponse
         {
-            return mapped;
-        }
-
-        return new
-        {
-            items = mapped,
-            continuationToken = result.ContinuationToken,
-            pageSize = result.PageSize,
-            hasMore = result.HasMore
+            Items = sortedItems.Select(EntityMappers.MapSlot).ToList(),
+            ContinuationToken = result.ContinuationToken,
+            PageSize = result.PageSize,
+            HasMore = result.HasMore
         };
     }
 
@@ -306,71 +269,6 @@ public class SlotService : ISlotService
         if (!DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
             return "";
         return date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-    }
-
-    private static bool IsWithinDateRange(string gameDate, string fromDate, string toDate)
-    {
-        if (string.IsNullOrWhiteSpace(fromDate) && string.IsNullOrWhiteSpace(toDate))
-            return true;
-
-        if (!TryParseGameDate(gameDate, out var date))
-            return false;
-
-        if (!string.IsNullOrWhiteSpace(fromDate) &&
-            DateOnly.TryParseExact(fromDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var from) &&
-            date < from)
-            return false;
-
-        if (!string.IsNullOrWhiteSpace(toDate) &&
-            DateOnly.TryParseExact(toDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var to) &&
-            date > to)
-            return false;
-
-        return true;
-    }
-
-    private static bool TryParseGameDate(string raw, out DateOnly date)
-    {
-        date = default;
-        var value = (raw ?? "").Trim();
-        if (string.IsNullOrWhiteSpace(value)) return false;
-
-        if (DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out date))
-            return true;
-
-        if (DateOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out date))
-            return true;
-
-        if (DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var dto))
-        {
-            date = DateOnly.FromDateTime(dto.UtcDateTime);
-            return true;
-        }
-
-        if (DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out var dt))
-        {
-            date = DateOnly.FromDateTime(dt);
-            return true;
-        }
-
-        return false;
-    }
-
-    private static string ReadString(TableEntity entity, string key, string defaultValue = "")
-    {
-        if (!entity.TryGetValue(key, out var value) || value is null) return defaultValue;
-        var text = value.ToString();
-        return string.IsNullOrWhiteSpace(text) ? defaultValue : text.Trim();
-    }
-
-    private static bool ReadBool(TableEntity entity, string key, bool defaultValue)
-    {
-        if (!entity.TryGetValue(key, out var value) || value is null) return defaultValue;
-        if (value is bool b) return b;
-        var text = value.ToString()?.Trim() ?? "";
-        if (bool.TryParse(text, out var parsedBool)) return parsedBool;
-        if (int.TryParse(text, out var parsedInt)) return parsedInt != 0;
-        return defaultValue;
     }
 
     public async Task CancelSlotAsync(string leagueId, string division, string slotId, string userId)
@@ -414,22 +312,31 @@ public class SlotService : ISlotService
             {
                 var gameDate = slot.GetString("GameDate") ?? "";
                 var startTime = slot.GetString("StartTime") ?? "";
-                var message = $"Game slot for {gameDate} at {startTime} has been cancelled.";
-
-                await _notificationService.CreateNotificationAsync(
-                    userId,
+                var fieldName = (slot.GetString("DisplayName") ?? slot.GetString("FieldKey") ?? "Field TBD").Trim();
+                var recipientsByTeam = await GetCoachRecipientsByTeamAsync(
                     leagueId,
-                    "SlotCancelled",
-                    message,
-                    "#calendar",
-                    slotId,
-                    "Slot");
+                    division,
+                    new[] { offeringTeamId, confirmedTeamId });
 
-                // Also notify confirmed team if one exists
-                if (!string.IsNullOrWhiteSpace(confirmedTeamId))
+                var notificationTasks = new List<Task>();
+                var reason = "Cancelled in SportsScheduler.";
+
+                foreach (var recipients in recipientsByTeam.Values)
                 {
-                    // TODO: Get userId for confirmed team coach and notify them
+                    foreach (var recipient in recipients)
+                    {
+                        notificationTasks.Add(NotifyCancelledCoachAsync(
+                            recipient,
+                            leagueId,
+                            slotId,
+                            gameDate,
+                            startTime,
+                            fieldName,
+                            reason));
+                    }
                 }
+
+                await Task.WhenAll(notificationTasks);
             }
             catch (Exception ex)
             {
@@ -449,13 +356,13 @@ public class SlotService : ISlotService
                 .Where(m =>
                 {
                     var role = (m.GetString("Role") ?? "").Trim();
-                    var coachDivision = (m.GetString("CoachDivision") ?? "").Trim();
+                    var coachDivision = ReadMembershipDivision(m);
 
                     return string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase) &&
                            string.Equals(coachDivision, division, StringComparison.OrdinalIgnoreCase);
                 })
                 .Select(m => (
-                    userId: m.RowKey,
+                    userId: m.PartitionKey,
                     email: m.GetString("Email") ?? ""
                 ))
                 .ToList();
@@ -467,5 +374,111 @@ public class SlotService : ISlotService
             _logger.LogWarning(ex, "Failed to get coaches for division {Division} in league {LeagueId}", division, leagueId);
             return new List<(string, string)>();
         }
+    }
+
+    private async Task NotifyCancelledCoachAsync(
+        CoachRecipient recipient,
+        string leagueId,
+        string slotId,
+        string gameDate,
+        string startTime,
+        string fieldName,
+        string reason)
+    {
+        var message = $"Game cancelled: {gameDate} at {startTime} on {fieldName}.";
+        await _notificationService.CreateNotificationAsync(
+            recipient.UserId,
+            leagueId,
+            "SlotCancelled",
+            message,
+            "#calendar",
+            slotId,
+            "Slot");
+
+        if (!string.IsNullOrWhiteSpace(recipient.Email) &&
+            await _preferencesService.ShouldSendEmailAsync(recipient.UserId, leagueId, "SlotCancelled"))
+        {
+            await _emailService.SendGameCancelledEmailAsync(
+                recipient.Email,
+                leagueId,
+                gameDate,
+                startTime,
+                fieldName,
+                reason);
+        }
+    }
+
+    private async Task<Dictionary<string, List<CoachRecipient>>> GetCoachRecipientsByTeamAsync(
+        string leagueId,
+        string division,
+        IEnumerable<string> teamIds)
+    {
+        var teams = new HashSet<string>(
+            teamIds
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim()),
+            StringComparer.OrdinalIgnoreCase);
+
+        if (teams.Count == 0)
+        {
+            return new Dictionary<string, List<CoachRecipient>>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var memberships = await _membershipRepo.GetLeagueMembershipsAsync(leagueId);
+        var recipientsByTeam = new Dictionary<string, List<CoachRecipient>>(StringComparer.OrdinalIgnoreCase);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var membership in memberships)
+        {
+            var role = (membership.GetString("Role") ?? "").Trim();
+            if (!string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var membershipDivision = ReadMembershipDivision(membership);
+            if (!string.Equals(membershipDivision, division, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var membershipTeamId = ReadMembershipTeamId(membership);
+            if (!teams.Contains(membershipTeamId))
+            {
+                continue;
+            }
+
+            var userId = (membership.PartitionKey ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                continue;
+            }
+
+            var recipientKey = $"{membershipTeamId}|{userId}";
+            if (!seen.Add(recipientKey))
+            {
+                continue;
+            }
+
+            if (!recipientsByTeam.TryGetValue(membershipTeamId, out var recipients))
+            {
+                recipients = new List<CoachRecipient>();
+                recipientsByTeam[membershipTeamId] = recipients;
+            }
+
+            recipients.Add(new CoachRecipient(userId, (membership.GetString("Email") ?? "").Trim()));
+        }
+
+        return recipientsByTeam;
+    }
+
+    private static string ReadMembershipDivision(TableEntity? membership)
+    {
+        return (membership?.GetString("Division") ?? "").Trim();
+    }
+
+    private static string ReadMembershipTeamId(TableEntity? membership)
+    {
+        return (membership?.GetString("TeamId") ?? "").Trim();
     }
 }

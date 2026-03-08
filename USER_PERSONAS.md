@@ -1,6 +1,14 @@
-# User Personas - Contract for Feature Development
+# User Personas - Research Input for Feature Development
 
-These personas serve as contracts for evaluating features and ensuring alignment with user needs. Each iteration should verify features against these requirements.
+> Status: persona reference only, not the canonical shipped contract.
+>
+> These personas are useful for evaluating desirability and future prioritization, but they do not override the current workflow or API contract.
+>
+> Current shipped scope is an authenticated league-member tool. Parent/public calendar access described here is future-state exploration, not current product scope.
+>
+> For canonical current-state behavior, use `docs/contract.md`, `docs/SLOT_LIFECYCLE_BEHAVIORAL_CONTRACT.md`, `README.md`, and `AGENTS.md`.
+
+These personas are reference inputs for evaluating features and checking alignment with user needs. Each iteration can use them to test desirability and fit, but they are not the source of truth for shipped behavior.
 
 Created: 2026-03-03
 Based on: Codebase analysis, user feedback, Little League requirements

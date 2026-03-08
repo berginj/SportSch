@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
-import { ROLE } from "../lib/constants";
+import { LEAGUE_HEADER_NAME, ROLE } from "../lib/constants";
 import { PromptDialog } from "../components/Dialogs";
 import { usePromptDialog } from "../lib/useDialogs";
 import Toast from "../components/Toast";
@@ -61,7 +61,7 @@ export default function InvitesManager({ leagueId, me }) {
   const divisionOptions = useMemo(() => {
     return (divisions || [])
       .filter((d) => d && d.isActive !== false)
-      .map((d) => (typeof d === "string" ? d : d.code || d.division || ""))
+      .map((d) => (typeof d === "string" ? d : d.code || ""))
       .filter(Boolean)
       .sort((a, b) => a.localeCompare(b));
   }, [divisions]);
@@ -104,7 +104,6 @@ export default function InvitesManager({ leagueId, me }) {
       return setErr("Team assignment requires both division and teamId.");
 
     const payload = {
-      leagueId,
       inviteEmail: inviteEmail.trim(),
       role: inviteRole,
       expiresHours: expiresHours ? Number(expiresHours) : undefined,
@@ -113,8 +112,9 @@ export default function InvitesManager({ leagueId, me }) {
 
     setBusy(true);
     try {
-      const res = await apiFetch("/api/invites", {
+      const res = await apiFetch("/api/admin/invites", {
         method: "POST",
+        headers: { [LEAGUE_HEADER_NAME]: leagueId },
         body: JSON.stringify(payload),
       });
       setOk(`Invite created for ${res?.inviteEmail || inviteEmail.trim()}.`);

@@ -17,7 +17,7 @@ function buildTeamsTemplateCsv(divisions) {
       if (!d) return "";
       if (typeof d === "string") return d;
       if (d.isActive === false) return "";
-      return d.code || d.division || "";
+      return d.code || "";
     })
     .filter(Boolean)
     .map((code) => [code, "", "", "", "", ""]);
@@ -125,7 +125,7 @@ export default function TeamsManager({ leagueId, tableView = "A" }) {
   const divisionOptions = useMemo(() => {
     return (divisions || [])
       .filter((d) => d && d.isActive !== false)
-      .map((d) => (typeof d === "string" ? d : d.code || d.division || ""))
+      .map((d) => (typeof d === "string" ? d : d.code || ""))
       .filter(Boolean)
       .sort((a, b) => a.localeCompare(b));
   }, [divisions]);
@@ -133,7 +133,7 @@ export default function TeamsManager({ leagueId, tableView = "A" }) {
   const divisionLabels = useMemo(() => {
     const map = new Map();
     for (const d of divisions || []) {
-      const code = typeof d === "string" ? d : d?.code || d?.division || "";
+      const code = typeof d === "string" ? d : d?.code || "";
       if (!code) continue;
       const name = typeof d === "string" ? d : d?.name || "";
       map.set(code, name && name !== code ? `${name} (${code})` : code);

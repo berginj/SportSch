@@ -93,8 +93,8 @@ public class MembershipsFunctions
                 {
                     var role = (e.GetString("Role") ?? "").Trim();
                     var email = (e.GetString("Email") ?? "").Trim();
-                    var division = (e.GetString("Division") ?? "").Trim();
-                    var teamId = (e.GetString("TeamId") ?? "").Trim();
+                    var division = ReadMembershipDivision(e);
+                    var teamId = ReadMembershipTeamId(e);
 
                     CoachTeam? team = null;
                     if (string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase)
@@ -131,8 +131,8 @@ public class MembershipsFunctions
             {
                 var role = (e.GetString("Role") ?? "").Trim();
                 var email = (e.GetString("Email") ?? "").Trim();
-                var division = (e.GetString("Division") ?? "").Trim();
-                var teamId = (e.GetString("TeamId") ?? "").Trim();
+                var division = ReadMembershipDivision(e);
+                var teamId = ReadMembershipTeamId(e);
                 var rowLeagueId = (e.RowKey ?? "").Trim();
 
                 CoachTeam? team = null;
@@ -264,8 +264,7 @@ public class MembershipsFunctions
                 ["TeamId"] = teamId,
                 ["UpdatedUtc"] = DateTimeOffset.UtcNow
             };
-
-            await _membershipRepo.UpsertMembershipAsync(entity);
+            await SaveCanonicalMembershipAsync(entity);
             return ApiResponses.Ok(req, new MembershipDto(userId, email, normalizedRole,
                 string.IsNullOrWhiteSpace(division) || string.IsNullOrWhiteSpace(teamId)
                     ? null
@@ -344,12 +343,14 @@ public class MembershipsFunctions
                 mem["TeamId"] = teamId;
             }
 
+            mem.Remove("CoachDivision");
+            mem.Remove("CoachTeamId");
             mem["UpdatedUtc"] = DateTimeOffset.UtcNow;
             await _membershipRepo.UpdateMembershipAsync(mem);
 
             // Return normalized dto
-            var outDivision = (mem.GetString("Division") ?? "").Trim();
-            var outTeamId = (mem.GetString("TeamId") ?? "").Trim();
+            var outDivision = ReadMembershipDivision(mem);
+            var outTeamId = ReadMembershipTeamId(mem);
             var email = (mem.GetString("Email") ?? "").Trim();
 
             CoachTeam? team = (string.IsNullOrWhiteSpace(outDivision) || string.IsNullOrWhiteSpace(outTeamId))
@@ -364,5 +365,58 @@ public class MembershipsFunctions
             _log.LogError(ex, "PatchMembership failed");
             return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
         }
+    }
+
+    private static string ReadMembershipDivision(TableEntity membership)
+    {
+        return (membership.GetString("Division") ?? "").Trim();
+    }
+
+    private static string ReadMembershipTeamId(TableEntity membership)
+    {
+        return (membership.GetString("TeamId") ?? "").Trim();
+    }
+
+    private async Task SaveCanonicalMembershipAsync(TableEntity membership)
+    {
+        var existing = await _membershipRepo.GetMembershipAsync(membership.PartitionKey, membership.RowKey);
+        if (existing is null)
+        {
+            await _membershipRepo.CreateMembershipAsync(membership);
+            return;
+        }
+
+        var replacement = new TableEntity(membership.PartitionKey, membership.RowKey)
+        {
+            ETag = existing.ETag
+        };
+
+        foreach (var kvp in existing)
+        {
+            if (string.Equals(kvp.Key, "PartitionKey", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(kvp.Key, "RowKey", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(kvp.Key, "Timestamp", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(kvp.Key, "CoachDivision", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(kvp.Key, "CoachTeamId", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            replacement[kvp.Key] = kvp.Value;
+        }
+
+        foreach (var kvp in membership)
+        {
+            if (string.Equals(kvp.Key, "PartitionKey", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(kvp.Key, "RowKey", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(kvp.Key, "Timestamp", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            replacement[kvp.Key] = kvp.Value;
+        }
+
+        await _membershipRepo.UpdateMembershipAsync(replacement);
     }
 }

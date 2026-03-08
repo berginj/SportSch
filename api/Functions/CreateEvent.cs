@@ -102,8 +102,6 @@ public class CreateEvent
                 ["EndTime"] = endTime,
                 ["Location"] = location,
                 ["Notes"] = notes,
-                // Keep both keys for compatibility.
-                ["CreatedBy"] = me.UserId,
                 ["CreatedByUserId"] = me.UserId,
                 ["CreatedByRole"] = role,
                 ["CreatedUtc"] = now,

@@ -36,7 +36,7 @@ export default function CoachAssignmentsSection({
                 const currentDiv = draft.division || "";
                 const currentTeam = draft.teamId || "";
                 const divOptions = (divisions || [])
-                  .map((d) => (typeof d === "string" ? d : d.code || d.division || ""))
+                  .map((d) => (typeof d === "string" ? d : d.code || ""))
                   .filter(Boolean);
                 const teamsForDiv = currentDiv ? (teamsByDivision.get(currentDiv) || []) : [];
 

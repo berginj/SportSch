@@ -1,5 +1,11 @@
 # UX Improvements by Persona
 
+> Status: research and roadmap guidance, not the canonical shipped contract.
+>
+> Current product scope is an authenticated league-member tool. References here to public, parent, or other future-state experiences should be treated as exploratory unless they are also reflected in `docs/contract.md`.
+>
+> Use `docs/contract.md`, `docs/SLOT_LIFECYCLE_BEHAVIORAL_CONTRACT.md`, `README.md`, and `AGENTS.md` for current product behavior.
+
 Comprehensive improvement recommendations based on persona analysis.
 
 Created: 2026-03-04

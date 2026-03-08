@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../lib/api";
+import { LEAGUE_HEADER_NAME } from "../lib/constants";
 
 export default function InviteAcceptPage({ invite, me, refreshMe, setLeagueId, onDone }) {
   const signedIn = !!me?.userId && me.userId !== "UNKNOWN";
@@ -25,7 +26,8 @@ export default function InviteAcceptPage({ invite, me, refreshMe, setLeagueId, o
     try {
       const res = await apiFetch("/api/invites/accept", {
         method: "POST",
-        body: JSON.stringify({ leagueId: invite.leagueId, inviteId: invite.inviteId }),
+        headers: { [LEAGUE_HEADER_NAME]: invite.leagueId },
+        body: JSON.stringify({ inviteId: invite.inviteId }),
       });
       setResult(res);
       setStatus("success");

@@ -4,6 +4,7 @@ import App from "../App";
 import { useSession } from "../lib/useSession";
 
 const THEME_STORAGE_KEY = "gameswap_theme";
+const PAGE_LOAD_TIMEOUT_MS = 3000;
 
 vi.mock("../lib/useSession", () => ({
   useSession: vi.fn(),
@@ -47,14 +48,6 @@ vi.mock("../pages/OffersPage", () => ({
 
 vi.mock("../pages/CalendarPage", () => ({
   default: () => <div>CALENDAR_PAGE</div>,
-}));
-
-vi.mock("../pages/SchedulePage", () => ({
-  default: () => <div>SCHEDULE_PAGE</div>,
-}));
-
-vi.mock("../pages/HelpPage", () => ({
-  default: () => <div>HELP_PAGE</div>,
 }));
 
 vi.mock("../pages/AccessPage", () => ({
@@ -127,8 +120,8 @@ describe("App theme behavior", () => {
         isGlobalAdmin: false,
       },
       memberships: [{ leagueId: "league-1", role: "LeagueAdmin" }],
-      activeLeagueId: "league-1",
-      setActiveLeagueId: vi.fn(),
+      leagueId: "league-1",
+      setLeagueId: vi.fn(),
       refreshMe: vi.fn(),
     });
   });
@@ -137,12 +130,12 @@ describe("App theme behavior", () => {
     localStorage.setItem(THEME_STORAGE_KEY, "dark");
 
     render(<App />);
-    expect(await screen.findByText("HOME_PAGE")).toBeInTheDocument();
+    expect(await screen.findByText("HOME_PAGE", {}, { timeout: PAGE_LOAD_TIMEOUT_MS })).toBeInTheDocument();
+    expect(await screen.findByTestId("theme-value", {}, { timeout: PAGE_LOAD_TIMEOUT_MS })).toHaveTextContent("dark");
 
     await waitFor(() => {
       expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
     });
-    expect(screen.getByTestId("theme-value")).toHaveTextContent("dark");
     expect(screen.getByTestId("theme-mode-value")).toHaveTextContent("dark");
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("dark");
   });
@@ -151,7 +144,7 @@ describe("App theme behavior", () => {
     localStorage.setItem(THEME_STORAGE_KEY, "light");
 
     render(<App />);
-    expect(await screen.findByText("HOME_PAGE")).toBeInTheDocument();
+    expect(await screen.findByText("HOME_PAGE", {}, { timeout: PAGE_LOAD_TIMEOUT_MS })).toBeInTheDocument();
     expect(screen.getByTestId("theme-value")).toHaveTextContent("light");
     expect(screen.getByTestId("theme-mode-value")).toHaveTextContent("light");
 
@@ -197,7 +190,7 @@ describe("App theme behavior", () => {
     }));
 
     render(<App />);
-    expect(await screen.findByText("HOME_PAGE")).toBeInTheDocument();
+    expect(await screen.findByText("HOME_PAGE", {}, { timeout: PAGE_LOAD_TIMEOUT_MS })).toBeInTheDocument();
 
     await waitFor(() => {
       expect(document.documentElement.getAttribute("data-theme")).toBe("dark");

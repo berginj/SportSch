@@ -153,7 +153,7 @@ public class AccessRequestsFunctions
             ["TeamId"] = teamId,
             ["UpdatedUtc"] = DateTimeOffset.UtcNow
         };
-        await _membershipRepo.UpsertMembershipAsync(mem);
+        await SaveCanonicalMembershipAsync(mem);
 
         ar["Status"] = Constants.Status.AccessRequestApproved;
         ar["UpdatedUtc"] = DateTimeOffset.UtcNow;
@@ -182,6 +182,49 @@ public class AccessRequestsFunctions
         await _accessRequestRepo.UpdateAccessRequestAsync(ar);
 
         return (null, null, Constants.Status.AccessRequestDenied);
+    }
+
+    private async Task SaveCanonicalMembershipAsync(TableEntity membership)
+    {
+        var existing = await _membershipRepo.GetMembershipAsync(membership.PartitionKey, membership.RowKey);
+        if (existing is null)
+        {
+            await _membershipRepo.CreateMembershipAsync(membership);
+            return;
+        }
+
+        var replacement = new TableEntity(membership.PartitionKey, membership.RowKey)
+        {
+            ETag = existing.ETag
+        };
+
+        foreach (var kvp in existing)
+        {
+            if (string.Equals(kvp.Key, "PartitionKey", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(kvp.Key, "RowKey", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(kvp.Key, "Timestamp", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(kvp.Key, "CoachDivision", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(kvp.Key, "CoachTeamId", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            replacement[kvp.Key] = kvp.Value;
+        }
+
+        foreach (var kvp in membership)
+        {
+            if (string.Equals(kvp.Key, "PartitionKey", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(kvp.Key, "RowKey", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(kvp.Key, "Timestamp", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            replacement[kvp.Key] = kvp.Value;
+        }
+
+        await _membershipRepo.UpdateMembershipAsync(replacement);
     }
 
     [Function("CreateAccessRequest")]

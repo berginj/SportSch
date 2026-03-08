@@ -562,7 +562,7 @@ await _notificationService.CreateNotificationAsync(
 );
 ```
 
-**Example: In ApproveSlotRequest.cs (after approval)**
+**Example: In CreateSlotRequest.cs (after acceptance confirms the game)**
 ```csharp
 // Notify offering coach that their slot was accepted
 await _notificationService.CreateNotificationAsync(

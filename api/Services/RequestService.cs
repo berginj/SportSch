@@ -11,26 +11,29 @@ namespace GameSwap.Functions.Services;
 /// </summary>
 public class RequestService : IRequestService
 {
+    private readonly record struct CoachRecipient(string UserId, string Email);
     private readonly IRequestRepository _requestRepo;
     private readonly ISlotRepository _slotRepo;
     private readonly IMembershipRepository _membershipRepo;
-    private readonly IAuthorizationService _authService;
     private readonly INotificationService _notificationService;
+    private readonly INotificationPreferencesService _preferencesService;
+    private readonly IEmailService _emailService;
     private readonly ILogger<RequestService> _logger;
-
     public RequestService(
         IRequestRepository requestRepo,
         ISlotRepository slotRepo,
         IMembershipRepository membershipRepo,
-        IAuthorizationService authService,
         INotificationService notificationService,
+        INotificationPreferencesService preferencesService,
+        IEmailService emailService,
         ILogger<RequestService> logger)
     {
         _requestRepo = requestRepo;
         _slotRepo = slotRepo;
         _membershipRepo = membershipRepo;
-        _authService = authService;
         _notificationService = notificationService;
+        _preferencesService = preferencesService;
+        _emailService = emailService;
         _logger = logger;
     }
 
@@ -51,8 +54,8 @@ public class RequestService : IRequestService
         var isGlobalAdmin = await _membershipRepo.IsGlobalAdminAsync(context.UserId);
 
         // Determine requesting team
-        var myDivisionRaw = membership?.GetString("CoachDivision") ?? "";
-        var myTeamIdRaw = membership?.GetString("CoachTeamId") ?? "";
+        var myDivisionRaw = ReadMembershipDivision(membership);
+        var myTeamIdRaw = ReadMembershipTeamId(membership);
         var myDivision = myDivisionRaw.Trim().ToUpperInvariant();
         var myTeamId = myTeamIdRaw.Trim();
 
@@ -229,20 +232,70 @@ public class RequestService : IRequestService
             {
                 var gameDate = (slot.GetString("GameDate") ?? "").Trim();
                 var startTime = (slot.GetString("StartTime") ?? "").Trim();
-                var fieldName = (slot.GetString("DisplayName") ?? "").Trim();
+                var fieldName = (slot.GetString("DisplayName") ?? slot.GetString("FieldKey") ?? "Field TBD").Trim();
 
-                // Notify the requesting coach
-                var message = $"Your request for {gameDate} at {startTime} has been approved!";
-                await _notificationService.CreateNotificationAsync(
-                    context.UserId,
+                var recipientsByTeam = await GetCoachRecipientsByTeamAsync(
                     request.LeagueId,
-                    "RequestApproved",
-                    message,
-                    "#calendar",
-                    request.SlotId,
-                    "Slot");
+                    request.Division,
+                    new[] { myTeamId, offeringTeamId });
 
-                // TODO: Notify the offering coach that their slot was accepted
+                if (recipientsByTeam.TryGetValue(myTeamId, out var requestingCoaches))
+                {
+                    var requestApprovedTasks = requestingCoaches.Select(async recipient =>
+                    {
+                        var message = $"Game confirmed: {gameDate} at {startTime} on {fieldName}.";
+                        await _notificationService.CreateNotificationAsync(
+                            recipient.UserId,
+                            request.LeagueId,
+                            "RequestApproved",
+                            message,
+                            "#calendar",
+                            request.SlotId,
+                            "Slot");
+
+                        if (!string.IsNullOrWhiteSpace(recipient.Email) &&
+                            await _preferencesService.ShouldSendEmailAsync(recipient.UserId, request.LeagueId, "RequestApproved"))
+                        {
+                            await _emailService.SendRequestApprovedEmailAsync(
+                                recipient.Email,
+                                request.LeagueId,
+                                gameDate,
+                                startTime,
+                                fieldName);
+                        }
+                    });
+
+                    await Task.WhenAll(requestApprovedTasks);
+                }
+
+                if (recipientsByTeam.TryGetValue(offeringTeamId, out var offeringCoaches))
+                {
+                    var requestReceivedTasks = offeringCoaches.Select(async recipient =>
+                    {
+                        var message = $"{myTeamId} accepted your open game for {gameDate} at {startTime}. The game is now confirmed.";
+                        await _notificationService.CreateNotificationAsync(
+                            recipient.UserId,
+                            request.LeagueId,
+                            "RequestReceived",
+                            message,
+                            "#calendar",
+                            request.SlotId,
+                            "Slot");
+
+                        if (!string.IsNullOrWhiteSpace(recipient.Email) &&
+                            await _preferencesService.ShouldSendEmailAsync(recipient.UserId, request.LeagueId, "RequestReceived"))
+                        {
+                            await _emailService.SendRequestReceivedEmailAsync(
+                                recipient.Email,
+                                request.LeagueId,
+                                myTeamId,
+                                gameDate,
+                                startTime);
+                        }
+                    });
+
+                    await Task.WhenAll(requestReceivedTasks);
+                }
             }
             catch (Exception ex)
             {
@@ -258,133 +311,6 @@ public class RequestService : IRequestService
             slotStatus = Constants.Status.SlotConfirmed,
             confirmedTeamId = myTeamId,
             requestedUtc = now
-        };
-    }
-
-    public async Task<object> ApproveRequestAsync(ApproveRequestRequest request, CorrelationContext context)
-    {
-        _logger.LogInformation("Approving request {RequestId} for slot {LeagueId}/{Division}/{SlotId}, correlation {CorrelationId}",
-            request.RequestId, request.LeagueId, request.Division, request.SlotId, context.CorrelationId);
-
-        // Load slot first to check authorization
-        var slot = await _slotRepo.GetSlotAsync(request.LeagueId, request.Division, request.SlotId);
-        if (slot == null)
-        {
-            throw new ApiGuards.HttpError(404, ErrorCodes.SLOT_NOT_FOUND, "Slot not found");
-        }
-
-        var offeringTeamId = (slot.GetString("OfferingTeamId") ?? "").Trim();
-
-        // Authorization: Must be offering coach, league admin, or global admin
-        if (!await _authService.CanApproveRequestAsync(context.UserId, request.LeagueId, request.Division, offeringTeamId))
-        {
-            throw new ApiGuards.HttpError(403, ErrorCodes.UNAUTHORIZED,
-                "Only the offering coach (or LeagueAdmin) can approve this slot request.");
-        }
-
-        var status = (slot.GetString("Status") ?? Constants.Status.SlotOpen).Trim();
-        if (string.Equals(status, Constants.Status.SlotCancelled, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new ApiGuards.HttpError(409, ErrorCodes.SLOT_CANCELLED, "Slot is cancelled");
-        }
-
-        // With immediate-confirmation semantics, this endpoint is effectively idempotent
-        if (string.Equals(status, Constants.Status.SlotConfirmed, StringComparison.OrdinalIgnoreCase))
-        {
-            var confirmedReqId = (slot.GetString("ConfirmedRequestId") ?? "").Trim();
-            if (string.Equals(confirmedReqId, request.RequestId, StringComparison.OrdinalIgnoreCase))
-            {
-                return new
-                {
-                    ok = true,
-                    slotId = request.SlotId,
-                    division = request.Division,
-                    requestId = request.RequestId,
-                    status = Constants.Status.SlotConfirmed
-                };
-            }
-            throw new ApiGuards.HttpError(409, ErrorCodes.CONFLICT, "Slot already confirmed");
-        }
-
-        // Load request
-        var requestEntity = await _requestRepo.GetRequestAsync(request.LeagueId, request.Division, request.SlotId, request.RequestId);
-        if (requestEntity == null)
-        {
-            throw new ApiGuards.HttpError(404, ErrorCodes.REQUEST_NOT_FOUND, "Request not found");
-        }
-
-        var reqStatus = (requestEntity.GetString("Status") ?? Constants.Status.SlotRequestPending).Trim();
-        if (!string.Equals(reqStatus, Constants.Status.SlotRequestPending, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new ApiGuards.HttpError(409, ErrorCodes.REQUEST_NOT_PENDING, $"Request not pending (status: {reqStatus})");
-        }
-
-        var now = DateTimeOffset.UtcNow;
-
-        // Approve this request (with retry for concurrent updates)
-        await RetryUtil.WithEtagRetryAsync(async () =>
-        {
-            // Reload to get fresh ETag
-            var freshRequest = await _requestRepo.GetRequestAsync(request.LeagueId, request.Division, request.SlotId, request.RequestId);
-            if (freshRequest == null)
-            {
-                throw new ApiGuards.HttpError(404, ErrorCodes.REQUEST_NOT_FOUND, "Request not found");
-            }
-
-            freshRequest["Status"] = Constants.Status.SlotRequestApproved;
-            freshRequest["ApprovedBy"] = string.IsNullOrWhiteSpace(request.ApprovedByEmail) ? context.UserEmail : request.ApprovedByEmail;
-            freshRequest["ApprovedUtc"] = now;
-            freshRequest["UpdatedUtc"] = now;
-            await _requestRepo.UpdateRequestAsync(freshRequest, freshRequest.ETag);
-        });
-
-        // Reject all other pending requests for the slot
-        var pendingRequests = await _requestRepo.GetPendingRequestsForSlotAsync(request.LeagueId, request.Division, request.SlotId);
-        foreach (var other in pendingRequests)
-        {
-            if (other.RowKey == request.RequestId) continue;
-
-            other["Status"] = Constants.Status.SlotRequestDenied;
-            other["RejectedUtc"] = now;
-            other["UpdatedUtc"] = now;
-
-            try { await _requestRepo.UpdateRequestAsync(other, other.ETag); }
-            catch (RequestFailedException ex)
-            {
-                _logger.LogWarning(ex, "Failed to reject request {RequestId} for slot {SlotId}", other.RowKey, request.SlotId);
-            }
-        }
-
-        // Confirm slot (with retry for concurrent updates)
-        var requestingTeamId = requestEntity.GetString("RequestingTeamId") ?? "";
-        await RetryUtil.WithEtagRetryAsync(async () =>
-        {
-            // Reload to get fresh ETag
-            var freshSlot = await _slotRepo.GetSlotAsync(request.LeagueId, request.Division, request.SlotId);
-            if (freshSlot == null)
-            {
-                throw new ApiGuards.HttpError(404, ErrorCodes.SLOT_NOT_FOUND, "Slot not found");
-            }
-
-            freshSlot["Status"] = Constants.Status.SlotConfirmed;
-            freshSlot["ConfirmedTeamId"] = requestingTeamId;
-            freshSlot["ConfirmedRequestId"] = request.RequestId;
-            freshSlot["ConfirmedBy"] = string.IsNullOrWhiteSpace(request.ApprovedByEmail) ? context.UserEmail : request.ApprovedByEmail;
-            freshSlot["ConfirmedUtc"] = now;
-            freshSlot["UpdatedUtc"] = now;
-
-            await _slotRepo.UpdateSlotAsync(freshSlot, freshSlot.ETag);
-        });
-
-        _logger.LogInformation("Request approved and slot confirmed: {RequestId}, slot {SlotId}", request.RequestId, request.SlotId);
-
-        return new
-        {
-            ok = true,
-            slotId = request.SlotId,
-            division = request.Division,
-            requestId = request.RequestId,
-            status = Constants.Status.SlotConfirmed
         };
     }
 
@@ -488,5 +414,79 @@ public class RequestService : IRequestService
         }
 
         return null;
+    }
+
+    private async Task<Dictionary<string, List<CoachRecipient>>> GetCoachRecipientsByTeamAsync(
+        string leagueId,
+        string division,
+        IEnumerable<string> teamIds)
+    {
+        var teams = new HashSet<string>(
+            teamIds
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim()),
+            StringComparer.OrdinalIgnoreCase);
+
+        if (teams.Count == 0)
+        {
+            return new Dictionary<string, List<CoachRecipient>>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var memberships = await _membershipRepo.GetLeagueMembershipsAsync(leagueId);
+        var recipientsByTeam = new Dictionary<string, List<CoachRecipient>>(StringComparer.OrdinalIgnoreCase);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var membership in memberships)
+        {
+            var role = (membership.GetString("Role") ?? "").Trim();
+            if (!string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var membershipDivision = ReadMembershipDivision(membership);
+            if (!string.Equals(membershipDivision, division, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var membershipTeamId = ReadMembershipTeamId(membership);
+            if (!teams.Contains(membershipTeamId))
+            {
+                continue;
+            }
+
+            var userId = (membership.PartitionKey ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                continue;
+            }
+
+            var recipientKey = $"{membershipTeamId}|{userId}";
+            if (!seen.Add(recipientKey))
+            {
+                continue;
+            }
+
+            if (!recipientsByTeam.TryGetValue(membershipTeamId, out var recipients))
+            {
+                recipients = new List<CoachRecipient>();
+                recipientsByTeam[membershipTeamId] = recipients;
+            }
+
+            recipients.Add(new CoachRecipient(userId, (membership.GetString("Email") ?? "").Trim()));
+        }
+
+        return recipientsByTeam;
+    }
+
+    private static string ReadMembershipDivision(TableEntity? membership)
+    {
+        return (membership?.GetString("Division") ?? "").Trim();
+    }
+
+    private static string ReadMembershipTeamId(TableEntity? membership)
+    {
+        return (membership?.GetString("TeamId") ?? "").Trim();
     }
 }

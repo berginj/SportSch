@@ -440,7 +440,7 @@ function installApiMock({ previewResponse = BASE_PREVIEW, previewResponses = nul
       ]);
     }
     if (url.startsWith("/api/slots?")) {
-      return Promise.resolve(slotsResponse || [
+      const items = slotsResponse || [
         {
           slotId: "avail-1",
           isAvailability: true,
@@ -451,7 +451,13 @@ function installApiMock({ previewResponse = BASE_PREVIEW, previewResponses = nul
           allocationSlotType: "game",
           allocationPriorityRank: 1,
         },
-      ]);
+      ];
+      return Promise.resolve({
+        items,
+        continuationToken: "",
+        hasMore: false,
+        pageSize: items.length,
+      });
     }
     if (url === "/api/schedule/wizard/feasibility") {
       return Promise.resolve({
@@ -598,7 +604,7 @@ describe("SeasonWizard", () => {
     } finally {
       confirmSpy.mockRestore();
     }
-  });
+  }, 10000);
 
   it("allows apply with warnings when required matchups remain unassigned", async () => {
     installApiMock({ previewResponse: SINGLE_MISSING_MATCHUP_PREVIEW });

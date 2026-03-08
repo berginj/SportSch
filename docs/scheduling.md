@@ -123,17 +123,9 @@ Apply assignments (writes to slots):
 POST /api/schedule/wizard/apply
 ```
 
-## 6) Validation + deprecated endpoints
+## 6) Validation
 
 Wizard preview/apply responses include rule-health output (hard + soft rule summaries), warnings, and issue details.
-
-Legacy scheduler endpoints are deprecated and return `410 SCHEDULER_DEPRECATED`:
-
-```
-POST /api/schedule/preview
-POST /api/schedule/apply
-POST /api/schedule/validate
-```
 
 ## 7) Export CSVs (internal + SportsEngine)
 

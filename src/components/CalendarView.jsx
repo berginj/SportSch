@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
 import "./CalendarView.css";
 
 /**
@@ -13,7 +13,9 @@ export default function CalendarView({
   defaultView = "week-cards",
   onSlotClick,
   onEventClick,
-  showViewToggle = true
+  renderSlotActions,
+  renderEventActions,
+  showViewToggle = true,
 }) {
   const storageKey = "calendar-view-preference";
   const [viewMode, setViewMode] = useState(() => {
@@ -34,12 +36,11 @@ export default function CalendarView({
     }
   };
 
-  // Group slots and events by week
   const weekGroups = useMemo(() => {
     const groups = new Map();
 
     [...slots, ...events].forEach((item) => {
-      const date = item.gameDate || item.date || "";
+      const date = getItemDate(item);
       if (!date) return;
 
       const weekKey = getWeekKey(date);
@@ -57,21 +58,20 @@ export default function CalendarView({
       const group = groups.get(weekKey);
       const dayKey = date;
 
-      if (item.slotId || item.fieldKey) {
-        // It's a slot
+      if (isSlotItem(item)) {
         group.slots.push(item);
         if (!group.days.has(dayKey)) {
           group.days.set(dayKey, { date: dayKey, slots: [], events: [] });
         }
         group.days.get(dayKey).slots.push(item);
-      } else {
-        // It's an event
-        group.events.push(item);
-        if (!group.days.has(dayKey)) {
-          group.days.set(dayKey, { date: dayKey, slots: [], events: [] });
-        }
-        group.days.get(dayKey).events.push(item);
+        return;
       }
+
+      group.events.push(item);
+      if (!group.days.has(dayKey)) {
+        group.days.set(dayKey, { date: dayKey, slots: [], events: [] });
+      }
+      group.days.get(dayKey).events.push(item);
     });
 
     return Array.from(groups.values()).sort((a, b) => a.weekKey.localeCompare(b.weekKey));
@@ -80,13 +80,13 @@ export default function CalendarView({
   if (viewMode === "agenda") {
     return (
       <div className="calendar-view">
-        {showViewToggle && (
-          <ViewToggle currentView={viewMode} onChange={handleViewChange} />
-        )}
+        {showViewToggle ? <ViewToggle currentView={viewMode} onChange={handleViewChange} /> : null}
         <AgendaView
           weekGroups={weekGroups}
           onSlotClick={onSlotClick}
           onEventClick={onEventClick}
+          renderSlotActions={renderSlotActions}
+          renderEventActions={renderEventActions}
         />
       </div>
     );
@@ -94,13 +94,13 @@ export default function CalendarView({
 
   return (
     <div className="calendar-view">
-      {showViewToggle && (
-        <ViewToggle currentView={viewMode} onChange={handleViewChange} />
-      )}
+      {showViewToggle ? <ViewToggle currentView={viewMode} onChange={handleViewChange} /> : null}
       <WeekCardsView
         weekGroups={weekGroups}
         onSlotClick={onSlotClick}
         onEventClick={onEventClick}
+        renderSlotActions={renderSlotActions}
+        renderEventActions={renderEventActions}
       />
     </div>
   );
@@ -111,6 +111,7 @@ function ViewToggle({ currentView, onChange }) {
     <div className="calendar-view-toggle">
       <button
         className={`btn btn--ghost ${currentView === "week-cards" ? "btn--active" : ""}`}
+        type="button"
         onClick={() => onChange("week-cards")}
         title="Week card view (compact)"
       >
@@ -118,6 +119,7 @@ function ViewToggle({ currentView, onChange }) {
       </button>
       <button
         className={`btn btn--ghost ${currentView === "agenda" ? "btn--active" : ""}`}
+        type="button"
         onClick={() => onChange("agenda")}
         title="Agenda list view (chronological)"
       >
@@ -127,8 +129,14 @@ function ViewToggle({ currentView, onChange }) {
   );
 }
 
-function WeekCardsView({ weekGroups, onSlotClick, onEventClick }) {
-  const [expandedWeeks, setExpandedWeeks] = useState(new Set());
+function WeekCardsView({
+  weekGroups,
+  onSlotClick,
+  onEventClick,
+  renderSlotActions,
+  renderEventActions,
+}) {
+  const [expandedWeeks, setExpandedWeeks] = useState(() => new Set());
 
   const toggleWeek = (weekKey) => {
     setExpandedWeeks((prev) => {
@@ -150,20 +158,24 @@ function WeekCardsView({ weekGroups, onSlotClick, onEventClick }) {
     <div className="week-cards-view">
       {weekGroups.map((week) => {
         const isExpanded = expandedWeeks.has(week.weekKey);
-        const totalGames = week.slots.filter(s => !s.isAvailability).length;
-        const totalOpen = week.slots.filter(s => s.status === "Open").length;
+        const totalGames = week.slots.filter((slot) => !slot.isAvailability).length;
+        const totalOpen = week.slots.filter((slot) => slot.status === "Open").length;
         const totalEvents = week.events.length;
-        // Calculate day summaries
         const daySummaries = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((dayName) => {
-          const dayDates = Array.from(week.days.values()).filter((d) => {
-            const dayOfWeek = getDayName(d.date);
-            return dayOfWeek === dayName;
-          });
+          const dayDates = Array.from(week.days.values()).filter((day) => getDayName(day.date) === dayName);
 
-          if (dayDates.length === 0) return { day: dayName, games: 0, open: 0 };
+          if (dayDates.length === 0) {
+            return { day: dayName, games: 0, open: 0 };
+          }
 
-          const games = dayDates.reduce((sum, d) => sum + d.slots.filter(s => !s.isAvailability && s.status !== "Open").length, 0);
-          const open = dayDates.reduce((sum, d) => sum + d.slots.filter(s => s.status === "Open").length, 0);
+          const games = dayDates.reduce(
+            (sum, day) => sum + day.slots.filter((slot) => !slot.isAvailability && slot.status !== "Open").length,
+            0
+          );
+          const open = dayDates.reduce(
+            (sum, day) => sum + day.slots.filter((slot) => slot.status === "Open").length,
+            0
+          );
 
           return { day: dayName, games, open };
         });
@@ -172,7 +184,9 @@ function WeekCardsView({ weekGroups, onSlotClick, onEventClick }) {
           <div key={week.weekKey} className="week-card">
             <div className="week-card__header" onClick={() => toggleWeek(week.weekKey)}>
               <div className="week-card__title">
-                <span className="week-card__dates">{week.weekStart} - {week.weekEnd}</span>
+                <span className="week-card__dates">
+                  {week.weekStart} - {week.weekEnd}
+                </span>
                 <span className="week-card__stats">
                   {totalGames} games | {totalOpen} open | {totalEvents} events
                 </span>
@@ -187,18 +201,14 @@ function WeekCardsView({ weekGroups, onSlotClick, onEventClick }) {
                 {daySummaries.map((day) => (
                   <div key={day.day} className="week-day-cell">
                     <div className="week-day-cell__label">{day.day}</div>
-                    <div className="week-day-cell__count">
-                      {day.games > 0 ? `${day.games}g` : "-"}
-                    </div>
-                    {day.open > 0 && (
-                      <div className="week-day-cell__open">{day.open}o</div>
-                    )}
+                    <div className="week-day-cell__count">{day.games > 0 ? `${day.games}g` : "-"}</div>
+                    {day.open > 0 ? <div className="week-day-cell__open">{day.open}o</div> : null}
                   </div>
                 ))}
               </div>
             </div>
 
-            {isExpanded && (
+            {isExpanded ? (
               <div className="week-card__details">
                 {Array.from(week.days.values())
                   .sort((a, b) => a.date.localeCompare(b.date))
@@ -213,34 +223,32 @@ function WeekCardsView({ weekGroups, onSlotClick, onEventClick }) {
                         <div className="day-detail__items">
                           {day.slots.map((slot, idx) => {
                             const tone = getSlotToneKey(slot);
+                            const slotActions = renderSlotActions?.(slot);
+                            const isInteractive = typeof onSlotClick === "function";
                             return (
                               <div
-                                key={`slot-${idx}`}
-                                className={`calendar-item calendar-item--slot calendar-item--${tone}`}
-                                onClick={() => onSlotClick?.(slot)}
+                                key={`slot-${slot.slotId || idx}`}
+                                className={`calendar-item calendar-item--slot calendar-item--${tone}${isInteractive ? " calendar-item--interactive" : ""}`}
+                                onClick={isInteractive ? () => onSlotClick(slot) : undefined}
                               >
-                                <div className="calendar-item__time">
-                                  {slot.startTime}-{slot.endTime}
-                                </div>
+                                <div className="calendar-item__time">{formatTimeRange(slot.startTime, slot.endTime)}</div>
                                 <div className="calendar-item__field">
-                                  {slot.displayName || `${slot.parkName || ""} ${slot.fieldName || ""}`.trim()}
-                                  {slot.address && (
+                                  <span>{getFieldLabel(slot) || "Field TBD"}</span>
+                                  {slot.address ? (
                                     <a
                                       href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(slot.address)}`}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       className="field-directions-link"
-                                      onClick={(e) => e.stopPropagation()}
+                                      onClick={stopItemClickPropagation}
                                       title="Get directions to field"
                                     >
-                                      📍
+                                      Map
                                     </a>
-                                  )}
+                                  ) : null}
                                 </div>
                                 <div className="calendar-item__details">
-                                  <div className="calendar-item__matchup">
-                                    {getMatchupLabel(slot)}
-                                  </div>
+                                  <div className="calendar-item__matchup">{getMatchupLabel(slot) || "Slot"}</div>
                                   <div className="calendar-item__meta">
                                     <span className={`calendar-item__status calendar-item__status--${tone}`}>
                                       {getSlotStatusLabel(slot)}
@@ -249,28 +257,46 @@ function WeekCardsView({ weekGroups, onSlotClick, onEventClick }) {
                                       <span className="calendar-item__division">{slot.division}</span>
                                     ) : null}
                                   </div>
+                                  {slot.confirmedTeamId ? (
+                                    <div className="calendar-item__subtitle">Confirmed: {slot.confirmedTeamId}</div>
+                                  ) : null}
+                                  {slotActions ? (
+                                    <div className="calendar-item__actions" onClick={stopItemClickPropagation}>
+                                      {slotActions}
+                                    </div>
+                                  ) : null}
                                 </div>
                               </div>
                             );
                           })}
-                          {day.events.map((event, idx) => (
-                            <div
-                              key={`event-${idx}`}
-                              className="calendar-item calendar-item--event"
-                              onClick={() => onEventClick?.(event)}
-                            >
-                              <div className="calendar-item__title">Event: {event.title || "Event"}</div>
-                              {event.description && (
-                                <div className="calendar-item__description">{event.description}</div>
-                              )}
-                            </div>
-                          ))}
+                          {day.events.map((event, idx) => {
+                            const eventActions = renderEventActions?.(event);
+                            const subtitle = getEventSubtitle(event);
+                            const notes = getEventNotes(event);
+                            const isInteractive = typeof onEventClick === "function";
+                            return (
+                              <div
+                                key={`event-${event.eventId || idx}`}
+                                className={`calendar-item calendar-item--event${isInteractive ? " calendar-item--interactive" : ""}`}
+                                onClick={isInteractive ? () => onEventClick(event) : undefined}
+                              >
+                                <div className="calendar-item__title">{getEventTitle(event)}</div>
+                                {subtitle ? <div className="calendar-item__description">{subtitle}</div> : null}
+                                {notes ? <div className="calendar-item__description">{notes}</div> : null}
+                                {eventActions ? (
+                                  <div className="calendar-item__actions" onClick={stopItemClickPropagation}>
+                                    {eventActions}
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     );
                   })}
               </div>
-            )}
+            ) : null}
           </div>
         );
       })}
@@ -278,15 +304,20 @@ function WeekCardsView({ weekGroups, onSlotClick, onEventClick }) {
   );
 }
 
-function AgendaView({ weekGroups, onSlotClick, onEventClick }) {
+function AgendaView({
+  weekGroups,
+  onSlotClick,
+  onEventClick,
+  renderSlotActions,
+  renderEventActions,
+}) {
   if (weekGroups.length === 0) {
     return <div className="subtle">No items in this range.</div>;
   }
 
-  // Flatten all days from all weeks into chronological list
-  const allDays = weekGroups.flatMap((week) =>
-    Array.from(week.days.values())
-  ).sort((a, b) => a.date.localeCompare(b.date));
+  const allDays = weekGroups
+    .flatMap((week) => Array.from(week.days.values()))
+    .sort((a, b) => a.date.localeCompare(b.date));
 
   return (
     <div className="agenda-view">
@@ -301,33 +332,36 @@ function AgendaView({ weekGroups, onSlotClick, onEventClick }) {
             </div>
 
             <div className="agenda-day__items">
-              {/* Group by field for better organization */}
-              {groupByField(day.slots).map(({ fieldKey, fieldName, slots }) => (
+              {groupByField(day.slots).map(({ fieldKey, fieldName, slots: fieldSlots }) => (
                 <div key={fieldKey} className="agenda-field-group">
-                  <div className="agenda-field-group__name">
-                    Field: {fieldName}
-                  </div>
-                  {slots.map((slot, idx) => {
+                  <div className="agenda-field-group__name">Field: {fieldName}</div>
+                  {fieldSlots.map((slot, idx) => {
                     const tone = getSlotToneKey(slot);
+                    const slotActions = renderSlotActions?.(slot);
+                    const isInteractive = typeof onSlotClick === "function";
                     return (
                       <div
-                        key={`slot-${idx}`}
-                        className={`agenda-item agenda-item--${tone}`}
-                        onClick={() => onSlotClick?.(slot)}
+                        key={`slot-${slot.slotId || idx}`}
+                        className={`agenda-item agenda-item--${tone}${isInteractive ? " agenda-item--interactive" : ""}`}
+                        onClick={isInteractive ? () => onSlotClick(slot) : undefined}
                       >
-                        <div className="agenda-item__time">
-                          {slot.startTime}-{slot.endTime}
-                        </div>
-                        <div className="agenda-item__matchup">
-                          {getMatchupLabel(slot)}
+                        <div className="agenda-item__time">{formatTimeRange(slot.startTime, slot.endTime)}</div>
+                        <div className="agenda-item__body">
+                          <div className="agenda-item__matchup">{getMatchupLabel(slot) || "Slot"}</div>
+                          {slot.confirmedTeamId ? (
+                            <div className="agenda-item__subtitle">Confirmed: {slot.confirmedTeamId}</div>
+                          ) : null}
+                          {slotActions ? (
+                            <div className="agenda-item__actions" onClick={stopItemClickPropagation}>
+                              {slotActions}
+                            </div>
+                          ) : null}
                         </div>
                         <div className="agenda-item__meta">
                           <span className={`agenda-item__status agenda-item__status--${tone}`}>
                             {getSlotStatusLabel(slot)}
                           </span>
-                          {slot.division ? (
-                            <span className="agenda-item__division">{slot.division}</span>
-                          ) : null}
+                          {slot.division ? <span className="agenda-item__division">{slot.division}</span> : null}
                         </div>
                       </div>
                     );
@@ -335,18 +369,28 @@ function AgendaView({ weekGroups, onSlotClick, onEventClick }) {
                 </div>
               ))}
 
-              {day.events.map((event, idx) => (
-                <div
-                  key={`event-${idx}`}
-                  className="agenda-item agenda-item--event"
-                  onClick={() => onEventClick?.(event)}
-                >
-                  <div className="agenda-item__title">Event: {event.title || "Event"}</div>
-                  {event.description && (
-                    <div className="agenda-item__description">{event.description}</div>
-                  )}
-                </div>
-              ))}
+              {day.events.map((event, idx) => {
+                const eventActions = renderEventActions?.(event);
+                const subtitle = getEventSubtitle(event);
+                const notes = getEventNotes(event);
+                const isInteractive = typeof onEventClick === "function";
+                return (
+                  <div
+                    key={`event-${event.eventId || idx}`}
+                    className={`agenda-item agenda-item--event${isInteractive ? " agenda-item--interactive" : ""}`}
+                    onClick={isInteractive ? () => onEventClick(event) : undefined}
+                  >
+                    <div className="agenda-item__title">{getEventTitle(event)}</div>
+                    {subtitle ? <div className="agenda-item__description">{subtitle}</div> : null}
+                    {notes ? <div className="agenda-item__description">{notes}</div> : null}
+                    {eventActions ? (
+                      <div className="agenda-item__actions" onClick={stopItemClickPropagation}>
+                        {eventActions}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
           </div>
         );
@@ -355,7 +399,61 @@ function AgendaView({ weekGroups, onSlotClick, onEventClick }) {
   );
 }
 
-// Helper functions
+function stopItemClickPropagation(event) {
+  event.stopPropagation();
+}
+
+function isSlotItem(item) {
+  return !!(item?.slotId || item?.fieldKey);
+}
+
+function getItemDate(item) {
+  return item?.gameDate || item?.eventDate || item?.date || "";
+}
+
+function getFieldLabel(slot) {
+  return slot?.displayName || `${slot?.parkName || ""} ${slot?.fieldName || ""}`.trim() || slot?.fieldKey || "";
+}
+
+function formatTimeRange(startTime, endTime) {
+  const start = String(startTime || "").trim();
+  const end = String(endTime || "").trim();
+  if (start && end) return `${start}-${end}`;
+  return start || end || "Time TBD";
+}
+
+function formatOptionalTimeRange(startTime, endTime) {
+  const start = String(startTime || "").trim();
+  const end = String(endTime || "").trim();
+  if (start && end) return `${start}-${end}`;
+  return start || end || "";
+}
+
+function getEventTitle(event) {
+  const type = String(event?.type || "").trim();
+  const title = String(event?.title || "").trim();
+  if (type && title && title.toLowerCase().startsWith(`${type.toLowerCase()}:`)) return title;
+  if (type && title) return `${type}: ${title}`;
+  return title || type || "Event";
+}
+
+function getEventSubtitle(event) {
+  return [
+    formatOptionalTimeRange(event?.startTime, event?.endTime),
+    event?.status ? `Status: ${event.status}` : "",
+    event?.opponentTeamId ? `Opponent: ${event.opponentTeamId}` : "",
+    event?.location ? `Location: ${event.location}` : "",
+    event?.division ? `Division: ${event.division}` : "",
+    event?.teamId ? `Team: ${event.teamId}` : "",
+  ]
+    .filter(Boolean)
+    .join(" | ");
+}
+
+function getEventNotes(event) {
+  return String(event?.notes || event?.description || "").trim();
+}
+
 function parseLocalIsoDate(dateStr) {
   const parts = String(dateStr || "").split("-");
   if (parts.length !== 3) return null;
@@ -394,7 +492,7 @@ function getWeekStart(dateStr) {
   const date = parseLocalIsoDate(dateStr);
   if (!date) return "";
   const day = date.getDay();
-  const diff = date.getDate() - day + (day === 0 ? -6 : 1); // Adjust to Monday
+  const diff = date.getDate() - day + (day === 0 ? -6 : 1);
   const monday = new Date(date.setDate(diff));
   return formatLocalIsoDate(monday);
 }
@@ -410,7 +508,6 @@ function getDayName(dateStr) {
   const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const localDate = parseLocalIsoDate(dateStr);
   if (localDate) return days[localDate.getDay()];
-  // Fallback to direct parsing
   const date = new Date(dateStr);
   return days[date.getDay()];
 }
@@ -448,7 +545,7 @@ function groupByField(slots) {
 
   slots.forEach((slot) => {
     const fieldKey = slot.fieldKey || "unknown";
-    const fieldName = slot.displayName || `${slot.parkName || ""} ${slot.fieldName || ""}`.trim() || fieldKey;
+    const fieldName = getFieldLabel(slot) || fieldKey;
 
     if (!grouped.has(fieldKey)) {
       grouped.set(fieldKey, { fieldKey, fieldName, slots: [] });

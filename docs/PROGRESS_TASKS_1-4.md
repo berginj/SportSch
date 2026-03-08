@@ -183,8 +183,6 @@
   - `GetSlots` (GET with query parameters)
   - `CancelSlot` (DELETE operation)
   - `CreateSlotRequest` (POST request)
-  - `ApproveSlotRequest` (PATCH approval)
-  - `DenySlotRequest` (PATCH denial)
   - All availability functions (6 endpoints)
   - All field management functions (5 endpoints)
   - All admin functions (10+ endpoints)

@@ -179,15 +179,15 @@ public class EmailService : IEmailService
 
     public async Task SendRequestReceivedEmailAsync(string to, string leagueId, string requesterName, string gameDate, string startTime)
     {
-        var subject = $"Swap Request Received - {gameDate} at {startTime}";
+        var subject = $"Open Game Accepted - {gameDate} at {startTime}";
         var body = $@"
-You have received a new swap request:
+Another team accepted one of your open games:
 
-From: {requesterName}
+Team: {requesterName}
 Date: {gameDate}
 Time: {startTime}
 
-Visit your GameSwap dashboard to review and respond to this request.
+The game is now confirmed. Visit your GameSwap dashboard to review the updated calendar.
 ";
 
         await QueueEmailAsync(to, subject, body, "RequestReceived", null, leagueId);
@@ -195,9 +195,9 @@ Visit your GameSwap dashboard to review and respond to this request.
 
     public async Task SendRequestApprovedEmailAsync(string to, string leagueId, string gameDate, string startTime, string field)
     {
-        var subject = $"Swap Request Approved - {gameDate} at {startTime}";
+        var subject = $"Game Confirmed - {gameDate} at {startTime}";
         var body = $@"
-Your swap request has been approved!
+Your team has been confirmed for a game.
 
 Date: {gameDate}
 Time: {startTime}
@@ -211,9 +211,9 @@ The game is now confirmed for your team. Visit your GameSwap dashboard to view d
 
     public async Task SendRequestDeniedEmailAsync(string to, string leagueId, string gameDate, string startTime)
     {
-        var subject = $"Swap Request Update - {gameDate} at {startTime}";
+        var subject = $"Game No Longer Available - {gameDate} at {startTime}";
         var body = $@"
-Your swap request for {gameDate} at {startTime} was not approved.
+The game you tried to accept for {gameDate} at {startTime} is no longer available.
 
 Visit your GameSwap dashboard to view other available opportunities.
 ";

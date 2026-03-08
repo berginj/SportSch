@@ -9,6 +9,8 @@ This document summarizes the security posture of the GameSwap application after 
 
 ## Authentication & Authorization
 
+> Note: this is a security review snapshot, not the source-of-truth contract. Current coach assignment reads use canonical `Division/TeamId`.
+
 ### ✅ Role-Based Access Control (RBAC)
 **Status:** IMPLEMENTED
 
@@ -28,8 +30,8 @@ This document summarizes the security posture of the GameSwap application after 
 Coaches are restricted to their assigned division and team:
 ```csharp
 // api/Services/AuthorizationService.cs:90-103
-var coachDivision = membership.GetString("CoachDivision") ?? "";
-var coachTeamId = membership.GetString("CoachTeamId") ?? "";
+var coachDivision = (membership.GetString("Division") ?? "").Trim();
+var coachTeamId = (membership.GetString("TeamId") ?? "").Trim();
 
 if (coachDivision != division)
     throw new ApiGuards.HttpError(403, ErrorCodes.COACH_DIVISION_MISMATCH, ...);
@@ -192,7 +194,7 @@ public async Task UpdateSlotAsync(TableEntity slot, ETag etag)
 ```
 
 **Verified in:**
-- ApproveSlotRequest uses retry logic for ETag conflicts
+- CreateSlotRequest uses concurrency checks when confirming an open slot
 - `api/Storage/RetryUtil.cs` - Exponential backoff for 412 errors
 
 ### ✅ Conflict Detection

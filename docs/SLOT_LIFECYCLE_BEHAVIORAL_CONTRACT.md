@@ -54,7 +54,6 @@ Current endpoint policy:
 - `PATCH /slots/{division}/{slotId}`: admin/global only.
 - `PATCH /slots/{division}/{slotId}/cancel`: slot owner team or confirmed team, or admin/global.
 - `POST /slots/{division}/{slotId}/requests`: coach/admin/global; exact division match required.
-- `PATCH /slots/{division}/{slotId}/requests/{requestId}/approve`: offering coach or admin/global, idempotent compatibility path.
 - `PATCH /slots/{division}/{slotId}/status`: admin/global only.
 
 ## 6. Lifecycle Transitions
@@ -90,13 +89,12 @@ On success, current canonical behavior is immediate confirm:
 - set `ConfirmedTeamId` and `ConfirmedRequestId`,
 - best-effort deny other pending requests for the same slot.
 
-### 6.3 Approve Request Endpoint (Compatibility)
+### 6.3 No Separate Approve Step
 
-`PATCH /slots/{division}/{slotId}/requests/{requestId}/approve` is a compatibility endpoint.
+Game-slot acceptance is single-step. There is no separate approve endpoint in the current contract.
 
-- If slot is already confirmed for that request, it MUST return success.
-- If slot is confirmed for a different request, it MUST return conflict.
-- If a truly pending request exists, endpoint MAY run pending->approved and confirm flow.
+- `POST /slots/{division}/{slotId}/requests` is the only acceptance path.
+- Successful acceptance MUST create an approved request row and confirm the slot in the same workflow.
 
 ### 6.4 Cancel Slot
 
@@ -145,8 +143,8 @@ When status changes from `Confirmed` to `Cancelled`, cancellation notifications 
 
 ## 9. Known Intentional Compatibility Behavior
 
-- Immediate confirm on request create is canonical today; pending-request queues are legacy-compatible behavior.
-- The explicit approve endpoint remains supported for compatibility/idempotency.
+- Immediate confirm on request create is canonical today.
+- Practice-request review remains a separate pending/approve workflow under the practice contract.
 
 ## 10. Change Control
 

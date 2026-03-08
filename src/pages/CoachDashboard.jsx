@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../lib/api';
+import { readPagedItems } from '../lib/pagedResults';
 import StatusCard from '../components/StatusCard';
 
 function isGameSlot(slot) {
@@ -19,7 +20,7 @@ function isOpenOfferSlot(slot) {
  * Shows:
  * - Team summary
  * - Upcoming games
- * - Action items (new offers, pending requests)
+ * - Action items (new open offers, upcoming games)
  * - Quick actions
  */
 export default function CoachDashboard({ me, leagueId, setTab }) {
@@ -52,7 +53,8 @@ export default function CoachDashboard({ me, leagueId, setTab }) {
       ]);
 
       // Filter slots for team's upcoming games (confirmed and where team is playing)
-      const upcomingGames = (Array.isArray(slots) ? slots : [])
+      const slotItems = readPagedItems(slots);
+      const upcomingGames = slotItems
         .filter(slot => {
           if (!isGameSlot(slot)) return false;
           if (slot.status !== 'Confirmed') return false;
@@ -68,7 +70,7 @@ export default function CoachDashboard({ me, leagueId, setTab }) {
         .slice(0, 5); // Next 5 games
 
       // Count open offers in division
-      const openOffersInDivision = (Array.isArray(slots) ? slots : [])
+      const openOffersInDivision = slotItems
         .filter(slot => {
           return isOpenOfferSlot(slot) &&
                  slot.division === division &&
@@ -76,7 +78,7 @@ export default function CoachDashboard({ me, leagueId, setTab }) {
         }).length;
 
       // Count my open offers
-      const myOpenOffers = (Array.isArray(slots) ? slots : [])
+      const myOpenOffers = slotItems
         .filter(slot => {
           return isOpenOfferSlot(slot) && slot.offeringTeamId === teamId;
         }).length;

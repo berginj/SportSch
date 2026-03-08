@@ -16,6 +16,7 @@ Use these alongside this API contract for workflow-critical behavior:
 ### Auth
 - All calls assume the user is authenticated via Azure Static Web Apps EasyAuth.
 - The API may return 401 when the user is not signed in.
+- Current product scope is authenticated league members only. Public or tokenized view-only calendar pages are not part of this contract today.
 
 ### Base path
 - In Azure Static Web Apps, the API is exposed under `/api`. UI calls should use `/api/<route>` unless a different `VITE_API_BASE_URL` is configured.
@@ -23,13 +24,20 @@ Use these alongside this API contract for workflow-critical behavior:
 ### League scoping (non-negotiable)
 - Every league-scoped endpoint requires header: x-league-id: <leagueId>
 - Backend validates header presence and authorization (membership or global admin where specified).
-- UI persists the selected league id (localStorage key `gameswap_leagueId`) and attaches it on every league-scoped request.
+- UI persists the selected league id under localStorage key `gameswap_leagueId` and attaches it on every league-scoped request.
+
+### Canonical data shapes (non-negotiable)
+- Division DTOs use `code`, `name`, and `isActive`.
+- Membership coach assignment uses nested `team: { division, teamId }`.
+- Fields use `FieldName`; `displayName` is the UI-facing composite label when present.
+- Practice portal one-off enablement is division-scoped.
+- Public slot browsing and external subscribe-link flows are outside the current product contract.
 
 ### Roles (locked)
 League role strings:
 - LeagueAdmin: can manage league setup (fields, divisions/templates, teams), update league contact, and perform all scheduler actions. Second only to global admin.
-- Coach: can be approved before a team is assigned. A LeagueAdmin can assign (or change) the coach's team later. Coaches can offer slots, request swaps, and approve/deny slot requests. Some actions (like requesting a swap) may require a team assignment.
-- Viewer: read-only. Can view available games/slots and upcoming schedule views. Cannot offer, request, approve, or manage setup.
+- Coach: can be approved before a team is assigned. A LeagueAdmin can assign (or change) the coach's team later. Coaches can offer slots and accept open game opportunities. Some actions require a team assignment.
+- Viewer: read-only. Can view available games/slots and upcoming schedule views. Cannot offer, accept, or manage setup.
 
 Global admin:
 - isGlobalAdmin is returned by /me. Global admins can create leagues and can perform any league-scoped admin action.
@@ -348,7 +356,7 @@ describe('LeaguePicker', () => {
 ### Backend tests
 Integration tests validate end-to-end workflows:
 - Use in-memory Azure Storage Emulator (Azurite)
-- Test complete workflows (create slot → create request → approve)
+- Test complete workflows (create slot → create request → confirm)
 - Verify authorization rules and error handling
 
 ---
@@ -390,7 +398,8 @@ PartitionKey/RowKey conventions (canonical):
 - League Backups: PK = `LEAGUEBACKUP`, RK = `<leagueId>`
 
 Legacy compatibility:
-- Reads may fall back to legacy PKs when needed, but all new writes must use canonical PKs above.
+- This contract does not promise legacy PK, field-name, route, or DTO fallbacks.
+- Current runtime behavior should be implemented against the canonical shapes above.
 
 ---
 
@@ -465,29 +474,20 @@ the notes for required headers or roles.
 | PATCH | /league/season | `Functions/LeaguesFunctions.cs` | League/global admin update season settings (header-scoped). |
 | PATCH | /global/leagues/{leagueId}/season | `Functions/LeaguesFunctions.cs` | Global admin update season settings (alt route). |
 | DELETE | /global/leagues/{leagueId} | `Functions/LeaguesFunctions.cs` | Global admin delete league (data wipe). |
-| GET | /admin/globaladmins | `Functions/GlobalAdminsFunctions.cs` | Global admin list. |
-| POST | /admin/globaladmins | `Functions/GlobalAdminsFunctions.cs` | Add global admin. |
-| DELETE | /admin/globaladmins/{userId} | `Functions/GlobalAdminsFunctions.cs` | Remove global admin. |
-| GET | /globaladmins | `Functions/GlobalAdminsFunctions.cs` | Global admin list (alt route). |
-| POST | /globaladmins | `Functions/GlobalAdminsFunctions.cs` | Add global admin (alt route). |
-| DELETE | /globaladmins/{userId} | `Functions/GlobalAdminsFunctions.cs` | Remove global admin (alt route). |
+| GET | /globaladmins | `Functions/GlobalAdminsFunctions.cs` | Global admin list. |
+| POST | /globaladmins | `Functions/GlobalAdminsFunctions.cs` | Add global admin. |
+| DELETE | /globaladmins/{userId} | `Functions/GlobalAdminsFunctions.cs` | Remove global admin. |
 | POST | /admin/wipe | `Functions/AdminWipe.cs` | Global admin wipe for league-scoped tables (requires `x-league-id`). |
 | POST | /admin/season-reset | `Functions/SeasonReset.cs` | LeagueAdmin/global cleanup of fields + game/practice data + availability setup for selected league (requires `x-league-id`). |
-| POST | /admin/migrate/fields | `Functions/AdminMigrateFields.cs` | Global admin migrate fields PKs from legacy format (requires `x-league-id`). |
-| POST | /global/migrate/fields | `Functions/AdminMigrateFields.cs` | Global admin migrate fields PKs from legacy format (alt route). |
-| GET | /admin/storage/health | `Functions/StorageHealth.cs` | Global admin storage connectivity check. |
-| GET | /storage/health | `Functions/StorageHealth.cs` | Global admin storage connectivity check (alt route). |
+| GET | /storage/health | `Functions/StorageHealth.cs` | Global admin storage connectivity check. |
 | POST | /accessrequests | `Functions/AccessRequestsFunctions.cs` | Create access request. |
 | GET | /accessrequests/mine | `Functions/AccessRequestsFunctions.cs` | Current user's access requests. |
 | GET | /accessrequests | `Functions/AccessRequestsFunctions.cs` | League access requests (requires `x-league-id`, LeagueAdmin). Global admins can use `all=true` to list across leagues. |
 | PATCH | /accessrequests/{userId}/approve | `Functions/AccessRequestsFunctions.cs` | Approve access request (requires `x-league-id`, LeagueAdmin). |
 | PATCH | /accessrequests/{userId}/deny | `Functions/AccessRequestsFunctions.cs` | Deny access request (requires `x-league-id`, LeagueAdmin). |
 | POST | /admin/invites | `Functions/LeagueInvitesFunctions.cs` | Create invite (requires `x-league-id`, LeagueAdmin). |
-| POST | /invites | `Functions/LeagueInvitesFunctions.cs` | Create invite (alt route; requires `x-league-id`, LeagueAdmin). |
-| GET | /admin/users | `Functions/AdminUsersFunctions.cs` | Global admin list users. |
-| POST | /admin/users | `Functions/AdminUsersFunctions.cs` | Global admin upsert user profile + home role. |
-| GET | /users | `Functions/AdminUsersFunctions.cs` | Global admin list users (alt route). |
-| POST | /users | `Functions/AdminUsersFunctions.cs` | Global admin upsert user profile + home role (alt route). |
+| GET | /users | `Functions/AdminUsersFunctions.cs` | Global admin list users. |
+| POST | /users | `Functions/AdminUsersFunctions.cs` | Global admin upsert user profile + home role. |
 | POST | /invites/accept | `Functions/LeagueInvitesFunctions.cs` | Accept invite. |
 | GET | /memberships | `Functions/MembershipsFunctions.cs` | List memberships (requires `x-league-id`, LeagueAdmin). Global admins can use `all=true` to list across leagues. |
 | PATCH | /memberships/{userId} | `Functions/MembershipsFunctions.cs` | Update membership (requires `x-league-id`, LeagueAdmin). |
@@ -516,7 +516,6 @@ the notes for required headers or roles.
 | PATCH | /slots/{division}/{slotId}/cancel | `Functions/CancelSlot.cs` | Cancel slot (requires `x-league-id`, LeagueAdmin). |
 | GET | /slots/{division}/{slotId}/requests | `Functions/GetSlotRequests.cs` | List requests for slot (requires `x-league-id`). |
 | POST | /slots/{division}/{slotId}/requests | `Functions/CreateSlotRequest.cs` | Request slot (requires `x-league-id`, Coach). |
-| PATCH | /slots/{division}/{slotId}/requests/{requestId}/approve | `Functions/ApproveSlotRequest.cs` | Approve slot request (requires `x-league-id`, offering coach, LeagueAdmin, or global admin). |
 | GET | /availability/allocations | `Functions/AvailabilityAllocationsFunctions.cs` | List availability allocations (requires `x-league-id`, LeagueAdmin). |
 | POST | /availability/allocations/clear | `Functions/AvailabilityAllocationsFunctions.cs` | Clear allocations (requires `x-league-id`, LeagueAdmin). |
 | POST | /availability/allocations/slots/preview | `Functions/AvailabilityAllocationSlotsFunctions.cs` | Preview slots generated from allocations (requires `x-league-id`, LeagueAdmin). |
@@ -530,15 +529,12 @@ the notes for required headers or roles.
 | PATCH | /availability/rules/{ruleId}/exceptions/{exceptionId} | `Functions/AvailabilityFunctions.cs` | Update availability exception (requires `x-league-id`, LeagueAdmin). |
 | DELETE | /availability/rules/{ruleId}/exceptions/{exceptionId} | `Functions/AvailabilityFunctions.cs` | Delete availability exception (requires `x-league-id`, LeagueAdmin). |
 | GET | /availability/preview | `Functions/AvailabilityFunctions.cs` | Preview availability slots (requires `x-league-id`, LeagueAdmin). |
-| POST | /schedule/preview | `Functions/ScheduleFunctions.cs` | Deprecated. Returns `410 SCHEDULER_DEPRECATED`; use `/schedule/wizard/preview`. |
-| POST | /schedule/apply | `Functions/ScheduleFunctions.cs` | Deprecated. Returns `410 SCHEDULER_DEPRECATED`; use `/schedule/wizard/apply`. |
-| POST | /schedule/validate | `Functions/ScheduleFunctions.cs` | Deprecated. Returns `410 SCHEDULER_DEPRECATED`; use wizard rule-health output. |
 | POST | /schedule/wizard/preview | `Functions/ScheduleWizardFunctions.cs` | Preview wizard-built season schedule (requires `x-league-id`, LeagueAdmin). |
 | POST | /schedule/wizard/apply | `Functions/ScheduleWizardFunctions.cs` | Apply wizard-built season schedule (requires `x-league-id`, LeagueAdmin). |
 | POST | /schedule/slots/preview | `Functions/SlotGenerationFunctions.cs` | Preview generated availability slots (requires `x-league-id`, LeagueAdmin). |
 | POST | /schedule/slots/apply | `Functions/SlotGenerationFunctions.cs` | Generate availability slots (requires `x-league-id`, LeagueAdmin). |
 | POST | /availability-slots/clear | `Functions/ClearAvailabilitySlots.cs` | Delete availability slots for a division/date range (requires `x-league-id`, LeagueAdmin). |
-| GET | /calendar/ics | `Functions/CalendarFeed.cs` | Calendar subscription feed (requires `x-league-id` or leagueId query). |
+| GET | /calendar/ics | `Functions/CalendarFeed.cs` | Authenticated calendar ICS feed (requires `x-league-id`). |
 | GET | /events | `Functions/GetEvents.cs` | List events (requires `x-league-id`). |
 | POST | /events | `Functions/CreateEvent.cs` | Create event (requires `x-league-id`, LeagueAdmin). |
 | PATCH | /events/{eventId} | `Functions/PatchEvent.cs` | Update event (requires `x-league-id`, LeagueAdmin). |
@@ -717,17 +713,9 @@ Notes
 - Does **not** delete memberships, teams, divisions, or league profile metadata.
 - Returns per-category delete counts and may include an `errors` array when one or more categories fail to reset.
 
-### Admin: POST /admin/migrate/fields (league-scoped)
-Requires: global admin.
-Header: `x-league-id`
-
-Migrates legacy field rows with PK `FIELD#<leagueId>#<parkCode>` into the new PK format `FIELD|<leagueId>|<parkCode>`.
-
----
-
 ## 3b) Global admins (admin)
 
-### Admin: GET /admin/globaladmins
+### Admin: GET /globaladmins
 Requires: global admin.
 
 Response
@@ -735,7 +723,7 @@ Response
 { "data": [ { "userId": "...", "email": "admin@example.com" } ] }
 ```
 
-### Admin: POST /admin/globaladmins
+### Admin: POST /globaladmins
 Requires: global admin.
 
 Body
@@ -748,7 +736,7 @@ Response
 { "data": { "userId": "...", "email": "admin@example.com" } }
 ```
 
-### Admin: DELETE /admin/globaladmins/{userId}
+### Admin: DELETE /globaladmins/{userId}
 Requires: global admin.
 
 Response
@@ -756,8 +744,8 @@ Response
 { "data": { "userId": "...", "removed": true } }
 ```
 
-### Admin: GET /admin/users
-Requires: global admin.  
+### Admin: GET /users
+Requires: global admin.
 Query: `search` (optional; matches userId, email, homeLeagueId)
 
 Response
@@ -775,7 +763,7 @@ Response
 }
 ```
 
-### Admin: POST /admin/users
+### Admin: POST /users
 Requires: global admin.
 
 Body
@@ -885,16 +873,13 @@ Response
 }
 ```
 
-### POST /invites (league-scoped)
-Header: x-league-id
-Requires: LeagueAdmin or global admin.
-
 ### POST /invites/accept
-Accepts an invite using the invite id + league id.
+Header: x-league-id
+Accepts an invite using the invite id from the magic link and the league scope from the request header.
 
 Body
 ```json
-{ "leagueId": "ARL", "inviteId": "<string>" }
+{ "inviteId": "<string>" }
 ```
 
 Response
@@ -975,6 +960,11 @@ Notes
 ### GET /divisions (league-scoped)
 Header: x-league-id
 Requires: member (any role).
+
+Response items use:
+- `code`
+- `name`
+- `isActive`
 
 ### POST /divisions (league-scoped)
 Requires: LeagueAdmin or global admin.
@@ -1260,36 +1250,7 @@ Default behavior:
 - If `status` is omitted, the API returns **Open + Confirmed** slots.
 - To see cancelled slots, pass `status=Cancelled`.
 
-Response (non-paginated, for backward compatibility when pageSize not specified)
-```json
-{
-  "data": [
-    {
-      "slotId": "slot_123",
-      "leagueId": "ARL",
-      "division": "10U",
-      "offeringTeamId": "TIGERS",
-      "confirmedTeamId": "",
-      "homeTeamId": "TIGERS",
-      "awayTeamId": "",
-      "isExternalOffer": false,
-      "isAvailability": false,
-      "gameDate": "2026-04-10",
-      "startTime": "18:00",
-      "endTime": "20:00",
-      "parkName": "Gunston",
-      "fieldName": "Turf",
-      "displayName": "Gunston > Turf",
-      "fieldKey": "gunston/turf",
-      "gameType": "Swap",
-      "status": "Open",
-      "notes": "Open game offer"
-    }
-  ]
-}
-```
-
-Response (paginated, when pageSize is specified)
+Response
 ```json
 {
   "data": {
@@ -1387,24 +1348,6 @@ Response
 
 ### GET /slots/{division}/{slotId}/requests (league-scoped)
 Requires: member (Viewer allowed).
-
-### PATCH /slots/{division}/{slotId}/requests/{requestId}/approve (league-scoped)
-Legacy/compatibility endpoint.
-
-With immediate-confirmation semantics, slot acceptance already confirms the slot. This endpoint is idempotent:
-- If the slot is already confirmed for the given requestId, it returns ok.
-- Otherwise it returns 409 conflict.
-
-Requires: member role is not Viewer.  
-Rules
-- Allowed for: offering coach (offeringTeamId) OR LeagueAdmin OR global admin.
-- If the slot is already confirmed for this requestId, returns ok.
-- If the slot is confirmed for a different requestId, returns 409.
-
-Response
-```json
-{ "data": { "ok": true, "slotId": "slot_123", "division": "10U", "requestId": "req_123", "status": "Confirmed" } }
-```
 
 ### PATCH /slots/{division}/{slotId}/cancel (league-scoped)
 Requires: offering team OR accepting team (confirmedTeamId) OR LeagueAdmin OR global admin.
@@ -1654,11 +1597,7 @@ Response
 
 ## 8c) Division scheduling (admin)
 
-Legacy scheduling endpoints `/schedule/preview`, `/schedule/apply`, and `/schedule/validate` are deprecated.
-
-Current behavior:
-- all three endpoints return `410 SCHEDULER_DEPRECATED`
-- all commissioner scheduling flows use wizard endpoints only
+All commissioner scheduling flows use wizard endpoints only.
 
 ### POST /schedule/wizard/preview (league-scoped)
 Requires: LeagueAdmin or global admin.
@@ -1715,7 +1654,6 @@ Scheduler export formats
 Validation + apply rules
 - `/schedule/wizard/preview` returns warnings/issues plus `ruleHealth` summaries.
 - `/schedule/wizard/apply` writes the full preview run when apply succeeds; failures roll back and return a conflict.
-- Legacy `/schedule/preview|apply|validate` endpoints are deprecated and return `410 SCHEDULER_DEPRECATED`.
 
 ### POST /schedule/slots/preview (league-scoped)
 Requires: LeagueAdmin or global admin.
@@ -1788,8 +1726,8 @@ Response
 ## 8b) Calendar feed
 
 ### GET /calendar/ics (league-scoped)
-Requires: member (Viewer allowed).  
-Header: x-league-id (or query param `leagueId`).
+Requires: authenticated member (Viewer allowed).
+Header: x-league-id.
 
 Query (all optional):
 - `division`
@@ -1801,6 +1739,12 @@ Query (all optional):
 - `includeCancelled` (true/false, default false when `status` omitted)
 
 Returns iCalendar (ICS) with slots + events.
+Current scope: authenticated member/API access only. External calendar-app subscription links are disabled until tokenized feeds exist.
+
+## 8c) Practice portal configuration
+
+Practice portal one-off request enablement is division-scoped.
+League-level fallback configuration is not part of the current contract.
 
 ---
 
@@ -1867,7 +1811,7 @@ Requires: LeagueAdmin or global admin.
 **Authorization checks:**
 - Use `IAuthorizationService` for all permission checks
 - Never inline authorization logic in functions
-- Common patterns: `RequireNotViewerAsync()`, `CanCreateSlotAsync()`, `CanApproveRequestAsync()`
+- Common patterns: `RequireNotViewerAsync()`, `CanCreateSlotAsync()`, `CanCancelSlotAsync()`
 
 **Error handling:**
 - Throw `ApiGuards.HttpError` with error codes from `ErrorCodes.cs`

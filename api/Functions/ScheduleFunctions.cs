@@ -52,36 +52,6 @@ public class ScheduleFunctions
         List<object> failures
     );
 
-    [Function("SchedulePreview")]
-    public Task<HttpResponseData> Preview(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "schedule/preview")] HttpRequestData req)
-    {
-        return Task.FromResult(LegacySchedulerDeprecated(req));
-    }
-
-    [Function("ScheduleApply")]
-    public Task<HttpResponseData> Apply(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "schedule/apply")] HttpRequestData req)
-    {
-        return Task.FromResult(LegacySchedulerDeprecated(req));
-    }
-
-    [Function("ScheduleValidate")]
-    public Task<HttpResponseData> Validate(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "schedule/validate")] HttpRequestData req)
-    {
-        return Task.FromResult(LegacySchedulerDeprecated(req));
-    }
-
-    private static HttpResponseData LegacySchedulerDeprecated(HttpRequestData req)
-    {
-        return ApiResponses.Error(
-            req,
-            HttpStatusCode.Gone,
-            "SCHEDULER_DEPRECATED",
-            "This endpoint is deprecated. Use /api/schedule/wizard/preview and /api/schedule/wizard/apply.");
-    }
-
     [Function("ScheduleResetUsage")]
     public async Task<HttpResponseData> ResetUsage(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "schedule/reset-usage")] HttpRequestData req)
@@ -374,7 +344,7 @@ public class ScheduleFunctions
                         req,
                         HttpStatusCode.BadRequest,
                         "SCHEDULE_VALIDATION_FAILED",
-                        $"Schedule validation failed with {validation.TotalIssues} issue(s). Review the Schedule preview and adjust constraints, then try again. See /#schedule.");
+                        $"Schedule validation failed with {validation.TotalIssues} issue(s). Review the schedule preview and adjust constraints, then try again. See /#calendar.");
                 }
                 var runId = Guid.NewGuid().ToString("N");
                 await SaveScheduleRunAsync(leagueId, division, runId, me.Email ?? me.UserId, dateFrom, dateTo, scheduleConstraints, result);

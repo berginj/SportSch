@@ -161,14 +161,6 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId, theme =
               Debug
             </button>
           )}
-          <button
-            className={tab === "help" ? "tab tab--active" : "tab"}
-            onClick={() => setTab("help")}
-            title="Help and documentation"
-            aria-current={tab === "help" ? "page" : undefined}
-          >
-            Help
-          </button>
         </nav>
 
         <div className="topnav__account">

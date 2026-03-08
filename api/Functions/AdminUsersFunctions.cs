@@ -29,23 +29,13 @@ public class AdminUsersFunctions
 
     public record UpsertUserReq(string? userId, string? email, string? homeLeagueId, string? role);
 
-    [Function("ListUsers_Admin")]
-    public Task<HttpResponseData> ListAdmin(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "admin/users")] HttpRequestData req)
-        => ListCore(req);
-
-    [Function("ListUsers_Alt")]
-    public Task<HttpResponseData> ListAlt(
+    [Function("ListUsers")]
+    public Task<HttpResponseData> List(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "users")] HttpRequestData req)
         => ListCore(req);
 
-    [Function("UpsertUser_Admin")]
-    public Task<HttpResponseData> UpsertAdmin(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/users")] HttpRequestData req)
-        => UpsertCore(req);
-
-    [Function("UpsertUser_Alt")]
-    public Task<HttpResponseData> UpsertAlt(
+    [Function("UpsertUser")]
+    public Task<HttpResponseData> Upsert(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "users")] HttpRequestData req)
         => UpsertCore(req);
 

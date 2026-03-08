@@ -108,15 +108,12 @@ public class NotificationRepository : INotificationRepository
         _logger.LogDebug("Updated notification: {PartitionKey}/{RowKey}", notification.PartitionKey, notification.RowKey);
     }
 
-    public async Task DeleteOldNotificationsAsync(string userId, int daysOld = 30)
+    public async Task<int> DeleteOldNotificationsAsync(int daysOld = 30)
     {
         var table = await TableClients.GetTableAsync(_tableService, TableName);
-        var pk = Constants.Pk.Notifications(userId);
-
         var cutoffDate = DateTime.UtcNow.AddDays(-daysOld);
 
         var filter = ODataFilterBuilder.And(
-            ODataFilterBuilder.PartitionKeyExact(pk),
             "IsRead eq true",
             $"CreatedUtc lt datetime'{cutoffDate:yyyy-MM-ddTHH:mm:ssZ}'"
         );
@@ -127,11 +124,13 @@ public class NotificationRepository : INotificationRepository
             toDelete.Add(entity);
         }
 
+        var deletedCount = 0;
         foreach (var entity in toDelete)
         {
             try
             {
                 await table.DeleteEntityAsync(entity.PartitionKey, entity.RowKey, entity.ETag);
+                deletedCount++;
             }
             catch (RequestFailedException ex) when (ex.Status == 404)
             {
@@ -139,6 +138,7 @@ public class NotificationRepository : INotificationRepository
             }
         }
 
-        _logger.LogInformation("Deleted {Count} old notifications for user {UserId}", toDelete.Count, userId);
+        _logger.LogInformation("Deleted {Count} old notifications across all users", deletedCount);
+        return deletedCount;
     }
 }

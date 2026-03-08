@@ -1,5 +1,13 @@
 # UI Improvements Plan
 
+> Status: roadmap notes only, not the canonical product contract.
+>
+> Current product scope is an authenticated league-member tool. Public or parent-facing schedule experiences are not current shipped scope.
+>
+> For current behavior and workflow truth, use `docs/contract.md`, `docs/SLOT_LIFECYCLE_BEHAVIORAL_CONTRACT.md`, `README.md`, and `AGENTS.md`.
+>
+> If this file conflicts with those documents, treat this file as future-state ideas only.
+
 ## Current State Analysis
 
 ### Strengths ✅

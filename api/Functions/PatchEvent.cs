@@ -124,7 +124,7 @@ public class PatchEvent
                 endTime = (entity.GetString("EndTime") ?? "").Trim(),
                 location = (entity.GetString("Location") ?? "").Trim(),
                 notes = (entity.GetString("Notes") ?? "").Trim(),
-                createdByUserId = (entity.GetString("CreatedByUserId") ?? entity.GetString("CreatedBy") ?? "").Trim(),
+                createdByUserId = (entity.GetString("CreatedByUserId") ?? "").Trim(),
                 createdUtc = entity.TryGetValue("CreatedUtc", out var cu2) ? (cu2?.ToString() ?? "") : "",
                 updatedUtc = entity.TryGetValue("UpdatedUtc", out var uu2) ? (uu2?.ToString() ?? "") : ""
             });

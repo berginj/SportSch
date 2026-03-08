@@ -11,11 +11,6 @@ public interface IAuthorizationService
     Task<bool> CanCreateSlotAsync(string userId, string leagueId, string division, string? teamId);
 
     /// <summary>
-    /// Checks if a user can approve a request for a slot.
-    /// </summary>
-    Task<bool> CanApproveRequestAsync(string userId, string leagueId, string division, string slotId);
-
-    /// <summary>
     /// Checks if a user can cancel a slot.
     /// </summary>
     Task<bool> CanCancelSlotAsync(string userId, string leagueId, string offeringTeamId, string? confirmedTeamId);

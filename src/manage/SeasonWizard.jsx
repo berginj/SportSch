@@ -1048,7 +1048,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         const list = Array.isArray(divs) ? divs : [];
         setDivisions(list);
         if (list.length) {
-          setDivision((prev) => prev || list[0].code || list[0].division || "");
+          setDivision((prev) => prev || list[0].code || "");
         }
         const season = league?.season || {};
         setLeagueSeasonConfig(season);
@@ -1325,7 +1325,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
   const effectiveGameSlotMinutes = useMemo(() => {
     const selectedDivision = divisions.find(
-      (item) => (item?.code || item?.division || "") === division
+      (item) => (item?.code || "") === division
     );
     const divisionMinutes = Number(
       selectedDivision?.season?.gameLengthMinutes ??
@@ -4887,8 +4887,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
               Division
               <select value={division} onChange={(e) => setDivision(e.target.value)}>
                 {divisions.map((d) => (
-                  <option key={d.code || d.division} value={d.code || d.division}>
-                    {d.name ? `${d.name} (${d.code || d.division})` : d.code || d.division}
+                  <option key={d.code || ""} value={d.code || ""}>
+                    {d.name ? `${d.name} (${d.code || ""})` : d.code || ""}
                   </option>
                 ))}
               </select>
