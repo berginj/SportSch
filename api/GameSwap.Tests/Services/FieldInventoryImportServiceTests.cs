@@ -33,6 +33,16 @@ public class FieldInventoryImportServiceTests
     }
 
     [Fact]
+    public void NormalizeWorkbookUrl_PreservesResourceKey()
+    {
+        var normalized = FieldInventoryImportService.GoogleSheetUrlParser.NormalizeWorkbookUrl(
+            "https://docs.google.com/spreadsheets/d/test-sheet/edit?gid=0&resourcekey=abc-123");
+
+        Assert.Equal("https://docs.google.com/spreadsheets/d/test-sheet/edit?resourcekey=abc-123", normalized);
+        Assert.Equal("abc-123", FieldInventoryImportService.GoogleSheetUrlParser.ExtractResourceKey(normalized));
+    }
+
+    [Fact]
     public async Task InspectWorkbookAsync_ClassifiesKnownTabs()
     {
         var service = CreateService(new StaticWorkbookConnector(BuildWorkbook()));

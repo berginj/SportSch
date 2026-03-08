@@ -1309,7 +1309,12 @@ public class FieldInventoryImportService : IFieldInventoryImportService
         {
             var normalizedUrl = GoogleSheetUrlParser.NormalizeWorkbookUrl(sourceWorkbookUrl);
             var spreadsheetId = GoogleSheetUrlParser.ExtractSpreadsheetId(normalizedUrl);
+            var resourceKey = GoogleSheetUrlParser.ExtractResourceKey(normalizedUrl);
             var exportUrl = $"https://docs.google.com/spreadsheets/d/{spreadsheetId}/export?format=xlsx";
+            if (!string.IsNullOrWhiteSpace(resourceKey))
+            {
+                exportUrl += $"&resourcekey={Uri.EscapeDataString(resourceKey)}";
+            }
 
             using var client = _httpClientFactory.CreateClient(nameof(FieldInventoryImportService));
             using var response = await client.GetAsync(exportUrl);
@@ -1324,7 +1329,7 @@ public class FieldInventoryImportService : IFieldInventoryImportService
         }
     }
 
-    internal static class GoogleSheetUrlParser
+    public static class GoogleSheetUrlParser
     {
         private static readonly Regex SpreadsheetIdRegex = new(@"/spreadsheets/d/(?<id>[a-zA-Z0-9-_]+)", RegexOptions.Compiled);
 
@@ -1348,7 +1353,11 @@ public class FieldInventoryImportService : IFieldInventoryImportService
                     "Use a public Google Sheets workbook URL in docs.google.com/spreadsheets format.");
             }
 
-            return $"https://docs.google.com{uri.AbsolutePath}";
+            var resourceKey = GetQueryValue(uri.Query, "resourcekey");
+            var suffix = string.IsNullOrWhiteSpace(resourceKey)
+                ? ""
+                : $"?resourcekey={Uri.EscapeDataString(resourceKey)}";
+            return $"https://docs.google.com{uri.AbsolutePath}{suffix}";
         }
 
         public static string ExtractSpreadsheetId(string workbookUrl)
@@ -1360,6 +1369,36 @@ public class FieldInventoryImportService : IFieldInventoryImportService
             }
 
             return match.Groups["id"].Value;
+        }
+
+        public static string? ExtractResourceKey(string workbookUrl)
+        {
+            if (!Uri.TryCreate(workbookUrl, UriKind.Absolute, out var uri))
+            {
+                return null;
+            }
+
+            return GetQueryValue(uri.Query, "resourcekey");
+        }
+
+        private static string? GetQueryValue(string query, string key)
+        {
+            var trimmed = (query ?? "").TrimStart('?');
+            if (string.IsNullOrWhiteSpace(trimmed)) return null;
+
+            foreach (var part in trimmed.Split('&', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var pieces = part.Split('=', 2);
+                var currentKey = Uri.UnescapeDataString(pieces[0] ?? "");
+                if (!string.Equals(currentKey, key, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                return pieces.Length == 2 ? Uri.UnescapeDataString(pieces[1] ?? "") : "";
+            }
+
+            return null;
         }
     }
 
