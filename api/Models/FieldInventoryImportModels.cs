@@ -136,6 +136,7 @@ public record FieldInventoryWorkbookInspectResponse(
 public record FieldInventoryWorkbookTabDto(
     string TabName,
     int Index,
+    bool IsHidden,
     string InferredParserType,
     string InferredActionType,
     string Confidence,
@@ -410,6 +411,7 @@ public class ParsedWorkbookSheet
 {
     public string Name { get; set; } = "";
     public int Index { get; set; }
+    public bool IsHidden { get; set; }
     public Dictionary<string, ParsedWorkbookCell> Cells { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public List<ParsedWorkbookMergedRange> MergedRanges { get; set; } = new();
     public int MaxRow { get; set; }

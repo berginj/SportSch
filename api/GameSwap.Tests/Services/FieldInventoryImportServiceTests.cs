@@ -64,7 +64,7 @@ public class FieldInventoryImportServiceTests
         Assert.Equal("Spring 2026 County Inventory", result.SourceWorkbookTitle);
         Assert.Contains(result.Tabs, x => x.TabName == "Spring 3/16-5/22" && x.InferredParserType == FieldInventoryParserTypes.SeasonWeekdayGrid);
         Assert.Contains(result.Tabs, x => x.TabName == "Weekends" && x.InferredParserType == FieldInventoryParserTypes.WeekendGrid);
-        Assert.Contains(result.Tabs, x => x.TabName == "County Grid" && x.InferredActionType == FieldInventoryActionTypes.Reference);
+        Assert.Contains(result.Tabs, x => x.TabName == "County Grid" && x.InferredActionType == FieldInventoryActionTypes.Ignore);
         Assert.Contains(result.Tabs, x => x.TabName == "Request Forms" && x.InferredActionType == FieldInventoryActionTypes.Ignore);
     }
 

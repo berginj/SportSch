@@ -52,10 +52,11 @@ public class FieldInventoryImportService : IFieldInventoryImportService
                 .OrderBy(x => x.Index)
                 .Select(sheet =>
                 {
-                    var decision = InferTabClassification(sheet.Name, workbook.Title, classifications);
+                    var decision = InferTabClassification(sheet, workbook.Title, classifications);
                     return new FieldInventoryWorkbookTabDto(
                         sheet.Name,
                         sheet.Index,
+                        sheet.IsHidden,
                         decision.ParserType,
                         decision.ActionType,
                         decision.Confidence,
@@ -456,7 +457,7 @@ public class FieldInventoryImportService : IFieldInventoryImportService
                 "User selection");
         }
 
-        return InferTabClassification(tab.TabName ?? "", workbookTitle, savedClassifications);
+        return InferTabClassification(new ParsedWorkbookSheet { Name = tab.TabName ?? "" }, workbookTitle, savedClassifications);
     }
 
     private static string InferSeasonLabel(ParsedWorkbook workbook, List<FieldInventorySelectedTab> selectedTabs)
@@ -730,10 +731,11 @@ public class FieldInventoryImportService : IFieldInventoryImportService
     }
 
     private static TabClassificationDecision InferTabClassification(
-        string tabName,
+        ParsedWorkbookSheet sheet,
         string workbookTitle,
         List<FieldInventoryTabClassificationEntity> savedClassifications)
     {
+        var tabName = sheet.Name;
         var saved = savedClassifications.FirstOrDefault(x =>
             string.Equals(x.RawTabName, tabName, StringComparison.OrdinalIgnoreCase)
             && (string.IsNullOrWhiteSpace(x.WorkbookTitlePattern)
@@ -743,29 +745,42 @@ public class FieldInventoryImportService : IFieldInventoryImportService
             return new TabClassificationDecision(saved.ParserType, saved.ActionType, FieldInventoryConfidence.High, "Saved classification");
         }
 
+        if (sheet.IsHidden)
+        {
+            return new TabClassificationDecision(FieldInventoryParserTypes.Ignore, FieldInventoryActionTypes.Ignore, FieldInventoryConfidence.High, "Hidden workbook tab");
+        }
+
         var normalized = NormalizeLookupKey(tabName);
         if (normalized.Contains("requestform"))
         {
             return new TabClassificationDecision(FieldInventoryParserTypes.Ignore, FieldInventoryActionTypes.Ignore, FieldInventoryConfidence.High, "Request form tab");
         }
 
+        if (IsAgsaWeekendInventoryTab(tabName))
+        {
+            return new TabClassificationDecision(FieldInventoryParserTypes.WeekendGrid, FieldInventoryActionTypes.Ingest, FieldInventoryConfidence.High, "AGSA weekend inventory tab");
+        }
+
+        if (IsAgsaWeekdayInventoryTab(tabName))
+        {
+            return new TabClassificationDecision(FieldInventoryParserTypes.SeasonWeekdayGrid, FieldInventoryActionTypes.Ingest, FieldInventoryConfidence.High, "AGSA weekday inventory tab");
+        }
+
         if (normalized.Contains("countygrid"))
         {
-            return new TabClassificationDecision(FieldInventoryParserTypes.ReferenceGrid, FieldInventoryActionTypes.Reference, FieldInventoryConfidence.High, "County reference grid");
+            return new TabClassificationDecision(FieldInventoryParserTypes.Ignore, FieldInventoryActionTypes.Ignore, FieldInventoryConfidence.High, "Reference tab ignored by default");
         }
 
-        if (normalized.Contains("weekend"))
-        {
-            return new TabClassificationDecision(FieldInventoryParserTypes.WeekendGrid, FieldInventoryActionTypes.Ingest, FieldInventoryConfidence.High, "Weekend inventory grid");
-        }
-
-        if (normalized.Contains("spring") || normalized.Contains("weekday") || Regex.IsMatch(tabName, @"\d{1,2}/\d{1,2}"))
-        {
-            return new TabClassificationDecision(FieldInventoryParserTypes.SeasonWeekdayGrid, FieldInventoryActionTypes.Ingest, FieldInventoryConfidence.Medium, "Season inventory tab");
-        }
-
-        return new TabClassificationDecision(FieldInventoryParserTypes.Ignore, FieldInventoryActionTypes.Ignore, FieldInventoryConfidence.Low, "Unknown tab");
+        return new TabClassificationDecision(FieldInventoryParserTypes.Ignore, FieldInventoryActionTypes.Ignore, FieldInventoryConfidence.Medium, "Non-AGSA support tab ignored by default");
     }
+
+    private static bool IsAgsaWeekendInventoryTab(string tabName)
+        => string.Equals((tabName ?? "").Trim(), "Weekends", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsAgsaWeekdayInventoryTab(string tabName)
+        => Regex.IsMatch((tabName ?? "").Trim(),
+            @"^(Spring|Summer|Fall|Winter)\s+\d{1,2}(?:[/-]\d{1,2})?\s*-\s*\d{1,2}(?:[/-]\d{1,2})?$",
+            RegexOptions.IgnoreCase);
 
     private static string NormalizeLookupKey(string? value)
         => Regex.Replace((value ?? "").Trim().ToLowerInvariant(), @"[^a-z0-9]+", "");
@@ -1565,7 +1580,14 @@ public class FieldInventoryImportService : IFieldInventoryImportService
                     {
                         target = $"xl/{target.TrimStart('/')}";
                     }
-                    return LoadSheet(archive, target, sheetElement.Attribute("name")?.Value ?? $"Sheet{index + 1}", index, sharedStrings, styles);
+                    return LoadSheet(
+                        archive,
+                        target,
+                        sheetElement.Attribute("name")?.Value ?? $"Sheet{index + 1}",
+                        index,
+                        string.Equals(sheetElement.Attribute("state")?.Value, "hidden", StringComparison.OrdinalIgnoreCase),
+                        sharedStrings,
+                        styles);
                 })
                 .ToList() ?? new List<ParsedWorkbookSheet>();
 
@@ -1616,13 +1638,14 @@ public class FieldInventoryImportService : IFieldInventoryImportService
             string path,
             string sheetName,
             int index,
+            bool isHidden,
             List<string> sharedStrings,
             WorkbookStyleContext styles)
         {
             var entry = archive.GetEntry(path);
             if (entry is null)
             {
-                return new ParsedWorkbookSheet { Name = sheetName, Index = index };
+                return new ParsedWorkbookSheet { Name = sheetName, Index = index, IsHidden = isHidden };
             }
 
             var document = XDocument.Load(entry.Open());
@@ -1630,6 +1653,7 @@ public class FieldInventoryImportService : IFieldInventoryImportService
             {
                 Name = sheetName,
                 Index = index,
+                IsHidden = isHidden,
             };
 
             var cells = document.Root?

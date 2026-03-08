@@ -269,6 +269,7 @@ export default function FieldInventoryImportManager({ leagueId }) {
                 <tr>
                   <th>Select</th>
                   <th>Tab</th>
+                  <th>Visibility</th>
                   <th>Parser</th>
                   <th>Action</th>
                   <th>Confidence</th>
@@ -295,6 +296,7 @@ export default function FieldInventoryImportManager({ leagueId }) {
                         />
                       </td>
                       <td>{tab.tabName}</td>
+                      <td>{tab.isHidden ? "Hidden" : "Visible"}</td>
                       <td>
                         <select value={current.parserType} onChange={(e) => updateTab(tab.tabName, { parserType: e.target.value })}>
                           {PARSER_OPTIONS.map((option) => (
