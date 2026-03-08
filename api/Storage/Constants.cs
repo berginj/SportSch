@@ -48,6 +48,16 @@ public static class Constants
         public const string ReminderDispatch = "GameSwapReminderDispatch";
         public const string EmailQueue = "GameSwapEmailQueue";
         public const string ScheduleFeedback = "GameSwapScheduleFeedback";
+
+        // Field inventory import
+        public const string FieldInventoryImportRuns = "GameSwapFieldInventoryImportRuns";
+        public const string FieldInventoryStagedRecords = "GameSwapFieldInventoryStagedRecords";
+        public const string FieldInventoryFieldAliases = "GameSwapFieldInventoryFieldAliases";
+        public const string FieldInventoryTabClassifications = "GameSwapFieldInventoryTabClassifications";
+        public const string FieldInventoryImportWarnings = "GameSwapFieldInventoryImportWarnings";
+        public const string FieldInventoryReviewQueueItems = "GameSwapFieldInventoryReviewQueueItems";
+        public const string FieldInventoryLiveRecords = "GameSwapFieldInventoryLiveRecords";
+        public const string FieldInventoryCommitRuns = "GameSwapFieldInventoryCommitRuns";
     }
 
     public static class Pk
@@ -97,6 +107,17 @@ public static class Constants
 
         // Email queue: PK = status (Pending, Sent, Failed), RK = emailId
         public static string EmailQueue(string status) => $"EMAIL|{status}";
+
+        // Field inventory import
+        public static string FieldInventoryImportRuns(string leagueId) => $"FINVIMP|{leagueId}";
+        public static string FieldInventoryStagedRecords(string importRunId) => $"FINVSTAGE|{importRunId}";
+        public static string FieldInventoryFieldAliases(string leagueId) => $"FINVALIAS|{leagueId}";
+        public static string FieldInventoryTabClassifications(string leagueId) => $"FINVTAB|{leagueId}";
+        public static string FieldInventoryImportWarnings(string importRunId) => $"FINVWARN|{importRunId}";
+        public static string FieldInventoryReviewQueueItems(string importRunId) => $"FINVREVIEW|{importRunId}";
+        public static string FieldInventoryLiveRecords(string leagueId, string seasonLabel)
+            => $"FINVLIVE|{leagueId}|{Slug.Make(seasonLabel)}";
+        public static string FieldInventoryCommitRuns(string leagueId) => $"FINVCOMMIT|{leagueId}";
     }
 
     public static class FieldAvailabilityColumns

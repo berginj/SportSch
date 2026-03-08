@@ -15,6 +15,7 @@ var host = new HostBuilder()
     .ConfigureServices((context, services) =>
     {
         services.AddApplicationInsightsTelemetryWorkerService();
+        services.AddHttpClient();
 
         // Table Storage client
         var tableServiceClient = GameSwap.Functions.Storage.TableClients.CreateServiceClient(context.Configuration);
@@ -33,6 +34,7 @@ var host = new HostBuilder()
         services.AddScoped<IScheduleRunRepository, ScheduleRunRepository>();
         services.AddScoped<INotificationRepository, NotificationRepository>();
         services.AddScoped<INotificationPreferencesRepository, NotificationPreferencesRepository>();
+        services.AddScoped<IFieldInventoryImportRepository, FieldInventoryImportRepository>();
 
         // Register Services (scoped for per-request lifetime)
         services.AddScoped<ISlotService, SlotService>();
@@ -45,6 +47,7 @@ var host = new HostBuilder()
         services.AddScoped<IEmailService, EmailService>();
         services.AddScoped<IAuditLogger, AuditLogger>();
         services.AddScoped<IApiKeyService, ApiKeyService>();
+        services.AddScoped<IFieldInventoryImportService, FieldInventoryImportService>();
 
         // Table creation on startup (if configured)
         if (context.Configuration.GetValue<bool>("GAMESWAP_CREATE_TABLES"))

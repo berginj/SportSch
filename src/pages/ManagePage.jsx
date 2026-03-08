@@ -12,6 +12,7 @@ const TeamsManager = lazy(() => import("../manage/TeamsManager"));
 const DivisionsManager = lazy(() => import("../manage/DivisionsManager"));
 const PracticeRequestsManager = lazy(() => import("../manage/PracticeRequestsManager"));
 const CoachLinksGenerator = lazy(() => import("../manage/CoachLinksGenerator"));
+const FieldInventoryImportManager = lazy(() => import("../manage/FieldInventoryImportManager"));
 
 function Pill({ active, children, onClick }) {
   return (
@@ -46,6 +47,7 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
       { id: "invites", label: "Invites" },
       ...(canSchedule ? [{ id: "coach-links", label: "Coach Links" }] : []),
       ...(canSchedule ? [{ id: "practice-requests", label: "Practice Requests" }] : []),
+      ...(canSchedule ? [{ id: "field-inventory", label: "Field Inventory Import" }] : []),
       { id: "fields", label: "Fields" },
     ],
     [canSchedule]
@@ -257,6 +259,20 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
           <div className="card__body">
             <Suspense fallback={sectionFallback}>
               <PracticeRequestsManager leagueId={leagueId} />
+            </Suspense>
+          </div>
+        </div>
+      )}
+
+      {activeTabId === "field-inventory" && canSchedule && (
+        <div className="card">
+          <div className="card__header">
+            <div className="h2">Field Inventory Import</div>
+            <div className="subtle">Load a public county workbook, preview normalized inventory, review mappings, and explicitly stage or import results.</div>
+          </div>
+          <div className="card__body">
+            <Suspense fallback={sectionFallback}>
+              <FieldInventoryImportManager leagueId={leagueId} />
             </Suspense>
           </div>
         </div>

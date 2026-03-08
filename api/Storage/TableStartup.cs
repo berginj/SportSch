@@ -39,7 +39,15 @@ public sealed class TableStartup : IHostedService
             Constants.Tables.Notifications,
             Constants.Tables.NotificationPreferences,
             Constants.Tables.ReminderDispatch,
-            Constants.Tables.EmailQueue
+            Constants.Tables.EmailQueue,
+            Constants.Tables.FieldInventoryImportRuns,
+            Constants.Tables.FieldInventoryStagedRecords,
+            Constants.Tables.FieldInventoryFieldAliases,
+            Constants.Tables.FieldInventoryTabClassifications,
+            Constants.Tables.FieldInventoryImportWarnings,
+            Constants.Tables.FieldInventoryReviewQueueItems,
+            Constants.Tables.FieldInventoryLiveRecords,
+            Constants.Tables.FieldInventoryCommitRuns
         };
 
         foreach (var tableName in tableNames)
