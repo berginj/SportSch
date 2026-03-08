@@ -92,6 +92,28 @@ public class FieldInventoryImportServiceTests
     }
 
     [Fact]
+    public async Task CreatePreviewAsync_ParsesDateColumnShiftAndTimeRangeHeaders()
+    {
+        _fieldRepository.AddField("league-1", "park-a", "field-1", "Park A", "Field 1", "Park A > Field 1");
+        var service = CreateService(new StaticWorkbookConnector(BuildWorkbookWithShiftedWeekendSheet()));
+
+        var preview = await service.CreatePreviewAsync(new FieldInventoryPreviewRequest(
+            "https://docs.google.com/spreadsheets/d/test-sheet/edit#gid=0",
+            "Spring 2026",
+            new List<FieldInventorySelectedTab>
+            {
+                new("Weekends", FieldInventoryParserTypes.WeekendGrid, FieldInventoryActionTypes.Ingest, true),
+            }), CorrelationContext.Create("user-1", "league-1"));
+
+        Assert.Single(preview.Records);
+        Assert.Equal("2026-03-21", preview.Records[0].Date);
+        Assert.Equal("09:00", preview.Records[0].StartTime);
+        Assert.Equal("10:30", preview.Records[0].EndTime);
+        Assert.DoesNotContain(preview.Warnings, x => x.Code == "time_header_missing");
+        Assert.DoesNotContain(preview.Warnings, x => x.Code == "tab_layout_unknown");
+    }
+
+    [Fact]
     public async Task CreatePreviewAsync_ReferenceTabCreatesWarningsOnly()
     {
         _fieldRepository.AddField("league-1", "park-a", "field-1", "Park A", "Field 1", "Park A > Field 1");
@@ -242,6 +264,18 @@ public class FieldInventoryImportServiceTests
             }
         };
 
+    private static ParsedWorkbook BuildWorkbookWithShiftedWeekendSheet()
+        => new()
+        {
+            SpreadsheetId = "test-sheet",
+            SourceWorkbookUrl = "https://docs.google.com/spreadsheets/d/test-sheet/edit#gid=0",
+            Title = "Spring 2026 County Inventory",
+            Sheets =
+            {
+                BuildShiftedWeekendSheet("Weekends", "Park A > Field 1"),
+            }
+        };
+
     private static ParsedWorkbookSheet BuildWeekdaySheet(string name, string firstField, string secondField)
     {
         var sheet = new ParsedWorkbookSheet { Name = name, Index = 0, MaxRow = 4, MaxColumn = 4 };
@@ -277,6 +311,18 @@ public class FieldInventoryImportServiceTests
         AddCell(sheet, "C2", "10:00");
         AddCell(sheet, "A3", "3/21/2026");
         AddCell(sheet, "B3", "Available");
+        return sheet;
+    }
+
+    private static ParsedWorkbookSheet BuildShiftedWeekendSheet(string name, string fieldName)
+    {
+        var sheet = new ParsedWorkbookSheet { Name = name, Index = 1, MaxRow = 3, MaxColumn = 4 };
+        AddCell(sheet, "A1", "Day");
+        AddCell(sheet, "B1", "Date");
+        AddCell(sheet, "C1", fieldName);
+        AddCell(sheet, "C2", "9:00-10:30");
+        AddCell(sheet, "B3", "3/21/2026");
+        AddCell(sheet, "C3", "Available");
         return sheet;
     }
 

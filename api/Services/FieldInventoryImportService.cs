@@ -484,38 +484,39 @@ public class FieldInventoryImportService : IFieldInventoryImportService
     {
         var result = new ParsedSheetResult();
         var yearHint = GetYearHint(run, workbook);
+        var dateColumn = DetectDateColumn(sheet, yearHint);
         var dateRows = Enumerable.Range(1, sheet.MaxRow)
-            .Where(row => TryParseSheetDate(GetCellValue(sheet, row, 1), yearHint, out _))
+            .Where(row => dateColumn > 0 && TryParseSheetDate(GetCellValue(sheet, row, dateColumn), yearHint, out _))
             .ToList();
 
         if (dateRows.Count == 0)
         {
             result.Warnings.Add(CreateWarning(run.Id, "tab_layout_unknown",
-                $"Selected tab '{sheet.Name}' did not match the expected grid layout.", sheet.Name, ""));
+                $"Selected tab '{sheet.Name}' did not match the expected grid layout. SportsCH looked for date values in the first three columns and could not find any.", sheet.Name, ""));
             result.ReviewItems.Add(CreateReviewItem(
                 run.Id,
                 FieldInventoryReviewItemTypes.TabClassification,
                 FieldInventoryReviewItemSeverities.Blocking,
                 $"Unknown layout in {sheet.Name}",
-                "The parser could not find date rows in the left column for this selected tab.",
+                "The parser could not find date rows in the first three columns for this tab. If this is not an AGSA inventory grid, mark it ignore or reference. If it is an inventory grid, confirm the sheet has real date values on the left side and not a different orientation.",
                 sheet.Name,
                 "",
                 sheet.Name,
-                new Dictionary<string, string?> { ["parserType"] = FieldInventoryParserTypes.Ignore, ["actionType"] = FieldInventoryActionTypes.Ignore }));
+                new Dictionary<string, string?> { ["parserType"] = parserType, ["actionType"] = FieldInventoryActionTypes.Ingest }));
             return result;
         }
 
-        var timeHeaderRow = DetectTimeHeaderRow(sheet, dateRows.Min());
+        var timeHeaderRow = DetectTimeHeaderRow(sheet, dateRows.Min(), dateColumn);
         if (timeHeaderRow == 0)
         {
             result.Warnings.Add(CreateWarning(run.Id, "time_header_missing",
-                $"Tab '{sheet.Name}' is missing recognizable time headers.", sheet.Name, ""));
+                $"Tab '{sheet.Name}' is missing recognizable time headers. SportsCH expects headers like 5:30 PM, 17:30, or 5:30-7:00 above the inventory grid.", sheet.Name, ""));
             result.ReviewItems.Add(CreateReviewItem(
                 run.Id,
                 FieldInventoryReviewItemTypes.AmbiguousParse,
                 FieldInventoryReviewItemSeverities.Blocking,
                 $"Missing time headers in {sheet.Name}",
-                "The parser could not determine slot start times from the selected tab.",
+                "The parser found date rows but could not determine slot times. Confirm the tab has time headers above the grid and that each time cell exports as a real time or time range such as 5:30-7:00.",
                 sheet.Name,
                 "",
                 sheet.Name,
@@ -523,26 +524,27 @@ public class FieldInventoryImportService : IFieldInventoryImportService
             return result;
         }
 
-        var timeByColumn = BuildTimeHeaderMap(sheet, timeHeaderRow);
+        var timeByColumn = BuildTimeHeaderMap(sheet, timeHeaderRow, dateColumn);
         var mergedAnchors = BuildMergedAnchorMap(sheet);
 
         foreach (var row in dateRows)
         {
-            if (!TryParseSheetDate(GetCellValue(sheet, row, 1), yearHint, out var parsedDate))
+            if (!TryParseSheetDate(GetCellValue(sheet, row, dateColumn), yearHint, out var parsedDate))
             {
                 continue;
             }
 
-            for (var column = 2; column <= sheet.MaxColumn; column++)
+            for (var column = dateColumn + 1; column <= sheet.MaxColumn; column++)
             {
                 var rawValue = GetMergedAwareCellValue(sheet, mergedAnchors, row, column);
                 if (string.IsNullOrWhiteSpace(rawValue) || !IsAnchorCell(mergedAnchors, row, column)) continue;
-                if (!timeByColumn.TryGetValue(column, out var startTime)) continue;
+                if (!timeByColumn.TryGetValue(column, out var slotTime)) continue;
 
                 var endColumn = GetMergedEndColumn(mergedAnchors, row, column);
-                var endTime = ResolveEndTime(timeByColumn, startTime, column, endColumn);
+                var startTime = slotTime.StartTime;
+                var endTime = ResolveEndTime(timeByColumn, slotTime, column, endColumn);
                 var sourceRange = GetMergedSourceRange(mergedAnchors, row, column);
-                var rawFieldName = ResolveFieldName(sheet, mergedAnchors, column, timeHeaderRow);
+                var rawFieldName = ResolveFieldName(sheet, mergedAnchors, column, timeHeaderRow, dateColumn);
 
                 if (string.IsNullOrWhiteSpace(rawFieldName))
                 {
@@ -812,16 +814,47 @@ public class FieldInventoryImportService : IFieldInventoryImportService
         return DateTime.UtcNow.Year;
     }
 
-    private static int DetectTimeHeaderRow(ParsedWorkbookSheet sheet, int firstDateRow)
+    private static int DetectDateColumn(ParsedWorkbookSheet sheet, int yearHint)
+    {
+        var bestColumn = 0;
+        var bestCount = 0;
+        var lastDateRow = 0;
+        for (var column = 1; column <= Math.Min(3, sheet.MaxColumn); column++)
+        {
+            var count = 0;
+            var currentLastRow = 0;
+            for (var row = 1; row <= sheet.MaxRow; row++)
+            {
+                if (!TryParseSheetDate(GetCellValue(sheet, row, column), yearHint, out _))
+                {
+                    continue;
+                }
+
+                count += 1;
+                currentLastRow = row;
+            }
+
+            if (count > bestCount || (count == bestCount && currentLastRow > lastDateRow))
+            {
+                bestCount = count;
+                bestColumn = column;
+                lastDateRow = currentLastRow;
+            }
+        }
+
+        return bestCount > 0 ? bestColumn : 0;
+    }
+
+    private static int DetectTimeHeaderRow(ParsedWorkbookSheet sheet, int firstDateRow, int dateColumn)
     {
         var bestRow = 0;
         var bestCount = 0;
         for (var row = 1; row < firstDateRow; row++)
         {
             var count = 0;
-            for (var column = 2; column <= sheet.MaxColumn; column++)
+            for (var column = dateColumn + 1; column <= sheet.MaxColumn; column++)
             {
-                if (TryParseSheetTime(GetCellValue(sheet, row, column), out _))
+                if (TryParseSheetTimeHeader(GetCellValue(sheet, row, column), out _))
                 {
                     count += 1;
                 }
@@ -837,14 +870,14 @@ public class FieldInventoryImportService : IFieldInventoryImportService
         return bestCount > 0 ? bestRow : 0;
     }
 
-    private static Dictionary<int, TimeOnly> BuildTimeHeaderMap(ParsedWorkbookSheet sheet, int timeHeaderRow)
+    private static Dictionary<int, TimeHeaderSlot> BuildTimeHeaderMap(ParsedWorkbookSheet sheet, int timeHeaderRow, int dateColumn)
     {
-        var output = new Dictionary<int, TimeOnly>();
-        for (var column = 2; column <= sheet.MaxColumn; column++)
+        var output = new Dictionary<int, TimeHeaderSlot>();
+        for (var column = dateColumn + 1; column <= sheet.MaxColumn; column++)
         {
-            if (TryParseSheetTime(GetCellValue(sheet, timeHeaderRow, column), out var time))
+            if (TryParseSheetTimeHeader(GetCellValue(sheet, timeHeaderRow, column), out var slot))
             {
-                output[column] = time;
+                output[column] = slot;
             }
         }
         return output;
@@ -900,7 +933,8 @@ public class FieldInventoryImportService : IFieldInventoryImportService
         ParsedWorkbookSheet sheet,
         Dictionary<(int row, int column), ParsedWorkbookMergedRange> mergedAnchors,
         int column,
-        int timeHeaderRow)
+        int timeHeaderRow,
+        int dateColumn)
     {
         for (var row = timeHeaderRow - 1; row >= 1; row--)
         {
@@ -908,26 +942,32 @@ public class FieldInventoryImportService : IFieldInventoryImportService
             if (string.IsNullOrWhiteSpace(candidate)) continue;
             if (TryParseSheetTime(candidate, out _)) continue;
             if (TryParseSheetDate(candidate, DateTime.UtcNow.Year, out _)) continue;
+            if (column == dateColumn) continue;
             return candidate;
         }
 
         return "";
     }
 
-    private static TimeOnly ResolveEndTime(Dictionary<int, TimeOnly> timeByColumn, TimeOnly startTime, int startColumn, int endColumn)
+    private static TimeOnly ResolveEndTime(Dictionary<int, TimeHeaderSlot> timeByColumn, TimeHeaderSlot slot, int startColumn, int endColumn)
     {
-        if (timeByColumn.TryGetValue(endColumn + 1, out var nextTime) && nextTime > startTime)
+        if (slot.EndTime.HasValue && slot.EndTime.Value > slot.StartTime && endColumn == startColumn)
         {
-            return nextTime;
+            return slot.EndTime.Value;
         }
 
-        if (timeByColumn.TryGetValue(startColumn + 1, out var singleNext) && singleNext > startTime)
+        if (timeByColumn.TryGetValue(endColumn + 1, out var nextSlot) && nextSlot.StartTime > slot.StartTime)
         {
-            var stepMinutes = (int)(singleNext - startTime).TotalMinutes;
-            return startTime.AddMinutes(stepMinutes * Math.Max(1, endColumn - startColumn + 1));
+            return nextSlot.StartTime;
         }
 
-        return startTime.AddMinutes(60 * Math.Max(1, endColumn - startColumn + 1));
+        if (timeByColumn.TryGetValue(startColumn + 1, out var singleNext) && singleNext.StartTime > slot.StartTime)
+        {
+            var stepMinutes = (int)(singleNext.StartTime - slot.StartTime).TotalMinutes;
+            return slot.StartTime.AddMinutes(stepMinutes * Math.Max(1, endColumn - startColumn + 1));
+        }
+
+        return slot.StartTime.AddMinutes(60 * Math.Max(1, endColumn - startColumn + 1));
     }
 
     private static bool TryParseSheetDate(string? raw, int yearHint, out DateOnly date)
@@ -938,6 +978,8 @@ public class FieldInventoryImportService : IFieldInventoryImportService
 
         value = Regex.Replace(value, @"\b(Mon(day)?|Tue(s(day)?)?|Wed(nesday)?|Thu(r(s(day)?)?)?|Fri(day)?|Sat(urday)?|Sun(day)?)\b", "", RegexOptions.IgnoreCase).Trim();
         return DateOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out date)
+            || (DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out var parsedDateTime)
+                && (date = DateOnly.FromDateTime(parsedDateTime)) != default)
             || (Regex.IsMatch(value, @"^\d{1,2}/\d{1,2}$")
                 && DateOnly.TryParse($"{value}/{yearHint}", CultureInfo.InvariantCulture, DateTimeStyles.None, out date))
             || (Regex.IsMatch(value, @"^\d{1,2}-\d{1,2}$")
@@ -951,8 +993,57 @@ public class FieldInventoryImportService : IFieldInventoryImportService
         if (string.IsNullOrWhiteSpace(value)) return false;
 
         var formats = new[] { "H:mm", "HH:mm", "h:mm tt", "h:mmtt", "htt", "h tt" };
-        return TimeOnly.TryParseExact(value, formats, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out time)
-            || TimeOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out time);
+        if (TimeOnly.TryParseExact(value, formats, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out time))
+        {
+            return true;
+        }
+
+        if (DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out var parsedDateTime))
+        {
+            time = TimeOnly.FromDateTime(parsedDateTime);
+            return true;
+        }
+
+        return TimeOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out time);
+    }
+
+    private static bool TryParseSheetTimeHeader(string? raw, out TimeHeaderSlot slot)
+    {
+        slot = default;
+        var value = (raw ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(value)) return false;
+
+        value = value.Replace('\u2013', '-').Replace('\u2014', '-');
+        var rangeMatch = Regex.Match(value, @"^(?<start>.+?)\s*-\s*(?<end>.+)$");
+        if (rangeMatch.Success)
+        {
+            var startRaw = rangeMatch.Groups["start"].Value.Trim();
+            var endRaw = rangeMatch.Groups["end"].Value.Trim();
+            if (!TryParseSheetTime(startRaw, out var startTime))
+            {
+                var suffixMatch = Regex.Match(endRaw, @"(?i)\b(am|pm)\b");
+                if (!suffixMatch.Success || !TryParseSheetTime($"{startRaw} {suffixMatch.Value}", out startTime))
+                {
+                    return false;
+                }
+            }
+
+            if (!TryParseSheetTime(endRaw, out var endTime))
+            {
+                return false;
+            }
+
+            slot = new TimeHeaderSlot(startTime, endTime);
+            return endTime > startTime;
+        }
+
+        if (TryParseSheetTime(value, out var singleTime))
+        {
+            slot = new TimeHeaderSlot(singleTime, null);
+            return true;
+        }
+
+        return false;
     }
 
     private static ParsedWorkbookCell? GetCell(ParsedWorkbookSheet sheet, int row, int column)
@@ -1348,8 +1439,11 @@ public class FieldInventoryImportService : IFieldInventoryImportService
             }
 
             var statusCode = (int)(lastStatusCode ?? HttpStatusCode.BadGateway);
+            var message = statusCode == (int)HttpStatusCode.Unauthorized || statusCode == (int)HttpStatusCode.Forbidden
+                ? $"Workbook export failed with status {statusCode}. Google Sheets usually returns this when the workbook is not shared for anonymous view or download. Set the sheet to 'Anyone with the link can view' and try again."
+                : $"Workbook export failed with status {statusCode}.";
             throw new ApiGuards.HttpError((int)HttpStatusCode.BadGateway, ErrorCodes.WORKBOOK_LOAD_FAILED,
-                $"Workbook export failed with status {statusCode}.");
+                message);
         }
     }
 
@@ -1725,6 +1819,8 @@ public class FieldInventoryImportService : IFieldInventoryImportService
         List<CanonicalFieldOptionDto> Options,
         List<CanonicalFieldEntry> Entries,
         Dictionary<string, CanonicalFieldEntry> ByLookupKey);
+
+    private readonly record struct TimeHeaderSlot(TimeOnly StartTime, TimeOnly? EndTime);
 
     private sealed record CanonicalFieldEntry(string FieldId, string CanonicalFieldName, string FieldName, string ParkName)
     {

@@ -138,6 +138,8 @@ function installApiMock() {
             inferredActionType: "ingest",
             confidence: "high",
             reason: "Season inventory tab",
+            nonEmptyCellCount: 12,
+            mergedRangeCount: 1,
           },
           {
             tabName: "County Grid",
@@ -146,6 +148,8 @@ function installApiMock() {
             inferredActionType: "reference",
             confidence: "high",
             reason: "County reference grid",
+            nonEmptyCellCount: 8,
+            mergedRangeCount: 0,
           },
         ],
       });
@@ -219,5 +223,23 @@ describe("FieldInventoryImportManager", () => {
     expect(await screen.findByText("upsert dry run completed.")).toBeInTheDocument();
     expect(screen.getByText("Commit Preview")).toBeInTheDocument();
     expect(screen.getByText("Season: Spring 2026")).toBeInTheDocument();
+  });
+
+  it("explains anonymous access when workbook load fails with Google authorization status", async () => {
+    api.apiFetch.mockRejectedValueOnce(Object.assign(new Error("Workbook export failed with status 401."), {
+      status: 502,
+      code: "WORKBOOK_LOAD_FAILED",
+      originalMessage: "Workbook export failed with status 401.",
+    }));
+
+    render(<FieldInventoryImportManager leagueId="league-1" />);
+
+    fireEvent.change(screen.getByLabelText(/Google Sheets URL/i), {
+      target: { value: "https://docs.google.com/spreadsheets/d/test-sheet/edit#gid=0" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Load Workbook" }));
+
+    expect(await screen.findByText(/Anyone with the link can view/i)).toBeInTheDocument();
   });
 });

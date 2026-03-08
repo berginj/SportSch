@@ -64,7 +64,7 @@ export default function FieldInventoryImportManager({ leagueId }) {
       setCommitPreview(null);
       setMessage("Workbook loaded. Select tabs and parse a preview.");
     } catch (e) {
-      setError(e?.message || "Workbook load failed.");
+      setError(formatImportError(e));
     } finally {
       setBusy("");
     }
@@ -87,7 +87,7 @@ export default function FieldInventoryImportManager({ leagueId }) {
       setSeasonLabel(result?.run?.seasonLabel || seasonLabel);
       setMessage("Preview parsed and stored in staging.");
     } catch (e) {
-      setError(e?.message || "Preview parse failed.");
+      setError(formatImportError(e));
     } finally {
       setBusy("");
     }
@@ -104,7 +104,7 @@ export default function FieldInventoryImportManager({ leagueId }) {
       setPreview(result);
       setMessage("Preview marked as staged. Live inventory is still unchanged.");
     } catch (e) {
-      setError(e?.message || "Stage request failed.");
+      setError(formatImportError(e));
     } finally {
       setBusy("");
     }
@@ -130,7 +130,7 @@ export default function FieldInventoryImportManager({ leagueId }) {
       setPreview(result);
       setMessage(`Saved mapping for ${item.rawValue}.`);
     } catch (e) {
-      setError(e?.message || "Save mapping failed.");
+      setError(formatImportError(e));
     } finally {
       setBusy("");
     }
@@ -156,7 +156,7 @@ export default function FieldInventoryImportManager({ leagueId }) {
       setPreview(result);
       setMessage(`Saved tab classification for ${item.sourceTab}.`);
     } catch (e) {
-      setError(e?.message || "Save classification failed.");
+      setError(formatImportError(e));
     } finally {
       setBusy("");
     }
@@ -178,7 +178,7 @@ export default function FieldInventoryImportManager({ leagueId }) {
       setPreview(result);
       setMessage(`Review item marked ${status.replace("_", " ")}.`);
     } catch (e) {
-      setError(e?.message || "Review update failed.");
+      setError(formatImportError(e));
     } finally {
       setBusy("");
     }
@@ -204,7 +204,7 @@ export default function FieldInventoryImportManager({ leagueId }) {
       setCommitPreview(result?.commitPreview || null);
       setMessage(dryRun ? `${mode} dry run completed.` : `${mode} completed against live inventory storage.`);
     } catch (e) {
-      setError(e?.message || `${mode} failed.`);
+      setError(formatImportError(e));
     } finally {
       setBusy("");
     }
@@ -216,6 +216,13 @@ export default function FieldInventoryImportManager({ leagueId }) {
         <div className="font-bold mb-2">Staging safety</div>
         <div className="subtle">
           This workflow always parses into separate staging tables first. Nothing is written into live field inventory records until you run an explicit import or upsert action.
+        </div>
+      </div>
+
+      <div className="callout">
+        <div className="font-bold mb-2">Google Sheets access</div>
+        <div className="subtle">
+          Use a public workbook link. If workbook load returns `401` or `403`, the sheet is usually not shared for anonymous view/download. Set it to &quot;Anyone with the link can view&quot; and retry.
         </div>
       </div>
 
@@ -254,9 +261,7 @@ export default function FieldInventoryImportManager({ leagueId }) {
         <div className="card">
           <div className="card__header">
             <div className="h2">Workbook Tabs</div>
-            <div className="subtle">
-              {workbook.sourceWorkbookTitle} · {workbook.tabs.length} tabs
-            </div>
+            <div className="subtle">{workbook.sourceWorkbookTitle} - {workbook.tabs.length} tabs</div>
           </div>
           <div className="card__body overflow-x-auto">
             <table className="table" aria-label="Workbook tabs">
@@ -267,6 +272,8 @@ export default function FieldInventoryImportManager({ leagueId }) {
                   <th>Parser</th>
                   <th>Action</th>
                   <th>Confidence</th>
+                  <th>Cells</th>
+                  <th>Merged</th>
                   <th>Reason</th>
                 </tr>
               </thead>
@@ -307,6 +314,8 @@ export default function FieldInventoryImportManager({ leagueId }) {
                         </select>
                       </td>
                       <td>{tab.confidence}</td>
+                      <td>{tab.nonEmptyCellCount}</td>
+                      <td>{tab.mergedRangeCount}</td>
                       <td className="subtle">{tab.reason}</td>
                     </tr>
                   );
@@ -332,16 +341,25 @@ export default function FieldInventoryImportManager({ leagueId }) {
             <button className="btn btn--primary" type="button" onClick={stageResults} disabled={busy === "stage"}>
               {busy === "stage" ? "Staging..." : "Stage Results"}
             </button>
-            <button className="btn btn--ghost" type="button" onClick={() => runCommit("upsert", true)} disabled={busy === "upsert:dry"}>
+            <button className="btn btn--ghost" type="button" onClick={() => runCommit("upsert", true)} disabled={!preview.records.length || busy === "upsert:dry"}>
               Dry Run Upsert
             </button>
-            <button className="btn btn--ghost" type="button" onClick={() => runCommit("import", false)} disabled={busy === "import:live"}>
+            <button className="btn btn--ghost" type="button" onClick={() => runCommit("import", false)} disabled={!preview.records.length || busy === "import:live"}>
               Run Import
             </button>
-            <button className="btn btn--ghost" type="button" onClick={() => runCommit("upsert", false)} disabled={busy === "upsert:live"}>
+            <button className="btn btn--ghost" type="button" onClick={() => runCommit("upsert", false)} disabled={!preview.records.length || busy === "upsert:live"}>
               Run Upsert
             </button>
           </div>
+
+          {!preview.records.length ? (
+            <div className="callout">
+              <div className="font-bold mb-2">No records were parsed</div>
+              <div className="subtle">
+                SportsCH could inspect the workbook, but the selected tabs did not match the expected inventory grid layout closely enough to create staged records. Use the review queue to mark non-inventory tabs as ignore/reference, then retry the AGSA inventory tabs after checking date columns, time headers, and saved tab classifications.
+              </div>
+            </div>
+          ) : null}
 
           {commitPreview ? (
             <div className="callout">
@@ -369,7 +387,7 @@ export default function FieldInventoryImportManager({ leagueId }) {
                     <li key={warning.id} className="callout">
                       <div className="font-bold">{warning.code}</div>
                       <div>{warning.message}</div>
-                      <div className="subtle">{warning.sourceTab} {warning.sourceCellRange ? `· ${warning.sourceCellRange}` : ""}</div>
+                      <div className="subtle">{warning.sourceTab}{warning.sourceCellRange ? ` - ${warning.sourceCellRange}` : ""}</div>
                     </li>
                   ))}
                 </ul>
@@ -391,11 +409,12 @@ export default function FieldInventoryImportManager({ leagueId }) {
                     <div className="row items-center justify-between gap-2">
                       <div>
                         <div className="font-bold">{item.title}</div>
-                        <div className="subtle">{item.itemType} · {item.severity} · {item.status}</div>
+                        <div className="subtle">{item.itemType} - {item.severity} - {item.status}</div>
                       </div>
-                      <div className="subtle">{item.sourceTab} {item.sourceCellRange ? `· ${item.sourceCellRange}` : ""}</div>
+                      <div className="subtle">{item.sourceTab}{item.sourceCellRange ? ` - ${item.sourceCellRange}` : ""}</div>
                     </div>
                     <div className="mt-2">{item.description}</div>
+                    {item.rawValue ? <div className="subtle mt-2">Source value: {item.rawValue}</div> : null}
                     {item.itemType === "field_mapping" ? (
                       <div className="row gap-2 mt-3">
                         <select
@@ -500,13 +519,13 @@ export default function FieldInventoryImportManager({ leagueId }) {
                         <td>{record.utilizationStatus}</td>
                         <td>{record.usedBy || "-"}</td>
                         <td>{record.assignedTeamOrEvent || "-"}</td>
-                        <td>{record.sourceTab} · {record.sourceCellRange}</td>
+                        <td>{record.sourceTab} - {record.sourceCellRange}</td>
                         <td>{record.confidence}</td>
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td colSpan="9" className="subtle">No staged records.</td>
+                      <td colSpan="9" className="subtle">No staged records. Fix blocking review items or adjust tab selection and parser choices, then parse again.</td>
                     </tr>
                   )}
                 </tbody>
@@ -528,4 +547,15 @@ function SummaryCard({ label, value }) {
       </div>
     </div>
   );
+}
+
+function formatImportError(error) {
+  const message = error?.message || "Request failed.";
+  const originalMessage = error?.originalMessage || "";
+  const combined = `${message} ${originalMessage}`;
+  if ((error?.status === 502 || error?.code === "WORKBOOK_LOAD_FAILED") && /\b401\b|\b403\b/.test(combined)) {
+    return `${message} This usually means Google Sheets is not allowing anonymous view/download for the workbook. Set the workbook to "Anyone with the link can view" and try again.`;
+  }
+
+  return message;
 }
