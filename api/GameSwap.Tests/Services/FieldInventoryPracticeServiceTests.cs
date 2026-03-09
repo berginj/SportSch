@@ -21,36 +21,89 @@ public class FieldInventoryPracticeServiceTests
     private readonly InMemoryMembershipRepository _membershipRepository = new();
     private readonly InMemoryDivisionRepository _divisionRepository = new();
     private readonly InMemoryTeamRepository _teamRepository = new();
+    private readonly InMemorySlotRepository _slotRepository = new();
+    private readonly InMemoryPracticeRequestRepository _practiceRequestRepository = new();
     private readonly Mock<ILogger<FieldInventoryImportService>> _logger = new();
+    private readonly Mock<ILogger<PracticeRequestService>> _practiceRequestLogger = new();
 
     [Fact]
     public async Task RealAgsaWorkbook_ProducesAdminMappingsAndCommissionerReviewRequests()
     {
         SeedCanonicalFields();
+        _divisionRepository.UpsertDivision("league-1", "TESTDIV", "Workbook Test Division");
+        _teamRepository.UpsertTeam("league-1", "TESTDIV", "TEAM-TEST-1", "Workbook Test Team");
         var importService = CreateImportService();
         var practiceService = CreatePracticeService();
         var adminContext = CorrelationContext.Create("admin-1", "league-1");
 
         await ImportCurrentSeasonAsync(importService, adminContext);
 
-        var admin = await practiceService.GetAdminViewAsync("Spring 2026", adminContext);
+        var initial = await practiceService.GetAdminViewAsync("Spring 2026", adminContext);
 
-        Assert.True(admin.Summary.TotalRecords > 100, "Expected committed live inventory rows from the real AGSA workbook.");
-        Assert.True(admin.Summary.RequestableBlocks > 0, "Expected requestable 90-minute practice blocks.");
-        Assert.True(admin.Summary.CommissionerReviewBlocks > 0, "Expected unassigned available space to remain commissioner-reviewed.");
-        Assert.Contains(admin.Rows, row => row.MappingIssues.Count > 0);
+        Assert.True(initial.Summary.TotalRecords > 100, "Expected committed live inventory rows from the real AGSA workbook.");
+        Assert.Contains(initial.Rows, row => row.MappingIssues.Count > 0);
+
+        var syntheticRecord = new FieldInventoryLiveRecordEntity
+        {
+            Id = "live-test-review-1",
+            LeagueId = "league-1",
+            SeasonLabel = "Spring 2026",
+            ImportRunId = "run-test-review",
+            FieldId = "agsa/barcroft-3",
+            FieldName = "AGSA > Barcroft #3",
+            RawFieldName = "Barcroft #3",
+            Date = "2026-03-18",
+            DayOfWeek = "Wednesday",
+            StartTime = "18:00",
+            EndTime = "19:30",
+            SlotDurationMinutes = 90,
+            AvailabilityStatus = FieldInventoryAvailabilityStatuses.Available,
+            UtilizationStatus = FieldInventoryUtilizationStatuses.NotUsed,
+            UsedBy = "AGSA",
+            AssignedGroup = "Workbook Review Group",
+            AssignedDivision = "Workbook Review Division",
+            SourceWorkbookUrl = "uploaded://real-workbook-fixture",
+            SourceTab = "Synthetic",
+            SourceCellRange = "Z99",
+            SourceValue = "Workbook Review Group",
+            ParserType = FieldInventoryParserTypes.SeasonWeekdayGrid,
+            Confidence = FieldInventoryConfidence.High,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        };
+        var liveRecords = await _inventoryRepository.GetLiveRecordsAsync("league-1", "Spring 2026");
+        await _inventoryRepository.ReplaceLiveRecordsAsync("league-1", "Spring 2026", liveRecords.Concat(new[] { syntheticRecord }));
+
+        await practiceService.SaveDivisionAliasAsync(
+            new FieldInventoryDivisionAliasSaveRequest("Workbook Review Division", "TESTDIV"),
+            "admin-1",
+            adminContext);
+        var admin = await practiceService.SaveGroupPolicyAsync(
+            new FieldInventoryGroupPolicySaveRequest("Workbook Review Group", FieldInventoryPracticeBookingPolicies.CommissionerReview),
+            "admin-1",
+            adminContext);
+
+        Assert.True(admin.Summary.RequestableBlocks > 0, "Expected at least one requestable 90-minute block after mapping the synthetic commissioner-review fixture.");
+        Assert.True(admin.Summary.CommissionerReviewBlocks > 0, "Expected commissioner-review blocks after saving a commissioner-review policy.");
+        Assert.Contains(admin.Rows, row =>
+            string.Equals(row.RecordId, syntheticRecord.Id, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(row.CanonicalDivisionCode, "TESTDIV", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(row.BookingPolicy, FieldInventoryPracticeBookingPolicies.CommissionerReview, StringComparison.OrdinalIgnoreCase) &&
+            row.RequestableBlockCount > 0);
 
         _membershipRepository.UpsertMembership(new TableEntity("coach-1", "league-1")
         {
             ["Role"] = Constants.Roles.Coach,
-            ["Division"] = "PONY",
-            ["TeamId"] = "TEAM-PONY-1",
-            ["TeamName"] = "Ponytails Red",
+            ["Division"] = "TESTDIV",
+            ["TeamId"] = "TEAM-TEST-1",
+            ["TeamName"] = "Workbook Test Team",
         });
 
         var coachContext = CorrelationContext.Create("coach-1", "league-1");
         var coachView = await practiceService.GetCoachViewAsync("Spring 2026", "coach-1", coachContext);
-        var commissionerReviewSlot = Assert.Single(coachView.Slots.Where(slot => slot.BookingPolicy == FieldInventoryPracticeBookingPolicies.CommissionerReview).Take(1));
+        var commissionerReviewSlot = Assert.Single(coachView.Slots.Where(slot =>
+            string.Equals(slot.LiveRecordId, syntheticRecord.Id, StringComparison.OrdinalIgnoreCase) &&
+            slot.BookingPolicy == FieldInventoryPracticeBookingPolicies.CommissionerReview).Take(1));
 
         var afterCommissionerRequest = await practiceService.CreatePracticeRequestAsync(
             new FieldInventoryPracticeRequestCreateRequest("Spring 2026", commissionerReviewSlot.PracticeSlotKey, null, "Commissioner review validation"),
@@ -66,6 +119,7 @@ public class FieldInventoryPracticeServiceTests
     [Fact]
     public async Task PonytailAssignedInventory_AutoApprovesCoachRequests()
     {
+        SeedPonyPracticeReferenceData();
         await _inventoryRepository.ReplaceLiveRecordsAsync("league-1", "Spring 2026", new[]
         {
             new FieldInventoryLiveRecordEntity
@@ -235,11 +289,29 @@ public class FieldInventoryPracticeServiceTests
         _fieldRepository.AddField("league-1", "agsa", "gb2", "AGSA", "Greenbrier #2", "AGSA > Greenbrier #2");
     }
 
+    private void SeedPonyPracticeReferenceData()
+    {
+        _divisionRepository.UpsertDivision("league-1", "PONY", "PY Practice");
+        _teamRepository.UpsertTeam("league-1", "PONY", "TEAM-PONY-1", "Ponytails Red");
+    }
+
     private FieldInventoryImportService CreateImportService()
         => new(_inventoryRepository, _fieldRepository, new ThrowingWorkbookConnector(), _logger.Object);
 
     private FieldInventoryPracticeService CreatePracticeService()
-        => new(_inventoryRepository, _membershipRepository, _divisionRepository, _teamRepository);
+        => new(
+            _inventoryRepository,
+            _membershipRepository,
+            _divisionRepository,
+            _teamRepository,
+            _slotRepository,
+            _practiceRequestRepository,
+            new PracticeRequestService(
+                _practiceRequestRepository,
+                _membershipRepository,
+                _slotRepository,
+                _teamRepository,
+                _practiceRequestLogger.Object));
 
     private static string GetRealAgsaWorkbookPath()
         => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "docs", "2026 AGSA Spring Field Grid (1).xlsx"));
@@ -649,6 +721,197 @@ public class FieldInventoryPracticeServiceTests
         {
             _teams.Remove($"{leagueId}|{division}|{teamId}");
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class InMemorySlotRepository : ISlotRepository
+    {
+        private readonly Dictionary<string, TableEntity> _slots = new(StringComparer.OrdinalIgnoreCase);
+
+        public Task<TableEntity?> GetSlotAsync(string leagueId, string division, string slotId)
+        {
+            _slots.TryGetValue(BuildKey(leagueId, division, slotId), out var slot);
+            return Task.FromResult(Clone(slot));
+        }
+
+        public Task<PaginationResult<TableEntity>> QuerySlotsAsync(SlotQueryFilter filter, string? continuationToken = null)
+        {
+            var items = _slots.Values
+                .Where(slot => string.Equals(GetLeagueId(slot.PartitionKey), filter.LeagueId, StringComparison.OrdinalIgnoreCase))
+                .Where(slot => string.IsNullOrWhiteSpace(filter.Division) || string.Equals(GetDivision(slot.PartitionKey), filter.Division, StringComparison.OrdinalIgnoreCase))
+                .Where(slot => !filter.ExcludeCancelled || !string.Equals(slot.GetString("Status"), Constants.Status.SlotCancelled, StringComparison.OrdinalIgnoreCase))
+                .Where(slot => !filter.ExcludeAvailability || slot.GetBoolean("IsAvailability") != true)
+                .Where(slot => string.IsNullOrWhiteSpace(filter.FieldKey) || string.Equals(slot.GetString("FieldKey"), filter.FieldKey, StringComparison.OrdinalIgnoreCase))
+                .Where(slot => string.IsNullOrWhiteSpace(filter.FromDate) || string.CompareOrdinal(slot.GetString("GameDate") ?? "", filter.FromDate) >= 0)
+                .Where(slot => string.IsNullOrWhiteSpace(filter.ToDate) || string.CompareOrdinal(slot.GetString("GameDate") ?? "", filter.ToDate) <= 0)
+                .Where(slot =>
+                {
+                    var status = slot.GetString("Status") ?? "";
+                    if (filter.Statuses.Count > 0)
+                    {
+                        return filter.Statuses.Contains(status, StringComparer.OrdinalIgnoreCase);
+                    }
+
+                    return string.IsNullOrWhiteSpace(filter.Status) || string.Equals(status, filter.Status, StringComparison.OrdinalIgnoreCase);
+                })
+                .OrderBy(slot => slot.GetString("GameDate"))
+                .ThenBy(slot => slot.GetString("StartTime"))
+                .Select(Clone)
+                .ToList();
+
+            return Task.FromResult(new PaginationResult<TableEntity>
+            {
+                Items = items,
+                ContinuationToken = null,
+                PageSize = filter.PageSize,
+            });
+        }
+
+        public Task<bool> HasConflictAsync(string leagueId, string fieldKey, string gameDate, int startMin, int endMin, string? excludeSlotId = null)
+            => Task.FromResult(false);
+
+        public Task CreateSlotAsync(TableEntity slot)
+        {
+            var clone = Clone(slot) ?? new TableEntity(slot.PartitionKey, slot.RowKey);
+            clone.ETag = new Azure.ETag(Guid.NewGuid().ToString("N"));
+            _slots[BuildKeyFromEntity(clone)] = clone;
+            return Task.CompletedTask;
+        }
+
+        public Task UpdateSlotAsync(TableEntity slot, Azure.ETag etag)
+        {
+            var clone = Clone(slot) ?? new TableEntity(slot.PartitionKey, slot.RowKey);
+            clone.ETag = new Azure.ETag(Guid.NewGuid().ToString("N"));
+            _slots[BuildKeyFromEntity(clone)] = clone;
+            return Task.CompletedTask;
+        }
+
+        public Task DeleteSlotAsync(string leagueId, string division, string slotId)
+        {
+            _slots.Remove(BuildKey(leagueId, division, slotId));
+            return Task.CompletedTask;
+        }
+
+        public async Task CancelSlotAsync(string leagueId, string division, string slotId)
+        {
+            var slot = await GetSlotAsync(leagueId, division, slotId);
+            if (slot is null) return;
+            slot["Status"] = Constants.Status.SlotCancelled;
+            await UpdateSlotAsync(slot, slot.ETag);
+        }
+
+        public Task<List<TableEntity>> GetSlotsByFieldAndDateAsync(string leagueId, string fieldKey, string gameDate)
+            => Task.FromResult(
+                _slots.Values
+                    .Where(slot => string.Equals(GetLeagueId(slot.PartitionKey), leagueId, StringComparison.OrdinalIgnoreCase))
+                    .Where(slot => string.Equals(slot.GetString("FieldKey"), fieldKey, StringComparison.OrdinalIgnoreCase))
+                    .Where(slot => string.Equals(slot.GetString("GameDate"), gameDate, StringComparison.OrdinalIgnoreCase))
+                    .Select(Clone)
+                    .ToList());
+
+        private static string BuildKey(string leagueId, string division, string slotId)
+            => $"{leagueId}|{division}|{slotId}";
+
+        private static string BuildKeyFromEntity(TableEntity slot)
+            => BuildKey(GetLeagueId(slot.PartitionKey), GetDivision(slot.PartitionKey), slot.RowKey);
+
+        private static string GetLeagueId(string partitionKey)
+            => (partitionKey ?? "").Split('|').Skip(1).FirstOrDefault() ?? "";
+
+        private static string GetDivision(string partitionKey)
+            => (partitionKey ?? "").Split('|').Skip(2).FirstOrDefault() ?? "";
+
+        private static TableEntity? Clone(TableEntity? source)
+        {
+            if (source is null) return null;
+            var clone = new TableEntity(source.PartitionKey, source.RowKey)
+            {
+                Timestamp = source.Timestamp,
+                ETag = source.ETag,
+            };
+            foreach (var pair in source)
+            {
+                clone[pair.Key] = pair.Value;
+            }
+
+            return clone;
+        }
+    }
+
+    private sealed class InMemoryPracticeRequestRepository : IPracticeRequestRepository
+    {
+        private readonly Dictionary<string, TableEntity> _requests = new(StringComparer.OrdinalIgnoreCase);
+
+        public Task CreateRequestAsync(TableEntity request)
+        {
+            var clone = Clone(request) ?? new TableEntity(request.PartitionKey, request.RowKey);
+            clone.ETag = new Azure.ETag(Guid.NewGuid().ToString("N"));
+            _requests[BuildKey(clone.GetString("LeagueId") ?? "", clone.RowKey)] = clone;
+            return Task.CompletedTask;
+        }
+
+        public Task<TableEntity?> GetRequestAsync(string leagueId, string requestId)
+        {
+            _requests.TryGetValue(BuildKey(leagueId, requestId), out var request);
+            return Task.FromResult(Clone(request));
+        }
+
+        public Task UpdateRequestAsync(TableEntity request, Azure.ETag etag)
+        {
+            var clone = Clone(request) ?? new TableEntity(request.PartitionKey, request.RowKey);
+            clone.ETag = new Azure.ETag(Guid.NewGuid().ToString("N"));
+            _requests[BuildKey(clone.GetString("LeagueId") ?? "", clone.RowKey)] = clone;
+            return Task.CompletedTask;
+        }
+
+        public Task<List<TableEntity>> QueryRequestsAsync(string leagueId, string? status = null, string? division = null, string? teamId = null, string? slotId = null)
+            => Task.FromResult(
+                _requests.Values
+                    .Where(request => string.Equals(request.GetString("LeagueId"), leagueId, StringComparison.OrdinalIgnoreCase))
+                    .Where(request => string.IsNullOrWhiteSpace(status) || string.Equals(request.GetString("Status"), status, StringComparison.OrdinalIgnoreCase))
+                    .Where(request => string.IsNullOrWhiteSpace(division) || string.Equals(request.GetString("Division"), division, StringComparison.OrdinalIgnoreCase))
+                    .Where(request => string.IsNullOrWhiteSpace(teamId) || string.Equals(request.GetString("TeamId"), teamId, StringComparison.OrdinalIgnoreCase))
+                    .Where(request => string.IsNullOrWhiteSpace(slotId) || string.Equals(request.GetString("SlotId"), slotId, StringComparison.OrdinalIgnoreCase))
+                    .Select(Clone)
+                    .ToList()!);
+
+        public Task<int> CountRequestsForTeamAsync(string leagueId, string division, string teamId, IReadOnlyCollection<string> statuses)
+            => Task.FromResult(QueryFiltered(leagueId, division, teamId, null, statuses).Count);
+
+        public Task<bool> ExistsRequestForTeamSlotAsync(string leagueId, string division, string teamId, string slotId, IReadOnlyCollection<string> statuses)
+            => Task.FromResult(QueryFiltered(leagueId, division, teamId, slotId, statuses).Any());
+
+        public Task<List<TableEntity>> QuerySlotRequestsAsync(string leagueId, string division, string slotId, IReadOnlyCollection<string>? statuses = null)
+            => Task.FromResult(QueryFiltered(leagueId, division, null, slotId, statuses).Select(Clone).ToList()!);
+
+        private List<TableEntity> QueryFiltered(string leagueId, string division, string? teamId, string? slotId, IReadOnlyCollection<string>? statuses)
+        {
+            return _requests.Values
+                .Where(request => string.Equals(request.GetString("LeagueId"), leagueId, StringComparison.OrdinalIgnoreCase))
+                .Where(request => string.Equals(request.GetString("Division"), division, StringComparison.OrdinalIgnoreCase))
+                .Where(request => string.IsNullOrWhiteSpace(teamId) || string.Equals(request.GetString("TeamId"), teamId, StringComparison.OrdinalIgnoreCase))
+                .Where(request => string.IsNullOrWhiteSpace(slotId) || string.Equals(request.GetString("SlotId"), slotId, StringComparison.OrdinalIgnoreCase))
+                .Where(request => statuses is null || statuses.Count == 0 || statuses.Contains(request.GetString("Status") ?? "", StringComparer.OrdinalIgnoreCase))
+                .ToList();
+        }
+
+        private static string BuildKey(string leagueId, string requestId)
+            => $"{leagueId}|{requestId}";
+
+        private static TableEntity? Clone(TableEntity? source)
+        {
+            if (source is null) return null;
+            var clone = new TableEntity(source.PartitionKey, source.RowKey)
+            {
+                Timestamp = source.Timestamp,
+                ETag = source.ETag,
+            };
+            foreach (var pair in source)
+            {
+                clone[pair.Key] = pair.Value;
+            }
+
+            return clone;
         }
     }
 }

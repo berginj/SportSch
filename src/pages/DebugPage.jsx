@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
-import { readPagedItems } from "../lib/pagedResults";
 
 const ROLE_OPTIONS = ["", "LeagueAdmin", "Coach", "Viewer"];
 const PRACTICE_REQUEST_LIMIT = 3;
@@ -20,26 +19,11 @@ function normalizeText(value) {
 }
 
 function slotSortKey(slot) {
-  return `${normalizeText(slot?.gameDate)} ${normalizeText(slot?.startTime)}`.trim();
+  return `${normalizeText(slot?.date || slot?.gameDate)} ${normalizeText(slot?.startTime)}`.trim();
 }
 
 function sortSlotsBySchedule(slots) {
   return [...slots].sort((a, b) => slotSortKey(a).localeCompare(slotSortKey(b)));
-}
-
-function weekKeyFromDate(isoDate) {
-  const parts = (isoDate || "").split("-");
-  if (parts.length !== 3) return "";
-  const year = Number(parts[0]);
-  const month = Number(parts[1]);
-  const day = Number(parts[2]);
-  if (!year || !month || !day) return "";
-  const date = new Date(Date.UTC(year, month - 1, day));
-  const dayNum = date.getUTCDay() || 7;
-  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-  const weekNo = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
-  return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
 }
 
 function weekdayKeyFromDate(isoDate) {
@@ -66,24 +50,49 @@ function formatSlotTime(slot) {
 }
 
 function formatSlotLocation(slot) {
-  return normalizeText(slot?.displayName) || normalizeText(slot?.fieldName) || normalizeText(slot?.fieldKey);
+  return normalizeText(slot?.displayName) || normalizeText(slot?.fieldName) || normalizeText(slot?.fieldId) || normalizeText(slot?.fieldKey);
 }
 
-function practicePatternKey(slot) {
-  const weekday = weekdayKeyFromDate(normalizeText(slot?.gameDate));
-  const fieldKey = normalizeText(slot?.fieldKey);
-  const start = normalizeText(slot?.startTime);
-  const end = normalizeText(slot?.endTime);
-  if (!weekday || !fieldKey || !start || !end) return "";
-  return `${weekday}|${fieldKey}|${start}|${end}`;
+function requestSortKey(request) {
+  return `${normalizeText(request?.date || request?.slot?.gameDate)} ${normalizeText(request?.startTime || request?.slot?.startTime)}`.trim();
 }
 
-function isPracticeCapableAvailabilitySlot(slot) {
-  if (slot?.isAvailability !== true) return false;
-  if (normalizeText(slot?.status) !== "Open") return false;
-  const allocationType = normalizeText(slot?.allocationSlotType || slot?.slotType).toLowerCase();
-  if (!allocationType) return true;
-  return allocationType === "practice" || allocationType === "both";
+function isActivePracticeRequest(request) {
+  const status = normalizeText(request?.status).toLowerCase();
+  return status === "pending" || status === "approved";
+}
+
+function buildDebugPracticePreview(adminView, division, teamId) {
+  const requests = (Array.isArray(adminView?.requests) ? adminView.requests : [])
+    .filter(
+      (request) =>
+        normalizeText(request?.division) === division &&
+        normalizeText(request?.teamId) === teamId
+    )
+    .sort((a, b) => requestSortKey(b).localeCompare(requestSortKey(a)));
+
+  const activeSlotIds = new Set(
+    requests
+      .filter(isActivePracticeRequest)
+      .map((request) => `${normalizeText(request?.division)}|${normalizeText(request?.slotId)}`)
+      .filter(Boolean)
+  );
+
+  const slots = sortSlotsBySchedule(
+    (Array.isArray(adminView?.slots) ? adminView.slots : [])
+      .filter((slot) => normalizeText(slot?.division) === division)
+      .filter((slot) => {
+        const state = normalizeText(slot?.normalizationState).toLowerCase();
+        return state === "ready" || state === "normalized";
+      })
+      .filter((slot) => normalizeText(slot?.bookingPolicy).toLowerCase() !== "not_requestable")
+      .filter((slot) => {
+        const key = `${normalizeText(slot?.division)}|${normalizeText(slot?.slotId)}`;
+        return Number(slot?.remainingCapacity || 0) > 0 || activeSlotIds.has(key);
+      })
+  );
+
+  return { requests, slots };
 }
 
 function buildCoachSetupLink(leagueId, teamId) {
@@ -155,11 +164,7 @@ export default function DebugPage({ leagueId, me }) {
   const [previewTeams, setPreviewTeams] = useState([]);
   const [previewRequests, setPreviewRequests] = useState([]);
   const [previewSlots, setPreviewSlots] = useState([]);
-  const [previewPortalSlotsAll, setPreviewPortalSlotsAll] = useState([]);
-  const [previewPortalOpenToShareField, setPreviewPortalOpenToShareField] = useState(false);
-  const [previewPortalShareWithTeamId, setPreviewPortalShareWithTeamId] = useState("");
-  const [previewPortalDayFilter, setPreviewPortalDayFilter] = useState("0");
-  const [previewPortalClaimingSlotId, setPreviewPortalClaimingSlotId] = useState("");
+  const [previewPortalDayFilter, setPreviewPortalDayFilter] = useState("");
   const [previewRefreshedAt, setPreviewRefreshedAt] = useState("");
   const [repairAuditLoading, setRepairAuditLoading] = useState(false);
   const [repairAuditErr, setRepairAuditErr] = useState("");
@@ -228,14 +233,15 @@ export default function DebugPage({ leagueId, me }) {
   }, [coachMemberships, previewDivision, previewTeamId]);
 
   const activePracticeRequests = useMemo(() => {
-    return previewRequests.filter((r) => {
-      const status = normalizeText(r?.status);
-      return status === "Pending" || status === "Approved";
-    });
+    return previewRequests.filter(isActivePracticeRequest);
   }, [previewRequests]);
 
   const activeRequestSlotIds = useMemo(() => {
-    return new Set(activePracticeRequests.map((r) => normalizeText(r?.slotId)).filter(Boolean));
+    return new Set(
+      activePracticeRequests
+        .map((request) => `${normalizeText(request?.division)}|${normalizeText(request?.slotId)}`)
+        .filter((value) => value !== "|")
+    );
   }, [activePracticeRequests]);
 
   const previewStatusCounts = useMemo(() => {
@@ -262,172 +268,13 @@ export default function DebugPage({ leagueId, me }) {
     return buildCoachSetupLink(leagueId, previewTeamId);
   }, [leagueId, previewTeamId]);
 
-  const previewPortalShareableTeams = useMemo(() => {
-    const teamId = normalizeText(previewTeamId);
-    return previewTeamOptions
-      .filter((t) => normalizeText(t?.teamId) && normalizeText(t?.teamId) !== teamId)
-      .map((t) => ({
-        teamId: normalizeText(t?.teamId),
-        name: normalizeText(t?.name),
-      }));
-  }, [previewTeamId, previewTeamOptions]);
-
-  const previewPortalSelections = useMemo(() => {
-    const teamId = normalizeText(previewTeamId);
-    if (!teamId) return [];
-    return sortSlotsBySchedule(
-      (previewPortalSlotsAll || [])
-        .filter((s) => normalizeText(s?.status) === "Confirmed")
-        .filter((s) => normalizeText(s?.gameType).toLowerCase() === "practice")
-        .filter((s) => {
-          const confirmed = normalizeText(s?.confirmedTeamId);
-          const offering = normalizeText(s?.offeringTeamId);
-          return confirmed === teamId || offering === teamId;
-        })
-    );
-  }, [previewPortalSlotsAll, previewTeamId]);
-
-  const previewPortalSelectionsByWeek = useMemo(() => {
-    const map = new Map();
-    for (const slot of previewPortalSelections) {
-      const key = weekKeyFromDate(normalizeText(slot?.gameDate));
-      if (!key) continue;
-      if (!map.has(key)) map.set(key, slot);
-    }
-    return map;
-  }, [previewPortalSelections]);
-
-  const previewPortalAvailableSlotsAll = useMemo(() => {
-    return sortSlotsBySchedule(
-      (previewPortalSlotsAll || []).filter(isPracticeCapableAvailabilitySlot)
-    );
-  }, [previewPortalSlotsAll]);
-
-  const previewPortalAvailableSlots = useMemo(() => {
-    return previewPortalAvailableSlotsAll.slice(0, 20);
-  }, [previewPortalAvailableSlotsAll]);
-
-  const previewPortalAvailableSlotsFiltered = useMemo(() => {
+  const previewVisibleSlots = useMemo(() => {
     const dayKey = normalizeText(previewPortalDayFilter);
-    if (!dayKey) return previewPortalAvailableSlots;
-    return previewPortalAvailableSlots.filter(
-      (slot) => weekdayKeyFromDate(normalizeText(slot?.gameDate)) === dayKey
+    if (!dayKey) return previewSlots;
+    return previewSlots.filter(
+      (slot) => weekdayKeyFromDate(normalizeText(slot?.date || slot?.gameDate)) === dayKey
     );
-  }, [previewPortalAvailableSlots, previewPortalDayFilter]);
-
-  const previewPortalAvailableSlotsAllFiltered = useMemo(() => {
-    const dayKey = normalizeText(previewPortalDayFilter);
-    if (!dayKey) return previewPortalAvailableSlotsAll;
-    return previewPortalAvailableSlotsAll.filter(
-      (slot) => weekdayKeyFromDate(normalizeText(slot?.gameDate)) === dayKey
-    );
-  }, [previewPortalAvailableSlotsAll, previewPortalDayFilter]);
-
-  const previewPortalSeasonWeekOrdinalByKey = useMemo(() => {
-    const weekKeys = Array.from(new Set(
-      previewPortalAvailableSlotsAll
-        .map((slot) => weekKeyFromDate(normalizeText(slot?.gameDate)))
-        .filter(Boolean)
-    )).sort((a, b) => a.localeCompare(b));
-    const map = new Map();
-    weekKeys.forEach((key, index) => map.set(key, index + 1));
-    return map;
-  }, [previewPortalAvailableSlotsAll]);
-
-  const previewPortalActiveRequestPatternByKey = useMemo(() => {
-    const map = new Map();
-    for (const request of activePracticeRequests) {
-      const key = practicePatternKey(request?.slot);
-      if (key && !map.has(key)) map.set(key, request);
-    }
-    return map;
-  }, [activePracticeRequests]);
-
-  const previewPortalRecurringChoices = useMemo(() => {
-    const groups = new Map();
-    for (const slot of previewPortalAvailableSlotsAllFiltered) {
-      const key = practicePatternKey(slot);
-      if (!key) continue;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(slot);
-    }
-
-    const rows = [];
-    for (const [key, slots] of groups.entries()) {
-      const slotsSorted = sortSlotsBySchedule(slots);
-      const representativeSlot = slotsSorted[0] || null;
-      if (!representativeSlot) continue;
-      const weekOrdinals = slotsSorted
-        .map((slot) => previewPortalSeasonWeekOrdinalByKey.get(weekKeyFromDate(normalizeText(slot?.gameDate))))
-        .filter((n) => Number.isFinite(n));
-      const minWeek = weekOrdinals.length ? Math.min(...weekOrdinals) : null;
-      const maxWeek = weekOrdinals.length ? Math.max(...weekOrdinals) : null;
-      rows.push({
-        key,
-        representativeSlot,
-        weeksCount: slotsSorted.length,
-        weekRangeLabel: minWeek && maxWeek ? (minWeek === maxWeek ? `W${minWeek}` : `W${minWeek}-W${maxWeek}`) : "-",
-        firstDate: normalizeText(slotsSorted[0]?.gameDate),
-        lastDate: normalizeText(slotsSorted[slotsSorted.length - 1]?.gameDate),
-        existingRequest: previewPortalActiveRequestPatternByKey.get(key) || null,
-      });
-    }
-
-    return rows.sort((a, b) => {
-      const aRequested = !!a.existingRequest;
-      const bRequested = !!b.existingRequest;
-      if (aRequested !== bRequested) return aRequested ? -1 : 1;
-      const aPriority = Number(a?.existingRequest?.priority || 99);
-      const bPriority = Number(b?.existingRequest?.priority || 99);
-      if (aPriority !== bPriority) return aPriority - bPriority;
-      if (a.weeksCount !== b.weeksCount) return b.weeksCount - a.weeksCount;
-      return slotSortKey(a.representativeSlot).localeCompare(slotSortKey(b.representativeSlot));
-    });
-  }, [previewPortalAvailableSlotsAllFiltered, previewPortalSeasonWeekOrdinalByKey, previewPortalActiveRequestPatternByKey]);
-
-  const previewPortalGoogleFormOptionsText = useMemo(() => {
-    const groups = new Map();
-    for (const slot of previewPortalAvailableSlotsAll) {
-      const key = practicePatternKey(slot);
-      if (!key) continue;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(slot);
-    }
-
-    const lines = [];
-    for (const slots of groups.values()) {
-      const representativeSlot = sortSlotsBySchedule(slots)[0] || null;
-      if (!representativeSlot) continue;
-      const gameDate = normalizeText(representativeSlot?.gameDate);
-      const startTime = normalizeText(representativeSlot?.startTime);
-      const endTime = normalizeText(representativeSlot?.endTime);
-      if (!gameDate || !startTime || !endTime) continue;
-      const dayLabel = weekdayLabelFromDate(gameDate) || "";
-      const location = formatSlotLocation(representativeSlot);
-      lines.push({
-        sortKey: slotSortKey(representativeSlot),
-        text: `${dayLabel} ${gameDate} | ${startTime}-${endTime} | ${location}`,
-      });
-    }
-
-    return lines
-      .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
-      .map((row) => row.text)
-      .join("\n");
-  }, [previewPortalAvailableSlotsAll]);
-
-  const previewPortalGoogleFormPatternOptionsText = useMemo(() => {
-    const lines = previewPortalRecurringChoices.map((choice) => {
-      const slot = choice?.representativeSlot || null;
-      const dayLabel = weekdayLabelFromDate(normalizeText(slot?.gameDate)) || "Day";
-      const location = formatSlotLocation(slot);
-      const startTime = normalizeText(slot?.startTime);
-      const endTime = normalizeText(slot?.endTime);
-      const timeLabel = startTime && endTime ? `${startTime}-${endTime}` : (startTime || endTime || "-");
-      return `${dayLabel} | ${location} | ${timeLabel}`;
-    });
-    return lines.join("\n");
-  }, [previewPortalRecurringChoices]);
+  }, [previewSlots, previewPortalDayFilter]);
 
   const repairAuditRowsNormalized = useMemo(() => {
     return (repairAuditRows || []).map((row) => {
@@ -533,17 +380,6 @@ export default function DebugPage({ leagueId, me }) {
       return `${row.createdUtc || "-"} | ${row.division || "-"} | ${title} | ${hardPart} | ${softPart}`;
     }).join("\n");
   }, [repairAuditRowsNormalized]);
-
-  useEffect(() => {
-    if (!previewPortalOpenToShareField && previewPortalShareWithTeamId) {
-      setPreviewPortalShareWithTeamId("");
-      return;
-    }
-    if (!previewPortalOpenToShareField || !previewPortalShareWithTeamId) return;
-    if (!previewPortalShareableTeams.some((t) => t.teamId === previewPortalShareWithTeamId)) {
-      setPreviewPortalShareWithTeamId("");
-    }
-  }, [previewPortalOpenToShareField, previewPortalShareWithTeamId, previewPortalShareableTeams]);
 
   async function loadMemberships() {
     if (!leagueId) {
@@ -794,14 +630,12 @@ export default function DebugPage({ leagueId, me }) {
       setPreviewErr("Select a league to load coach practice preview.");
       setPreviewRequests([]);
       setPreviewSlots([]);
-      setPreviewPortalSlotsAll([]);
       return;
     }
     if (!division || !teamId) {
       setPreviewErr("Select both division and team.");
       setPreviewRequests([]);
       setPreviewSlots([]);
-      setPreviewPortalSlotsAll([]);
       return;
     }
 
@@ -809,30 +643,18 @@ export default function DebugPage({ leagueId, me }) {
     setPreviewErr("");
     setPreviewOk("");
     try {
-      const [requestsRaw, slotsRaw] = await Promise.all([
-        apiFetch(`/api/practice-requests?teamId=${encodeURIComponent(teamId)}`),
-        apiFetch(`/api/slots?division=${encodeURIComponent(division)}&status=Open,Confirmed`)
-      ]);
-
-      const requests = Array.isArray(requestsRaw)
-        ? [...requestsRaw].sort((a, b) => String(b?.requestedUtc || "").localeCompare(String(a?.requestedUtc || "")))
-        : [];
-      const allOpenSlots = readPagedItems(slotsRaw);
-      const availabilitySlots = allOpenSlots.filter(
-        (slot) => slot?.isAvailability === true && normalizeText(slot?.status) === "Open"
-      );
+      const adminView = await apiFetch("/api/field-inventory/practice/admin");
+      const preview = buildDebugPracticePreview(adminView, division, teamId);
 
       if (requestSeq !== previewLoadSeqRef.current) return;
-      setPreviewRequests(requests);
-      setPreviewSlots(sortSlotsBySchedule(availabilitySlots).slice(0, 20));
-      setPreviewPortalSlotsAll(allOpenSlots);
+      setPreviewRequests(preview.requests);
+      setPreviewSlots(preview.slots);
       setPreviewRefreshedAt(new Date().toISOString());
     } catch (e) {
       if (requestSeq !== previewLoadSeqRef.current) return;
       setPreviewErr(e?.message || "Failed to load coach practice preview.");
       setPreviewRequests([]);
       setPreviewSlots([]);
-      setPreviewPortalSlotsAll([]);
     } finally {
       if (requestSeq === previewLoadSeqRef.current) {
         setPreviewLoading(false);
@@ -850,7 +672,6 @@ export default function DebugPage({ leagueId, me }) {
       setPreviewTeamId("");
       setPreviewRequests([]);
       setPreviewSlots([]);
-      setPreviewPortalSlotsAll([]);
       return;
     }
 
@@ -902,7 +723,6 @@ export default function DebugPage({ leagueId, me }) {
       } else {
         setPreviewRequests([]);
         setPreviewSlots([]);
-        setPreviewPortalSlotsAll([]);
       }
     } catch (e) {
       setPreviewContextErr(e?.message || "Failed to load preview context.");
@@ -910,7 +730,6 @@ export default function DebugPage({ leagueId, me }) {
       setPreviewTeams([]);
       setPreviewRequests([]);
       setPreviewSlots([]);
-      setPreviewPortalSlotsAll([]);
     } finally {
       setPreviewContextLoading(false);
     }
@@ -963,7 +782,6 @@ export default function DebugPage({ leagueId, me }) {
 
     setPreviewRequests([]);
     setPreviewSlots([]);
-    setPreviewPortalSlotsAll([]);
     if (nextDivision) {
       setPreviewErr("No teams found in this division.");
     }
@@ -980,7 +798,6 @@ export default function DebugPage({ leagueId, me }) {
     }
     setPreviewRequests([]);
     setPreviewSlots([]);
-    setPreviewPortalSlotsAll([]);
   }
 
   async function copyCoachSetupPreviewLink() {
@@ -996,102 +813,6 @@ export default function DebugPage({ leagueId, me }) {
       setPreviewOk("Coach onboarding link copied.");
     } catch {
       setPreviewErr("Failed to copy coach onboarding link.");
-    }
-  }
-
-  async function claimPracticePortalPreviewOverride(slot) {
-    const division = normalizeText(previewDivision);
-    const teamId = normalizeText(previewTeamId);
-    const slotId = normalizeText(slot?.slotId);
-    if (!division || !teamId || !slotId) {
-      setPreviewErr("Select division/team and a valid slot before using override.");
-      return;
-    }
-    if (previewPortalOpenToShareField && !normalizeText(previewPortalShareWithTeamId)) {
-      setPreviewErr('Select a team to propose sharing with, or uncheck "Open to sharing a field".');
-      return;
-    }
-
-    const selectedDate = normalizeText(slot?.gameDate);
-    const selectedWeekday = weekdayKeyFromDate(selectedDate);
-    const selectedFieldKey = normalizeText(slot?.fieldKey);
-    const selectedStart = normalizeText(slot?.startTime);
-    const selectedEnd = normalizeText(slot?.endTime);
-    const existingPracticeWeeks = new Set(Array.from(previewPortalSelectionsByWeek.keys()));
-
-    const recurringCandidates = sortSlotsBySchedule(
-      (previewPortalSlotsAll || [])
-        .filter((s) => s?.isAvailability === true)
-        .filter((s) => normalizeText(s?.status) === "Open")
-        .filter((s) => normalizeText(s?.fieldKey) === selectedFieldKey)
-        .filter((s) => normalizeText(s?.startTime) === selectedStart)
-        .filter((s) => normalizeText(s?.endTime) === selectedEnd)
-        .filter((s) => {
-          const gameDate = normalizeText(s?.gameDate);
-          if (!gameDate) return false;
-          if (selectedDate && gameDate < selectedDate) return false;
-          if (selectedWeekday && weekdayKeyFromDate(gameDate) !== selectedWeekday) return false;
-          const weekKey = weekKeyFromDate(gameDate);
-          if (!weekKey) return false;
-          if (existingPracticeWeeks.has(weekKey)) return false;
-          return true;
-        })
-    );
-
-    const payload = {
-      teamId,
-      openToShareField: previewPortalOpenToShareField,
-      shareWithTeamId: previewPortalOpenToShareField ? normalizeText(previewPortalShareWithTeamId) : "",
-    };
-
-    setPreviewErr("");
-    setPreviewOk("");
-    setPreviewPortalClaimingSlotId(slotId);
-    try {
-      const targets = recurringCandidates.length ? recurringCandidates : [slot];
-      let successCount = 0;
-      const failures = [];
-
-      for (const candidate of targets) {
-        try {
-          await apiFetch(`/api/slots/${encodeURIComponent(division)}/${encodeURIComponent(candidate.slotId)}/practice`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
-          successCount += 1;
-        } catch (e) {
-          failures.push({
-            slot: candidate,
-            message: e?.message || String(e),
-          });
-        }
-      }
-
-      await loadPracticePreviewData(division, teamId);
-
-      if (successCount > 0) {
-        const base = successCount === 1
-          ? `Override claimed 1 practice slot for ${teamId}.`
-          : `Override claimed recurring practice pattern for ${teamId} across ${successCount} weeks.`;
-        const sharing = previewPortalOpenToShareField ? " Sharing preference saved." : "";
-        const partial = failures.length ? ` ${failures.length} week(s) failed.` : "";
-        setPreviewOk(`${base}${sharing}${partial}`.trim());
-      } else {
-        setPreviewErr(failures[0]?.message || "No matching practice slots could be claimed.");
-      }
-
-      if (failures.length) {
-        const sample = failures
-          .slice(0, 3)
-          .map((f) => `${normalizeText(f.slot?.gameDate) || "?"}: ${f.message}`)
-          .join(" | ");
-        setPreviewErr(`Some weeks were not claimed. ${sample}${failures.length > 3 ? " ..." : ""}`);
-      }
-    } catch (e) {
-      setPreviewErr(e?.message || "Failed to apply practice override.");
-    } finally {
-      setPreviewPortalClaimingSlotId("");
     }
   }
 
@@ -1392,9 +1113,9 @@ export default function DebugPage({ leagueId, me }) {
       {isGlobalAdmin ? (
         <div className="card">
           <div className="card__header">
-            <div className="h2">Debug: coach practice request preview</div>
+            <div className="h2">Debug: normalized coach practice preview</div>
             <div className="subtle">
-              Preview what a coach sees in onboarding practice requests using <code>/api/practice-requests</code> and open slots from <code>/api/slots</code>.
+              Preview the normalized coach practice experience by filtering the admin inventory-backed practice payload for a selected team and division.
             </div>
           </div>
 
@@ -1491,7 +1212,7 @@ export default function DebugPage({ leagueId, me }) {
               </div>
               <div className="layoutStat">
                 <div className="layoutStat__value">{previewSlots.length}</div>
-                <div className="layoutStat__label">Open practice slots</div>
+                <div className="layoutStat__label">Visible practice blocks</div>
               </div>
             </div>
           ) : null}
@@ -1528,6 +1249,13 @@ export default function DebugPage({ leagueId, me }) {
                 Active request count (Pending + Approved): <b>{activePracticeRequests.length}</b> / {PRACTICE_REQUEST_LIMIT}
               </div>
 
+              <div className="callout mb-3">
+                <div className="font-semibold">Read-only normalized preview</div>
+                <div className="muted mt-1">
+                  This debug view now mirrors the inventory-backed coach workflow. It does not use legacy direct-claim overrides.
+                </div>
+              </div>
+
               <div className="card__header">
                 <div className="h2">Practice requests for this team</div>
               </div>
@@ -1542,17 +1270,26 @@ export default function DebugPage({ leagueId, me }) {
                         <th>Date</th>
                         <th>Time</th>
                         <th>Location</th>
-                        <th>Requested</th>
+                        <th>Policy</th>
+                        <th>Notes</th>
                       </tr>
                     </thead>
                     <tbody>
                       {previewRequests.map((request) => (
                         <tr key={request.requestId}>
                           <td>{request.status || ""}</td>
-                          <td>{request.slot?.gameDate || ""}</td>
-                          <td>{request.slot?.startTime && request.slot?.endTime ? `${request.slot.startTime} - ${request.slot.endTime}` : ""}</td>
-                          <td>{formatSlotLocation(request.slot)}</td>
-                          <td>{request.requestedUtc ? new Date(request.requestedUtc).toLocaleString() : ""}</td>
+                          <td>{request.date || ""}</td>
+                          <td>{formatSlotTime(request)}</td>
+                          <td>
+                            <div>{request.fieldName || "-"}</div>
+                            {request.isMove && request.moveFromDate ? (
+                              <div className="muted text-xs">
+                                Move from {request.moveFromDate} {request.moveFromStartTime || "-"}-{request.moveFromEndTime || "-"} {request.moveFromFieldName || ""}
+                              </div>
+                            ) : null}
+                          </td>
+                          <td>{request.bookingPolicyLabel || "-"}</td>
+                          <td>{request.notes || request.reviewReason || "-"}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1561,31 +1298,65 @@ export default function DebugPage({ leagueId, me }) {
               )}
 
               <div className="card__header">
-                <div className="h2">Open availability slots visible to coaches (top 20)</div>
+                <div className="h2">Requestable normalized practice blocks</div>
+                <div className="subtle">
+                  These are the blocks the selected coach would see after division scoping, requestability, normalization, and capacity checks.
+                </div>
               </div>
-              {previewSlots.length === 0 ? (
-                <div className="muted">No open availability slots found for this division.</div>
+
+              <div className="row gap-3 row--wrap mb-3">
+                <label className="min-w-[220px]">
+                  Filter by day
+                  <select
+                    value={previewPortalDayFilter}
+                    onChange={(e) => setPreviewPortalDayFilter(normalizeText(e.target.value))}
+                  >
+                    {WEEKDAY_FILTER_OPTIONS.map((opt) => (
+                      <option key={opt.key || "all"} value={opt.key}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              {previewVisibleSlots.length === 0 ? (
+                <div className="muted">
+                  {previewPortalDayFilter
+                    ? "No normalized practice blocks match the selected day."
+                    : "No normalized practice blocks are currently visible for this division/team."}
+                </div>
               ) : (
                 <div className="tableWrap">
                   <table className="table">
                     <thead>
                       <tr>
                         <th>Date</th>
+                        <th>Day</th>
                         <th>Time</th>
                         <th>Location</th>
-                        <th>Requestable?</th>
+                        <th>Policy</th>
+                        <th>Capacity</th>
+                        <th>State</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {previewSlots.map((slot) => {
+                      {previewVisibleSlots.map((slot) => {
                         const slotId = normalizeText(slot?.slotId);
-                        const alreadyRequested = activeRequestSlotIds.has(slotId);
+                        const slotKey = `${normalizeText(slot?.division)}|${slotId}`;
+                        const alreadyRequested = activeRequestSlotIds.has(slotKey);
                         return (
-                          <tr key={slotId || `${slot.gameDate}-${slot.startTime}`}>
-                            <td>{slot.gameDate || ""}</td>
-                            <td>{slot.startTime && slot.endTime ? `${slot.startTime} - ${slot.endTime}` : ""}</td>
+                          <tr key={slotId || `${slot?.date}-${slot?.startTime}`}>
+                            <td>{slot.date || ""}</td>
+                            <td>{slot.dayOfWeek || weekdayLabelFromDate(normalizeText(slot?.date))}</td>
+                            <td>{formatSlotTime(slot)}</td>
                             <td>{formatSlotLocation(slot)}</td>
-                            <td>{alreadyRequested ? "Already requested" : "Yes"}</td>
+                            <td>{slot.bookingPolicyLabel || "-"}</td>
+                            <td>
+                              {Number(slot.remainingCapacity || 0)}/{Number(slot.capacity || 0)}
+                              {alreadyRequested ? <div className="muted text-xs">Already requested by this team</div> : null}
+                            </td>
+                            <td>{slot.normalizationState || "-"}</td>
                           </tr>
                         );
                       })}
@@ -1593,242 +1364,6 @@ export default function DebugPage({ leagueId, me }) {
                   </table>
                 </div>
               )}
-
-              <div className="card__header mt-4">
-                <div className="h2">Practice selection portal preview (admin override)</div>
-                <div className="subtle">
-                  Mirrors the coach practice selection portal layout for this team. Use Select here to apply an admin override for the selected team.
-                </div>
-              </div>
-
-              <div className="card mt-2">
-                <div className="card__header">
-                  <div className="h2">Practice selection portal</div>
-                  <div className="subtle">
-                    Selecting a slot claims the same field/day/time pattern for matching open weeks in the regular-season availability set.
-                  </div>
-                </div>
-                <div className="formGrid">
-                  <label>
-                    Division
-                    <input value={normalizeText(previewDivision)} readOnly />
-                  </label>
-                  <label>
-                    Team
-                    <input value={normalizeText(previewTeamId) || "Unassigned"} readOnly />
-                  </label>
-                </div>
-              </div>
-
-              <div className="card">
-                <div className="card__header">
-                  <div className="h2">Your selected practices (preview)</div>
-                </div>
-                {previewPortalSelections.length ? (
-                  <div className="tableWrap">
-                    <table className="table">
-                      <thead>
-                        <tr>
-                          <th>Week</th>
-                          <th>Date</th>
-                          <th>Time</th>
-                          <th>Location</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {previewPortalSelections.map((slot) => (
-                          <tr key={normalizeText(slot?.slotId) || `${slot?.gameDate}-${slot?.startTime}`}>
-                            <td>{weekKeyFromDate(normalizeText(slot?.gameDate))}</td>
-                            <td>{normalizeText(slot?.gameDate)}</td>
-                            <td>{formatSlotTime(slot)}</td>
-                            <td>{formatSlotLocation(slot)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="muted">No confirmed practice selections for this team.</div>
-                )}
-              </div>
-
-              <div className="card">
-                <div className="card__header">
-                  <div className="h2">Available practice slots (preview)</div>
-                </div>
-                <div className="callout mb-3">
-                  <div className="row row--wrap gap-3">
-                    <label className="inlineCheck inlineCheck--compact">
-                      <input
-                        type="checkbox"
-                        checked={previewPortalOpenToShareField}
-                        onChange={(e) => setPreviewPortalOpenToShareField(e.target.checked)}
-                      />
-                      <span>Open to sharing a field</span>
-                    </label>
-                    <label className="min-w-[260px]">
-                      Propose sharing with team
-                      <select
-                        value={previewPortalShareWithTeamId}
-                        onChange={(e) => setPreviewPortalShareWithTeamId(normalizeText(e.target.value))}
-                        disabled={!previewPortalOpenToShareField || previewPortalShareableTeams.length === 0}
-                      >
-                        <option value="">
-                          {!previewPortalOpenToShareField
-                            ? "Enable sharing first"
-                            : (previewPortalShareableTeams.length ? "Select a team" : "No other teams in division")}
-                        </option>
-                        {previewPortalShareableTeams.map((team) => (
-                          <option key={team.teamId} value={team.teamId}>
-                            {team.name ? `${team.name} (${team.teamId})` : team.teamId}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="min-w-[220px]">
-                      Filter by day
-                      <select
-                        value={previewPortalDayFilter}
-                        onChange={(e) => setPreviewPortalDayFilter(normalizeText(e.target.value))}
-                      >
-                        {WEEKDAY_FILTER_OPTIONS.map((opt) => (
-                          <option key={opt.key || "all"} value={opt.key}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                  <div className="muted mt-2">
-                    Admin override: filter by weekday, then Select to claim the recurring field/day/time pattern for the selected team.
-                  </div>
-                </div>
-
-                <div className="mb-3">
-                  <div className="font-semibold">Coach onboarding recurring choices (debug preview)</div>
-                  <div className="muted mt-1">
-                    Mirrors the coach setup recurring choices: day + field + time (the recurring season pattern is reserved together on approval).
-                  </div>
-                </div>
-
-                {previewPortalRecurringChoices.length === 0 ? (
-                  <div className="muted mb-3">
-                    {previewPortalDayFilter
-                      ? "No recurring practice choices match the selected day."
-                      : "No recurring practice choices available for this division."}
-                  </div>
-                ) : (
-                  <div className="tableWrap mb-3">
-                    <table className="table">
-                      <thead>
-                        <tr>
-                          <th>Field</th>
-                          <th>Day</th>
-                          <th>Time</th>
-                          <th>Season Span</th>
-                          <th>Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {previewPortalRecurringChoices.map((choice) => {
-                          const slot = choice.representativeSlot;
-                          const request = choice.existingRequest;
-                          return (
-                            <tr key={choice.key}>
-                              <td>{formatSlotLocation(slot)}</td>
-                              <td>{weekdayLabelFromDate(normalizeText(slot?.gameDate))}</td>
-                              <td>{formatSlotTime(slot)}</td>
-                              <td>{choice.firstDate && choice.lastDate ? `${choice.firstDate} - ${choice.lastDate}` : (choice.firstDate || "-")}</td>
-                              <td>{request ? `Requested (P${request.priority || "?"}, ${normalizeText(request.status) || "Pending"})` : "-"}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-
-                <div className="mb-3">
-                  <div className="font-semibold">Google Form option text (copy/paste)</div>
-                  <div className="muted mt-1">
-                    One line per recurring availability pattern using a single representative week date (all days shown).
-                  </div>
-                  <textarea
-                    readOnly
-                    value={previewPortalGoogleFormOptionsText || ""}
-                    rows={Math.min(16, Math.max(4, (previewPortalGoogleFormOptionsText || "").split("\n").filter(Boolean).length + 1))}
-                    className="textareaMono mt-2"
-                  />
-                </div>
-
-                <div className="mb-3">
-                  <div className="font-semibold">Recurring option summary (Day | Field | Time)</div>
-                  <div className="muted mt-1">
-                    One line per recurring pattern for quick review{previewPortalDayFilter ? " (filtered by selected day)" : ""}.
-                  </div>
-                  <textarea
-                    readOnly
-                    value={previewPortalGoogleFormPatternOptionsText || ""}
-                    rows={Math.min(16, Math.max(4, (previewPortalGoogleFormPatternOptionsText || "").split("\n").filter(Boolean).length + 1))}
-                    className="textareaMono mt-2"
-                  />
-                </div>
-
-                {previewPortalAvailableSlotsFiltered.length === 0 ? (
-                  <div className="muted">
-                    {previewPortalDayFilter
-                      ? "No open practice slots match the selected day."
-                      : "No open practice slots available for this division."}
-                  </div>
-                ) : (
-                  <div className="tableWrap">
-                    <table className="table">
-                      <thead>
-                        <tr>
-                          <th>Week</th>
-                          <th>Date</th>
-                          <th>Time</th>
-                          <th>Location</th>
-                          <th />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {previewPortalAvailableSlotsFiltered.map((slot) => {
-                          const weekKey = weekKeyFromDate(normalizeText(slot?.gameDate));
-                          const disabled = !!(weekKey && previewPortalSelectionsByWeek.has(weekKey));
-                          return (
-                            <tr key={normalizeText(slot?.slotId) || `${slot?.gameDate}-${slot?.startTime}`}>
-                              <td>{weekKey}</td>
-                              <td>{normalizeText(slot?.gameDate)}</td>
-                              <td>{formatSlotTime(slot)}</td>
-                              <td>{formatSlotLocation(slot)}</td>
-                              <td>
-                                <button
-                                  className="btn btn--primary"
-                                  type="button"
-                                  disabled={disabled || !!previewPortalClaimingSlotId || previewLoading}
-                                  onClick={() => claimPracticePortalPreviewOverride(slot)}
-                                  title={
-                                    disabled
-                                      ? "No claimable weeks remain in this pattern for the selected team"
-                                      : previewPortalClaimingSlotId
-                                        ? "Processing admin override..."
-                                        : "Admin override: claim this recurring pattern for the selected team"
-                                  }
-                                >
-                                  {previewPortalClaimingSlotId
-                                    ? (previewPortalClaimingSlotId === normalizeText(slot?.slotId) ? "Selecting..." : "Working...")
-                                    : "Select"}
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
             </>
           ) : (
             <div className="muted">Select division and team to preview coach practice requests.</div>

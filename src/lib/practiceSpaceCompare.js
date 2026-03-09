@@ -107,6 +107,10 @@ export function filterPracticeSpaceComparison(items = [], filters = {}) {
     if (filters.compareState && item.compareState !== filters.compareState) return false;
     if (filters.issue && !item.issueFlags.includes(filters.issue)) return false;
     if (filters.fieldId && item.fieldId !== filters.fieldId) return false;
+    if (filters.division) {
+      const division = String(item.slot?.division || item.importedRow?.canonicalDivisionCode || item.importedRow?.rawAssignedDivision || "").trim();
+      if (division !== filters.division) return false;
+    }
     if (!search) return true;
 
     const haystack = [

@@ -4,11 +4,20 @@ import Toast from "../components/Toast";
 import PracticeSpaceComparisonCalendar from "../components/PracticeSpaceComparisonCalendar";
 import { buildPracticeSpaceComparison, derivePracticeSpaceDateRange, filterPracticeSpaceComparison } from "../lib/practiceSpaceCompare";
 
-function filterRows(rows, search, policy, issue, sortBy) {
+function resolveRowDivision(row) {
+  return String(row?.canonicalDivisionCode || row?.rawAssignedDivision || "").trim();
+}
+
+function resolveCompareDivision(item) {
+  return String(item?.slot?.division || item?.importedRow?.canonicalDivisionCode || item?.importedRow?.rawAssignedDivision || "").trim();
+}
+
+function filterRows(rows, search, policy, issue, division, sortBy) {
   const needle = String(search || "").trim().toLowerCase();
   const list = (rows || []).filter((row) => {
     if (policy && row.bookingPolicy !== policy) return false;
     if (issue && !(row.mappingIssues || []).includes(issue)) return false;
+    if (division && resolveRowDivision(row) !== division) return false;
     if (!needle) return true;
 
     const haystack = [
@@ -87,8 +96,10 @@ export default function PracticeSpaceManager({ leagueId }) {
   const [compareStateFilter, setCompareStateFilter] = useState("");
   const [compareIssueFilter, setCompareIssueFilter] = useState("");
   const [compareFieldFilter, setCompareFieldFilter] = useState("");
+  const [compareDivisionFilter, setCompareDivisionFilter] = useState("");
   const [policyFilter, setPolicyFilter] = useState("");
   const [issueFilter, setIssueFilter] = useState("");
+  const [inventoryDivisionFilter, setInventoryDivisionFilter] = useState("");
   const [sortBy, setSortBy] = useState("date");
   const [requestStatusFilter, setRequestStatusFilter] = useState("Pending");
   const [divisionDrafts, setDivisionDrafts] = useState({});
@@ -103,7 +114,11 @@ export default function PracticeSpaceManager({ leagueId }) {
       setCompareDateFrom(range.dateFrom);
       setCompareDateTo(range.dateTo);
     }
-    if (resetRange) setCompareFieldFilter("");
+    if (resetRange) {
+      setCompareFieldFilter("");
+      setCompareDivisionFilter("");
+      setInventoryDivisionFilter("");
+    }
   }
 
   async function load(nextSeasonLabel = seasonLabel) {
@@ -127,8 +142,8 @@ export default function PracticeSpaceManager({ leagueId }) {
   }, [leagueId]);
 
   const filteredRows = useMemo(
-    () => filterRows(data?.rows || [], search, policyFilter, issueFilter, sortBy),
-    [data, search, policyFilter, issueFilter, sortBy]
+    () => filterRows(data?.rows || [], search, policyFilter, issueFilter, inventoryDivisionFilter, sortBy),
+    [data, search, policyFilter, issueFilter, inventoryDivisionFilter, sortBy]
   );
 
   const visibleRequests = useMemo(
@@ -150,6 +165,28 @@ export default function PracticeSpaceManager({ leagueId }) {
     [comparison]
   );
 
+  const divisionLabelLookup = useMemo(
+    () =>
+      new Map((data?.canonicalDivisions || []).map((division) => [division.code, `${division.name} (${division.code})`])),
+    [data]
+  );
+
+  const compareDivisionOptions = useMemo(
+    () =>
+      Array.from(new Set((comparison.items || []).map(resolveCompareDivision).filter(Boolean)))
+        .sort((left, right) => left.localeCompare(right))
+        .map((value) => ({ value, label: divisionLabelLookup.get(value) || value })),
+    [comparison, divisionLabelLookup]
+  );
+
+  const inventoryDivisionOptions = useMemo(
+    () =>
+      Array.from(new Set((data?.rows || []).map(resolveRowDivision).filter(Boolean)))
+        .sort((left, right) => left.localeCompare(right))
+        .map((value) => ({ value, label: divisionLabelLookup.get(value) || value })),
+    [data, divisionLabelLookup]
+  );
+
   const filteredCompareItems = useMemo(
     () =>
       filterPracticeSpaceComparison(comparison.items || [], {
@@ -159,8 +196,9 @@ export default function PracticeSpaceManager({ leagueId }) {
         compareState: compareStateFilter,
         issue: compareIssueFilter,
         fieldId: compareFieldFilter,
+        division: compareDivisionFilter,
       }),
-    [comparison, compareSearch, compareDateFrom, compareDateTo, compareStateFilter, compareIssueFilter, compareFieldFilter]
+    [comparison, compareSearch, compareDateFrom, compareDateTo, compareStateFilter, compareIssueFilter, compareFieldFilter, compareDivisionFilter]
   );
 
   async function saveDivisionMapping(row) {
@@ -360,6 +398,15 @@ export default function PracticeSpaceManager({ leagueId }) {
                 <option value="">All fields</option>
                 {compareFieldOptions.map((field) => (
                   <option key={field.fieldId} value={field.fieldId}>{field.fieldName}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Division
+              <select value={compareDivisionFilter} onChange={(e) => setCompareDivisionFilter(e.target.value)}>
+                <option value="">All divisions</option>
+                {compareDivisionOptions.map((division) => (
+                  <option key={division.value} value={division.value}>{division.label}</option>
                 ))}
               </select>
             </label>
@@ -566,6 +613,15 @@ export default function PracticeSpaceManager({ leagueId }) {
                 <option value="team_unmapped">Team unmapped</option>
                 <option value="policy_unmapped">Policy unmapped</option>
                 <option value="field_unmapped">Field unmapped</option>
+              </select>
+            </label>
+            <label>
+              Division
+              <select value={inventoryDivisionFilter} onChange={(e) => setInventoryDivisionFilter(e.target.value)}>
+                <option value="">All divisions</option>
+                {inventoryDivisionOptions.map((division) => (
+                  <option key={division.value} value={division.value}>{division.label}</option>
+                ))}
               </select>
             </label>
             <label>
