@@ -311,6 +311,26 @@ public class FieldInventoryImportServiceTests
         Assert.Contains(preview.ReviewItems, x => x.Title == "Parser failed for Spring 3/16-5/22" && x.Severity == FieldInventoryReviewItemSeverities.Blocking);
     }
 
+    [Fact]
+    public async Task CreatePreviewAsync_WhenWorkbookLoadThrows_ReturnsErroredRun()
+    {
+        var service = CreateService(new ThrowingWorkbookConnector());
+
+        var preview = await service.CreatePreviewAsync(new FieldInventoryPreviewRequest(
+            "https://docs.google.com/spreadsheets/d/test-sheet/edit#gid=0",
+            null,
+            "Spring 2026",
+            new List<FieldInventorySelectedTab>
+            {
+                new("Spring 3/16-5/22", FieldInventoryParserTypes.SeasonWeekdayGrid, FieldInventoryActionTypes.Ingest, true),
+            }), CorrelationContext.Create("user-1", "league-1"));
+
+        Assert.Equal(FieldInventoryImportStatuses.Errored, preview.Run.Status);
+        Assert.Empty(preview.Records);
+        Assert.Contains(preview.Warnings, x => x.Code == "preview_build_failed");
+        Assert.Contains(preview.ReviewItems, x => x.Title == "Preview build failed" && x.Severity == FieldInventoryReviewItemSeverities.Blocking);
+    }
+
     private FieldInventoryImportService CreateService(FieldInventoryImportService.IFieldInventoryWorkbookConnector connector)
         => new(_repository, _fieldRepository, connector, _logger.Object);
 
@@ -549,6 +569,12 @@ public class FieldInventoryImportServiceTests
         {
             return Task.FromResult(_workbook);
         }
+    }
+
+    private sealed class ThrowingWorkbookConnector : FieldInventoryImportService.IFieldInventoryWorkbookConnector
+    {
+        public Task<ParsedWorkbook> LoadWorkbookAsync(string sourceWorkbookUrl)
+            => throw new InvalidOperationException("Synthetic workbook load failure");
     }
 
     private sealed class InMemoryFieldInventoryImportRepository : IFieldInventoryImportRepository

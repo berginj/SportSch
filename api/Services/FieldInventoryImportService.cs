@@ -145,7 +145,24 @@ public class FieldInventoryImportService : IFieldInventoryImportService
             CreatedBy = context.UserId,
         };
 
-        return await BuildAndPersistPreviewAsync(run, context);
+        try
+        {
+            return await BuildAndPersistPreviewAsync(run, context);
+        }
+        catch (ApiGuards.HttpError ex) when (ex.Status >= 500 || string.Equals(ex.Code, ErrorCodes.WORKBOOK_LOAD_FAILED, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogError(ex, "Field inventory preview build failed for run {RunId}", run.Id);
+            return await BuildErroredPreviewAsync(run, context, ex);
+        }
+        catch (ApiGuards.HttpError)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Field inventory preview build failed for run {RunId}", run.Id);
+            return await BuildErroredPreviewAsync(run, context, ex);
+        }
     }
 
     public async Task<FieldInventoryPreviewResponse?> GetRunAsync(string runId, CorrelationContext context)
@@ -436,6 +453,41 @@ public class FieldInventoryImportService : IFieldInventoryImportService
         await _repository.UpsertImportRunAsync(run);
         await _repository.ReplaceRunDataAsync(run.Id, results.Records, results.Warnings, results.ReviewItems);
 
+        return await BuildResponseAsync(run, null);
+    }
+
+    private async Task<FieldInventoryPreviewResponse> BuildErroredPreviewAsync(FieldInventoryImportRunEntity run, CorrelationContext context, Exception ex)
+    {
+        run.Status = FieldInventoryImportStatuses.Errored;
+        run.UpdatedAt = DateTimeOffset.UtcNow;
+        run.SummaryCounts = new FieldInventorySummaryCountsDto(
+            0,
+            1,
+            1,
+            0,
+            run.SelectedTabs.Count(x => x.Selected),
+            run.SummaryCounts.ImportedRecords,
+            run.SummaryCounts.SkippedRecords);
+
+        var warning = CreateWarning(
+            run.Id,
+            "preview_build_failed",
+            $"SportsCH could not build a preview for this workbook. The backend failed with: {ex.Message}",
+            "",
+            "");
+        var reviewItem = CreateReviewItem(
+            run.Id,
+            FieldInventoryReviewItemTypes.AmbiguousParse,
+            FieldInventoryReviewItemSeverities.Blocking,
+            "Preview build failed",
+            $"SportsCH hit an unexpected backend failure before preview rows could be produced. Error: {ex.Message}",
+            "",
+            "",
+            run.SourceWorkbookName ?? run.SourceWorkbookUrl,
+            new Dictionary<string, string?>());
+
+        await _repository.UpsertImportRunAsync(run);
+        await _repository.ReplaceRunDataAsync(run.Id, Array.Empty<FieldInventoryStagedRecordEntity>(), new[] { warning }, new[] { reviewItem });
         return await BuildResponseAsync(run, null);
     }
 
