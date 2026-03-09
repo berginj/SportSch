@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using GameSwap.Functions.Scheduling;
+using GameSwap.Functions.Storage;
 using Xunit;
 
 namespace GameSwap.Tests;
@@ -28,6 +29,43 @@ public class ScheduleExportTests
         Assert.Contains("Event Type", csv);
         Assert.Contains("Park Field 1", csv);
         Assert.Contains("2026-04-06", csv);
+    }
+
+    [Fact]
+    public void BuildScheduleExportCsv_MatchesExpectedFixtureFormat()
+    {
+        var rows = new List<ScheduleExportRow>
+        {
+            new(
+                EventType: "Game",
+                Date: "2025-05-10",
+                StartTime: "09:00",
+                EndTime: "10:30",
+                Duration: "90",
+                HomeTeam: "Falcons",
+                AwayTeam: "Hawks",
+                Venue: "Central Park > Field 1",
+                Status: "Scheduled"
+            ),
+            new(
+                EventType: "Game",
+                Date: "2025-05-11",
+                StartTime: "18:00",
+                EndTime: "19:00",
+                Duration: "60",
+                HomeTeam: "Lions",
+                AwayTeam: "",
+                Venue: "West Side > Field B",
+                Status: "Open"
+            ),
+        };
+
+        var csv = ScheduleExportCsv.Build(rows).Replace("\r\n", "\n");
+        var expected = "\"Event Type\",\"Date\",\"Start Time\",\"End Time\",\"Duration\",\"Home Team\",\"Away Team\",\"Venue\",\"Status\"\n"
+            + "\"Game\",\"2025-05-10\",\"09:00\",\"10:30\",\"90\",\"Falcons\",\"Hawks\",\"Central Park > Field 1\",\"Scheduled\"\n"
+            + "\"Game\",\"2025-05-11\",\"18:00\",\"19:00\",\"60\",\"Lions\",\"\",\"West Side > Field B\",\"Open\"";
+
+        Assert.Equal(expected, csv);
     }
 
     [Fact]

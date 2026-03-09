@@ -26,8 +26,6 @@ jobs:
         run: npm ci
       - name: Scheduler UI guard tests
         run: npm run test -- src/__tests__/manage/SeasonWizard.test.jsx --run
-      - name: Scheduler API guard tests
-        run: dotnet test api/Tests/GameSwap_Functions.Tests.csproj
       - name: Scheduler engine guard tests
         run: dotnet test api/GameSwap.Tests/GameSwap.Tests.csproj --filter "FullyQualifiedName~Schedule"
       - name: Build And Deploy

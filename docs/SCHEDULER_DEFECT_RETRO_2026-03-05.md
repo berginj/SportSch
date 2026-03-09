@@ -75,7 +75,7 @@ Use this mini-checklist before merging scheduler changes:
 ## Recommended CI Gate (next pass)
 
 Add a dedicated scheduler guard job that runs on PR:
-- `dotnet test api/Tests/GameSwap_Functions.Tests.csproj`
+- `dotnet test api/GameSwap.Tests/GameSwap.Tests.csproj --filter "FullyQualifiedName~Schedule"`
 - `dotnet test api/GameSwap.Tests/GameSwap.Tests.csproj --filter "FullyQualifiedName~Schedule"`
 - `npm run test -- src/__tests__/manage/SeasonWizard.test.jsx --run`
 

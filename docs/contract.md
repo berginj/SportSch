@@ -471,13 +471,10 @@ the notes for required headers or roles.
 | GET | /league/backup | `Functions/LeagueBackupFunctions.cs` | Get backup summary (requires `x-league-id`, LeagueAdmin). |
 | POST | /league/backup | `Functions/LeagueBackupFunctions.cs` | Save/overwrite league backup (requires `x-league-id`, LeagueAdmin). |
 | POST | /league/backup/restore | `Functions/LeagueBackupFunctions.cs` | Restore fields/divisions/season from backup (requires `x-league-id`, LeagueAdmin). |
-| GET | /admin/leagues | `Functions/LeaguesFunctions.cs` | Global admin list of leagues. |
-| POST | /admin/leagues | `Functions/LeaguesFunctions.cs` | Global admin create league. |
-| GET | /global/leagues | `Functions/LeaguesFunctions.cs` | Global admin list of leagues (alt route). |
-| POST | /global/leagues | `Functions/LeaguesFunctions.cs` | Global admin create league (alt route). |
-| PATCH | /admin/leagues/{leagueId}/season | `Functions/LeaguesFunctions.cs` | League/global admin update season settings. |
+| GET | /global/leagues | `Functions/LeaguesFunctions.cs` | Global admin list of leagues. |
+| POST | /global/leagues | `Functions/LeaguesFunctions.cs` | Global admin create league. |
 | PATCH | /league/season | `Functions/LeaguesFunctions.cs` | League/global admin update season settings (header-scoped). |
-| PATCH | /global/leagues/{leagueId}/season | `Functions/LeaguesFunctions.cs` | Global admin update season settings (alt route). |
+| PATCH | /global/leagues/{leagueId}/season | `Functions/LeaguesFunctions.cs` | Global admin update season settings. |
 | DELETE | /global/leagues/{leagueId} | `Functions/LeaguesFunctions.cs` | Global admin delete league (data wipe). |
 | GET | /globaladmins | `Functions/GlobalAdminsFunctions.cs` | Global admin list. |
 | POST | /globaladmins | `Functions/GlobalAdminsFunctions.cs` | Add global admin. |
@@ -653,10 +650,10 @@ Response
 }
 ```
 
-### Admin: GET /admin/leagues
+### Global Admin: GET /global/leagues
 Requires: global admin.
 
-### Admin: POST /admin/leagues
+### Global Admin: POST /global/leagues
 Requires: global admin.
 
 Body
@@ -664,7 +661,7 @@ Body
 { "leagueId": "ARL", "name": "Arlington", "timezone": "America/New_York" }
 ```
 
-### Admin: PATCH /admin/leagues/{leagueId}/season
+### Global Admin: PATCH /global/leagues/{leagueId}/season
 Requires: global admin.
 
 Body
