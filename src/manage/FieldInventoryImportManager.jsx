@@ -23,7 +23,7 @@ export default function FieldInventoryImportManager({ leagueId }) {
   const [preview, setPreview] = useState(null);
   const [commitPreview, setCommitPreview] = useState(null);
   const [busy, setBusy] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState(null);
   const [message, setMessage] = useState("");
   const [mappingDrafts, setMappingDrafts] = useState({});
   const [classificationDrafts, setClassificationDrafts] = useState({});
@@ -34,7 +34,7 @@ export default function FieldInventoryImportManager({ leagueId }) {
   );
 
   function resetMessages() {
-    setError("");
+    setError(null);
     setMessage("");
   }
 
@@ -54,7 +54,7 @@ export default function FieldInventoryImportManager({ leagueId }) {
       });
       applyLoadedWorkbook(result, "Workbook loaded. Select tabs and parse a preview.");
     } catch (e) {
-      setError(formatImportError(e));
+      setError(buildImportError(e));
     } finally {
       setBusy("");
     }
@@ -76,7 +76,7 @@ export default function FieldInventoryImportManager({ leagueId }) {
       });
       applyLoadedWorkbook(result, "Workbook uploaded. Select tabs and parse a preview.");
     } catch (e) {
-      setError(formatImportError(e));
+      setError(buildImportError(e));
     } finally {
       setBusy("");
     }
@@ -115,7 +115,7 @@ export default function FieldInventoryImportManager({ leagueId }) {
       setSeasonLabel(result?.run?.seasonLabel || seasonLabel);
       setMessage("Preview parsed and stored in staging.");
     } catch (e) {
-      setError(formatImportError(e));
+      setError(buildImportError(e));
     } finally {
       setBusy("");
     }
@@ -132,7 +132,7 @@ export default function FieldInventoryImportManager({ leagueId }) {
       setPreview(result);
       setMessage("Preview marked as staged. Live inventory is still unchanged.");
     } catch (e) {
-      setError(formatImportError(e));
+      setError(buildImportError(e));
     } finally {
       setBusy("");
     }
@@ -158,7 +158,7 @@ export default function FieldInventoryImportManager({ leagueId }) {
       setPreview(result);
       setMessage(`Saved mapping for ${item.rawValue}.`);
     } catch (e) {
-      setError(formatImportError(e));
+      setError(buildImportError(e));
     } finally {
       setBusy("");
     }
@@ -184,7 +184,7 @@ export default function FieldInventoryImportManager({ leagueId }) {
       setPreview(result);
       setMessage(`Saved tab classification for ${item.sourceTab}.`);
     } catch (e) {
-      setError(formatImportError(e));
+      setError(buildImportError(e));
     } finally {
       setBusy("");
     }
@@ -206,7 +206,7 @@ export default function FieldInventoryImportManager({ leagueId }) {
       setPreview(result);
       setMessage(`Review item marked ${status.replace("_", " ")}.`);
     } catch (e) {
-      setError(formatImportError(e));
+      setError(buildImportError(e));
     } finally {
       setBusy("");
     }
@@ -232,7 +232,7 @@ export default function FieldInventoryImportManager({ leagueId }) {
       setCommitPreview(result?.commitPreview || null);
       setMessage(dryRun ? `${mode} dry run completed.` : `${mode} completed against live inventory storage.`);
     } catch (e) {
-      setError(formatImportError(e));
+      setError(buildImportError(e));
     } finally {
       setBusy("");
     }
@@ -254,7 +254,7 @@ export default function FieldInventoryImportManager({ leagueId }) {
         </div>
       </div>
 
-      {error ? <div className="callout callout--error">{error}</div> : null}
+      {error ? <ImportErrorCallout error={error} /> : null}
       {message ? <div className="callout callout--ok">{message}</div> : null}
 
       <div className="grid2">
@@ -616,18 +616,85 @@ function SummaryCard({ label, value }) {
   );
 }
 
-function formatImportError(error) {
+function buildImportError(error) {
   const message = error?.message || "Request failed.";
   const originalMessage = error?.originalMessage || "";
   const detailMessage = typeof error?.details?.exception === "string" ? error.details.exception : "";
-  const combined = `${message} ${originalMessage} ${detailMessage}`.trim();
+  const detailDetail = typeof error?.details?.message === "string" ? error.details.message : "";
+  const combined = `${message} ${originalMessage} ${detailMessage} ${detailDetail}`.trim();
+  const requestId = error?.details?.requestId || error?.requestId || "";
+  const middlewareRequestId = error?.middlewareRequestId || "";
+  const responseText = sanitizeResponseText(error?.responseText, combined);
+  const summary = detailDetail && detailDetail !== message
+    ? `${message} ${detailDetail}`.trim()
+    : detailMessage && detailMessage !== message
+      ? `${message} ${detailMessage}`.trim()
+      : message;
+
   if ((error?.status === 502 || error?.code === "WORKBOOK_LOAD_FAILED") && /\b401\b|\b403\b/.test(combined)) {
-    return `${message} This usually means Google Sheets is not allowing anonymous view/download for the workbook. Set the workbook to "Anyone with the link can view" and try again.`;
+    return {
+      summary: `${message} This usually means Google Sheets is not allowing anonymous view/download for the workbook.`,
+      hint: "Set the workbook to \"Anyone with the link can view\" and try again.",
+      status: error?.status || null,
+      code: error?.code || "",
+      requestId,
+      middlewareRequestId,
+      responseText,
+    };
   }
 
-  return detailMessage && detailMessage !== message
-    ? `${message} ${detailMessage}`
-    : message;
+  return {
+    summary,
+    hint: error?.status >= 500
+      ? "This came from the backend preview pipeline. Use the request id below to trace the exact failure."
+      : "",
+    status: error?.status || null,
+    code: error?.code || "",
+    requestId,
+    middlewareRequestId,
+    responseText,
+  };
+}
+
+function sanitizeResponseText(responseText, combinedMessage) {
+  const text = String(responseText || "").trim();
+  if (!text) return "";
+  if (text === combinedMessage) return "";
+  if (text.startsWith("<!DOCTYPE") || text.startsWith("<html")) {
+    return "The server returned an HTML error page before the API could send structured JSON.";
+  }
+  return text.length > 1200 ? `${text.slice(0, 1200)}...` : text;
+}
+
+function ImportErrorCallout({ error }) {
+  const lines = [];
+  if (error?.status) lines.push(`Status: ${error.status}`);
+  if (error?.code) lines.push(`Code: ${error.code}`);
+  if (error?.requestId) lines.push(`Request ID: ${error.requestId}`);
+  if (error?.middlewareRequestId) lines.push(`Middleware ID: ${error.middlewareRequestId}`);
+
+  return (
+    <div className="callout callout--error">
+      <div className="font-bold mb-2">Field inventory request failed</div>
+      <div>{error?.summary || "Request failed."}</div>
+      {error?.hint ? <div className="subtle mt-2">{error.hint}</div> : null}
+      {lines.length ? (
+        <div className="subtle mt-2">
+          {lines.map((line) => (
+            <div key={line}>{line}</div>
+          ))}
+        </div>
+      ) : null}
+      {error?.responseText ? (
+        <div className="mt-3">
+          <div className="font-bold mb-1">Backend response</div>
+          <pre className="subtle" style={{ whiteSpace: "pre-wrap", margin: 0 }}>
+            {error.responseText}
+          </pre>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function getTabActionAppearance(actionType, selected) {

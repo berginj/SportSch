@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using Microsoft.Azure.Functions.Worker.Http;
 
 namespace GameSwap.Functions.Storage;
@@ -10,10 +11,15 @@ public static class ApiResponses
 
     public static HttpResponseData Error(HttpRequestData req, HttpStatusCode status, string code, string message, object? details = null)
     {
-        if (details is null)
-            return HttpUtil.Json(req, status, new { error = new { code, message } });
-
-        return HttpUtil.Json(req, status, new { error = new { code, message, details } });
+        return HttpUtil.Json(req, status, new
+        {
+            error = new
+            {
+                code,
+                message,
+                details = BuildErrorDetails(req, details),
+            }
+        });
     }
 
     public static HttpResponseData FromHttpError(HttpRequestData req, ApiGuards.HttpError ex)
@@ -32,5 +38,33 @@ public static class ApiResponses
         });
 
         return Error(req, status, code, ex.Message);
+    }
+
+    private static object BuildErrorDetails(HttpRequestData req, object? details)
+    {
+        var requestId = req.FunctionContext.InvocationId.ToString();
+        var merged = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["requestId"] = requestId,
+        };
+
+        if (details is null)
+        {
+            return merged;
+        }
+
+        var detailElement = JsonSerializer.SerializeToElement(details);
+        if (detailElement.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in detailElement.EnumerateObject())
+            {
+                merged[property.Name] = property.Value.Clone();
+            }
+
+            return merged;
+        }
+
+        merged["detail"] = detailElement.Clone();
+        return merged;
     }
 }

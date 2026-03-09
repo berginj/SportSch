@@ -198,11 +198,14 @@ describe('api', () => {
       global.fetch.mockResolvedValue({
         ok: false,
         status: 409,
+        headers: new Headers({
+          'x-ms-middleware-request-id': 'middleware-123',
+        }),
         text: () => Promise.resolve(JSON.stringify({
           error: {
             code: 'SLOT_CONFLICT',
             message: 'Slot conflicts with existing slot',
-            details: { conflictingSlotId: 'slot-123' }
+            details: { conflictingSlotId: 'slot-123', requestId: 'req-123' }
           }
         })),
       });
@@ -212,7 +215,25 @@ describe('api', () => {
       } catch (error) {
         expect(error.status).toBe(409);
         expect(error.code).toBe('SLOT_CONFLICT');
-        expect(error.details).toEqual({ conflictingSlotId: 'slot-123' });
+        expect(error.details).toEqual({ conflictingSlotId: 'slot-123', requestId: 'req-123' });
+        expect(error.requestId).toBe('req-123');
+        expect(error.middlewareRequestId).toBe('middleware-123');
+      }
+    });
+
+    it('should preserve raw non-json error responses for troubleshooting', async () => {
+      global.fetch.mockResolvedValue({
+        ok: false,
+        status: 500,
+        headers: new Headers(),
+        text: () => Promise.resolve('upstream proxy error'),
+      });
+
+      try {
+        await apiFetch('/api/field-inventory/preview');
+      } catch (error) {
+        expect(error.status).toBe(500);
+        expect(error.responseText).toBe('upstream proxy error');
       }
     });
   });

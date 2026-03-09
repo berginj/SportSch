@@ -18,6 +18,14 @@ function isNonJsonBody(body) {
   );
 }
 
+function getResponseHeader(res, name) {
+  try {
+    return res?.headers?.get?.(name) || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function apiFetch(path, options = {}) {
   const base = apiBase();
   const url = base ? `${base}${path}` : path;
@@ -53,6 +61,9 @@ export async function apiFetch(path, options = {}) {
 
   if (!res.ok) {
     const err = data?.error;
+    const responseText = typeof data === "string" ? data : text || "";
+    const requestId = err?.details?.requestId || getResponseHeader(res, "x-ms-request-id") || null;
+    const middlewareRequestId = getResponseHeader(res, "x-ms-middleware-request-id") || null;
 
     // Extract error code and message
     const errorCode = typeof err === "object" && err?.code ? err.code : null;
@@ -69,7 +80,11 @@ export async function apiFetch(path, options = {}) {
     error.status = res.status;
     error.code = errorCode;
     error.originalMessage = errorMessage;
-    error.details = err?.details;
+    error.details = err?.details || null;
+    error.requestId = requestId;
+    error.middlewareRequestId = middlewareRequestId;
+    error.responseText = responseText;
+    error.response = data;
 
     throw error;
   }

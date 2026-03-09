@@ -300,4 +300,57 @@ describe("FieldInventoryImportManager", () => {
       }));
     });
   });
+
+  it("shows backend request ids and response text for preview failures", async () => {
+    api.apiFetch.mockImplementation((url) => {
+      if (url === "/api/field-inventory/workbook/inspect") {
+        return Promise.resolve({
+          sourceType: "google_sheet",
+          sourceWorkbookUrl: "https://docs.google.com/spreadsheets/d/test-sheet/edit",
+          uploadedWorkbookId: null,
+          sourceWorkbookName: null,
+          spreadsheetId: "test-sheet",
+          sourceWorkbookTitle: "Spring 2026 County Inventory",
+          tabs: [
+            {
+              tabName: "Weekends",
+              index: 0,
+              isHidden: false,
+              inferredParserType: "weekend_grid",
+              inferredActionType: "ingest",
+              confidence: "high",
+              reason: "AGSA weekend inventory tab",
+              nonEmptyCellCount: 12,
+              mergedRangeCount: 1,
+            },
+          ],
+        });
+      }
+      if (url === "/api/field-inventory/preview") {
+        return Promise.reject(Object.assign(new Error("Field inventory import failed."), {
+          status: 500,
+          code: "INTERNAL_ERROR",
+          details: { requestId: "req-500" },
+          middlewareRequestId: "mid-500",
+          responseText: "Object reference not set to an instance of an object.",
+        }));
+      }
+      throw new Error(`Unexpected apiFetch call: ${url}`);
+    });
+
+    render(<FieldInventoryImportManager leagueId="league-1" />);
+
+    fireEvent.change(screen.getByLabelText(/Google Sheets URL/i), {
+      target: { value: "https://docs.google.com/spreadsheets/d/test-sheet/edit#gid=0" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Load Workbook" }));
+    expect(await screen.findByText("Workbook loaded. Select tabs and parse a preview.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Parse Preview" }));
+
+    expect(await screen.findByText("Field inventory request failed")).toBeInTheDocument();
+    expect(screen.getByText("Request ID: req-500")).toBeInTheDocument();
+    expect(screen.getByText("Middleware ID: mid-500")).toBeInTheDocument();
+    expect(screen.getByText(/Object reference not set to an instance of an object/i)).toBeInTheDocument();
+  });
 });
