@@ -10,7 +10,7 @@ const SlotGeneratorManager = lazy(() => import("../manage/SlotGeneratorManager")
 const LeagueSettings = lazy(() => import("../manage/LeagueSettings"));
 const TeamsManager = lazy(() => import("../manage/TeamsManager"));
 const DivisionsManager = lazy(() => import("../manage/DivisionsManager"));
-const PracticeRequestsManager = lazy(() => import("../manage/PracticeRequestsManager"));
+const PracticeSpaceManager = lazy(() => import("../manage/PracticeSpaceManager"));
 const CoachLinksGenerator = lazy(() => import("../manage/CoachLinksGenerator"));
 const FieldInventoryImportManager = lazy(() => import("../manage/FieldInventoryImportManager"));
 
@@ -46,7 +46,7 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
       ...(canSchedule ? [{ id: "settings", label: "League Settings" }] : []),
       { id: "invites", label: "Invites" },
       ...(canSchedule ? [{ id: "coach-links", label: "Coach Links" }] : []),
-      ...(canSchedule ? [{ id: "practice-requests", label: "Practice Requests" }] : []),
+      ...(canSchedule ? [{ id: "practice-requests", label: "Practice Space Admin" }] : []),
       ...(canSchedule ? [{ id: "field-inventory", label: "Field Inventory Import" }] : []),
       { id: "fields", label: "Fields" },
     ],
@@ -253,12 +253,12 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
       {activeTabId === "practice-requests" && canSchedule && (
         <div className="card">
           <div className="card__header">
-            <div className="h2">Practice Slot Requests</div>
-            <div className="subtle">Review and approve/reject practice slot requests from coaches.</div>
+            <div className="h2">Practice Space Admin</div>
+            <div className="subtle">Review imported field space, align canonical mappings, and manage coach practice requests.</div>
           </div>
           <div className="card__body">
             <Suspense fallback={sectionFallback}>
-              <PracticeRequestsManager leagueId={leagueId} />
+              <PracticeSpaceManager leagueId={leagueId} />
             </Suspense>
           </div>
         </div>

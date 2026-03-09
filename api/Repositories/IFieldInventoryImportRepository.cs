@@ -34,4 +34,18 @@ public interface IFieldInventoryImportRepository
     Task ReplaceLiveRecordsAsync(string leagueId, string seasonLabel, IEnumerable<FieldInventoryLiveRecordEntity> records);
 
     Task AddCommitRunAsync(FieldInventoryCommitRunEntity commitRun);
+    Task<List<FieldInventoryCommitRunEntity>> GetCommitRunsAsync(string leagueId);
+
+    Task<List<FieldInventoryDivisionAliasEntity>> GetDivisionAliasesAsync(string leagueId);
+    Task UpsertDivisionAliasAsync(FieldInventoryDivisionAliasEntity alias);
+
+    Task<List<FieldInventoryTeamAliasEntity>> GetTeamAliasesAsync(string leagueId);
+    Task UpsertTeamAliasAsync(FieldInventoryTeamAliasEntity alias);
+
+    Task<List<FieldInventoryGroupPolicyEntity>> GetGroupPoliciesAsync(string leagueId);
+    Task UpsertGroupPolicyAsync(FieldInventoryGroupPolicyEntity policy);
+
+    Task<List<FieldInventoryPracticeRequestEntity>> GetPracticeRequestsAsync(string leagueId, string seasonLabel);
+    Task<FieldInventoryPracticeRequestEntity?> GetPracticeRequestAsync(string leagueId, string seasonLabel, string requestId);
+    Task UpsertPracticeRequestAsync(FieldInventoryPracticeRequestEntity request);
 }

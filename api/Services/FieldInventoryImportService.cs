@@ -289,8 +289,8 @@ public class FieldInventoryImportService : IFieldInventoryImportService
         var mappedRecords = stagedRecords.Where(x => !string.IsNullOrWhiteSpace(x.FieldId)).ToList();
         var liveRecords = await _repository.GetLiveRecordsAsync(context.LeagueId, seasonLabel);
 
-        var stagedByKey = mappedRecords.ToDictionary(BuildInventoryIdentity, StringComparer.OrdinalIgnoreCase);
-        var liveByKey = liveRecords.ToDictionary(BuildInventoryIdentity, StringComparer.OrdinalIgnoreCase);
+        var stagedByKey = BuildStagedIdentityMap(mappedRecords);
+        var liveByKey = BuildLiveIdentityMap(liveRecords);
         var createCount = stagedByKey.Keys.Except(liveByKey.Keys, StringComparer.OrdinalIgnoreCase).Count();
         var unchangedCount = stagedByKey.Keys.Intersect(liveByKey.Keys, StringComparer.OrdinalIgnoreCase)
             .Count(key => LiveRecordMatches(stagedByKey[key], liveByKey[key]));
@@ -2044,7 +2044,7 @@ public class FieldInventoryImportService : IFieldInventoryImportService
         bool replaceExistingSeason)
     {
         var now = DateTimeOffset.UtcNow;
-        var stagedLive = mappedRecords.Select(record => new FieldInventoryLiveRecordEntity
+        var stagedLive = DeduplicateLiveRecords(mappedRecords.Select(record => new FieldInventoryLiveRecordEntity
         {
             Id = record.Id,
             LeagueId = run.LeagueId,
@@ -2074,11 +2074,11 @@ public class FieldInventoryImportService : IFieldInventoryImportService
             Confidence = record.Confidence,
             CreatedAt = now,
             UpdatedAt = now,
-        }).ToList();
+        }).ToList());
 
         if (mode == FieldInventoryCommitModes.Import)
         {
-            var existingByKey = existingLiveRecords.ToDictionary(BuildInventoryIdentity, StringComparer.OrdinalIgnoreCase);
+            var existingByKey = BuildLiveIdentityMap(existingLiveRecords);
             var merged = new List<FieldInventoryLiveRecordEntity>(existingLiveRecords);
             foreach (var record in stagedLive)
             {
@@ -2095,13 +2095,70 @@ public class FieldInventoryImportService : IFieldInventoryImportService
             return stagedLive;
         }
 
-        var output = existingLiveRecords.ToDictionary(BuildInventoryIdentity, StringComparer.OrdinalIgnoreCase);
+        var output = BuildLiveIdentityMap(existingLiveRecords);
         foreach (var record in stagedLive)
         {
             output[BuildInventoryIdentity(record)] = record;
         }
         return output.Values.ToList();
     }
+
+    private static Dictionary<string, FieldInventoryStagedRecordEntity> BuildStagedIdentityMap(IEnumerable<FieldInventoryStagedRecordEntity> records)
+        => records
+            .GroupBy(BuildInventoryIdentity, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .OrderByDescending(GetStagedRecordQualityScore)
+                    .ThenByDescending(x => x.UpdatedAt)
+                    .ThenBy(x => x.Id, StringComparer.OrdinalIgnoreCase)
+                    .First(),
+                StringComparer.OrdinalIgnoreCase);
+
+    private static Dictionary<string, FieldInventoryLiveRecordEntity> BuildLiveIdentityMap(IEnumerable<FieldInventoryLiveRecordEntity> records)
+        => records
+            .GroupBy(BuildInventoryIdentity, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .OrderByDescending(GetLiveRecordQualityScore)
+                    .ThenByDescending(x => x.UpdatedAt)
+                    .ThenBy(x => x.Id, StringComparer.OrdinalIgnoreCase)
+                    .First(),
+                StringComparer.OrdinalIgnoreCase);
+
+    private static List<FieldInventoryLiveRecordEntity> DeduplicateLiveRecords(IEnumerable<FieldInventoryLiveRecordEntity> records)
+        => BuildLiveIdentityMap(records).Values.ToList();
+
+    private static int GetStagedRecordQualityScore(FieldInventoryStagedRecordEntity record)
+    {
+        var score = ConfidenceScore(record.Confidence);
+        if (!string.IsNullOrWhiteSpace(record.AssignedGroup)) score += 3;
+        if (!string.IsNullOrWhiteSpace(record.AssignedDivision)) score += 2;
+        if (!string.IsNullOrWhiteSpace(record.AssignedTeamOrEvent)) score += 2;
+        if (!string.IsNullOrWhiteSpace(record.UsageType)) score += 1;
+        if (!string.IsNullOrWhiteSpace(record.UsedBy)) score += 1;
+        if (!string.IsNullOrWhiteSpace(record.SourceValue)) score += 1;
+        return score;
+    }
+
+    private static int GetLiveRecordQualityScore(FieldInventoryLiveRecordEntity record)
+    {
+        var score = ConfidenceScore(record.Confidence);
+        if (!string.IsNullOrWhiteSpace(record.AssignedGroup)) score += 3;
+        if (!string.IsNullOrWhiteSpace(record.AssignedDivision)) score += 2;
+        if (!string.IsNullOrWhiteSpace(record.AssignedTeamOrEvent)) score += 2;
+        if (!string.IsNullOrWhiteSpace(record.UsageType)) score += 1;
+        if (!string.IsNullOrWhiteSpace(record.UsedBy)) score += 1;
+        if (!string.IsNullOrWhiteSpace(record.SourceValue)) score += 1;
+        return score;
+    }
+
+    private static int ConfidenceScore(string? confidence)
+        => string.Equals(confidence, FieldInventoryConfidence.High, StringComparison.OrdinalIgnoreCase) ? 3
+            : string.Equals(confidence, FieldInventoryConfidence.Medium, StringComparison.OrdinalIgnoreCase) ? 2
+            : string.Equals(confidence, FieldInventoryConfidence.Low, StringComparison.OrdinalIgnoreCase) ? 1
+            : 0;
 
     private static string ColumnName(int column)
     {

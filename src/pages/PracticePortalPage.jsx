@@ -1,1063 +1,377 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
-import { readPagedItems } from "../lib/pagedResults";
 import StatusCard from "../components/StatusCard";
 import Toast from "../components/Toast";
-import { ConfirmDialog } from "../components/Dialogs";
-import { useConfirmDialog } from "../lib/useDialogs";
 
-const WEEKDAY_FILTER_OPTIONS = [
-  { key: "", label: "All days" },
-  { key: "1", label: "Monday" },
-  { key: "2", label: "Tuesday" },
-  { key: "3", label: "Wednesday" },
-  { key: "4", label: "Thursday" },
-  { key: "5", label: "Friday" },
-  { key: "6", label: "Saturday" },
-  { key: "0", label: "Sunday" },
+const DAY_OPTIONS = [
+  { value: "", label: "All days" },
+  { value: "Monday", label: "Monday" },
+  { value: "Tuesday", label: "Tuesday" },
+  { value: "Wednesday", label: "Wednesday" },
+  { value: "Thursday", label: "Thursday" },
+  { value: "Friday", label: "Friday" },
+  { value: "Saturday", label: "Saturday" },
+  { value: "Sunday", label: "Sunday" },
 ];
 
-function normalizeRole(role) {
-  return (role || "").trim();
-}
-
-function weekKeyFromDate(isoDate) {
-  const parts = (isoDate || "").split("-");
-  if (parts.length !== 3) return "";
-  const year = Number(parts[0]);
-  const month = Number(parts[1]);
-  const day = Number(parts[2]);
-  if (!year || !month || !day) return "";
-  const date = new Date(Date.UTC(year, month - 1, day));
-  const dayNum = date.getUTCDay() || 7;
-  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-  const weekNo = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
-  return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
-}
-
-function weekdayKeyFromDate(isoDate) {
-  const parts = (isoDate || "").split("-");
-  if (parts.length !== 3) return "";
-  const year = Number(parts[0]);
-  const month = Number(parts[1]);
-  const day = Number(parts[2]);
-  if (!year || !month || !day) return "";
-  const date = new Date(Date.UTC(year, month - 1, day));
-  return String(date.getUTCDay());
-}
-
-function formatSlotTime(slot) {
-  const start = (slot?.startTime || "").trim();
-  const end = (slot?.endTime || "").trim();
-  if (!start || !end) return "";
-  return `${start} - ${end}`;
-}
-
-function formatSlotLocation(slot) {
-  return slot?.displayName || `${slot?.parkName || ""} ${slot?.fieldName || ""}`.trim() || slot?.fieldKey || "";
-}
-
-function practicePatternKey(slot) {
-  const weekday = weekdayKeyFromDate(slot?.gameDate);
-  const fieldKey = (slot?.fieldKey || "").trim();
-  const start = (slot?.startTime || "").trim();
-  const end = (slot?.endTime || "").trim();
-  if (!weekday || !fieldKey || !start || !end) return "";
-  return `${weekday}|${fieldKey}|${start}|${end}`;
-}
-
-function weekdayLabelFromDate(isoDate) {
-  const key = weekdayKeyFromDate(isoDate);
-  return WEEKDAY_FILTER_OPTIONS.find((opt) => opt.key === key)?.label || "";
-}
-
-function isPracticeCapableAvailability(slot) {
-  if (!slot?.isAvailability) return false;
-  if ((slot?.status || "").trim() !== "Open") return false;
-  const allocationType = String(slot?.allocationSlotType || slot?.slotType || "").trim().toLowerCase();
-  if (!allocationType) return true;
-  return allocationType === "practice" || allocationType === "both";
+function filterSlots(slots, search, day, policy, showOnlyOpenSeats) {
+  const needle = String(search || "").trim().toLowerCase();
+  return (slots || [])
+    .filter((slot) => (day ? slot.dayOfWeek === day : true))
+    .filter((slot) => (policy ? slot.bookingPolicy === policy : true))
+    .filter((slot) => (showOnlyOpenSeats ? slot.remainingCapacity > 0 : true))
+    .filter((slot) => {
+      if (!needle) return true;
+      const haystack = [
+        slot.fieldName,
+        slot.assignedGroup,
+        slot.assignedDivision,
+        slot.assignedTeamOrEvent,
+        slot.date,
+      ]
+        .map((value) => String(value || "").toLowerCase())
+        .join(" ");
+      return haystack.includes(needle);
+    })
+    .sort((left, right) =>
+      `${left.date || ""}|${left.startTime || ""}|${left.fieldName || ""}`.localeCompare(
+        `${right.date || ""}|${right.startTime || ""}|${right.fieldName || ""}`
+      )
+    );
 }
 
 export default function PracticePortalPage({ me, leagueId }) {
-  const isGlobalAdmin = !!me?.isGlobalAdmin;
-  const memberships = useMemo(
-    () => (Array.isArray(me?.memberships) ? me.memberships : []),
-    [me]
-  );
-  const role = useMemo(() => {
-    const inLeague = memberships.filter((m) => (m?.leagueId || "").trim() === (leagueId || "").trim());
-    const roles = inLeague.map((m) => normalizeRole(m?.role));
-    if (roles.includes("LeagueAdmin")) return "LeagueAdmin";
-    if (roles.includes("Coach")) return "Coach";
-    return roles.includes("Viewer") ? "Viewer" : "";
-  }, [memberships, leagueId]);
-
-  const coachTeam = useMemo(() => {
-    const inLeague = memberships.filter((m) => (m?.leagueId || "").trim() === (leagueId || "").trim());
-    const coach = inLeague.find((m) => normalizeRole(m?.role) === "Coach");
-    const division = (coach?.team?.division || "").trim();
-    const teamId = (coach?.team?.teamId || "").trim();
-    return { division, teamId };
-  }, [memberships, leagueId]);
-
-  const [divisions, setDivisions] = useState([]);
-  const [division, setDivision] = useState("");
-  const [divisionTeams, setDivisionTeams] = useState([]);
-  const [slots, setSlots] = useState([]);
-  const [practiceRequests, setPracticeRequests] = useState([]);
-  const [portalSettings, setPortalSettings] = useState(null);
+  const [data, setData] = useState(null);
+  const [seasonLabel, setSeasonLabel] = useState("");
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
-  const [notice, setNotice] = useState("");
+  const [requestingKey, setRequestingKey] = useState("");
+  const [cancellingId, setCancellingId] = useState("");
+  const [error, setError] = useState("");
   const [toast, setToast] = useState(null);
-  const [openToShareField, setOpenToShareField] = useState(false);
-  const [shareWithTeamId, setShareWithTeamId] = useState("");
-  const [availableDayFilter, setAvailableDayFilter] = useState("0");
-  const [requestingSlot, setRequestingSlot] = useState("");
-  const [portalMode, setPortalMode] = useState("recurring");
-  const [oneOffDayFilter, setOneOffDayFilter] = useState("");
-  const [oneOffFieldSearch, setOneOffFieldSearch] = useState("");
-  const [oneOffDateFrom, setOneOffDateFrom] = useState("");
-  const [oneOffDateTo, setOneOffDateTo] = useState("");
-  const initializedRef = useRef(false);
-  const loadedDivisionRef = useRef("");
-  const { confirmState, requestConfirm, handleConfirm, handleCancel } = useConfirmDialog();
+  const [search, setSearch] = useState("");
+  const [dayFilter, setDayFilter] = useState("");
+  const [policyFilter, setPolicyFilter] = useState("");
+  const [showOnlyOpenSeats, setShowOnlyOpenSeats] = useState(true);
 
-  const canSelectPractice = role === "Coach" || role === "LeagueAdmin" || isGlobalAdmin;
-  const canPickDivision = isGlobalAdmin || role === "LeagueAdmin" || !coachTeam.division;
+  const coachName = me?.name || me?.userDetails || "Coach";
 
-  const applyFiltersFromUrl = useCallback(() => {
-    if (typeof window === "undefined") return { division: "" };
-    const params = new URLSearchParams(window.location.search);
-    return { division: (params.get("division") || "").trim() };
-  }, []);
-
-  async function loadAll(selectedDivision) {
-    setErr("");
-    setNotice("");
+  async function load(nextSeasonLabel = seasonLabel) {
+    if (!leagueId) return;
     setLoading(true);
+    setError("");
     try {
-      const [divs] = await Promise.all([apiFetch("/api/divisions")]);
-      const divList = Array.isArray(divs) ? divs : [];
-      setDivisions(divList);
-
-      if (coachTeam.division && selectedDivision && selectedDivision !== coachTeam.division) {
-        setNotice(`Your account is assigned to ${coachTeam.division}. Showing that division.`);
-      }
-
-      const preferred = coachTeam.division || selectedDivision || divList?.[0]?.code || "";
-      setDivision(preferred);
-
-      if (preferred) {
-        const params = new URLSearchParams({ division: preferred, status: "Open,Confirmed" });
-        const requestParams = new URLSearchParams();
-        const portalParams = new URLSearchParams({ division: preferred });
-        if (coachTeam.teamId) requestParams.set("teamId", coachTeam.teamId);
-        const [s, teams, requests, settings] = await Promise.all([
-          apiFetch(`/api/slots?${params.toString()}`),
-          apiFetch(`/api/teams?division=${encodeURIComponent(preferred)}`).catch(() => []),
-          coachTeam.teamId
-            ? apiFetch(`/api/practice-requests?${requestParams.toString()}`).catch(() => [])
-            : Promise.resolve([]),
-          apiFetch(`/api/practice-portal/settings?${portalParams.toString()}`).catch(() => null),
-        ]);
-        setSlots(readPagedItems(s));
-        setDivisionTeams(Array.isArray(teams) ? teams : []);
-        setPracticeRequests(Array.isArray(requests) ? requests : []);
-        setPortalSettings(settings && typeof settings === "object" ? settings : null);
-        loadedDivisionRef.current = preferred;
-      } else {
-        setSlots([]);
-        setDivisionTeams([]);
-        setPracticeRequests([]);
-        setPortalSettings(null);
-        loadedDivisionRef.current = "";
-      }
+      const query = nextSeasonLabel ? `?seasonLabel=${encodeURIComponent(nextSeasonLabel)}` : "";
+      const result = await apiFetch(`/api/field-inventory/practice/coach${query}`);
+      setData(result);
+      setSeasonLabel(result?.seasonLabel || nextSeasonLabel || "");
     } catch (e) {
-      setErr(e?.message || String(e));
+      setError(e.message || "Failed to load practice space.");
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    const preferred = applyFiltersFromUrl();
-    loadAll(preferred.division).finally(() => {
-      initializedRef.current = true;
-    });
+    load("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leagueId, coachTeam.division, coachTeam.teamId]);
+  }, [leagueId]);
 
-  useEffect(() => {
-    if (!initializedRef.current) return;
-    if (!division || division === loadedDivisionRef.current) return;
-    const reload = async () => {
-      setErr("");
-      setLoading(true);
-      try {
-        const params = new URLSearchParams({ division, status: "Open,Confirmed" });
-        const requestParams = new URLSearchParams();
-        const portalParams = new URLSearchParams({ division });
-        if (coachTeam.teamId) requestParams.set("teamId", coachTeam.teamId);
-        const [s, teams, requests, settings] = await Promise.all([
-          apiFetch(`/api/slots?${params.toString()}`),
-          apiFetch(`/api/teams?division=${encodeURIComponent(division)}`).catch(() => []),
-          coachTeam.teamId
-            ? apiFetch(`/api/practice-requests?${requestParams.toString()}`).catch(() => [])
-            : Promise.resolve([]),
-          apiFetch(`/api/practice-portal/settings?${portalParams.toString()}`).catch(() => null),
-        ]);
-        setSlots(readPagedItems(s));
-        setDivisionTeams(Array.isArray(teams) ? teams : []);
-        setPracticeRequests(Array.isArray(requests) ? requests : []);
-        setPortalSettings(settings && typeof settings === "object" ? settings : null);
-        loadedDivisionRef.current = division;
-      } catch (e) {
-        setErr(e?.message || String(e));
-      } finally {
-        setLoading(false);
-      }
-    };
-    reload();
-  }, [division, coachTeam.teamId]);
+  const visibleSlots = useMemo(
+    () => filterSlots(data?.slots || [], search, dayFilter, policyFilter, showOnlyOpenSeats),
+    [data, search, dayFilter, policyFilter, showOnlyOpenSeats]
+  );
 
-  useEffect(() => {
-    if (!initializedRef.current || typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    if (division) params.set("division", division);
-    else params.delete("division");
-    const next = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
-    window.history.replaceState({}, "", next);
-  }, [division]);
+  const myRequests = useMemo(
+    () =>
+      [...(data?.requests || [])].sort((left, right) =>
+        `${right.date || ""}|${right.startTime || ""}`.localeCompare(`${left.date || ""}|${left.startTime || ""}`)
+      ),
+    [data]
+  );
 
-  const practiceSelections = useMemo(() => {
-    if (!coachTeam.teamId) return [];
-    return (slots || [])
-      .filter((s) => (s?.gameType || "").trim().toLowerCase() === "practice")
-      .filter((s) => (s?.status || "") === "Confirmed")
-      .filter((s) => {
-        const confirmed = (s?.confirmedTeamId || "").trim();
-        const offering = (s?.offeringTeamId || "").trim();
-        return confirmed === coachTeam.teamId || offering === coachTeam.teamId;
-      });
-  }, [slots, coachTeam.teamId]);
-
-  const practiceByWeek = useMemo(() => {
-    const map = new Map();
-    for (const s of practiceSelections) {
-      const key = weekKeyFromDate(s.gameDate);
-      if (!key) continue;
-      if (!map.has(key)) map.set(key, s);
-    }
-    return map;
-  }, [practiceSelections]);
-
-  const activePracticeRequests = useMemo(() => {
-    const teamId = (coachTeam.teamId || "").trim();
-    return (Array.isArray(practiceRequests) ? practiceRequests : [])
-      .filter((r) => ["Pending", "Approved"].includes((r?.status || "").trim()))
-      .filter((r) => !teamId || (r?.teamId || "").trim() === teamId)
-      .filter((r) => !division || (r?.division || "").trim() === division)
-      .sort((a, b) => {
-        const pa = Number.isFinite(Number(a?.priority)) ? Number(a.priority) : 99;
-        const pb = Number.isFinite(Number(b?.priority)) ? Number(b.priority) : 99;
-        if (pa !== pb) return pa - pb;
-        const ad = `${a?.slot?.gameDate || ""} ${a?.slot?.startTime || ""}`.trim();
-        const bd = `${b?.slot?.gameDate || ""} ${b?.slot?.startTime || ""}`.trim();
-        return ad.localeCompare(bd);
-      });
-  }, [practiceRequests, coachTeam.teamId, division]);
-
-  const activeRequestPatternByKey = useMemo(() => {
-    const map = new Map();
-    for (const req of activePracticeRequests) {
-      const slot = req?.slot || null;
-      const key = practicePatternKey(slot);
-      if (key && !map.has(key)) map.set(key, req);
-    }
-    return map;
-  }, [activePracticeRequests]);
-
-  const nextPracticeRequestPriority = useMemo(() => {
-    const used = new Set(
-      activePracticeRequests
-        .map((r) => Number(r?.priority))
-        .filter((p) => Number.isFinite(p) && p >= 1 && p <= 3)
-    );
-    for (const priority of [1, 2, 3]) {
-      if (!used.has(priority)) return priority;
-    }
-    return 0;
-  }, [activePracticeRequests]);
-
-  const shareableTeams = useMemo(() => {
-    return (Array.isArray(divisionTeams) ? divisionTeams : [])
-      .filter((t) => (t?.teamId || "").trim())
-      .filter((t) => (t?.teamId || "").trim() !== (coachTeam.teamId || "").trim())
-      .sort((a, b) => {
-        const aLabel = (a?.name || a?.teamId || "").trim();
-        const bLabel = (b?.name || b?.teamId || "").trim();
-        return aLabel.localeCompare(bLabel);
-      });
-  }, [divisionTeams, coachTeam.teamId]);
-
-  useEffect(() => {
-    if (!openToShareField && shareWithTeamId) {
-      setShareWithTeamId("");
-      return;
-    }
-    if (!openToShareField || !shareWithTeamId) return;
-    if (!shareableTeams.some((t) => (t?.teamId || "").trim() === shareWithTeamId)) {
-      setShareWithTeamId("");
-    }
-  }, [openToShareField, shareWithTeamId, shareableTeams]);
-
-  const availableSlots = useMemo(() => {
-    return (slots || [])
-      .filter((s) => s?.isAvailability)
-      .filter((s) => (s?.status || "") === "Open")
-      .sort((a, b) => {
-        const ad = `${a.gameDate || ""} ${a.startTime || ""}`.trim();
-        const bd = `${b.gameDate || ""} ${b.startTime || ""}`.trim();
-        return ad.localeCompare(bd);
-      });
-  }, [slots]);
-
-  const practiceCapableOpenSlots = useMemo(() => {
-    return availableSlots.filter((s) => isPracticeCapableAvailability(s));
-  }, [availableSlots]);
-
-  const filteredAvailableSlots = useMemo(() => {
-    const dayKey = String(availableDayFilter || "").trim();
-    if (!dayKey) return practiceCapableOpenSlots;
-    return practiceCapableOpenSlots.filter((slot) => weekdayKeyFromDate(slot?.gameDate) === dayKey);
-  }, [practiceCapableOpenSlots, availableDayFilter]);
-
-  const oneOffAvailabilityStatus = useMemo(() => {
-    const oneOffEnabled = !!portalSettings?.oneOffRequestsEnabled;
-    const divisionStatus = portalSettings?.divisionStatus || null;
-    const coverageReady = !!divisionStatus?.allTeamsHaveRecurringPractice;
-    return {
-      oneOffEnabled,
-      divisionStatus,
-      canBook: oneOffEnabled && coverageReady,
-    };
-  }, [portalSettings]);
-
-  const oneOffSearchResults = useMemo(() => {
-    const fieldSearch = String(oneOffFieldSearch || "").trim().toLowerCase();
-    const fromDate = String(oneOffDateFrom || "").trim();
-    const toDate = String(oneOffDateTo || "").trim();
-    const dayKey = String(oneOffDayFilter || "").trim();
-    return practiceCapableOpenSlots
-      .filter((slot) => {
-        const gameDate = String(slot?.gameDate || "").trim();
-        if (!gameDate) return false;
-        if (fromDate && gameDate < fromDate) return false;
-        if (toDate && gameDate > toDate) return false;
-        if (dayKey && weekdayKeyFromDate(gameDate) !== dayKey) return false;
-        if (!fieldSearch) return true;
-        const haystack = [
-          slot?.displayName,
-          slot?.fieldKey,
-          slot?.parkName,
-          slot?.fieldName,
-        ]
-          .map((v) => String(v || "").toLowerCase())
-          .join(" ");
-        return haystack.includes(fieldSearch);
-      })
-      .sort((a, b) => {
-        const ad = `${a?.gameDate || ""} ${a?.startTime || ""}`.trim();
-        const bd = `${b?.gameDate || ""} ${b?.startTime || ""}`.trim();
-        const cmp = ad.localeCompare(bd);
-        if (cmp !== 0) return cmp;
-        return formatSlotLocation(a).localeCompare(formatSlotLocation(b));
-      });
-  }, [practiceCapableOpenSlots, oneOffFieldSearch, oneOffDateFrom, oneOffDateTo, oneOffDayFilter]);
-
-  const selectedPracticePatternKeys = useMemo(() => {
-    const keys = new Set();
-    for (const slot of practiceSelections) {
-      const key = practicePatternKey(slot);
-      if (key) keys.add(key);
-    }
-    return keys;
-  }, [practiceSelections]);
-
-  const availablePatternChoices = useMemo(() => {
-    const byPattern = new Map();
-    const selectedWeeks = new Set(Array.from(practiceByWeek.keys()));
-
-    for (const slot of filteredAvailableSlots) {
-      const key = practicePatternKey(slot);
-      if (!key) continue;
-      if (!byPattern.has(key)) {
-        byPattern.set(key, {
-          key,
-          slots: [],
-          claimableSlots: [],
-          blockedSlots: [],
-        });
-      }
-      const group = byPattern.get(key);
-      group.slots.push(slot);
-      const weekKey = weekKeyFromDate(slot?.gameDate);
-      if (weekKey && selectedWeeks.has(weekKey)) group.blockedSlots.push(slot);
-      else group.claimableSlots.push(slot);
-    }
-
-    const sortByDateTime = (a, b) => {
-      const aKey = `${a?.gameDate || ""} ${a?.startTime || ""}`.trim();
-      const bKey = `${b?.gameDate || ""} ${b?.startTime || ""}`.trim();
-      return aKey.localeCompare(bKey);
-    };
-
-    return Array.from(byPattern.values())
-      .map((group) => {
-        const slotsSorted = [...group.slots].sort(sortByDateTime);
-        const claimableSorted = [...group.claimableSlots].sort(sortByDateTime);
-        const representativeSlot = claimableSorted[0] || slotsSorted[0] || null;
-        const firstDate = slotsSorted[0]?.gameDate || "";
-        const lastDate = slotsSorted[slotsSorted.length - 1]?.gameDate || "";
-        return {
-          key: group.key,
-          representativeSlot,
-          slots: slotsSorted,
-          claimableSlots: claimableSorted,
-          openWeeks: slotsSorted.length,
-          claimableWeeks: claimableSorted.length,
-          blockedWeeks: group.blockedSlots.length,
-          firstDate,
-          lastDate,
-          weekdayLabel: representativeSlot ? weekdayLabelFromDate(representativeSlot.gameDate) : "",
-          existingRequest: activeRequestPatternByKey.get(group.key) || null,
-          matchesRequestedPattern: activeRequestPatternByKey.has(group.key),
-          matchesSelectedPattern: selectedPracticePatternKeys.has(group.key),
-        };
-      })
-      .filter((choice) => choice.representativeSlot)
-      .sort((a, b) => {
-        if (a.matchesRequestedPattern !== b.matchesRequestedPattern) {
-          return a.matchesRequestedPattern ? -1 : 1;
-        }
-        if (a.matchesSelectedPattern !== b.matchesSelectedPattern) {
-          return a.matchesSelectedPattern ? -1 : 1;
-        }
-        if (a.claimableWeeks !== b.claimableWeeks) return b.claimableWeeks - a.claimableWeeks;
-        const aDate = `${a.representativeSlot?.gameDate || ""} ${a.representativeSlot?.startTime || ""}`.trim();
-        const bDate = `${b.representativeSlot?.gameDate || ""} ${b.representativeSlot?.startTime || ""}`.trim();
-        const dateCmp = aDate.localeCompare(bDate);
-        if (dateCmp !== 0) return dateCmp;
-        return formatSlotLocation(a.representativeSlot).localeCompare(formatSlotLocation(b.representativeSlot));
-      });
-  }, [filteredAvailableSlots, practiceByWeek, selectedPracticePatternKeys, activeRequestPatternByKey]);
-
-  const portalSummary = useMemo(() => ({
-    selectedPractices: practiceSelections.length,
-    activeRequests: activePracticeRequests.length,
-    recurringChoices: availablePatternChoices.length,
-    oneOffChoices: oneOffSearchResults.length,
-  }), [practiceSelections.length, activePracticeRequests.length, availablePatternChoices.length, oneOffSearchResults.length]);
-
-  async function requestPracticePattern(choice) {
-    const slot = choice?.representativeSlot;
-    if (!slot?.slotId || !division) return;
-    if (!coachTeam.teamId) {
-      setErr("Your coach profile needs a team assignment before requesting a practice slot.");
-      return;
-    }
-    if (choice?.existingRequest) {
-      setErr("You already requested this recurring field/day/time pattern.");
-      return;
-    }
-    if (!nextPracticeRequestPriority) {
-      setErr("You already have 3 active recurring practice requests. Wait for commissioner review before adding another.");
-      return;
-    }
-    if (openToShareField && !shareWithTeamId) {
-      setErr('Select a team to propose sharing with, or uncheck "Open to sharing a field".');
-      return;
-    }
-
-    const proposedShareTeam = shareableTeams.find((t) => (t?.teamId || "").trim() === shareWithTeamId);
-    const shareMsg = openToShareField
-      ? ` Open to share with: ${proposedShareTeam?.name || shareWithTeamId}.`
-      : "";
-    const seriesCount = Number(choice?.claimableWeeks || 0);
-    const recurringMsg =
-      seriesCount > 1
-        ? ` This requests the recurring weekly slot pattern for about ${seriesCount} available weeks (same field and time), starting ${slot.gameDate}.`
-        : " This requests the recurring field/day/time pattern represented by this slot.";
-
-    const ok = await requestConfirm({
-      title: "Request recurring practice pattern",
-      message: `Request priority #${nextPracticeRequestPriority} for ${weekdayLabelFromDate(slot.gameDate)} ${formatSlotTime(slot)} at ${formatSlotLocation(slot)}?${recurringMsg} Commissioner approval locks the recurring pattern.${shareMsg}`,
-      confirmLabel: "Request",
-    });
-    if (!ok) return;
-
-    setErr("");
-    setRequestingSlot(String(slot.slotId || ""));
+  async function requestSlot(slot) {
+    setRequestingKey(slot.practiceSlotKey);
+    setError("");
     try {
-      const payload = {
-        division,
-        teamId: coachTeam.teamId,
-        slotId: slot.slotId,
-        priority: nextPracticeRequestPriority,
-        reason: "Recurring practice preference from practice portal",
-        openToShareField,
-        shareWithTeamId: openToShareField ? shareWithTeamId : "",
-      };
-      await apiFetch("/api/practice-requests", {
+      const result = await apiFetch("/api/field-inventory/practice/requests", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      await loadAll(division);
-      setToast({
-        tone: "success",
-        message: openToShareField
-          ? `Priority #${nextPracticeRequestPriority} requested. Sharing preference sent to commissioner.`
-          : `Priority #${nextPracticeRequestPriority} requested. Awaiting commissioner approval.`,
-        duration: 3200,
-      });
-    } catch (e) {
-      setErr(e?.message || String(e));
-    } finally {
-      setRequestingSlot("");
-    }
-  }
-
-  async function bookOneOffPractice(slot) {
-    if (!slot?.slotId || !division) return;
-    if (!coachTeam.teamId) {
-      setErr("Your coach profile needs a team assignment before booking a one-off practice.");
-      return;
-    }
-    if (openToShareField && !shareWithTeamId) {
-      setErr('Select a team to propose sharing with, or uncheck "Open to sharing a field".');
-      return;
-    }
-
-    if (!oneOffAvailabilityStatus.canBook) {
-      setErr("One-off practice booking is not currently available.");
-      return;
-    }
-
-    const proposedShareTeam = shareableTeams.find((t) => (t?.teamId || "").trim() === shareWithTeamId);
-    const shareMsg = openToShareField
-      ? ` Open to share with: ${proposedShareTeam?.name || shareWithTeamId}.`
-      : "";
-
-    const ok = await requestConfirm({
-      title: "Book one-off practice",
-      message: `Book one-off practice on ${slot.gameDate} ${formatSlotTime(slot)} at ${formatSlotLocation(slot)}?${shareMsg}`,
-      confirmLabel: "Book",
-    });
-    if (!ok) return;
-
-    setErr("");
-    setRequestingSlot(String(slot.slotId || ""));
-    try {
-      await apiFetch(`/api/slots/${encodeURIComponent(division)}/${encodeURIComponent(slot.slotId)}/practice`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          openToShareField,
-          shareWithTeamId: openToShareField ? shareWithTeamId : "",
-          oneOffBooking: true,
+          seasonLabel,
+          practiceSlotKey: slot.practiceSlotKey,
         }),
       });
-
-      await loadAll(division);
+      setData(result);
       setToast({
         tone: "success",
-        message: openToShareField
-          ? "One-off practice booked. Sharing preference saved."
-          : "One-off practice booked.",
-        duration: 3000,
+        message:
+          slot.bookingPolicy === "auto_approve"
+            ? "Practice space auto-approved."
+            : "Practice request submitted for commissioner review.",
       });
     } catch (e) {
-      setErr(e?.message || String(e));
+      setError(e.message || "Failed to request practice space.");
     } finally {
-      setRequestingSlot("");
+      setRequestingKey("");
     }
   }
 
-  if (loading) {
-    return (
-      <div className="page">
-        <StatusCard title="Loading" message="Loading practice slots..." />
-      </div>
-    );
+  async function cancelRequest(request) {
+    setCancellingId(request.requestId);
+    setError("");
+    try {
+      const result = await apiFetch(`/api/field-inventory/practice/requests/${encodeURIComponent(request.requestId)}/cancel`, {
+        method: "PATCH",
+      });
+      setData(result);
+      setToast({ tone: "success", message: "Practice request cancelled." });
+    } catch (e) {
+      setError(e.message || "Failed to cancel practice request.");
+    } finally {
+      setCancellingId("");
+    }
   }
 
-  if (!canSelectPractice) {
-    return (
-      <div className="page">
-        <div className="card">
-          <h2>Practice selection</h2>
-          <p className="muted">You do not have access to the practice selection portal.</p>
-        </div>
-      </div>
-    );
+  if (loading && !data) {
+    return <StatusCard title="Loading" message="Loading inventory-backed practice space..." />;
+  }
+
+  if (error && !data) {
+    return <StatusCard tone="error" title="Unable to load practice space" message={error} />;
   }
 
   return (
-    <div className="page">
-      <div className="card">
-        <div className="card__header">
-          <h2>Practice selection portal</h2>
-          <div className="subtle">Recurring requests first, one-off bookings second.</div>
-        </div>
-        <p className="muted">
-          Coaches should submit up to 3 prioritized recurring practice requests. Commissioners approve one to lock the same field/day/time pattern across matching regular-season weeks.
-        </p>
-        <div className="formGrid">
-          <label>
-            Division
-            <select value={division} onChange={(e) => setDivision(e.target.value)} disabled={!canPickDivision}>
-              <option value="">Select a division</option>
-              {divisions.map((d) => (
-                <option key={d.code} value={d.code}>
-                  {d.name} ({d.code})
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Team
-            <input value={coachTeam.teamId || "Unassigned"} readOnly />
-          </label>
-        </div>
-        {err ? <div className="callout callout--error">{err}</div> : null}
-        {notice ? <div className="callout callout--ok">{notice}</div> : null}
-        <div className="layoutStatRow">
-          <div className="layoutStat">
-            <div className="layoutStat__value">{portalSummary.selectedPractices}</div>
-            <div className="layoutStat__label">Selected practices</div>
-          </div>
-          <div className="layoutStat">
-            <div className="layoutStat__value">{portalSummary.activeRequests}</div>
-            <div className="layoutStat__label">Active requests</div>
-          </div>
-          <div className="layoutStat">
-            <div className="layoutStat__value">{portalSummary.recurringChoices}</div>
-            <div className="layoutStat__label">Recurring choices</div>
-          </div>
-          <div className="layoutStat">
-            <div className="layoutStat__value">{portalSummary.oneOffChoices}</div>
-            <div className="layoutStat__label">One-off openings</div>
-          </div>
-        </div>
-      </div>
-
-      <div className="card">
-        <div className="row row--wrap gap-2 items-center">
-          <button
-            type="button"
-            className={`btn btn--sm ${portalMode === "recurring" ? "btn--primary" : ""}`}
-            onClick={() => setPortalMode("recurring")}
-          >
-            Recurring Selection
-          </button>
-          <button
-            type="button"
-            className={`btn btn--sm ${portalMode === "oneoff" ? "btn--primary" : ""}`}
-            onClick={() => setPortalMode("oneoff")}
-          >
-            One-off Practice Search
-          </button>
-        </div>
-        <div className="muted mt-2">
-          Recurring selection is the current setup workflow. One-off practice search will be enabled by the commissioner after recurring slots are finalized for teams.
-        </div>
-      </div>
-
-      {portalMode === "oneoff" ? (
-        <div className="card">
-          <div className="card__header">
-            <h3>One-off practice search</h3>
-            <div className="subtle">Self-booked single-date practices after recurring coverage is complete.</div>
-          </div>
-          <div className={`callout mb-3 ${oneOffAvailabilityStatus.canBook ? "callout--ok" : ""}`}>
-            <div>
-              Commissioner one-off booking toggle: <b>{oneOffAvailabilityStatus.oneOffEnabled ? "Enabled" : "Disabled"}</b>
-            </div>
-            <div className="mt-1">
-              Division recurring coverage:{" "}
-              <b>
-                {oneOffAvailabilityStatus.divisionStatus
-                  ? `${oneOffAvailabilityStatus.divisionStatus.teamsWithApprovedRecurringPractice}/${oneOffAvailabilityStatus.divisionStatus.teamCount}`
-                  : "-/-"}
-              </b>
-              {oneOffAvailabilityStatus.divisionStatus?.allTeamsHaveRecurringPractice
-                ? " (all teams covered)"
-                : " (waiting on recurring approvals)"}
-            </div>
-            {!oneOffAvailabilityStatus.oneOffEnabled ? (
-              <div className="muted mt-2">
-                Commissioner must enable one-off practice self-booking before coaches can use this tab.
-              </div>
-            ) : null}
-            {oneOffAvailabilityStatus.oneOffEnabled && !oneOffAvailabilityStatus.divisionStatus?.allTeamsHaveRecurringPractice ? (
-              <div className="muted mt-2">
-                One-off bookings unlock after all teams in this division have an approved recurring practice request.
-              </div>
-            ) : null}
-            {Array.isArray(oneOffAvailabilityStatus.divisionStatus?.missingTeams) &&
-            oneOffAvailabilityStatus.divisionStatus.missingTeams.length > 0 ? (
-              <div className="muted mt-2">
-                Missing recurring approval for:{" "}
-                {oneOffAvailabilityStatus.divisionStatus.missingTeams
-                  .slice(0, 8)
-                  .map((t) => t?.name || t?.teamId)
-                  .filter(Boolean)
-                  .join(", ")}
-                {oneOffAvailabilityStatus.divisionStatus.missingTeams.length > 8 ? " ..." : ""}
-              </div>
-            ) : null}
-          </div>
-
-          <div className="callout mb-3 controlBand">
-            <div className="row row--wrap gap-3">
-              <label className="row row--wrap gap-2 items-center">
-                <input
-                  type="checkbox"
-                  checked={openToShareField}
-                  onChange={(e) => setOpenToShareField(e.target.checked)}
-                  disabled={!coachTeam.teamId}
-                />
-                <span>Open to sharing a field</span>
-              </label>
-              <label className="min-w-[260px]">
-                Propose sharing with team
-                <select
-                  value={shareWithTeamId}
-                  onChange={(e) => setShareWithTeamId(e.target.value)}
-                  disabled={!openToShareField || !coachTeam.teamId || shareableTeams.length === 0}
-                >
-                  <option value="">
-                    {!coachTeam.teamId
-                      ? "Coach team assignment required"
-                      : !openToShareField
-                        ? "Enable sharing first"
-                        : shareableTeams.length
-                          ? "Select a team"
-                          : "No other teams in division"}
-                  </option>
-                  {shareableTeams.map((t) => (
-                    <option key={t.teamId} value={t.teamId}>
-                      {t.name ? `${t.name} (${t.teamId})` : t.teamId}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <div className="row row--wrap gap-3 mt-2">
-              <label className="min-w-[220px]">
-                Filter by day
-                <select value={oneOffDayFilter} onChange={(e) => setOneOffDayFilter(e.target.value)}>
-                  {WEEKDAY_FILTER_OPTIONS.map((opt) => (
-                    <option key={`oneoff-${opt.key || "all"}`} value={opt.key}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="min-w-[180px]">
-                Date from
-                <input type="date" value={oneOffDateFrom} onChange={(e) => setOneOffDateFrom(e.target.value)} />
-              </label>
-              <label className="min-w-[180px]">
-                Date to
-                <input type="date" value={oneOffDateTo} onChange={(e) => setOneOffDateTo(e.target.value)} />
-              </label>
-              <label className="flex-1 min-w-[220px]">
-                Search fields
-                <input
-                  value={oneOffFieldSearch}
-                  onChange={(e) => setOneOffFieldSearch(e.target.value)}
-                  placeholder="Search by field / park"
-                />
-              </label>
-            </div>
-            <div className="muted mt-2">
-              Search open practice-capable availability and book a single date (one-off) without changing your recurring practice selection.
-            </div>
-          </div>
-
-          {!oneOffAvailabilityStatus.canBook ? (
-            <div className="muted">One-off booking is currently locked.</div>
-          ) : oneOffSearchResults.length ? (
-            <div className="tableWrap">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Day</th>
-                    <th>Date</th>
-                    <th>Time</th>
-                    <th>Location</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {oneOffSearchResults.map((slot) => (
-                    <tr key={slot.slotId}>
-                      <td>{weekdayLabelFromDate(slot.gameDate)}</td>
-                      <td>{slot.gameDate}</td>
-                      <td>{formatSlotTime(slot)}</td>
-                      <td>{formatSlotLocation(slot)}</td>
-                      <td className="tableActions">
-                        <button
-                          type="button"
-                          className="btn btn--primary"
-                          disabled={!!requestingSlot}
-                          onClick={() => bookOneOffPractice(slot)}
-                          title={requestingSlot ? "Processing one-off booking..." : "Book this one-off practice"}
-                        >
-                          {requestingSlot
-                            ? (requestingSlot === slot.slotId ? "Booking..." : "Working...")
-                            : "Book one-off"}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="muted">
-              No open practice-capable slots match your search filters.
-            </div>
-          )}
-        </div>
-      ) : (
-        <>
-      <div className="card">
-        <div className="card__header">
-          <h3>Your selected practices</h3>
-          <div className="subtle">Confirmed recurring practices already assigned to your team.</div>
-        </div>
-        {practiceSelections.length ? (
-          <div className="tableWrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Week</th>
-                  <th>Date</th>
-                  <th>Time</th>
-                  <th>Location</th>
-                </tr>
-              </thead>
-              <tbody>
-                {practiceSelections.map((s) => (
-                  <tr key={s.slotId}>
-                    <td>{weekKeyFromDate(s.gameDate)}</td>
-                    <td>{s.gameDate}</td>
-                    <td>{formatSlotTime(s)}</td>
-                    <td>{formatSlotLocation(s)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="muted">No practice slots selected yet.</div>
-        )}
-      </div>
-
-      <div className="card">
-        <div className="card__header">
-          <h3>Your recurring requests (priority 1-3)</h3>
-          <div className="subtle">Pending and approved requests currently active for this team.</div>
-        </div>
-        {activePracticeRequests.length ? (
-          <div className="tableWrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Priority</th>
-                  <th>Status</th>
-                  <th>Day</th>
-                  <th>Time</th>
-                  <th>Location</th>
-                  <th>Requested</th>
-                  <th>Sharing</th>
-                </tr>
-              </thead>
-              <tbody>
-                {activePracticeRequests.map((request) => (
-                  <tr key={request.requestId}>
-                    <td>{request.priority || "-"}</td>
-                    <td><span className={`statusBadge ${String(request.status || "").trim() === "Approved" ? "status-confirmed" : "status-open"}`}>{request.status}</span></td>
-                    <td>{weekdayLabelFromDate(request?.slot?.gameDate) || "-"}</td>
-                    <td>{request?.slot ? formatSlotTime(request.slot) : "-"}</td>
-                    <td>{request?.slot ? formatSlotLocation(request.slot) : (request.slot?.fieldKey || "-")}</td>
-                    <td>{request?.slot?.gameDate || "-"}</td>
-                    <td>
-                      {request.openToShareField
-                        ? `Open to share${request.shareWithTeamId ? ` (${request.shareWithTeamId})` : ""}`
-                        : "-"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="muted">
-            No recurring requests yet. Choose a day (defaults to Sunday) and request up to 3 prioritized options.
-          </div>
-        )}
-      </div>
-
-      <div className="card">
-        <div className="card__header">
-          <h3>Available practice choices</h3>
-          <div className="subtle">Recurring field-day-time patterns sorted by how usable they are.</div>
-        </div>
-        <div className="callout mb-3 controlBand">
-          <div className="row row--wrap gap-3">
-            <label className="row row--wrap gap-2 items-center">
-              <input
-                type="checkbox"
-                checked={openToShareField}
-                onChange={(e) => setOpenToShareField(e.target.checked)}
-                disabled={!coachTeam.teamId}
-              />
-              <span>Open to sharing a field</span>
-            </label>
-            <label className="min-w-[260px]">
-              Propose sharing with team
-              <select
-                value={shareWithTeamId}
-                onChange={(e) => setShareWithTeamId(e.target.value)}
-                disabled={!openToShareField || !coachTeam.teamId || shareableTeams.length === 0}
-              >
-                <option value="">
-                  {!coachTeam.teamId
-                    ? "Coach team assignment required"
-                    : !openToShareField
-                      ? "Enable sharing first"
-                      : shareableTeams.length
-                        ? "Select a team"
-                        : "No other teams in division"}
-                </option>
-                {shareableTeams.map((t) => (
-                  <option key={t.teamId} value={t.teamId}>
-                    {t.name ? `${t.name} (${t.teamId})` : t.teamId}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="min-w-[220px]">
-              Filter by day
-              <select
-                value={availableDayFilter}
-                onChange={(e) => setAvailableDayFilter(e.target.value)}
-              >
-                {WEEKDAY_FILTER_OPTIONS.map((opt) => (
-                  <option key={opt.key || "all"} value={opt.key}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <div className="muted mt-2">
-            This preference is attached to your recurring practice request(s) and can help commissioners coordinate shared fields.
-          </div>
-          <div className="muted">
-            Filter to a day (defaults to Sunday) and request one recurring field/time pattern. Commissioner approval will lock matching regular-season weeks.
-          </div>
-          <div className="muted">
-            Choices matching your requested or approved patterns appear first.
-          </div>
-        </div>
-        {availablePatternChoices.length ? (
-          <div className="tableWrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Day</th>
-                  <th>Time</th>
-                  <th>Location</th>
-                  <th>Open Weeks</th>
-                  <th>Claimable</th>
-                  <th>Season Span</th>
-                  <th>Status</th>
-                  <th>First Claim</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {availablePatternChoices.map((choice) => {
-                  const s = choice.representativeSlot;
-                  const hasExistingRequest = !!choice.existingRequest;
-                  const disabled = choice.claimableWeeks <= 0 || hasExistingRequest || !nextPracticeRequestPriority;
-                  const statusLabel = hasExistingRequest
-                    ? `Requested (P${choice.existingRequest?.priority || "?"}, ${choice.existingRequest?.status || "Pending"})`
-                    : choice.matchesSelectedPattern
-                    ? "Matches your current pattern"
-                    : (choice.blockedWeeks > 0 ? `${choice.blockedWeeks} week(s) blocked by existing selections` : "");
-                  return (
-                    <tr key={choice.key}>
-                      <td>{choice.weekdayLabel || weekdayLabelFromDate(s?.gameDate)}</td>
-                      <td>{formatSlotTime(s)}</td>
-                      <td>{formatSlotLocation(s)}</td>
-                      <td>{choice.openWeeks}</td>
-                      <td>{choice.claimableWeeks}</td>
-                      <td>{choice.firstDate && choice.lastDate ? `${choice.firstDate} - ${choice.lastDate}` : (choice.firstDate || "")}</td>
-                      <td>{statusLabel ? <span className="softballBadge softballBadge--neutral">{statusLabel}</span> : "-"}</td>
-                      <td>{s?.gameDate || ""}</td>
-                      <td className="tableActions">
-                        <button
-                          className="btn btn--primary"
-                          type="button"
-                          disabled={disabled || !!requestingSlot}
-                          onClick={() => requestPracticePattern(choice)}
-                          title={
-                            hasExistingRequest
-                              ? "You already requested this recurring pattern"
-                              : !nextPracticeRequestPriority
-                                ? "You already have 3 active recurring requests"
-                                : disabled
-                              ? "No claimable weeks remain in this pattern"
-                              : requestingSlot
-                                ? "Submitting recurring request..."
-                                : `Request this pattern as priority #${nextPracticeRequestPriority}`
-                          }
-                        >
-                          {requestingSlot
-                            ? (requestingSlot === s?.slotId ? "Requesting..." : "Working...")
-                            : hasExistingRequest
-                              ? "Requested"
-                              : (nextPracticeRequestPriority ? `Request P${nextPracticeRequestPriority}` : "Max 3")}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="muted">
-            {availableDayFilter
-              ? "No recurring practice choices match the selected day."
-              : "No open practice choices available for this division."}
-          </div>
-        )}
-      </div>
-        </>
-      )}
-
+    <div className="stack gap-4">
       {toast ? <Toast tone={toast.tone} message={toast.message} onClose={() => setToast(null)} /> : null}
-      <ConfirmDialog state={confirmState} onConfirm={handleConfirm} onCancel={handleCancel} />
+      {error ? <div className="callout callout--error">{error}</div> : null}
+
+      <div className="callout">
+        <div className="font-bold mb-2">Practice space for {coachName}</div>
+        <div className="subtle">
+          This replaces the old practice-slot request tool. Coaches now request unused imported field space in 90-minute blocks. Some Ponytail-assigned space auto-approves; unassigned available space goes to commissioner review.
+        </div>
+        <div className="row row--wrap gap-3 mt-3">
+          <a href="#practice-space-filters" className="link">Jump to filters</a>
+          <a href="#practice-space-available" className="link">Jump to available space</a>
+          <a href="#practice-space-requests" className="link">Jump to my requests</a>
+          <a href="#practice-space-help" className="link">How approvals work</a>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card__header">
+          <div>
+            <div className="h2">Practice Space Summary</div>
+            <div className="subtle">Committed county field inventory aligned to SportsCH fields and request policy.</div>
+          </div>
+          <div className="row gap-2 items-end">
+            <label title="Review one committed season at a time.">
+              Season
+              <select value={seasonLabel} onChange={(e) => load(e.target.value)}>
+                {(data?.seasons || []).map((season) => (
+                  <option key={season.seasonLabel} value={season.seasonLabel}>
+                    {season.seasonLabel}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button className="btn" type="button" onClick={() => load(seasonLabel)} disabled={loading}>
+              {loading ? "Refreshing..." : "Refresh"}
+            </button>
+          </div>
+        </div>
+        <div className="card__body">
+          <div className="row row--wrap gap-3">
+            <div className="pill">Team: {data?.teamName || data?.teamId || "-"}</div>
+            <div className="pill">Division: {data?.division || "-"}</div>
+            <div className="pill">Requestable blocks: {data?.summary?.requestableBlocks || 0}</div>
+            <div className="pill">Auto-approve: {data?.summary?.autoApproveBlocks || 0}</div>
+            <div className="pill">Commissioner review: {data?.summary?.commissionerReviewBlocks || 0}</div>
+            <div className="pill">My active requests: {(myRequests || []).filter((request) => request.status === "Pending" || request.status === "Approved").length}</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="practice-space-filters" className="card">
+        <div className="card__header">
+          <div className="h2">Filters</div>
+          <div className="subtle">Use filters to focus on the most useful practice space first.</div>
+        </div>
+        <div className="card__body">
+          <div className="row row--wrap gap-3">
+            <label title="Search by field name, assigned group, or imported notes.">
+              <span className="row gap-1 items-center">Field search <span className="hint" title="Search imported field space by canonical field, assigned group, or imported division/team text.">?</span></span>
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Field, group, division..." />
+            </label>
+            <label title="Focus on one day of the week at a time.">
+              <span className="row gap-1 items-center">Day <span className="hint" title="Use this to find your regular practice day quickly.">?</span></span>
+              <select value={dayFilter} onChange={(e) => setDayFilter(e.target.value)}>
+                {DAY_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label title="Separate immediately bookable space from commissioner-reviewed space.">
+              <span className="row gap-1 items-center">Approval path <span className="hint" title="Auto-approve means your team is confirmed immediately. Commissioner review means a league admin must approve the request first.">?</span></span>
+              <select value={policyFilter} onChange={(e) => setPolicyFilter(e.target.value)}>
+                <option value="">All</option>
+                <option value="auto_approve">Auto-approve</option>
+                <option value="commissioner_review">Commissioner review</option>
+              </select>
+            </label>
+            <label className="inlineCheck" title="Hide full blocks and only show space with open seats remaining.">
+              <input type="checkbox" checked={showOnlyOpenSeats} onChange={(e) => setShowOnlyOpenSeats(e.target.checked)} />
+              Open seats only
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div id="practice-space-available" className="card">
+        <div className="card__header">
+          <div className="h2">Available Practice Space</div>
+          <div className="subtle">Each block is 90 minutes and can hold up to 2 teams.</div>
+        </div>
+        <div className="card__body">
+          <div className="stack gap-3">
+            {visibleSlots.map((slot) => {
+              const alreadyRequested = myRequests.some(
+                (request) =>
+                  request.practiceSlotKey === slot.practiceSlotKey &&
+                  (request.status === "Pending" || request.status === "Approved")
+              );
+              return (
+                <div key={slot.practiceSlotKey} className="card">
+                  <div className="card__header">
+                    <div>
+                      <div className="h2">{slot.fieldName}</div>
+                      <div className="subtle">
+                        {slot.date} · {slot.dayOfWeek} · {slot.startTime}-{slot.endTime}
+                      </div>
+                    </div>
+                    <div className="row gap-2 items-center">
+                      <span className="pill" title={slot.bookingPolicyReason}>{slot.bookingPolicyLabel}</span>
+                      <span className="pill" title="A practice block can host up to two teams.">
+                        Seats {slot.remainingCapacity}/{slot.capacity}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="card__body">
+                    <div className="row row--wrap gap-3">
+                      <div title="Imported assignment context from the AGSA workbook.">
+                        <div className="subtle">Assigned group</div>
+                        <div>{slot.assignedGroup || "-"}</div>
+                      </div>
+                      <div title="Imported division context from the AGSA workbook.">
+                        <div className="subtle">Assigned division</div>
+                        <div>{slot.assignedDivision || "-"}</div>
+                      </div>
+                      <div title="Imported team or event text from the AGSA workbook.">
+                        <div className="subtle">Assigned team/event</div>
+                        <div>{slot.assignedTeamOrEvent || "-"}</div>
+                      </div>
+                    </div>
+                    <div className="subtle mt-3">{slot.bookingPolicyReason}</div>
+                    <div className="row gap-2 mt-3">
+                      <button
+                        className="btn btn--primary"
+                        type="button"
+                        disabled={alreadyRequested || slot.remainingCapacity <= 0 || !!requestingKey}
+                        title={alreadyRequested ? "Your team already has an active request for this block." : "Request this 90-minute practice block for your team."}
+                        onClick={() => requestSlot(slot)}
+                      >
+                        {requestingKey === slot.practiceSlotKey
+                          ? "Requesting..."
+                          : alreadyRequested
+                            ? "Already Requested"
+                            : slot.bookingPolicy === "auto_approve"
+                              ? "Book Now"
+                              : "Request for Approval"}
+                      </button>
+                      <span className="subtle">
+                        Approved teams: {slot.approvedTeamIds.join(", ") || "None"} · Pending teams: {slot.pendingTeamIds.join(", ") || "None"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {visibleSlots.length === 0 ? <div className="muted">No practice space matches the current filter.</div> : null}
+          </div>
+        </div>
+      </div>
+
+      <div id="practice-space-requests" className="card">
+        <div className="card__header">
+          <div className="h2">My Practice Requests</div>
+          <div className="subtle">Track pending approvals, auto-approved space, and cancelled/rejected requests.</div>
+        </div>
+        <div className="card__body overflow-x-auto">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Field</th>
+                <th>Status</th>
+                <th>Policy</th>
+                <th>Notes</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {myRequests.map((request) => (
+                <tr key={request.requestId}>
+                  <td>{request.date} {request.startTime}-{request.endTime}</td>
+                  <td>{request.fieldName}</td>
+                  <td><span className="pill">{request.status}</span></td>
+                  <td title={request.bookingPolicy === "auto_approve" ? "This space was confirmed immediately." : "This space requires commissioner approval."}>{request.bookingPolicyLabel}</td>
+                  <td>{request.notes || request.reviewReason || "-"}</td>
+                  <td>
+                    {request.status === "Pending" || request.status === "Approved" ? (
+                      <button className="btn" type="button" disabled={!!cancellingId} onClick={() => cancelRequest(request)}>
+                        {cancellingId === request.requestId ? "Cancelling..." : "Cancel"}
+                      </button>
+                    ) : (
+                      <span className="subtle">No action</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {myRequests.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="muted">No practice requests yet.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="practice-space-help" className="card">
+        <div className="card__header">
+          <div className="h2">How This Works</div>
+          <div className="subtle">Quick guidance for coaches using the new practice space workflow.</div>
+        </div>
+        <div className="card__body stack gap-3">
+          <div>
+            <div className="font-bold">Auto-approve</div>
+            <div className="subtle">Ponytail-assigned space can confirm immediately when capacity remains. Your team does not need commissioner review for those blocks.</div>
+          </div>
+          <div>
+            <div className="font-bold">Commissioner review</div>
+            <div className="subtle">Available but unassigned county space is requestable, but a commissioner must approve it before your team is confirmed.</div>
+          </div>
+          <div>
+            <div className="font-bold">Two-team capacity</div>
+            <div className="subtle">Each 90-minute practice block can hold up to two teams. If both seats are taken or reserved, the block is full.</div>
+          </div>
+          <div>
+            <div className="font-bold">When to cancel</div>
+            <div className="subtle">Cancel a pending or approved request as soon as you no longer need the space so another team can use it.</div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

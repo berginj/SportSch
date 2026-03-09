@@ -646,6 +646,11 @@ public class FieldInventoryImportServiceTests
         private readonly Dictionary<string, List<FieldInventoryFieldAliasEntity>> _aliases = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, List<FieldInventoryTabClassificationEntity>> _tabClassifications = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, List<FieldInventoryLiveRecordEntity>> _liveRecords = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, List<FieldInventoryCommitRunEntity>> _commitRuns = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, List<FieldInventoryDivisionAliasEntity>> _divisionAliases = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, List<FieldInventoryTeamAliasEntity>> _teamAliases = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, List<FieldInventoryGroupPolicyEntity>> _groupPolicies = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, List<FieldInventoryPracticeRequestEntity>> _practiceRequests = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, FieldInventoryWorkbookUploadEntity> _uploads = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, byte[]> _uploadBytes = new(StringComparer.OrdinalIgnoreCase);
 
@@ -769,7 +774,84 @@ public class FieldInventoryImportServiceTests
         }
 
         public Task AddCommitRunAsync(FieldInventoryCommitRunEntity commitRun)
-            => Task.CompletedTask;
+        {
+            if (!_commitRuns.ContainsKey(commitRun.LeagueId))
+            {
+                _commitRuns[commitRun.LeagueId] = new List<FieldInventoryCommitRunEntity>();
+            }
+            _commitRuns[commitRun.LeagueId].Add(commitRun);
+            return Task.CompletedTask;
+        }
+
+        public Task<List<FieldInventoryCommitRunEntity>> GetCommitRunsAsync(string leagueId)
+            => Task.FromResult(_commitRuns.TryGetValue(leagueId, out var list) ? list.ToList() : new List<FieldInventoryCommitRunEntity>());
+
+        public Task<List<FieldInventoryDivisionAliasEntity>> GetDivisionAliasesAsync(string leagueId)
+            => Task.FromResult(_divisionAliases.TryGetValue(leagueId, out var list) ? list.ToList() : new List<FieldInventoryDivisionAliasEntity>());
+
+        public Task UpsertDivisionAliasAsync(FieldInventoryDivisionAliasEntity alias)
+        {
+            if (!_divisionAliases.ContainsKey(alias.LeagueId))
+            {
+                _divisionAliases[alias.LeagueId] = new List<FieldInventoryDivisionAliasEntity>();
+            }
+
+            _divisionAliases[alias.LeagueId].RemoveAll(x => x.NormalizedLookupKey == alias.NormalizedLookupKey);
+            _divisionAliases[alias.LeagueId].Add(alias);
+            return Task.CompletedTask;
+        }
+
+        public Task<List<FieldInventoryTeamAliasEntity>> GetTeamAliasesAsync(string leagueId)
+            => Task.FromResult(_teamAliases.TryGetValue(leagueId, out var list) ? list.ToList() : new List<FieldInventoryTeamAliasEntity>());
+
+        public Task UpsertTeamAliasAsync(FieldInventoryTeamAliasEntity alias)
+        {
+            if (!_teamAliases.ContainsKey(alias.LeagueId))
+            {
+                _teamAliases[alias.LeagueId] = new List<FieldInventoryTeamAliasEntity>();
+            }
+
+            _teamAliases[alias.LeagueId].RemoveAll(x => x.Id == alias.Id);
+            _teamAliases[alias.LeagueId].Add(alias);
+            return Task.CompletedTask;
+        }
+
+        public Task<List<FieldInventoryGroupPolicyEntity>> GetGroupPoliciesAsync(string leagueId)
+            => Task.FromResult(_groupPolicies.TryGetValue(leagueId, out var list) ? list.ToList() : new List<FieldInventoryGroupPolicyEntity>());
+
+        public Task UpsertGroupPolicyAsync(FieldInventoryGroupPolicyEntity policy)
+        {
+            if (!_groupPolicies.ContainsKey(policy.LeagueId))
+            {
+                _groupPolicies[policy.LeagueId] = new List<FieldInventoryGroupPolicyEntity>();
+            }
+
+            _groupPolicies[policy.LeagueId].RemoveAll(x => x.NormalizedLookupKey == policy.NormalizedLookupKey);
+            _groupPolicies[policy.LeagueId].Add(policy);
+            return Task.CompletedTask;
+        }
+
+        public Task<List<FieldInventoryPracticeRequestEntity>> GetPracticeRequestsAsync(string leagueId, string seasonLabel)
+            => Task.FromResult(_practiceRequests.TryGetValue($"{leagueId}|{seasonLabel}", out var list) ? list.ToList() : new List<FieldInventoryPracticeRequestEntity>());
+
+        public Task<FieldInventoryPracticeRequestEntity?> GetPracticeRequestAsync(string leagueId, string seasonLabel, string requestId)
+        {
+            _practiceRequests.TryGetValue($"{leagueId}|{seasonLabel}", out var list);
+            return Task.FromResult(list?.FirstOrDefault(x => x.Id == requestId));
+        }
+
+        public Task UpsertPracticeRequestAsync(FieldInventoryPracticeRequestEntity request)
+        {
+            var key = $"{request.LeagueId}|{request.SeasonLabel}";
+            if (!_practiceRequests.ContainsKey(key))
+            {
+                _practiceRequests[key] = new List<FieldInventoryPracticeRequestEntity>();
+            }
+
+            _practiceRequests[key].RemoveAll(x => x.Id == request.Id);
+            _practiceRequests[key].Add(request);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class InMemoryFieldRepository : IFieldRepository

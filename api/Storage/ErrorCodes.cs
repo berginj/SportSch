@@ -37,6 +37,11 @@ public static class ErrorCodes
     public const string WORKBOOK_FILE_REQUIRED = "WORKBOOK_FILE_REQUIRED";
     public const string FIELD_ALIAS_REQUIRED = "FIELD_ALIAS_REQUIRED";
     public const string REVIEW_REQUIRED = "REVIEW_REQUIRED";
+    public const string PRACTICE_SPACE_NOT_FOUND = "PRACTICE_SPACE_NOT_FOUND";
+    public const string PRACTICE_SPACE_NOT_REQUESTABLE = "PRACTICE_SPACE_NOT_REQUESTABLE";
+    public const string PRACTICE_SPACE_FULL = "PRACTICE_SPACE_FULL";
+    public const string PRACTICE_REQUEST_NOT_FOUND = "PRACTICE_REQUEST_NOT_FOUND";
+    public const string PRACTICE_POLICY_REQUIRED = "PRACTICE_POLICY_REQUIRED";
 
     // Business Logic Errors
     public const string SLOT_CONFLICT = "SLOT_CONFLICT";

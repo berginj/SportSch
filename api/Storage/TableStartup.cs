@@ -49,7 +49,11 @@ public sealed class TableStartup : IHostedService
             Constants.Tables.FieldInventoryReviewQueueItems,
             Constants.Tables.FieldInventoryDiagnostics,
             Constants.Tables.FieldInventoryLiveRecords,
-            Constants.Tables.FieldInventoryCommitRuns
+            Constants.Tables.FieldInventoryCommitRuns,
+            Constants.Tables.FieldInventoryDivisionAliases,
+            Constants.Tables.FieldInventoryTeamAliases,
+            Constants.Tables.FieldInventoryGroupPolicies,
+            Constants.Tables.FieldInventoryPracticeRequests
         };
 
         foreach (var tableName in tableNames)

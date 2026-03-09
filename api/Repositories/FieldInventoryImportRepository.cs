@@ -273,6 +273,104 @@ public class FieldInventoryImportRepository : IFieldInventoryImportRepository
         await table.UpsertEntityAsync(entity, TableUpdateMode.Replace);
     }
 
+    public async Task<List<FieldInventoryCommitRunEntity>> GetCommitRunsAsync(string leagueId)
+    {
+        var table = await TableClients.GetTableAsync(_tableService, Constants.Tables.FieldInventoryCommitRuns);
+        var filter = ODataFilterBuilder.PartitionKeyExact(Constants.Pk.FieldInventoryCommitRuns(leagueId));
+        var list = new List<FieldInventoryCommitRunEntity>();
+        await foreach (var entity in table.QueryAsync<TableEntity>(filter: filter))
+        {
+            list.Add(MapCommitRun(entity));
+        }
+        return list.OrderByDescending(x => x.CreatedAt).ToList();
+    }
+
+    public async Task<List<FieldInventoryDivisionAliasEntity>> GetDivisionAliasesAsync(string leagueId)
+    {
+        var table = await TableClients.GetTableAsync(_tableService, Constants.Tables.FieldInventoryDivisionAliases);
+        var filter = ODataFilterBuilder.PartitionKeyExact(Constants.Pk.FieldInventoryDivisionAliases(leagueId));
+        var list = new List<FieldInventoryDivisionAliasEntity>();
+        await foreach (var entity in table.QueryAsync<TableEntity>(filter: filter))
+        {
+            list.Add(MapDivisionAlias(entity));
+        }
+        return list;
+    }
+
+    public async Task UpsertDivisionAliasAsync(FieldInventoryDivisionAliasEntity alias)
+    {
+        var table = await TableClients.GetTableAsync(_tableService, Constants.Tables.FieldInventoryDivisionAliases);
+        await table.UpsertEntityAsync(MapDivisionAlias(alias), TableUpdateMode.Replace);
+    }
+
+    public async Task<List<FieldInventoryTeamAliasEntity>> GetTeamAliasesAsync(string leagueId)
+    {
+        var table = await TableClients.GetTableAsync(_tableService, Constants.Tables.FieldInventoryTeamAliases);
+        var filter = ODataFilterBuilder.PartitionKeyExact(Constants.Pk.FieldInventoryTeamAliases(leagueId));
+        var list = new List<FieldInventoryTeamAliasEntity>();
+        await foreach (var entity in table.QueryAsync<TableEntity>(filter: filter))
+        {
+            list.Add(MapTeamAlias(entity));
+        }
+        return list;
+    }
+
+    public async Task UpsertTeamAliasAsync(FieldInventoryTeamAliasEntity alias)
+    {
+        var table = await TableClients.GetTableAsync(_tableService, Constants.Tables.FieldInventoryTeamAliases);
+        await table.UpsertEntityAsync(MapTeamAlias(alias), TableUpdateMode.Replace);
+    }
+
+    public async Task<List<FieldInventoryGroupPolicyEntity>> GetGroupPoliciesAsync(string leagueId)
+    {
+        var table = await TableClients.GetTableAsync(_tableService, Constants.Tables.FieldInventoryGroupPolicies);
+        var filter = ODataFilterBuilder.PartitionKeyExact(Constants.Pk.FieldInventoryGroupPolicies(leagueId));
+        var list = new List<FieldInventoryGroupPolicyEntity>();
+        await foreach (var entity in table.QueryAsync<TableEntity>(filter: filter))
+        {
+            list.Add(MapGroupPolicy(entity));
+        }
+        return list;
+    }
+
+    public async Task UpsertGroupPolicyAsync(FieldInventoryGroupPolicyEntity policy)
+    {
+        var table = await TableClients.GetTableAsync(_tableService, Constants.Tables.FieldInventoryGroupPolicies);
+        await table.UpsertEntityAsync(MapGroupPolicy(policy), TableUpdateMode.Replace);
+    }
+
+    public async Task<List<FieldInventoryPracticeRequestEntity>> GetPracticeRequestsAsync(string leagueId, string seasonLabel)
+    {
+        var table = await TableClients.GetTableAsync(_tableService, Constants.Tables.FieldInventoryPracticeRequests);
+        var filter = ODataFilterBuilder.PartitionKeyExact(Constants.Pk.FieldInventoryPracticeRequests(leagueId, seasonLabel));
+        var list = new List<FieldInventoryPracticeRequestEntity>();
+        await foreach (var entity in table.QueryAsync<TableEntity>(filter: filter))
+        {
+            list.Add(MapPracticeRequest(entity));
+        }
+        return list.OrderByDescending(x => x.CreatedAt).ToList();
+    }
+
+    public async Task<FieldInventoryPracticeRequestEntity?> GetPracticeRequestAsync(string leagueId, string seasonLabel, string requestId)
+    {
+        var table = await TableClients.GetTableAsync(_tableService, Constants.Tables.FieldInventoryPracticeRequests);
+        try
+        {
+            var entity = (await table.GetEntityAsync<TableEntity>(Constants.Pk.FieldInventoryPracticeRequests(leagueId, seasonLabel), requestId)).Value;
+            return MapPracticeRequest(entity);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return null;
+        }
+    }
+
+    public async Task UpsertPracticeRequestAsync(FieldInventoryPracticeRequestEntity request)
+    {
+        var table = await TableClients.GetTableAsync(_tableService, Constants.Tables.FieldInventoryPracticeRequests);
+        await table.UpsertEntityAsync(MapPracticeRequest(request), TableUpdateMode.Replace);
+    }
+
     private async Task ReplacePartitionAsync(string tableName, string partitionKey, IEnumerable<TableEntity> newEntities)
     {
         var table = await TableClients.GetTableAsync(_tableService, tableName);
@@ -663,4 +761,173 @@ public class FieldInventoryImportRepository : IFieldInventoryImportRepository
             UpdatedAt = entity.GetDateTimeOffset("UpdatedAt") ?? DateTimeOffset.MinValue,
             CreatedBy = entity.GetString("CreatedBy") ?? "",
         };
+
+    private static FieldInventoryCommitRunEntity MapCommitRun(TableEntity entity)
+        => new()
+        {
+            Id = entity.RowKey,
+            LeagueId = entity.PartitionKey[(Constants.Pk.FieldInventoryCommitRuns("").Length)..],
+            ImportRunId = entity.GetString("ImportRunId") ?? "",
+            SeasonLabel = entity.GetString("SeasonLabel") ?? "",
+            Mode = entity.GetString("Mode") ?? FieldInventoryCommitModes.Import,
+            DryRun = entity.GetBoolean("DryRun") ?? false,
+            CreateCount = entity.GetInt32("CreateCount") ?? 0,
+            UpdateCount = entity.GetInt32("UpdateCount") ?? 0,
+            DeleteCount = entity.GetInt32("DeleteCount") ?? 0,
+            UnchangedCount = entity.GetInt32("UnchangedCount") ?? 0,
+            SkippedUnmappedCount = entity.GetInt32("SkippedUnmappedCount") ?? 0,
+            CreatedBy = entity.GetString("CreatedBy") ?? "",
+            CreatedAt = entity.GetDateTimeOffset("CreatedAt") ?? DateTimeOffset.MinValue,
+        };
+
+    private static TableEntity MapDivisionAlias(FieldInventoryDivisionAliasEntity alias)
+    {
+        return new TableEntity(Constants.Pk.FieldInventoryDivisionAliases(alias.LeagueId), alias.NormalizedLookupKey)
+        {
+            ["Id"] = alias.Id,
+            ["RawDivisionName"] = alias.RawDivisionName,
+            ["NormalizedLookupKey"] = alias.NormalizedLookupKey,
+            ["CanonicalDivisionCode"] = alias.CanonicalDivisionCode,
+            ["CanonicalDivisionName"] = alias.CanonicalDivisionName,
+            ["CreatedAt"] = alias.CreatedAt,
+            ["UpdatedAt"] = alias.UpdatedAt,
+            ["CreatedBy"] = alias.CreatedBy,
+        };
+    }
+
+    private static FieldInventoryDivisionAliasEntity MapDivisionAlias(TableEntity entity)
+        => new()
+        {
+            Id = entity.GetString("Id") ?? entity.RowKey,
+            LeagueId = entity.PartitionKey[(Constants.Pk.FieldInventoryDivisionAliases("").Length)..],
+            RawDivisionName = entity.GetString("RawDivisionName") ?? "",
+            NormalizedLookupKey = entity.GetString("NormalizedLookupKey") ?? entity.RowKey,
+            CanonicalDivisionCode = entity.GetString("CanonicalDivisionCode") ?? "",
+            CanonicalDivisionName = entity.GetString("CanonicalDivisionName") ?? "",
+            CreatedAt = entity.GetDateTimeOffset("CreatedAt") ?? DateTimeOffset.MinValue,
+            UpdatedAt = entity.GetDateTimeOffset("UpdatedAt") ?? DateTimeOffset.MinValue,
+            CreatedBy = entity.GetString("CreatedBy") ?? "",
+        };
+
+    private static TableEntity MapTeamAlias(FieldInventoryTeamAliasEntity alias)
+    {
+        return new TableEntity(Constants.Pk.FieldInventoryTeamAliases(alias.LeagueId), alias.Id)
+        {
+            ["RawTeamName"] = alias.RawTeamName,
+            ["NormalizedLookupKey"] = alias.NormalizedLookupKey,
+            ["CanonicalDivisionCode"] = alias.CanonicalDivisionCode,
+            ["CanonicalTeamId"] = alias.CanonicalTeamId,
+            ["CanonicalTeamName"] = alias.CanonicalTeamName,
+            ["CreatedAt"] = alias.CreatedAt,
+            ["UpdatedAt"] = alias.UpdatedAt,
+            ["CreatedBy"] = alias.CreatedBy,
+        };
+    }
+
+    private static FieldInventoryTeamAliasEntity MapTeamAlias(TableEntity entity)
+        => new()
+        {
+            Id = entity.RowKey,
+            LeagueId = entity.PartitionKey[(Constants.Pk.FieldInventoryTeamAliases("").Length)..],
+            RawTeamName = entity.GetString("RawTeamName") ?? "",
+            NormalizedLookupKey = entity.GetString("NormalizedLookupKey") ?? "",
+            CanonicalDivisionCode = entity.GetString("CanonicalDivisionCode") ?? "",
+            CanonicalTeamId = entity.GetString("CanonicalTeamId") ?? "",
+            CanonicalTeamName = entity.GetString("CanonicalTeamName") ?? "",
+            CreatedAt = entity.GetDateTimeOffset("CreatedAt") ?? DateTimeOffset.MinValue,
+            UpdatedAt = entity.GetDateTimeOffset("UpdatedAt") ?? DateTimeOffset.MinValue,
+            CreatedBy = entity.GetString("CreatedBy") ?? "",
+        };
+
+    private static TableEntity MapGroupPolicy(FieldInventoryGroupPolicyEntity policy)
+    {
+        return new TableEntity(Constants.Pk.FieldInventoryGroupPolicies(policy.LeagueId), policy.NormalizedLookupKey)
+        {
+            ["Id"] = policy.Id,
+            ["RawGroupName"] = policy.RawGroupName,
+            ["NormalizedLookupKey"] = policy.NormalizedLookupKey,
+            ["BookingPolicy"] = policy.BookingPolicy,
+            ["CreatedAt"] = policy.CreatedAt,
+            ["UpdatedAt"] = policy.UpdatedAt,
+            ["CreatedBy"] = policy.CreatedBy,
+        };
+    }
+
+    private static FieldInventoryGroupPolicyEntity MapGroupPolicy(TableEntity entity)
+        => new()
+        {
+            Id = entity.GetString("Id") ?? entity.RowKey,
+            LeagueId = entity.PartitionKey[(Constants.Pk.FieldInventoryGroupPolicies("").Length)..],
+            RawGroupName = entity.GetString("RawGroupName") ?? "",
+            NormalizedLookupKey = entity.GetString("NormalizedLookupKey") ?? entity.RowKey,
+            BookingPolicy = entity.GetString("BookingPolicy") ?? FieldInventoryPracticeBookingPolicies.NotRequestable,
+            CreatedAt = entity.GetDateTimeOffset("CreatedAt") ?? DateTimeOffset.MinValue,
+            UpdatedAt = entity.GetDateTimeOffset("UpdatedAt") ?? DateTimeOffset.MinValue,
+            CreatedBy = entity.GetString("CreatedBy") ?? "",
+        };
+
+    private static TableEntity MapPracticeRequest(FieldInventoryPracticeRequestEntity request)
+    {
+        return new TableEntity(Constants.Pk.FieldInventoryPracticeRequests(request.LeagueId, request.SeasonLabel), request.Id)
+        {
+            ["PracticeSlotKey"] = request.PracticeSlotKey,
+            ["LiveRecordId"] = request.LiveRecordId,
+            ["Date"] = request.Date,
+            ["DayOfWeek"] = request.DayOfWeek,
+            ["StartTime"] = request.StartTime,
+            ["EndTime"] = request.EndTime,
+            ["FieldId"] = request.FieldId,
+            ["FieldName"] = request.FieldName,
+            ["TeamId"] = request.TeamId,
+            ["TeamName"] = request.TeamName ?? "",
+            ["BookingPolicy"] = request.BookingPolicy,
+            ["Status"] = request.Status,
+            ["Notes"] = request.Notes ?? "",
+            ["CreatedBy"] = request.CreatedBy,
+            ["CreatedAt"] = request.CreatedAt,
+            ["ReviewedBy"] = request.ReviewedBy ?? "",
+            ["ReviewedAt"] = request.ReviewedAt,
+            ["ReviewReason"] = request.ReviewReason ?? "",
+            ["UpdatedAt"] = request.UpdatedAt,
+        };
+    }
+
+    private static FieldInventoryPracticeRequestEntity MapPracticeRequest(TableEntity entity)
+        => new()
+        {
+            Id = entity.RowKey,
+            LeagueId = ExtractLeagueIdFromPracticeRequestPartition(entity.PartitionKey),
+            SeasonLabel = ExtractSeasonFromPracticeRequestPartition(entity.PartitionKey),
+            PracticeSlotKey = entity.GetString("PracticeSlotKey") ?? "",
+            LiveRecordId = entity.GetString("LiveRecordId") ?? "",
+            Date = entity.GetString("Date") ?? "",
+            DayOfWeek = entity.GetString("DayOfWeek") ?? "",
+            StartTime = entity.GetString("StartTime") ?? "",
+            EndTime = entity.GetString("EndTime") ?? "",
+            FieldId = entity.GetString("FieldId") ?? "",
+            FieldName = entity.GetString("FieldName") ?? "",
+            TeamId = entity.GetString("TeamId") ?? "",
+            TeamName = EmptyAsNull(entity.GetString("TeamName")),
+            BookingPolicy = entity.GetString("BookingPolicy") ?? FieldInventoryPracticeBookingPolicies.CommissionerReview,
+            Status = entity.GetString("Status") ?? FieldInventoryPracticeRequestStatuses.Pending,
+            Notes = EmptyAsNull(entity.GetString("Notes")),
+            CreatedBy = entity.GetString("CreatedBy") ?? "",
+            CreatedAt = entity.GetDateTimeOffset("CreatedAt") ?? DateTimeOffset.MinValue,
+            ReviewedBy = EmptyAsNull(entity.GetString("ReviewedBy")),
+            ReviewedAt = entity.GetDateTimeOffset("ReviewedAt"),
+            ReviewReason = EmptyAsNull(entity.GetString("ReviewReason")),
+            UpdatedAt = entity.GetDateTimeOffset("UpdatedAt") ?? DateTimeOffset.MinValue,
+        };
+
+    private static string ExtractLeagueIdFromPracticeRequestPartition(string partitionKey)
+    {
+        var parts = partitionKey.Split('|', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 3 ? parts[1] : "";
+    }
+
+    private static string ExtractSeasonFromPracticeRequestPartition(string partitionKey)
+    {
+        var parts = partitionKey.Split('|', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 3 ? parts[2] : "";
+    }
 }
