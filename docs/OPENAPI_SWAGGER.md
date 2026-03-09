@@ -58,7 +58,7 @@ The API documentation covers the active user-facing functions.
 ### Excluded Functions
 
 The following functions are intentionally excluded from public documentation:
-- Admin functions (AdminWipe, AdminMigrateFields)
+- Admin functions (AdminWipe)
 - Debug functions (DebugFunctions, Ping, StorageHealth)
 - Internal functions (ClearAvailabilitySlots)
 

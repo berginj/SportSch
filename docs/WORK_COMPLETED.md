@@ -220,7 +220,7 @@ Documentation includes examples for generating SDKs in:
 
 ### Excluded Functions
 Admin/debug functions intentionally excluded from public API docs:
-- AdminWipe, AdminMigrateFields, DebugFunctions
+- AdminWipe, DebugFunctions
 - Ping, StorageHealth (monitoring)
 - Internal utilities
 

@@ -14,6 +14,11 @@ const PracticeSpaceManager = lazy(() => import("../manage/PracticeSpaceManager")
 const CoachLinksGenerator = lazy(() => import("../manage/CoachLinksGenerator"));
 const FieldInventoryImportManager = lazy(() => import("../manage/FieldInventoryImportManager"));
 
+const PRACTICE_SPACE_TAB_ID = "practice-space";
+const LEGACY_TAB_IDS = {
+  "practice-requests": PRACTICE_SPACE_TAB_ID,
+};
+
 export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
   const memberships = useMemo(
     () => (Array.isArray(me?.memberships) ? me.memberships : []),
@@ -34,7 +39,7 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
       ...(canSchedule ? [{ id: "settings", label: "League Settings" }] : []),
       { id: "invites", label: "Invites" },
       ...(canSchedule ? [{ id: "coach-links", label: "Coach Links" }] : []),
-      ...(canSchedule ? [{ id: "practice-requests", label: "Practice Space Admin" }] : []),
+      ...(canSchedule ? [{ id: PRACTICE_SPACE_TAB_ID, label: "Practice Space Admin" }] : []),
       ...(canSchedule ? [{ id: "field-inventory", label: "Field Inventory Import" }] : []),
       { id: "fields", label: "Fields" },
     ],
@@ -42,10 +47,14 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
   );
   const tabIds = useMemo(() => new Set(tabs.map((t) => t.id)), [tabs]);
   const defaultTabId = tabs[0]?.id || "";
+  const resolveTabId = (value) => {
+    const next = (value || "").trim();
+    return LEGACY_TAB_IDS[next] || next;
+  };
   const [active, setActive] = useState(() => {
     if (typeof window === "undefined") return defaultTabId;
     const params = new URLSearchParams(window.location.search);
-    const next = (params.get("manageTab") || "").trim();
+    const next = resolveTabId(params.get("manageTab"));
     if (next && tabIds.has(next)) return next;
     return defaultTabId;
   });
@@ -56,7 +65,7 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
     if (typeof window === "undefined") return;
     const onPopState = () => {
       const params = new URLSearchParams(window.location.search);
-      const next = (params.get("manageTab") || defaultTabId).trim();
+      const next = resolveTabId(params.get("manageTab") || defaultTabId);
       const safeNext = tabIds.has(next) ? next : defaultTabId;
       setActive(safeNext);
     };
@@ -241,7 +250,7 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
         </div>
       )}
 
-      {activeTabId === "practice-requests" && canSchedule && (
+      {activeTabId === PRACTICE_SPACE_TAB_ID && canSchedule && (
         <div className="card">
           <div className="card__header">
             <div className="h2">Practice Space Admin</div>
