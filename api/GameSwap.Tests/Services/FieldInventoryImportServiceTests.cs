@@ -292,6 +292,25 @@ public class FieldInventoryImportServiceTests
         Assert.NotEmpty(preview.Records);
     }
 
+    [Fact]
+    public async Task CreatePreviewAsync_WhenParserThrows_ReturnsBlockingReviewItemInsteadOfThrowing()
+    {
+        var service = CreateService(new StaticWorkbookConnector(BuildWorkbookThatThrowsDuringParse()));
+
+        var preview = await service.CreatePreviewAsync(new FieldInventoryPreviewRequest(
+            "https://docs.google.com/spreadsheets/d/test-sheet/edit#gid=0",
+            null,
+            "Spring 2026",
+            new List<FieldInventorySelectedTab>
+            {
+                new("Spring 3/16-5/22", FieldInventoryParserTypes.SeasonWeekdayGrid, FieldInventoryActionTypes.Ingest, true),
+            }), CorrelationContext.Create("user-1", "league-1"));
+
+        Assert.Empty(preview.Records);
+        Assert.Contains(preview.Warnings, x => x.Code == "tab_parse_failed");
+        Assert.Contains(preview.ReviewItems, x => x.Title == "Parser failed for Spring 3/16-5/22" && x.Severity == FieldInventoryReviewItemSeverities.Blocking);
+    }
+
     private FieldInventoryImportService CreateService(FieldInventoryImportService.IFieldInventoryWorkbookConnector connector)
         => new(_repository, _fieldRepository, connector, _logger.Object);
 
@@ -331,6 +350,24 @@ public class FieldInventoryImportServiceTests
             Sheets =
             {
                 BuildShiftedWeekendSheet("Weekends", "Park A > Field 1"),
+            }
+        };
+
+    private static ParsedWorkbook BuildWorkbookThatThrowsDuringParse()
+        => new()
+        {
+            SpreadsheetId = "test-sheet",
+            SourceWorkbookUrl = "https://docs.google.com/spreadsheets/d/test-sheet/edit#gid=0",
+            Title = "Spring 2026 County Inventory",
+            Sheets =
+            {
+                new ParsedWorkbookSheet
+                {
+                    Name = "Spring 3/16-5/22",
+                    Index = 0,
+                    MaxRow = -1,
+                    MaxColumn = 4,
+                },
             }
         };
 

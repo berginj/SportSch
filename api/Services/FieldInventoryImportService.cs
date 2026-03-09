@@ -383,10 +383,33 @@ public class FieldInventoryImportService : IFieldInventoryImportService
                 continue;
             }
 
-            var parsed = ParseInventorySheet(run, workbook, sheet, decision.ParserType, fieldCatalog, aliases);
-            results.Records.AddRange(parsed.Records);
-            results.Warnings.AddRange(parsed.Warnings);
-            results.ReviewItems.AddRange(parsed.ReviewItems);
+            try
+            {
+                var parsed = ParseInventorySheet(run, workbook, sheet, decision.ParserType, fieldCatalog, aliases);
+                results.Records.AddRange(parsed.Records);
+                results.Warnings.AddRange(parsed.Warnings);
+                results.ReviewItems.AddRange(parsed.ReviewItems);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Field inventory parser failed for tab {TabName} using parser {ParserType}", sheet.Name, decision.ParserType);
+                results.Warnings.Add(CreateWarning(
+                    run.Id,
+                    "tab_parse_failed",
+                    $"Selected tab '{sheet.Name}' could not be parsed by SportsCH. The parser failed with: {ex.Message}",
+                    sheet.Name,
+                    ""));
+                results.ReviewItems.Add(CreateReviewItem(
+                    run.Id,
+                    FieldInventoryReviewItemTypes.AmbiguousParse,
+                    FieldInventoryReviewItemSeverities.Blocking,
+                    $"Parser failed for {sheet.Name}",
+                    $"SportsCH could not parse this AGSA tab yet. The parser exception was: {ex.Message}",
+                    sheet.Name,
+                    "",
+                    sheet.Name,
+                    new Dictionary<string, string?> { ["parserType"] = decision.ParserType, ["actionType"] = FieldInventoryActionTypes.Ingest }));
+            }
         }
 
         run.Status = run.Status == FieldInventoryImportStatuses.Staged
