@@ -102,6 +102,22 @@ public class FieldInventoryPracticeFunctions
             return ApiResponses.Ok(req, await _service.SaveGroupPolicyAsync(body, me.UserId, context));
         });
 
+    [Function("NormalizeFieldInventoryPracticeAvailability")]
+    [OpenApiOperation(operationId: "NormalizeFieldInventoryPracticeAvailability", tags: new[] { "Field Inventory Practice" }, Summary = "Normalize committed inventory into canonical availability", Description = "Creates or refreshes canonical GameSwap availability slots from committed field inventory and returns normalization results plus the refreshed admin view.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiRequestBody("application/json", typeof(FieldInventoryPracticeNormalizeRequest), Required = false)]
+    public async Task<HttpResponseData> NormalizeAvailability(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "field-inventory/practice/normalize")] HttpRequestData req)
+        => await ExecuteAsync(req, async () =>
+        {
+            var leagueId = ApiGuards.RequireLeagueId(req);
+            var me = IdentityUtil.GetMe(req);
+            await ApiGuards.RequireLeagueAdminAsync(_tableService, me.UserId, leagueId);
+            var body = await req.ReadFromJsonAsync<FieldInventoryPracticeNormalizeRequest>() ?? new FieldInventoryPracticeNormalizeRequest(null, null, null, null, false);
+            var context = CorrelationContext.FromRequest(req, leagueId);
+            return ApiResponses.Ok(req, await _service.NormalizeAvailabilityAsync(body, me.UserId, context));
+        });
+
     [Function("CreateFieldInventoryPracticeRequest")]
     [OpenApiOperation(operationId: "CreateFieldInventoryPracticeRequest", tags: new[] { "Field Inventory Practice" }, Summary = "Create a practice-space request", Description = "Creates an inventory-backed practice-space request. Ponytail-assigned space auto-approves; unassigned available space enters commissioner review.")]
     [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
@@ -116,6 +132,23 @@ public class FieldInventoryPracticeFunctions
             if (body is null) return ApiResponses.Error(req, HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST, "Invalid JSON body.");
             var context = CorrelationContext.FromRequest(req, leagueId);
             return ApiResponses.Ok(req, await _service.CreatePracticeRequestAsync(body, me.UserId, context));
+        });
+
+    [Function("MoveFieldInventoryPracticeRequest")]
+    [OpenApiOperation(operationId: "MoveFieldInventoryPracticeRequest", tags: new[] { "Field Inventory Practice" }, Summary = "Move a practice-space request", Description = "Creates a replacement request against another normalized practice slot and releases the original request when the move is approved.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiRequestBody("application/json", typeof(FieldInventoryPracticeRequestMoveRequest), Required = true)]
+    public async Task<HttpResponseData> MovePracticeRequest(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "field-inventory/practice/requests/{requestId}/move")] HttpRequestData req,
+        string requestId)
+        => await ExecuteAsync(req, async () =>
+        {
+            var leagueId = ApiGuards.RequireLeagueId(req);
+            var me = IdentityUtil.GetMe(req);
+            var body = await req.ReadFromJsonAsync<FieldInventoryPracticeRequestMoveRequest>();
+            if (body is null) return ApiResponses.Error(req, HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST, "Invalid JSON body.");
+            var context = CorrelationContext.FromRequest(req, leagueId);
+            return ApiResponses.Ok(req, await _service.MovePracticeRequestAsync(requestId, body, me.UserId, context));
         });
 
     [Function("ApproveFieldInventoryPracticeRequest")]

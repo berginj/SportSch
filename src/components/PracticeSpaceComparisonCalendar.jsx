@@ -4,8 +4,8 @@ import "./CalendarView.css";
 
 export default function PracticeSpaceComparisonCalendar({
   items = [],
-  mode = "compare",
-  title = "Practice Space Comparison Calendar",
+  mode = "normalize",
+  title = "Practice Availability Normalization",
 }) {
   const [viewMode, setViewMode] = useState("timeline");
   const prepared = useMemo(() => prepareItems(items, mode), [items, mode]);
@@ -52,7 +52,7 @@ export default function PracticeSpaceComparisonCalendar({
     return (
       <div className="calendar-view">
         <ViewToggle currentView={viewMode} onChange={setViewMode} />
-        <div className="subtle">No calendar items match the current comparison filter.</div>
+        <div className="subtle">No normalization blocks match the current filter.</div>
       </div>
     );
   }
@@ -66,7 +66,7 @@ export default function PracticeSpaceComparisonCalendar({
 
       <div className="calendar-view__summary">
         <span className="pill">Fields: {resources.length}</span>
-        <span className="pill">Items: {prepared.length}</span>
+        <span className="pill">Blocks: {prepared.length}</span>
         <span className="pill">Range: {range.startDate} to {range.endDate}</span>
       </div>
 
@@ -89,8 +89,8 @@ export default function PracticeSpaceComparisonCalendar({
           </div>
           <div className="calendar-selection__meta">
             <span>Field: {selectedItem.fieldId}</span>
-            {selectedItem.importedRow ? <span>Imported: {formatImportedMeta(selectedItem.importedRow)}</span> : null}
-            {selectedItem.manualSlot ? <span>Manual: {formatManualMeta(selectedItem.manualSlot)}</span> : null}
+            {selectedItem.slot ? <span>Canonical: {formatSlotMeta(selectedItem.slot)}</span> : null}
+            {selectedItem.importedRow ? <span>Import: {formatImportedMeta(selectedItem.importedRow)}</span> : null}
           </div>
           {selectedItem.issueFlags.length ? (
             <div className="row row--wrap gap-2">
@@ -99,7 +99,7 @@ export default function PracticeSpaceComparisonCalendar({
               ))}
             </div>
           ) : (
-            <div className="subtle">No comparison issues on this block.</div>
+            <div className="subtle">No normalization issues on this block.</div>
           )}
         </div>
       ) : null}
@@ -123,61 +123,47 @@ function ViewToggle({ currentView, onChange }) {
 function prepareItems(items, mode) {
   return items
     .flatMap((item) => {
-      if (mode === "imported") return item.importedRow ? [buildPreparedItem(item, "imported")] : [];
-      if (mode === "manual") return item.manualSlot ? [buildPreparedItem(item, "manual")] : [];
-      return [buildPreparedItem(item, "compare")];
+      if (mode === "imported") return item.importedRow ? [buildImportedItem(item)] : [];
+      return [buildNormalizationItem(item)];
     })
     .filter(Boolean);
 }
 
-function buildPreparedItem(item, mode) {
-  const resourceName = item.fieldName || item.fieldId || "Field";
+function buildImportedItem(item) {
   const date = item.date;
   const start = combineIso(date, item.startTime);
   const end = combineIso(date, item.endTime);
   if (!date || !start || !end) return null;
 
-  if (mode === "imported") {
-    const tone = item.importedRow?.availabilityStatus === "available" && item.importedRow?.utilizationStatus === "not_used" ? "availability" : "scheduled";
-    return {
-      ...item,
-      id: `imported:${item.key}`,
-      resourceId: item.fieldId,
-      resourceName,
-      text: item.importedRow?.assignedGroup || item.importedRow?.rawAssignedDivision || item.importedRow?.rawAssignedTeamOrEvent || "Imported inventory",
-      badge: "Imported",
-      tone,
-      start,
-      end,
-      backColor: tone === "availability" ? "#dbeafe" : "#e2e8f0",
-      borderColor: tone === "availability" ? "#2563eb" : "#64748b",
-      barColor: tone === "availability" ? "#2563eb" : "#64748b",
-    };
-  }
-
-  if (mode === "manual") {
-    return {
-      ...item,
-      id: `manual:${item.key}`,
-      resourceId: item.fieldId,
-      resourceName,
-      text: item.manualSlot?.division || "Manual availability",
-      badge: "Manual",
-      tone: "open",
-      start,
-      end,
-      backColor: "#dcfce7",
-      borderColor: "#16a34a",
-      barColor: "#16a34a",
-    };
-  }
-
-  const config = getCompareTone(item.compareState, item.issueFlags);
+  const available = item.importedRow?.availabilityStatus === "available" && item.importedRow?.utilizationStatus === "not_used";
   return {
     ...item,
-    id: `compare:${item.key}`,
+    id: `imported:${item.key}`,
     resourceId: item.fieldId,
-    resourceName,
+    resourceName: item.fieldName || item.fieldId || "Field",
+    text: item.importedRow?.assignedGroup || item.importedRow?.rawAssignedDivision || item.importedRow?.rawAssignedTeamOrEvent || "Imported inventory",
+    badge: "Imported",
+    tone: available ? "availability" : "scheduled",
+    start,
+    end,
+    backColor: available ? "#dbeafe" : "#e2e8f0",
+    borderColor: available ? "#2563eb" : "#64748b",
+    barColor: available ? "#2563eb" : "#64748b",
+  };
+}
+
+function buildNormalizationItem(item) {
+  const date = item.date;
+  const start = combineIso(date, item.startTime);
+  const end = combineIso(date, item.endTime);
+  if (!date || !start || !end) return null;
+
+  const config = getNormalizationTone(item.compareState);
+  return {
+    ...item,
+    id: `normalize:${item.key}`,
+    resourceId: item.fieldId,
+    resourceName: item.fieldName || item.fieldId || "Field",
     text: config.text,
     badge: config.badge,
     tone: config.tone,
@@ -189,20 +175,17 @@ function buildPreparedItem(item, mode) {
   };
 }
 
-function getCompareTone(compareState, issueFlags) {
-  if (compareState === "aligned") {
-    return { tone: "confirmed", badge: "Aligned", text: "Imported + Manual", backColor: "#dcfce7", borderColor: "#16a34a" };
+function getNormalizationTone(compareState) {
+  if (compareState === "normalized") {
+    return { tone: "confirmed", badge: "Normalized", text: "Canonical availability", backColor: "#dcfce7", borderColor: "#16a34a" };
   }
-  if (compareState === "manual_only") {
-    return { tone: "pending", badge: "Manual only", text: "Manual only", backColor: "#fef3c7", borderColor: "#ca8a04" };
-  }
-  if (compareState === "imported_only" && issueFlags.includes("manual_missing")) {
-    return { tone: "cancelled", badge: "Gap", text: "Imported only", backColor: "#fee2e2", borderColor: "#dc2626" };
+  if (compareState === "missing") {
+    return { tone: "pending", badge: "Missing", text: "Ready to normalize", backColor: "#fef3c7", borderColor: "#ca8a04" };
   }
   if (compareState === "conflict") {
-    return { tone: "cancelled", badge: "Conflict", text: "Needs review", backColor: "#fee2e2", borderColor: "#dc2626" };
+    return { tone: "cancelled", badge: "Conflict", text: "Conflict", backColor: "#fee2e2", borderColor: "#dc2626" };
   }
-  return { tone: "scheduled", badge: "Imported only", text: "Imported only", backColor: "#e2e8f0", borderColor: "#64748b" };
+  return { tone: "scheduled", badge: "Blocked", text: "Blocked", backColor: "#e2e8f0", borderColor: "#64748b" };
 }
 
 function buildResources(items) {
@@ -266,15 +249,26 @@ function formatImportedMeta(row) {
   ].filter(Boolean).join(" | ");
 }
 
-function formatManualMeta(slot) {
-  return [slot?.division, slot?.displayName || slot?.fieldName].filter(Boolean).join(" | ");
+function formatSlotMeta(slot) {
+  return [
+    slot?.division,
+    slot?.slotId,
+    slot?.bookingPolicyLabel,
+    slot?.normalizationState,
+  ].filter(Boolean).join(" | ");
 }
 
 function humanizeIssue(issue) {
-  if (issue === "manual_missing") return "Imported block missing from manual availability";
-  if (issue === "import_missing") return "Manual availability missing from import";
-  if (issue === "division_mismatch") return "Division mismatch";
-  if (issue === "manual_overlap_nonrequestable") return "Manual availability overlaps used or blocked import";
-  return issue;
+  const labels = {
+    division_unmapped: "Division mapping missing",
+    team_unmapped: "Team mapping missing",
+    policy_unmapped: "Booking policy mapping missing",
+    field_unmapped: "Field mapping missing",
+    imported_not_requestable: "Imported block is unavailable or in use",
+    legacy_slot_id: "Legacy canonical slot id",
+    manual_overlap: "Overlapping canonical availability",
+    cross_division_overlap: "Cross-division overlap",
+    slot_already_in_use: "Canonical slot already converted to practice",
+  };
+  return labels[issue] || issue.replaceAll("_", " ");
 }
-

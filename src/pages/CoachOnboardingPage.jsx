@@ -6,10 +6,6 @@ import Toast from "../components/Toast";
 import { ConfirmDialog } from "../components/Dialogs";
 import { useConfirmDialog } from "../lib/useDialogs";
 
-function formatSlotLocation(slot) {
-  return slot?.displayName || `${slot?.parkName || ""} ${slot?.fieldName || ""}`.trim() || slot?.fieldKey || "Field TBD";
-}
-
 function getTodayDate() {
   return new Date().toISOString().split("T")[0];
 }
@@ -32,6 +28,7 @@ export default function CoachOnboardingPage({ me, leagueId, setTab }) {
 
   const [teamData, setTeamData] = useState(null);
   const [practiceRequests, setPracticeRequests] = useState([]);
+  const [practicePortal, setPracticePortal] = useState(null);
   const [upcomingGames, setUpcomingGames] = useState([]);
 
   const [teamName, setTeamName] = useState("");
@@ -57,7 +54,7 @@ export default function CoachOnboardingPage({ me, leagueId, setTab }) {
     try {
       const [teamResp, requestsResp, gamesResp] = await Promise.all([
         apiFetch(`/api/teams?division=${encodeURIComponent(division)}`).catch(() => []),
-        apiFetch(`/api/practice-requests?teamId=${encodeURIComponent(teamId)}`).catch(() => []),
+        apiFetch("/api/field-inventory/practice/coach").catch(() => null),
         apiFetch(
           `/api/slots?division=${encodeURIComponent(division)}&status=Confirmed&dateFrom=${getTodayDate()}&dateTo=${getDateInDays(90)}`
         ).catch(() => ({ items: [] })),
@@ -77,8 +74,9 @@ export default function CoachOnboardingPage({ me, leagueId, setTab }) {
         setClinicPreference(myTeam.clinicPreference || "");
       }
 
-      const activeRequests = Array.isArray(requestsResp) ? requestsResp : [];
-      setPracticeRequests(activeRequests);
+      const portalData = requestsResp && typeof requestsResp === "object" ? requestsResp : null;
+      setPracticePortal(portalData);
+      setPracticeRequests(Array.isArray(portalData?.requests) ? portalData.requests : []);
 
       const teamGames = readPagedItems(gamesResp).filter(
         (game) =>
@@ -103,11 +101,8 @@ export default function CoachOnboardingPage({ me, leagueId, setTab }) {
     return (Array.isArray(practiceRequests) ? practiceRequests : [])
       .filter((request) => request?.status === "Pending" || request?.status === "Approved")
       .sort((a, b) => {
-        const pa = Number.isFinite(Number(a?.priority)) ? Number(a.priority) : 99;
-        const pb = Number.isFinite(Number(b?.priority)) ? Number(b.priority) : 99;
-        if (pa !== pb) return pa - pb;
-        const ad = `${a?.slot?.gameDate || ""} ${a?.slot?.startTime || ""}`.trim();
-        const bd = `${b?.slot?.gameDate || ""} ${b?.slot?.startTime || ""}`.trim();
+        const ad = `${a?.date || ""} ${a?.startTime || ""}`.trim();
+        const bd = `${b?.date || ""} ${b?.startTime || ""}`.trim();
         return ad.localeCompare(bd);
       });
   }, [practiceRequests]);
@@ -412,7 +407,7 @@ export default function CoachOnboardingPage({ me, leagueId, setTab }) {
         <div className="callout mb-4">
           <div className="font-semibold">Practice Portal is the canonical workflow</div>
           <div className="mt-2">
-            Open the Practice Portal to request recurring practice patterns, track commissioner approval, and use one-off practice search when your division is eligible.
+            Open the Practice Portal to request normalized practice space, track commissioner approval, and move active practices without cancelling them first.
           </div>
           <div className="mt-3">
             <button className="btn btn--primary" onClick={openPracticePortal}>
@@ -429,13 +424,15 @@ export default function CoachOnboardingPage({ me, leagueId, setTab }) {
                 <div key={request.requestId} className="layoutPanel row row--between row--wrap">
                   <div className="min-w-0">
                     <div className="font-semibold">
-                      {request.slot?.gameDate || "-"} - {request.slot?.startTime || "-"}-{request.slot?.endTime || "-"}
+                      {request.date || "-"} - {request.startTime || "-"}-{request.endTime || "-"}
                     </div>
-                    <div className="subtle truncate">{formatSlotLocation(request.slot)}</div>
-                    <div className="subtle mt-1">
-                      Priority {request.priority || "-"}
-                      {request.openToShareField ? ` | Open to share${request.shareWithTeamId ? ` with ${request.shareWithTeamId}` : ""}` : ""}
-                    </div>
+                    <div className="subtle truncate">{request.fieldName || "-"}</div>
+                    <div className="subtle mt-1">{request.bookingPolicyLabel || "-"}</div>
+                    {request.isMove && request.moveFromDate ? (
+                      <div className="subtle mt-1">
+                        Move from {request.moveFromDate} {request.moveFromStartTime || "-"}-{request.moveFromEndTime || "-"} {request.moveFromFieldName || ""}
+                      </div>
+                    ) : null}
                   </div>
                   <StatusBadge status={request.status} />
                 </div>
@@ -443,7 +440,11 @@ export default function CoachOnboardingPage({ me, leagueId, setTab }) {
             </div>
           </div>
         ) : (
-          <div className="muted">No active practice requests yet. Start in the Practice Portal when you are ready.</div>
+          <div className="muted">
+            {practicePortal?.summary?.requestableBlocks
+              ? "No active practice requests yet. Start in the Practice Portal when you are ready."
+              : "No requestable practice space is visible yet. Ask an administrator to finish inventory normalization if needed."}
+          </div>
         )}
       </div>
 

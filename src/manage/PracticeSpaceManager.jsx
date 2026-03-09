@@ -10,6 +10,7 @@ function filterRows(rows, search, policy, issue, sortBy) {
     if (policy && row.bookingPolicy !== policy) return false;
     if (issue && !(row.mappingIssues || []).includes(issue)) return false;
     if (!needle) return true;
+
     const haystack = [
       row.fieldName,
       row.rawFieldName,
@@ -22,6 +23,7 @@ function filterRows(rows, search, policy, issue, sortBy) {
     ]
       .map((value) => String(value || "").toLowerCase())
       .join(" ");
+
     return haystack.includes(needle);
   });
 
@@ -39,20 +41,49 @@ function filterRequests(requests, status) {
   return (requests || []).filter((request) => request.status === status);
 }
 
+function humanizeCompareState(value) {
+  const state = String(value || "").trim();
+  if (state === "normalized") return "Normalized";
+  if (state === "missing") return "Missing";
+  if (state === "conflict") return "Conflict";
+  if (state === "blocked") return "Blocked";
+  return state || "Unknown";
+}
+
+function summarizeNormalization(result) {
+  if (!result) return "";
+  return [
+    `${result.createdBlocks || 0} created`,
+    `${result.updatedBlocks || 0} updated`,
+    `${result.alreadyNormalizedBlocks || 0} already normalized`,
+    `${result.conflictBlocks || 0} conflicts`,
+    `${result.blockedBlocks || 0} blocked`,
+  ].join(" · ");
+}
+
+function summarizeNormalizationText(result) {
+  if (!result) return "";
+  return [
+    `${result.createdBlocks || 0} created`,
+    `${result.updatedBlocks || 0} updated`,
+    `${result.alreadyNormalizedBlocks || 0} already normalized`,
+    `${result.conflictBlocks || 0} conflicts`,
+    `${result.blockedBlocks || 0} blocked`,
+  ].join(" | ");
+}
+
 export default function PracticeSpaceManager({ leagueId }) {
   const [data, setData] = useState(null);
-  const [manualSlots, setManualSlots] = useState([]);
   const [seasonLabel, setSeasonLabel] = useState("");
   const [loading, setLoading] = useState(true);
-  const [manualLoading, setManualLoading] = useState(false);
   const [savingKey, setSavingKey] = useState("");
+  const [normalizeBusy, setNormalizeBusy] = useState("");
   const [error, setError] = useState("");
   const [toast, setToast] = useState(null);
   const [search, setSearch] = useState("");
   const [compareSearch, setCompareSearch] = useState("");
   const [compareDateFrom, setCompareDateFrom] = useState("");
   const [compareDateTo, setCompareDateTo] = useState("");
-  const [compareMode, setCompareMode] = useState("compare");
   const [compareStateFilter, setCompareStateFilter] = useState("");
   const [compareIssueFilter, setCompareIssueFilter] = useState("");
   const [compareFieldFilter, setCompareFieldFilter] = useState("");
@@ -64,6 +95,17 @@ export default function PracticeSpaceManager({ leagueId }) {
   const [teamDrafts, setTeamDrafts] = useState({});
   const [policyDrafts, setPolicyDrafts] = useState({});
 
+  function applyAdminView(nextData, resetRange = false) {
+    setData(nextData);
+    setSeasonLabel(nextData?.seasonLabel || "");
+    if (resetRange || !compareDateFrom || !compareDateTo) {
+      const range = derivePracticeSpaceDateRange(nextData?.rows || [], nextData?.slots || []);
+      setCompareDateFrom(range.dateFrom);
+      setCompareDateTo(range.dateTo);
+    }
+    if (resetRange) setCompareFieldFilter("");
+  }
+
   async function load(nextSeasonLabel = seasonLabel) {
     if (!leagueId) return;
     setLoading(true);
@@ -71,12 +113,7 @@ export default function PracticeSpaceManager({ leagueId }) {
     try {
       const query = nextSeasonLabel ? `?seasonLabel=${encodeURIComponent(nextSeasonLabel)}` : "";
       const result = await apiFetch(`/api/field-inventory/practice/admin${query}`);
-      setData(result);
-      setSeasonLabel(result?.seasonLabel || nextSeasonLabel || "");
-      const range = derivePracticeSpaceDateRange(result?.rows || [], []);
-      setCompareDateFrom(range.dateFrom);
-      setCompareDateTo(range.dateTo);
-      setCompareFieldFilter("");
+      applyAdminView(result, true);
     } catch (e) {
       setError(e.message || "Failed to load practice space admin view.");
     } finally {
@@ -84,35 +121,10 @@ export default function PracticeSpaceManager({ leagueId }) {
     }
   }
 
-  async function loadManualSlots(dateFrom = compareDateFrom, dateTo = compareDateTo) {
-    if (!leagueId || !dateFrom || !dateTo) return;
-    setManualLoading(true);
-    setError("");
-    try {
-      const query = new URLSearchParams();
-      query.set("dateFrom", dateFrom);
-      query.set("dateTo", dateTo);
-      const result = await apiFetch(`/api/availability-slots?${query.toString()}`);
-      const items = Array.isArray(result?.items) ? result.items : Array.isArray(result) ? result : [];
-      setManualSlots(items.filter((slot) => slot?.isAvailability));
-    } catch (e) {
-      setError(e.message || "Failed to load manual availability slots.");
-      setManualSlots([]);
-    } finally {
-      setManualLoading(false);
-    }
-  }
-
   useEffect(() => {
     load("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leagueId]);
-
-  useEffect(() => {
-    if (!data || !compareDateFrom || !compareDateTo) return;
-    loadManualSlots(compareDateFrom, compareDateTo);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, compareDateFrom, compareDateTo]);
 
   const filteredRows = useMemo(
     () => filterRows(data?.rows || [], search, policyFilter, issueFilter, sortBy),
@@ -125,8 +137,8 @@ export default function PracticeSpaceManager({ leagueId }) {
   );
 
   const comparison = useMemo(
-    () => buildPracticeSpaceComparison(data?.rows || [], manualSlots),
-    [data, manualSlots]
+    () => buildPracticeSpaceComparison(data?.rows || [], data?.slots || [], data?.normalization || null),
+    [data]
   );
 
   const compareFieldOptions = useMemo(
@@ -163,7 +175,7 @@ export default function PracticeSpaceManager({ leagueId }) {
           canonicalDivisionCode,
         }),
       });
-      setData(result);
+      applyAdminView(result);
       setToast({ tone: "success", message: `Saved division mapping for ${row.rawAssignedDivision}.` });
     } catch (e) {
       setError(e.message || "Failed to save division mapping.");
@@ -188,7 +200,7 @@ export default function PracticeSpaceManager({ leagueId }) {
           canonicalTeamName: option?.teamName || canonicalTeamId,
         }),
       });
-      setData(result);
+      applyAdminView(result);
       setToast({ tone: "success", message: `Saved team mapping for ${row.rawAssignedTeamOrEvent}.` });
     } catch (e) {
       setError(e.message || "Failed to save team mapping.");
@@ -209,7 +221,7 @@ export default function PracticeSpaceManager({ leagueId }) {
           bookingPolicy,
         }),
       });
-      setData(result);
+      applyAdminView(result);
       setToast({ tone: "success", message: `Saved booking policy for ${row.assignedGroup}.` });
     } catch (e) {
       setError(e.message || "Failed to save policy.");
@@ -227,12 +239,38 @@ export default function PracticeSpaceManager({ leagueId }) {
           reason: action === "approve" ? "Approved by commissioner" : "Rejected by commissioner",
         }),
       });
-      setData(result);
+      applyAdminView(result);
       setToast({ tone: "success", message: action === "approve" ? "Practice request approved." : "Practice request rejected." });
     } catch (e) {
       setError(e.message || `Failed to ${action} practice request.`);
     } finally {
       setSavingKey("");
+    }
+  }
+
+  async function runNormalization({ dryRun = false, dateFrom = compareDateFrom, dateTo = compareDateTo, fieldId = compareFieldFilter } = {}) {
+    setNormalizeBusy(dryRun ? "preview" : "apply");
+    setError("");
+    try {
+      const result = await apiFetch("/api/field-inventory/practice/normalize", {
+        method: "POST",
+        body: JSON.stringify({
+          seasonLabel,
+          dateFrom,
+          dateTo,
+          fieldId: fieldId || null,
+          dryRun,
+        }),
+      });
+      applyAdminView(result?.adminView || data);
+      setToast({
+        tone: dryRun ? "info" : "success",
+        message: `${dryRun ? "Normalization preview" : "Normalization complete"}: ${summarizeNormalizationText(result?.result)}`,
+      });
+    } catch (e) {
+      setError(e.message || "Failed to normalize committed practice availability.");
+    } finally {
+      setNormalizeBusy("");
     }
   }
 
@@ -245,21 +283,14 @@ export default function PracticeSpaceManager({ leagueId }) {
       {toast ? <Toast tone={toast.tone} message={toast.message} onClose={() => setToast(null)} /> : null}
       {error ? <div className="callout callout--error">{error}</div> : null}
 
-      <div className="callout">
-        <div className="font-bold mb-2">What this replaces</div>
-        <div className="subtle">
-          This is the new admin control surface for imported practice space. Review canonical field/division/team alignment, set booking policy, and approve commissioner-reviewed requests from one place.
-        </div>
-      </div>
-
       <div className="card">
         <div className="card__header">
           <div>
             <div className="h2">Practice Space Admin</div>
-            <div className="subtle">Committed field inventory normalized into actionable practice space.</div>
+            <div className="subtle">Normalize committed workbook inventory into canonical availability, then review requests from the same screen.</div>
           </div>
           <div className="row gap-2 items-end">
-            <label title="Review one committed season at a time.">
+            <label>
               Season
               <select value={seasonLabel} onChange={(e) => load(e.target.value)}>
                 {(data?.seasons || []).map((season) => (
@@ -274,65 +305,56 @@ export default function PracticeSpaceManager({ leagueId }) {
             </button>
           </div>
         </div>
-        <div className="card__body">
-          <div className="row row--wrap gap-3">
-            <div className="pill">Rows: {data?.summary?.totalRecords || 0}</div>
-            <div className="pill">Requestable 90m blocks: {data?.summary?.requestableBlocks || 0}</div>
-            <div className="pill">Auto-approve: {data?.summary?.autoApproveBlocks || 0}</div>
-            <div className="pill">Commissioner review: {data?.summary?.commissionerReviewBlocks || 0}</div>
-            <div className="pill">Pending requests: {data?.summary?.pendingRequests || 0}</div>
-            <div className="pill">Unmapped divisions: {data?.summary?.unmappedDivisions || 0}</div>
-            <div className="pill">Unmapped teams: {data?.summary?.unmappedTeams || 0}</div>
-            <div className="pill">Policy gaps: {data?.summary?.unmappedPolicies || 0}</div>
-          </div>
+        <div className="card__body row row--wrap gap-3">
+          <div className="pill">Rows: {data?.summary?.totalRecords || 0}</div>
+          <div className="pill">90m blocks: {data?.normalization?.candidateBlocks || 0}</div>
+          <div className="pill">Normalized: {data?.normalization?.normalizedBlocks || 0}</div>
+          <div className="pill">Missing: {data?.normalization?.missingBlocks || 0}</div>
+          <div className="pill">Conflicts: {data?.normalization?.conflictBlocks || 0}</div>
+          <div className="pill">Blocked: {data?.normalization?.blockedBlocks || 0}</div>
+          <div className="pill">Pending requests: {data?.summary?.pendingRequests || 0}</div>
         </div>
       </div>
 
-      <div id="practice-space-calendar-compare" className="card">
+      <div className="card">
         <div className="card__header">
           <div>
-            <div className="h2">Inventory Comparison Calendar</div>
-            <div className="subtle">Compare imported AGSA inventory against manually entered availability slots on one calendar.</div>
+            <div className="h2">Availability Normalization</div>
+            <div className="subtle">Preview or apply canonical slot backfill, then inspect conflicts and mapping gaps at the block level.</div>
           </div>
           <div className="row gap-2 items-end">
-            <label title="Start date for the comparison window.">
+            <label>
               From
               <input type="date" value={compareDateFrom} onChange={(e) => setCompareDateFrom(e.target.value)} />
             </label>
-            <label title="End date for the comparison window.">
+            <label>
               To
               <input type="date" value={compareDateTo} onChange={(e) => setCompareDateTo(e.target.value)} />
             </label>
-            <button className="btn" type="button" onClick={() => loadManualSlots(compareDateFrom, compareDateTo)} disabled={manualLoading || !compareDateFrom || !compareDateTo}>
-              {manualLoading ? "Loading..." : "Reload Manual"}
+            <button className="btn" type="button" onClick={() => runNormalization({ dryRun: true })} disabled={!!normalizeBusy || !compareDateFrom || !compareDateTo}>
+              {normalizeBusy === "preview" ? "Previewing..." : "Preview Normalize"}
+            </button>
+            <button className="btn btn--primary" type="button" onClick={() => runNormalization({ dryRun: false })} disabled={!!normalizeBusy || !compareDateFrom || !compareDateTo}>
+              {normalizeBusy === "apply" ? "Normalizing..." : "Normalize Missing"}
             </button>
           </div>
         </div>
         <div className="card__body stack gap-4">
           <div className="row row--wrap gap-3">
-            <div className="pill">Imported rows: {comparison.summary.importedCount}</div>
-            <div className="pill">Manual slots: {comparison.summary.manualCount}</div>
-            <div className="pill">Aligned: {comparison.summary.alignedCount}</div>
-            <div className="pill">Imported only: {comparison.summary.importedOnlyCount}</div>
-            <div className="pill">Manual only: {comparison.summary.manualOnlyCount}</div>
+            <div className="pill">Candidates: {comparison.summary.candidateCount}</div>
+            <div className="pill">Normalized: {comparison.summary.normalizedCount}</div>
+            <div className="pill">Missing: {comparison.summary.missingCount}</div>
             <div className="pill">Conflicts: {comparison.summary.conflictCount}</div>
+            <div className="pill">Blocked: {comparison.summary.blockedCount}</div>
             <div className="pill">Issue rows: {comparison.summary.issueCount}</div>
           </div>
 
           <div className="row row--wrap gap-3">
-            <label title="Choose which source to show on the calendar.">
-              Calendar source
-              <select value={compareMode} onChange={(e) => setCompareMode(e.target.value)}>
-                <option value="compare">Comparison</option>
-                <option value="imported">Imported inventory</option>
-                <option value="manual">Manual availability</option>
-              </select>
-            </label>
-            <label title="Search by field, imported assignment, or manual division.">
+            <label>
               Search
-              <input value={compareSearch} onChange={(e) => setCompareSearch(e.target.value)} placeholder="Field, division, team..." />
+              <input value={compareSearch} onChange={(e) => setCompareSearch(e.target.value)} placeholder="Field, issue, division..." />
             </label>
-            <label title="Limit the comparison to one field.">
+            <label>
               Field
               <select value={compareFieldFilter} onChange={(e) => setCompareFieldFilter(e.target.value)}>
                 <option value="">All fields</option>
@@ -341,29 +363,34 @@ export default function PracticeSpaceManager({ leagueId }) {
                 ))}
               </select>
             </label>
-            <label title="Only show one comparison state.">
-              Compare state
+            <label>
+              State
               <select value={compareStateFilter} onChange={(e) => setCompareStateFilter(e.target.value)}>
                 <option value="">All</option>
-                <option value="aligned">Aligned</option>
-                <option value="imported_only">Imported only</option>
-                <option value="manual_only">Manual only</option>
+                <option value="normalized">Normalized</option>
+                <option value="missing">Missing</option>
                 <option value="conflict">Conflict</option>
+                <option value="blocked">Blocked</option>
               </select>
             </label>
-            <label title="Focus on a specific gap or mismatch type.">
+            <label>
               Issue
               <select value={compareIssueFilter} onChange={(e) => setCompareIssueFilter(e.target.value)}>
                 <option value="">All</option>
-                <option value="manual_missing">Manual missing</option>
-                <option value="import_missing">Import missing</option>
-                <option value="division_mismatch">Division mismatch</option>
-                <option value="manual_overlap_nonrequestable">Manual overlap on blocked import</option>
+                <option value="division_unmapped">Division unmapped</option>
+                <option value="team_unmapped">Team unmapped</option>
+                <option value="policy_unmapped">Policy unmapped</option>
+                <option value="field_unmapped">Field unmapped</option>
+                <option value="legacy_slot_id">Legacy slot id</option>
+                <option value="manual_overlap">Overlap on canonical availability</option>
+                <option value="cross_division_overlap">Cross-division overlap</option>
+                <option value="slot_already_in_use">Already converted to practice</option>
+                <option value="imported_not_requestable">Imported block unavailable</option>
               </select>
             </label>
           </div>
 
-          <PracticeSpaceComparisonCalendar items={filteredCompareItems} mode={compareMode} />
+          <PracticeSpaceComparisonCalendar items={filteredCompareItems} mode="compare" />
 
           <div className="overflow-x-auto">
             <table className="table">
@@ -372,9 +399,10 @@ export default function PracticeSpaceManager({ leagueId }) {
                   <th>When</th>
                   <th>Field</th>
                   <th>State</th>
-                  <th>Imported</th>
-                  <th>Manual</th>
+                  <th>Division</th>
+                  <th>Policy</th>
                   <th>Issues</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -388,26 +416,14 @@ export default function PracticeSpaceManager({ leagueId }) {
                       <div className="font-bold">{item.fieldName}</div>
                       <div className="subtle">{item.fieldId}</div>
                     </td>
-                    <td><span className="pill">{item.compareState.replace("_", " ")}</span></td>
+                    <td><span className="pill">{humanizeCompareState(item.compareState)}</span></td>
                     <td>
-                      {item.importedRow ? (
-                        <>
-                          <div>{item.importedRow.availabilityStatus} / {item.importedRow.utilizationStatus}</div>
-                          <div className="subtle">{item.importedRow.assignedGroup || item.importedRow.rawAssignedDivision || item.importedRow.rawAssignedTeamOrEvent || "-"}</div>
-                        </>
-                      ) : (
-                        <span className="muted">No imported row</span>
-                      )}
+                      <div>{item.slot?.division || "-"}</div>
+                      <div className="subtle">{item.slot?.slotId || "No canonical slot yet"}</div>
                     </td>
                     <td>
-                      {item.manualSlot ? (
-                        <>
-                          <div>{item.manualSlot.division || "-"}</div>
-                          <div className="subtle">{item.manualSlot.displayName || item.manualSlot.fieldKey}</div>
-                        </>
-                      ) : (
-                        <span className="muted">No manual slot</span>
-                      )}
+                      <div>{item.slot?.bookingPolicyLabel || "-"}</div>
+                      <div className="subtle">{item.slot?.bookingPolicyReason || "-"}</div>
                     </td>
                     <td>
                       {item.issueFlags.length ? (
@@ -418,11 +434,25 @@ export default function PracticeSpaceManager({ leagueId }) {
                         <span className="muted">No issues</span>
                       )}
                     </td>
+                    <td>
+                      {item.compareState === "missing" ? (
+                        <button
+                          className="btn btn--primary"
+                          type="button"
+                          disabled={!!normalizeBusy}
+                          onClick={() => runNormalization({ dryRun: false, dateFrom: item.date, dateTo: item.date, fieldId: item.fieldId })}
+                        >
+                          {normalizeBusy === "apply" ? "Normalizing..." : "Normalize Day"}
+                        </button>
+                      ) : (
+                        <span className="subtle">No action</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
                 {filteredCompareItems.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="muted">No comparison rows match the current filter.</td>
+                    <td colSpan={7} className="muted">No normalization rows match the current filter.</td>
                   </tr>
                 ) : null}
               </tbody>
@@ -434,21 +464,19 @@ export default function PracticeSpaceManager({ leagueId }) {
       <div className="card">
         <div className="card__header">
           <div className="h2">Request Queue</div>
-          <div className="subtle">Commissioner-reviewed requests stay here until approved or rejected.</div>
+          <div className="subtle">Pending requests and move requests stay here until approved or rejected.</div>
         </div>
-        <div className="card__body">
-          <div className="row row--wrap gap-3 mb-3">
-            <label title="Filter the queue by request status.">
-              Status
-              <select value={requestStatusFilter} onChange={(e) => setRequestStatusFilter(e.target.value)}>
-                <option value="">All</option>
-                <option value="Pending">Pending</option>
-                <option value="Approved">Approved</option>
-                <option value="Rejected">Rejected</option>
-                <option value="Cancelled">Cancelled</option>
-              </select>
-            </label>
-          </div>
+        <div className="card__body stack gap-3">
+          <label>
+            Status
+            <select value={requestStatusFilter} onChange={(e) => setRequestStatusFilter(e.target.value)}>
+              <option value="">All</option>
+              <option value="Pending">Pending</option>
+              <option value="Approved">Approved</option>
+              <option value="Rejected">Rejected</option>
+              <option value="Cancelled">Cancelled</option>
+            </select>
+          </label>
           <div className="overflow-x-auto">
             <table className="table">
               <thead>
@@ -468,24 +496,34 @@ export default function PracticeSpaceManager({ leagueId }) {
                     <td>{request.date} {request.startTime}-{request.endTime}</td>
                     <td>{request.fieldName}</td>
                     <td>{request.teamName || request.teamId}</td>
-                    <td><span className="pill">{request.status}</span></td>
-                    <td>{request.bookingPolicyLabel}</td>
-                    <td>{request.notes || request.reviewReason || ""}</td>
                     <td>
-                      <div className="row gap-2">
-                        {request.status === "Pending" ? (
-                          <>
-                            <button className="btn btn--primary" type="button" disabled={!!savingKey} onClick={() => reviewRequest(request.requestId, "approve")}>
-                              {savingKey === `approve:${request.requestId}` ? "Approving..." : "Approve"}
-                            </button>
-                            <button className="btn" type="button" disabled={!!savingKey} onClick={() => reviewRequest(request.requestId, "reject")}>
-                              {savingKey === `reject:${request.requestId}` ? "Rejecting..." : "Reject"}
-                            </button>
-                          </>
-                        ) : (
-                          <span className="subtle">No action</span>
-                        )}
+                      <div className="row row--wrap gap-2">
+                        <span className="pill">{request.status}</span>
+                        {request.isMove ? <span className="pill">Move</span> : null}
                       </div>
+                    </td>
+                    <td>{request.bookingPolicyLabel}</td>
+                    <td>
+                      <div>{request.notes || request.reviewReason || "-"}</div>
+                      {request.isMove && request.moveFromDate ? (
+                        <div className="subtle">
+                          From {request.moveFromDate} {request.moveFromStartTime}-{request.moveFromEndTime} {request.moveFromFieldName ? `at ${request.moveFromFieldName}` : ""}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td>
+                      {request.status === "Pending" ? (
+                        <div className="row gap-2">
+                          <button className="btn btn--primary" type="button" disabled={!!savingKey} onClick={() => reviewRequest(request.requestId, "approve")}>
+                            {savingKey === `approve:${request.requestId}` ? "Approving..." : "Approve"}
+                          </button>
+                          <button className="btn" type="button" disabled={!!savingKey} onClick={() => reviewRequest(request.requestId, "reject")}>
+                            {savingKey === `reject:${request.requestId}` ? "Rejecting..." : "Reject"}
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="subtle">No action</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -500,18 +538,18 @@ export default function PracticeSpaceManager({ leagueId }) {
         </div>
       </div>
 
-      <div id="practice-space-review" className="card">
+      <div className="card">
         <div className="card__header">
           <div className="h2">Imported Inventory Review</div>
-          <div className="subtle">Align imported text to canonical divisions and teams, then set reusable booking rules for requestable groups.</div>
+          <div className="subtle">Resolve mapping and policy gaps before normalizing more availability.</div>
         </div>
-        <div className="card__body">
-          <div className="row row--wrap gap-3 mb-3">
-            <label title="Search fields, groups, raw assigned values, and mapped values.">
+        <div className="card__body stack gap-3">
+          <div className="row row--wrap gap-3">
+            <label>
               Search
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Field, group, division, team..." />
             </label>
-            <label title="Focus on one booking policy at a time.">
+            <label>
               Policy
               <select value={policyFilter} onChange={(e) => setPolicyFilter(e.target.value)}>
                 <option value="">All</option>
@@ -520,7 +558,7 @@ export default function PracticeSpaceManager({ leagueId }) {
                 <option value="not_requestable">Not requestable</option>
               </select>
             </label>
-            <label title="Only show unresolved mapping or policy problems when needed.">
+            <label>
               Issues
               <select value={issueFilter} onChange={(e) => setIssueFilter(e.target.value)}>
                 <option value="">All</option>
@@ -530,8 +568,8 @@ export default function PracticeSpaceManager({ leagueId }) {
                 <option value="field_unmapped">Field unmapped</option>
               </select>
             </label>
-            <label title="Sort the review grid by date, field, or policy.">
-              Sort by
+            <label>
+              Sort
               <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
                 <option value="date">Date</option>
                 <option value="field">Field</option>
@@ -572,10 +610,10 @@ export default function PracticeSpaceManager({ leagueId }) {
                         <div>Division: {row.rawAssignedDivision || "-"}</div>
                         <div>Team/Event: {row.rawAssignedTeamOrEvent || "-"}</div>
                       </td>
-                      <td>
+                      <td className="stack gap-2">
                         <div className="row row--wrap gap-2">
-                          <label title="Map imported division text to a canonical SportsCH division.">
-                            <span className="row gap-1 items-center">Division <span className="hint" title="Save a reusable mapping when the workbook uses shorthand or non-canonical naming.">?</span></span>
+                          <label>
+                            Division
                             <select value={divisionCode} onChange={(e) => setDivisionDrafts((prev) => ({ ...prev, [row.recordId]: e.target.value }))}>
                               <option value="">Unmapped</option>
                               {(data?.canonicalDivisions || []).map((division) => (
@@ -589,9 +627,9 @@ export default function PracticeSpaceManager({ leagueId }) {
                             </button>
                           ) : null}
                         </div>
-                        <div className="row row--wrap gap-2 mt-2">
-                          <label title="Map imported team text to a canonical SportsCH team.">
-                            <span className="row gap-1 items-center">Team <span className="hint" title="Team mapping stays optional when the imported row is describing a clinic, event, or generic group use.">?</span></span>
+                        <div className="row row--wrap gap-2">
+                          <label>
+                            Team
                             <select value={teamDrafts[row.recordId] || row.canonicalTeamId || ""} onChange={(e) => setTeamDrafts((prev) => ({ ...prev, [row.recordId]: e.target.value }))}>
                               <option value="">Unmapped</option>
                               {teamOptions.map((team) => (
@@ -606,23 +644,21 @@ export default function PracticeSpaceManager({ leagueId }) {
                           ) : null}
                         </div>
                       </td>
-                      <td>
-                        <div className="row row--wrap gap-2">
-                          <label title="Set how coaches can use this imported space.">
-                            <span className="row gap-1 items-center">Booking policy <span className="hint" title="Ponytail space can auto-approve. Unassigned available space should normally require commissioner review.">?</span></span>
-                            <select value={policyDrafts[row.recordId] || row.bookingPolicy} onChange={(e) => setPolicyDrafts((prev) => ({ ...prev, [row.recordId]: e.target.value }))}>
-                              <option value="auto_approve">Auto-approve</option>
-                              <option value="commissioner_review">Commissioner review</option>
-                              <option value="not_requestable">Not requestable</option>
-                            </select>
-                          </label>
-                          {row.assignedGroup ? (
-                            <button className="btn" type="button" disabled={!!savingKey} onClick={() => savePolicy(row)}>
-                              {savingKey === `policy:${row.recordId}` ? "Saving..." : "Save Policy"}
-                            </button>
-                          ) : null}
-                        </div>
-                        <div className="subtle mt-2">{row.bookingPolicyReason}</div>
+                      <td className="stack gap-2">
+                        <label>
+                          Booking policy
+                          <select value={policyDrafts[row.recordId] || row.bookingPolicy} onChange={(e) => setPolicyDrafts((prev) => ({ ...prev, [row.recordId]: e.target.value }))}>
+                            <option value="auto_approve">Auto-approve</option>
+                            <option value="commissioner_review">Commissioner review</option>
+                            <option value="not_requestable">Not requestable</option>
+                          </select>
+                        </label>
+                        {row.assignedGroup ? (
+                          <button className="btn" type="button" disabled={!!savingKey} onClick={() => savePolicy(row)}>
+                            {savingKey === `policy:${row.recordId}` ? "Saving..." : "Save Policy"}
+                          </button>
+                        ) : null}
+                        <div className="subtle">{row.bookingPolicyReason}</div>
                       </td>
                       <td>
                         <div>{row.requestableBlockCount} blocks</div>

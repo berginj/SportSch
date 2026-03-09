@@ -180,8 +180,8 @@ public class ImportAvailabilitySlots
                 }
                 SlotOverlap.AddRange(existingSlotRanges, rangeKey, startMin, endMin);
 
-                var pk = $"SLOT|{leagueId}|{division}";
-                var slotId = SafeKey($"|{gameDate}|{startTime}|{endTime}|{parkCode}|{fieldCode}");
+                var pk = Constants.Pk.Slots(leagueId, division);
+                var slotId = SlotKeyUtil.BuildAvailabilitySlotId(gameDate, startTime, endTime, $"{parkCode}/{fieldCode}");
                 var now = DateTimeOffset.UtcNow;
 
                 var entity = new TableEntity(pk, slotId)

@@ -14,18 +14,6 @@ const PracticeSpaceManager = lazy(() => import("../manage/PracticeSpaceManager")
 const CoachLinksGenerator = lazy(() => import("../manage/CoachLinksGenerator"));
 const FieldInventoryImportManager = lazy(() => import("../manage/FieldInventoryImportManager"));
 
-function Pill({ active, children, onClick }) {
-  return (
-    <button
-      className={`btn btn--ghost ${active ? "is-active" : ""}`}
-      type="button"
-      onClick={onClick}
-    >
-      {children}
-    </button>
-  );
-}
-
 export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
   const memberships = useMemo(
     () => (Array.isArray(me?.memberships) ? me.memberships : []),
@@ -94,12 +82,21 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
             League: <b>{leagueId || "(none selected)"}</b>
           </div>
         </div>
-        <div className="card__body row row--wrap items-end gap-3">
-          {tabs.map((t) => (
-            <Pill key={t.id} active={activeTabId === t.id} onClick={() => setActive(t.id)}>
-              {t.label}
-            </Pill>
-          ))}
+        <div className="card__body stack gap-3">
+          <div className="controlBand">
+            <div className="tabs">
+              {tabs.map((t) => (
+                <button
+                  key={t.id}
+                  className={`tabBtn ${activeTabId === t.id ? "active" : ""}`}
+                  type="button"
+                  onClick={() => setActive(t.id)}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="w-full min-[740px]:w-auto min-[740px]:min-w-[220px]">
             <LeaguePicker leagueId={leagueId} setLeagueId={setLeagueId} me={me} label="Switch league" />
           </div>
@@ -129,7 +126,6 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
             badgeColor="blue"
             defaultExpanded={true}
             storageKey="manage-fields-import"
-            icon="🏟️"
           >
             <div className="callout mb-3">
               <div className="font-bold mb-2">CSV rules</div>
@@ -152,7 +148,6 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
                 badgeColor="blue"
                 defaultExpanded={false}
                 storageKey="manage-availability-setup"
-                icon="📅"
               >
                 <Suspense fallback={sectionFallback}>
                   <AvailabilityManager leagueId={leagueId} />
@@ -166,7 +161,6 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
                 badgeColor="purple"
                 defaultExpanded={false}
                 storageKey="manage-availability-slots"
-                icon="🎯"
               >
                 <Suspense fallback={sectionFallback}>
                   <SlotGeneratorManager leagueId={leagueId} />
@@ -186,7 +180,6 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
             badgeColor="blue"
             defaultExpanded={false}
             storageKey="manage-league-settings"
-            icon="⚙️"
           >
             <Suspense fallback={sectionFallback}>
               <LeagueSettings leagueId={leagueId} />
@@ -200,7 +193,6 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
             badgeColor="blue"
             defaultExpanded={true}
             storageKey="manage-teams-coaches"
-            icon="👥"
           >
             <Suspense fallback={sectionFallback}>
               <TeamsManager leagueId={leagueId} tableView={tableView} />
@@ -214,7 +206,6 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
             badgeColor="blue"
             defaultExpanded={false}
             storageKey="manage-divisions"
-            icon="📂"
           >
             <Suspense fallback={sectionFallback}>
               <DivisionsManager leagueId={leagueId} />

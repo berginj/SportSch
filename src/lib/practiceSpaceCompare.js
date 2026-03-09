@@ -11,120 +11,91 @@ function weekdayFromIso(date) {
   return value.toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" });
 }
 
-function makeIdentity(fieldId, date, startTime, endTime) {
-  return [String(fieldId || "").trim(), String(date || "").trim(), String(startTime || "").trim(), String(endTime || "").trim()].join("|");
+function toCompareState(slot) {
+  const state = String(slot?.normalizationState || "").trim().toLowerCase();
+  if (state === "normalized") return "normalized";
+  if (state === "ready") return "missing";
+  if (state === "conflict") return "conflict";
+  return "blocked";
 }
 
-function isImportedRequestable(row) {
-  return row?.availabilityStatus === "available" && row?.utilizationStatus === "not_used";
+function buildIssueFlags(importedRow, slot) {
+  return Array.from(
+    new Set([
+      ...(Array.isArray(importedRow?.mappingIssues) ? importedRow.mappingIssues : []),
+      ...(Array.isArray(slot?.normalizationIssues) ? slot.normalizationIssues : []),
+    ].filter(Boolean))
+  );
 }
 
-function getImportedDivisionLabel(row) {
-  return row?.canonicalDivisionCode || row?.rawAssignedDivision || "";
+function buildSummary(items, rows, slots, normalization) {
+  const issueCount = new Set(
+    items
+      .filter((item) => item.issueFlags.length > 0)
+      .map((item) => item.importedRow?.recordId || item.slot?.liveRecordId || item.slot?.practiceSlotKey || item.slot?.slotId || item.key)
+      .filter(Boolean)
+  ).size;
+
+  return {
+    candidateCount: slots.length,
+    importedCount: rows.length,
+    blockCount: slots.length,
+    normalizedCount: normalization?.normalizedBlocks ?? items.filter((item) => item.compareState === "normalized").length,
+    missingCount: normalization?.missingBlocks ?? items.filter((item) => item.compareState === "missing").length,
+    conflictCount: normalization?.conflictBlocks ?? items.filter((item) => item.compareState === "conflict").length,
+    blockedCount: normalization?.blockedBlocks ?? items.filter((item) => item.compareState === "blocked").length,
+    issueCount,
+  };
 }
 
-function buildIssueFlags(importedRow, manualSlot) {
-  const issues = [];
-  if (importedRow && manualSlot) {
-    if (!isImportedRequestable(importedRow)) {
-      issues.push("manual_overlap_nonrequestable");
-    }
-    const importedDivision = normalizeText(getImportedDivisionLabel(importedRow));
-    const manualDivision = normalizeText(manualSlot?.division || "");
-    if (importedDivision && manualDivision && importedDivision !== manualDivision) {
-      issues.push("division_mismatch");
-    }
-    return issues;
-  }
-
-  if (importedRow && !manualSlot && isImportedRequestable(importedRow)) {
-    issues.push("manual_missing");
-  }
-
-  if (!importedRow && manualSlot) {
-    issues.push("import_missing");
-  }
-
-  return issues;
-}
-
-function buildCompareState(importedRow, manualSlot, issueFlags) {
-  if (importedRow && manualSlot) {
-    return issueFlags.length ? "conflict" : "aligned";
-  }
-  if (importedRow) return "imported_only";
-  return "manual_only";
-}
-
-export function derivePracticeSpaceDateRange(rows = [], manualSlots = []) {
+export function derivePracticeSpaceDateRange(rows = [], slots = []) {
   const dates = [
     ...rows.map((row) => String(row?.date || "").trim()).filter(Boolean),
-    ...manualSlots.map((slot) => String(slot?.gameDate || "").trim()).filter(Boolean),
+    ...slots.map((slot) => String(slot?.date || "").trim()).filter(Boolean),
   ].sort();
+
   if (!dates.length) {
     const today = new Date().toISOString().slice(0, 10);
     return { dateFrom: today, dateTo: today };
   }
+
   return { dateFrom: dates[0], dateTo: dates[dates.length - 1] };
 }
 
-export function buildPracticeSpaceComparison(rows = [], manualSlots = []) {
-  const importedByKey = new Map();
-  const manualByKey = new Map();
-
+export function buildPracticeSpaceComparison(rows = [], slots = [], normalization = null) {
+  const rowsByRecordId = new Map();
   rows.forEach((row) => {
-    const key = makeIdentity(row?.fieldId, row?.date, row?.startTime, row?.endTime);
-    if (!row?.fieldId || !row?.date || !row?.startTime || !row?.endTime) return;
-    if (!importedByKey.has(key)) importedByKey.set(key, row);
+    if (row?.recordId) rowsByRecordId.set(row.recordId, row);
   });
 
-  manualSlots.forEach((slot) => {
-    const key = makeIdentity(slot?.fieldKey, slot?.gameDate, slot?.startTime, slot?.endTime);
-    if (!slot?.fieldKey || !slot?.gameDate || !slot?.startTime || !slot?.endTime) return;
-    if (!manualByKey.has(key)) manualByKey.set(key, slot);
-  });
-
-  const keys = new Set([...importedByKey.keys(), ...manualByKey.keys()]);
-  const items = Array.from(keys)
-    .map((key) => {
-      const importedRow = importedByKey.get(key) || null;
-      const manualSlot = manualByKey.get(key) || null;
-      const issueFlags = buildIssueFlags(importedRow, manualSlot);
-      const compareState = buildCompareState(importedRow, manualSlot, issueFlags);
-      const fieldId = importedRow?.fieldId || manualSlot?.fieldKey || "";
-      const fieldName = importedRow?.fieldName || importedRow?.rawFieldName || manualSlot?.displayName || manualSlot?.fieldName || manualSlot?.fieldKey || "Field";
-      const date = importedRow?.date || manualSlot?.gameDate || "";
-      const startTime = importedRow?.startTime || manualSlot?.startTime || "";
-      const endTime = importedRow?.endTime || manualSlot?.endTime || "";
+  const items = (Array.isArray(slots) ? slots : [])
+    .map((slot) => {
+      const importedRow = rowsByRecordId.get(slot?.liveRecordId) || null;
+      const compareState = toCompareState(slot);
+      const issueFlags = buildIssueFlags(importedRow, slot);
       return {
-        key,
+        key: `${slot?.practiceSlotKey || slot?.slotId || slot?.liveRecordId || "slot"}|${compareState}`,
         compareState,
         issueFlags,
-        date,
-        dayOfWeek: importedRow?.dayOfWeek || weekdayFromIso(date),
-        startTime,
-        endTime,
-        fieldId,
-        fieldName,
+        date: slot?.date || importedRow?.date || "",
+        dayOfWeek: slot?.dayOfWeek || importedRow?.dayOfWeek || weekdayFromIso(slot?.date || importedRow?.date || ""),
+        startTime: slot?.startTime || importedRow?.startTime || "",
+        endTime: slot?.endTime || importedRow?.endTime || "",
+        fieldId: slot?.fieldId || importedRow?.fieldId || "",
+        fieldName: slot?.fieldName || importedRow?.fieldName || importedRow?.rawFieldName || "Field",
         importedRow,
-        manualSlot,
+        slot,
       };
     })
     .sort((left, right) =>
-      `${left.date}|${left.startTime}|${left.fieldName}`.localeCompare(`${right.date}|${right.startTime}|${right.fieldName}`)
+      `${left.date || ""}|${left.startTime || ""}|${left.fieldName || ""}`.localeCompare(
+        `${right.date || ""}|${right.startTime || ""}|${right.fieldName || ""}`
+      )
     );
 
   return {
     items,
-    summary: {
-      importedCount: rows.length,
-      manualCount: manualSlots.length,
-      alignedCount: items.filter((item) => item.compareState === "aligned").length,
-      importedOnlyCount: items.filter((item) => item.compareState === "imported_only").length,
-      manualOnlyCount: items.filter((item) => item.compareState === "manual_only").length,
-      conflictCount: items.filter((item) => item.compareState === "conflict").length,
-      issueCount: items.filter((item) => item.issueFlags.length > 0).length,
-    },
+    summary: buildSummary(items, Array.isArray(rows) ? rows : [], Array.isArray(slots) ? slots : [], normalization),
   };
 }
 
@@ -137,21 +108,28 @@ export function filterPracticeSpaceComparison(items = [], filters = {}) {
     if (filters.issue && !item.issueFlags.includes(filters.issue)) return false;
     if (filters.fieldId && item.fieldId !== filters.fieldId) return false;
     if (!search) return true;
+
     const haystack = [
       item.fieldName,
       item.fieldId,
       item.date,
       item.startTime,
       item.endTime,
+      item.compareState,
+      item.slot?.division,
+      item.slot?.slotId,
+      item.slot?.bookingPolicyLabel,
+      item.slot?.assignedGroup,
+      item.slot?.assignedDivision,
+      item.slot?.assignedTeamOrEvent,
       item.importedRow?.assignedGroup,
       item.importedRow?.rawAssignedDivision,
       item.importedRow?.rawAssignedTeamOrEvent,
-      item.manualSlot?.division,
-      item.manualSlot?.displayName,
+      item.issueFlags.join(" "),
     ]
       .map((value) => String(value || "").toLowerCase())
       .join(" ");
-    return haystack.includes(search);
+
+    return haystack.includes(search) || normalizeText(haystack).includes(normalizeText(search));
   });
 }
-

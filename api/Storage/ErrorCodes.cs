@@ -42,6 +42,8 @@ public static class ErrorCodes
     public const string PRACTICE_SPACE_FULL = "PRACTICE_SPACE_FULL";
     public const string PRACTICE_REQUEST_NOT_FOUND = "PRACTICE_REQUEST_NOT_FOUND";
     public const string PRACTICE_POLICY_REQUIRED = "PRACTICE_POLICY_REQUIRED";
+    public const string PRACTICE_NORMALIZATION_CONFLICT = "PRACTICE_NORMALIZATION_CONFLICT";
+    public const string PRACTICE_MOVE_NOT_ALLOWED = "PRACTICE_MOVE_NOT_ALLOWED";
 
     // Business Logic Errors
     public const string SLOT_CONFLICT = "SLOT_CONFLICT";

@@ -633,7 +633,7 @@ public class AvailabilityAllocationSlotsFunctions
     {
         var now = DateTimeOffset.UtcNow;
         var pk = Constants.Pk.Slots(leagueId, slot.division);
-        var slotId = Guid.NewGuid().ToString("N");
+        var slotId = SlotKeyUtil.BuildAvailabilitySlotId(slot.gameDate, slot.startTime, slot.endTime, slot.fieldKey);
         var entity = new TableEntity(pk, slotId)
         {
             ["LeagueId"] = leagueId,

@@ -40,12 +40,22 @@ function filterSlots(slots, search, day, policy, showOnlyOpenSeats) {
     );
 }
 
+function isActiveRequest(request) {
+  return request?.status === "Pending" || request?.status === "Approved";
+}
+
+function describeRequest(request) {
+  if (!request) return "";
+  return `${request.date || ""} ${request.startTime || ""}-${request.endTime || ""} ${request.fieldName || ""}`.trim();
+}
+
 export default function PracticePortalPage({ me, leagueId }) {
   const [data, setData] = useState(null);
   const [seasonLabel, setSeasonLabel] = useState("");
   const [loading, setLoading] = useState(true);
   const [requestingKey, setRequestingKey] = useState("");
-  const [cancellingId, setCancellingId] = useState("");
+  const [movingRequestId, setMovingRequestId] = useState("");
+  const [actingRequestId, setActingRequestId] = useState("");
   const [error, setError] = useState("");
   const [toast, setToast] = useState(null);
   const [search, setSearch] = useState("");
@@ -89,6 +99,11 @@ export default function PracticePortalPage({ me, leagueId }) {
     [data]
   );
 
+  const movingRequest = useMemo(
+    () => myRequests.find((request) => request.requestId === movingRequestId) || null,
+    [myRequests, movingRequestId]
+  );
+
   async function requestSlot(slot) {
     setRequestingKey(slot.practiceSlotKey);
     setError("");
@@ -115,19 +130,50 @@ export default function PracticePortalPage({ me, leagueId }) {
     }
   }
 
+  async function moveRequest(request, slot) {
+    setActingRequestId(request.requestId);
+    setError("");
+    try {
+      const result = await apiFetch(`/api/field-inventory/practice/requests/${encodeURIComponent(request.requestId)}/move`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          seasonLabel,
+          practiceSlotKey: slot.practiceSlotKey,
+          notes: `Move requested from ${describeRequest(request)}`,
+        }),
+      });
+      setData(result);
+      setMovingRequestId("");
+      setToast({
+        tone: "success",
+        message:
+          slot.bookingPolicy === "auto_approve"
+            ? "Practice move completed."
+            : "Practice move submitted for commissioner review.",
+      });
+    } catch (e) {
+      setError(e.message || "Failed to move practice request.");
+    } finally {
+      setActingRequestId("");
+    }
+  }
+
   async function cancelRequest(request) {
-    setCancellingId(request.requestId);
+    setActingRequestId(request.requestId);
     setError("");
     try {
       const result = await apiFetch(`/api/field-inventory/practice/requests/${encodeURIComponent(request.requestId)}/cancel`, {
         method: "PATCH",
       });
       setData(result);
+      if (movingRequestId === request.requestId) {
+        setMovingRequestId("");
+      }
       setToast({ tone: "success", message: "Practice request cancelled." });
     } catch (e) {
       setError(e.message || "Failed to cancel practice request.");
     } finally {
-      setCancellingId("");
+      setActingRequestId("");
     }
   }
 
@@ -144,16 +190,30 @@ export default function PracticePortalPage({ me, leagueId }) {
       {toast ? <Toast tone={toast.tone} message={toast.message} onClose={() => setToast(null)} /> : null}
       {error ? <div className="callout callout--error">{error}</div> : null}
 
+      {movingRequest ? (
+        <div className="callout callout--info">
+          <div className="font-bold mb-2">Move in progress</div>
+          <div className="subtle">
+            Choose a replacement block for {describeRequest(movingRequest)}. Your current slot stays active until the move is approved or auto-approved.
+          </div>
+          <div className="mt-3">
+            <button className="btn" type="button" onClick={() => setMovingRequestId("")}>
+              Cancel Move
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="callout">
         <div className="font-bold mb-2">Practice space for {coachName}</div>
         <div className="subtle">
-          This replaces the old practice-slot request tool. Coaches now request unused imported field space in 90-minute blocks. Some Ponytail-assigned space auto-approves; unassigned available space goes to commissioner review.
+          Request unused imported field space in 90-minute blocks. Ponytail-assigned space can auto-approve; unassigned available space goes to commissioner review. Approved or pending requests can now be moved directly from this page.
         </div>
         <div className="row row--wrap gap-3 mt-3">
           <a href="#practice-space-filters" className="link">Jump to filters</a>
           <a href="#practice-space-available" className="link">Jump to available space</a>
           <a href="#practice-space-requests" className="link">Jump to my requests</a>
-          <a href="#practice-space-help" className="link">How approvals work</a>
+          <a href="#practice-space-help" className="link">How approvals and moves work</a>
         </div>
       </div>
 
@@ -186,7 +246,7 @@ export default function PracticePortalPage({ me, leagueId }) {
             <div className="pill">Requestable blocks: {data?.summary?.requestableBlocks || 0}</div>
             <div className="pill">Auto-approve: {data?.summary?.autoApproveBlocks || 0}</div>
             <div className="pill">Commissioner review: {data?.summary?.commissionerReviewBlocks || 0}</div>
-            <div className="pill">My active requests: {(myRequests || []).filter((request) => request.status === "Pending" || request.status === "Approved").length}</div>
+            <div className="pill">My active requests: {myRequests.filter(isActiveRequest).length}</div>
           </div>
         </div>
       </div>
@@ -220,9 +280,9 @@ export default function PracticePortalPage({ me, leagueId }) {
                 <option value="commissioner_review">Commissioner review</option>
               </select>
             </label>
-            <label className="inlineCheck" title="Hide full blocks and only show space with open seats remaining.">
+            <label className="inlineCheck" title="Hide reserved blocks and only show space with open capacity remaining.">
               <input type="checkbox" checked={showOnlyOpenSeats} onChange={(e) => setShowOnlyOpenSeats(e.target.checked)} />
-              Open seats only
+              Open slots only
             </label>
           </div>
         </div>
@@ -231,66 +291,84 @@ export default function PracticePortalPage({ me, leagueId }) {
       <div id="practice-space-available" className="card">
         <div className="card__header">
           <div className="h2">Available Practice Space</div>
-          <div className="subtle">Each block is 90 minutes and can hold up to 2 teams.</div>
+          <div className="subtle">Each block is 90 minutes and backed by a canonical SportsCH availability slot.</div>
         </div>
         <div className="card__body">
           <div className="stack gap-3">
             {visibleSlots.map((slot) => {
-              const alreadyRequested = myRequests.some(
-                (request) =>
-                  request.practiceSlotKey === slot.practiceSlotKey &&
-                  (request.status === "Pending" || request.status === "Approved")
+              const activeRequestForSlot = myRequests.find(
+                (request) => request.slotId === slot.slotId && isActiveRequest(request)
               );
+              const alreadyRequested = !!activeRequestForSlot;
+              const moveTargetIsCurrent = movingRequest && movingRequest.slotId === slot.slotId;
+              const slotReservedByAnotherRequest = activeRequestForSlot && activeRequestForSlot.requestId !== movingRequestId;
+              const disableForStandardRequest = alreadyRequested || slot.remainingCapacity <= 0;
+
               return (
                 <div key={slot.practiceSlotKey} className="card">
                   <div className="card__header">
                     <div>
                       <div className="h2">{slot.fieldName}</div>
                       <div className="subtle">
-                        {slot.date} · {slot.dayOfWeek} · {slot.startTime}-{slot.endTime}
+                        {slot.date} | {slot.dayOfWeek} | {slot.startTime}-{slot.endTime}
                       </div>
                     </div>
                     <div className="row gap-2 items-center">
                       <span className="pill" title={slot.bookingPolicyReason}>{slot.bookingPolicyLabel}</span>
-                      <span className="pill" title="A practice block can host up to two teams.">
-                        Seats {slot.remainingCapacity}/{slot.capacity}
+                      <span className="pill" title="A canonical practice block currently supports one active team reservation.">
+                        Open {slot.remainingCapacity}/{slot.capacity}
                       </span>
                     </div>
                   </div>
                   <div className="card__body">
                     <div className="row row--wrap gap-3">
-                      <div title="Imported assignment context from the AGSA workbook.">
+                      <div title="Imported assignment context from the source workbook.">
                         <div className="subtle">Assigned group</div>
                         <div>{slot.assignedGroup || "-"}</div>
                       </div>
-                      <div title="Imported division context from the AGSA workbook.">
+                      <div title="Imported division context from the source workbook.">
                         <div className="subtle">Assigned division</div>
                         <div>{slot.assignedDivision || "-"}</div>
                       </div>
-                      <div title="Imported team or event text from the AGSA workbook.">
+                      <div title="Imported team or event text from the source workbook.">
                         <div className="subtle">Assigned team/event</div>
                         <div>{slot.assignedTeamOrEvent || "-"}</div>
                       </div>
                     </div>
                     <div className="subtle mt-3">{slot.bookingPolicyReason}</div>
-                    <div className="row gap-2 mt-3">
-                      <button
-                        className="btn btn--primary"
-                        type="button"
-                        disabled={alreadyRequested || slot.remainingCapacity <= 0 || !!requestingKey}
-                        title={alreadyRequested ? "Your team already has an active request for this block." : "Request this 90-minute practice block for your team."}
-                        onClick={() => requestSlot(slot)}
-                      >
-                        {requestingKey === slot.practiceSlotKey
-                          ? "Requesting..."
-                          : alreadyRequested
-                            ? "Already Requested"
-                            : slot.bookingPolicy === "auto_approve"
-                              ? "Book Now"
-                              : "Request for Approval"}
-                      </button>
+                    <div className="row gap-2 mt-3 items-center">
+                      {movingRequest ? (
+                        <button
+                          className="btn btn--primary"
+                          type="button"
+                          disabled={moveTargetIsCurrent || !!slotReservedByAnotherRequest || slot.remainingCapacity <= 0 || !!actingRequestId}
+                          onClick={() => moveRequest(movingRequest, slot)}
+                        >
+                          {actingRequestId === movingRequest.requestId
+                            ? "Moving..."
+                            : moveTargetIsCurrent
+                              ? "Current Slot"
+                              : "Move Here"}
+                        </button>
+                      ) : (
+                        <button
+                          className="btn btn--primary"
+                          type="button"
+                          disabled={disableForStandardRequest || !!requestingKey}
+                          title={alreadyRequested ? "Your team already has an active request for this block." : "Request this 90-minute practice block for your team."}
+                          onClick={() => requestSlot(slot)}
+                        >
+                          {requestingKey === slot.practiceSlotKey
+                            ? "Requesting..."
+                            : alreadyRequested
+                              ? "Already Requested"
+                              : slot.bookingPolicy === "auto_approve"
+                                ? "Book Now"
+                                : "Request for Approval"}
+                        </button>
+                      )}
                       <span className="subtle">
-                        Approved teams: {slot.approvedTeamIds.join(", ") || "None"} · Pending teams: {slot.pendingTeamIds.join(", ") || "None"}
+                        Approved teams: {slot.approvedTeamIds.join(", ") || "None"} | Pending teams: {slot.pendingTeamIds.join(", ") || "None"}
                       </span>
                     </div>
                   </div>
@@ -305,7 +383,7 @@ export default function PracticePortalPage({ me, leagueId }) {
       <div id="practice-space-requests" className="card">
         <div className="card__header">
           <div className="h2">My Practice Requests</div>
-          <div className="subtle">Track pending approvals, auto-approved space, and cancelled/rejected requests.</div>
+          <div className="subtle">Track pending approvals, approved space, moves, and cancellations.</div>
         </div>
         <div className="card__body overflow-x-auto">
           <table className="table">
@@ -323,15 +401,30 @@ export default function PracticePortalPage({ me, leagueId }) {
               {myRequests.map((request) => (
                 <tr key={request.requestId}>
                   <td>{request.date} {request.startTime}-{request.endTime}</td>
-                  <td>{request.fieldName}</td>
+                  <td>
+                    <div>{request.fieldName}</div>
+                    {request.isMove && request.moveFromDate ? (
+                      <div className="subtle">Move from {request.moveFromDate} {request.moveFromStartTime}-{request.moveFromEndTime} {request.moveFromFieldName || ""}</div>
+                    ) : null}
+                  </td>
                   <td><span className="pill">{request.status}</span></td>
                   <td title={request.bookingPolicy === "auto_approve" ? "This space was confirmed immediately." : "This space requires commissioner approval."}>{request.bookingPolicyLabel}</td>
                   <td>{request.notes || request.reviewReason || "-"}</td>
                   <td>
-                    {request.status === "Pending" || request.status === "Approved" ? (
-                      <button className="btn" type="button" disabled={!!cancellingId} onClick={() => cancelRequest(request)}>
-                        {cancellingId === request.requestId ? "Cancelling..." : "Cancel"}
-                      </button>
+                    {isActiveRequest(request) ? (
+                      <div className="row gap-2">
+                        <button
+                          className="btn"
+                          type="button"
+                          disabled={!!actingRequestId}
+                          onClick={() => setMovingRequestId((current) => (current === request.requestId ? "" : request.requestId))}
+                        >
+                          {movingRequestId === request.requestId ? "Selecting Target..." : "Move"}
+                        </button>
+                        <button className="btn" type="button" disabled={!!actingRequestId} onClick={() => cancelRequest(request)}>
+                          {actingRequestId === request.requestId ? "Working..." : "Cancel"}
+                        </button>
+                      </div>
                     ) : (
                       <span className="subtle">No action</span>
                     )}
@@ -351,7 +444,7 @@ export default function PracticePortalPage({ me, leagueId }) {
       <div id="practice-space-help" className="card">
         <div className="card__header">
           <div className="h2">How This Works</div>
-          <div className="subtle">Quick guidance for coaches using the new practice space workflow.</div>
+          <div className="subtle">Quick guidance for coaches using the normalized practice-space workflow.</div>
         </div>
         <div className="card__body stack gap-3">
           <div>
@@ -363,8 +456,8 @@ export default function PracticePortalPage({ me, leagueId }) {
             <div className="subtle">Available but unassigned county space is requestable, but a commissioner must approve it before your team is confirmed.</div>
           </div>
           <div>
-            <div className="font-bold">Two-team capacity</div>
-            <div className="subtle">Each 90-minute practice block can hold up to two teams. If both seats are taken or reserved, the block is full.</div>
+            <div className="font-bold">Move request</div>
+            <div className="subtle">Use Move on an approved or pending request, then choose a replacement block above. The original slot is only released after the move is approved or auto-approved.</div>
           </div>
           <div>
             <div className="font-bold">When to cancel</div>

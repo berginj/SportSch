@@ -1,4 +1,5 @@
 using System.Globalization;
+using Azure;
 using Azure.Data.Tables;
 using GameSwap.Functions.Models;
 using GameSwap.Functions.Repositories;
@@ -18,17 +19,26 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
     private readonly IMembershipRepository _membershipRepository;
     private readonly IDivisionRepository _divisionRepository;
     private readonly ITeamRepository _teamRepository;
+    private readonly ISlotRepository _slotRepository;
+    private readonly IPracticeRequestRepository _practiceRequestRepository;
+    private readonly IPracticeRequestService _practiceRequestService;
 
     public FieldInventoryPracticeService(
         IFieldInventoryImportRepository inventoryRepository,
         IMembershipRepository membershipRepository,
         IDivisionRepository divisionRepository,
-        ITeamRepository teamRepository)
+        ITeamRepository teamRepository,
+        ISlotRepository slotRepository,
+        IPracticeRequestRepository practiceRequestRepository,
+        IPracticeRequestService practiceRequestService)
     {
         _inventoryRepository = inventoryRepository;
         _membershipRepository = membershipRepository;
         _divisionRepository = divisionRepository;
         _teamRepository = teamRepository;
+        _slotRepository = slotRepository;
+        _practiceRequestRepository = practiceRequestRepository;
+        _practiceRequestService = practiceRequestService;
     }
 
     public async Task<FieldInventoryPracticeAdminResponse> GetAdminViewAsync(string? seasonLabel, CorrelationContext context)
@@ -140,24 +150,94 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
         return await GetAdminViewAsync(null, context);
     }
 
+    public async Task<FieldInventoryPracticeNormalizeResponse> NormalizeAvailabilityAsync(FieldInventoryPracticeNormalizeRequest request, string userId, CorrelationContext context)
+    {
+        var bundle = await LoadBundleAsync(context.LeagueId, request.SeasonLabel);
+        var filteredBlocks = FilterBlocks(bundle.Blocks, request.DateFrom, request.DateTo, request.FieldId);
+
+        var createdBlocks = 0;
+        var updatedBlocks = 0;
+        var alreadyNormalizedBlocks = 0;
+        var conflictBlocks = 0;
+        var blockedBlocks = 0;
+
+        foreach (var block in filteredBlocks)
+        {
+            switch (block.NormalizationState)
+            {
+                case "ready":
+                    if (!request.DryRun)
+                    {
+                        await EnsureCanonicalSlotAsync(block, userId);
+                    }
+                    createdBlocks++;
+                    break;
+                case "normalized":
+                    if (block.NeedsSlotMetadataSync)
+                    {
+                        if (!request.DryRun)
+                        {
+                            await EnsureCanonicalSlotAsync(block, userId);
+                        }
+                        updatedBlocks++;
+                    }
+                    else
+                    {
+                        alreadyNormalizedBlocks++;
+                    }
+                    break;
+                case "conflict":
+                    conflictBlocks++;
+                    break;
+                default:
+                    blockedBlocks++;
+                    break;
+            }
+        }
+
+        var adminView = request.DryRun
+            ? BuildAdminResponse(bundle)
+            : await GetAdminViewAsync(bundle.SeasonLabel, context);
+
+        return new FieldInventoryPracticeNormalizeResponse(
+            new FieldInventoryPracticeNormalizeResultDto(
+                filteredBlocks.Count,
+                createdBlocks,
+                updatedBlocks,
+                alreadyNormalizedBlocks,
+                conflictBlocks,
+                blockedBlocks),
+            adminView);
+    }
+
     public async Task<FieldInventoryPracticeCoachResponse> CreatePracticeRequestAsync(FieldInventoryPracticeRequestCreateRequest request, string userId, CorrelationContext context)
     {
         var actor = await RequireCoachMembershipAsync(context.LeagueId, userId);
         var bundle = await LoadBundleAsync(context.LeagueId, request.SeasonLabel);
+        var practiceSlotKey = (request.PracticeSlotKey ?? "").Trim();
+        var slot = bundle.Blocks.FirstOrDefault(block => string.Equals(block.PracticeSlotKey, practiceSlotKey, StringComparison.OrdinalIgnoreCase));
+        if (slot is null)
+        {
+            throw new ApiGuards.HttpError(404, ErrorCodes.PRACTICE_SPACE_NOT_FOUND, "Practice space not found.");
+        }
+
         var teamId = actor.IsLeagueAdminOrGlobalAdmin
             ? (request.TeamId ?? "").Trim() is var requestedTeamId && !string.IsNullOrWhiteSpace(requestedTeamId) ? requestedTeamId : actor.TeamId
             : actor.TeamId;
-        var teamName = actor.TeamName;
         if (string.IsNullOrWhiteSpace(teamId))
         {
             throw new ApiGuards.HttpError(403, ErrorCodes.COACH_TEAM_REQUIRED, "Your coach profile needs a team assignment before requesting practice space.");
         }
 
-        var slotKey = (request.PracticeSlotKey ?? "").Trim();
-        var slot = bundle.RequestableSlots.FirstOrDefault(s => string.Equals(s.PracticeSlotKey, slotKey, StringComparison.OrdinalIgnoreCase));
-        if (slot is null)
+        if (string.IsNullOrWhiteSpace(slot.CanonicalDivisionCode))
         {
-            throw new ApiGuards.HttpError(404, ErrorCodes.PRACTICE_SPACE_NOT_FOUND, "Practice space not found.");
+            throw new ApiGuards.HttpError(409, ErrorCodes.PRACTICE_NORMALIZATION_CONFLICT, "This practice space is missing a canonical division mapping.");
+        }
+
+        if (!actor.IsLeagueAdminOrGlobalAdmin &&
+            !string.Equals(actor.TeamDivision, slot.CanonicalDivisionCode, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ApiGuards.HttpError(409, ErrorCodes.DIVISION_MISMATCH, "This practice space belongs to a different division.");
         }
 
         if (slot.BookingPolicy == FieldInventoryPracticeBookingPolicies.NotRequestable)
@@ -165,128 +245,145 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
             throw new ApiGuards.HttpError(409, ErrorCodes.PRACTICE_SPACE_NOT_REQUESTABLE, "This field space is not requestable through SportsCH.");
         }
 
-        if (slot.RemainingCapacity <= 0)
+        if (!string.Equals(slot.NormalizationState, "ready", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(slot.NormalizationState, "normalized", StringComparison.OrdinalIgnoreCase))
         {
-            throw new ApiGuards.HttpError(409, ErrorCodes.PRACTICE_SPACE_FULL, "This practice space is already full.");
+            throw new ApiGuards.HttpError(409, ErrorCodes.PRACTICE_NORMALIZATION_CONFLICT, "This practice space must be normalized or resolved before it can be requested.");
         }
 
-        var duplicate = bundle.Requests.Any(r =>
-            string.Equals(r.PracticeSlotKey, slot.PracticeSlotKey, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(r.TeamId, teamId, StringComparison.OrdinalIgnoreCase) &&
-            ActiveRequestStatuses.Contains(r.Status, StringComparer.OrdinalIgnoreCase));
-        if (duplicate)
+        var canonicalSlot = await EnsureCanonicalSlotAsync(slot, userId);
+        var team = await _teamRepository.GetTeamAsync(context.LeagueId, slot.CanonicalDivisionCode, teamId);
+        if (team is null)
         {
-            throw new ApiGuards.HttpError(409, ErrorCodes.ALREADY_EXISTS, "Your team already has an active request for this practice space.");
+            throw new ApiGuards.HttpError(404, ErrorCodes.TEAM_NOT_FOUND, "Team not found.");
         }
 
-        var activeForTeam = bundle.Requests.Count(r =>
-            string.Equals(r.TeamId, teamId, StringComparison.OrdinalIgnoreCase) &&
-            ActiveRequestStatuses.Contains(r.Status, StringComparer.OrdinalIgnoreCase));
-        if (activeForTeam >= 3)
+        var createdRequest = await _practiceRequestService.CreateRequestAsync(
+            context.LeagueId,
+            userId,
+            slot.CanonicalDivisionCode,
+            teamId,
+            canonicalSlot.RowKey,
+            request.Notes,
+            openToShareField: false,
+            shareWithTeamId: null);
+
+        if (string.Equals(slot.BookingPolicy, FieldInventoryPracticeBookingPolicies.AutoApprove, StringComparison.OrdinalIgnoreCase))
         {
-            throw new ApiGuards.HttpError(409, ErrorCodes.CONFLICT, "Your team already has 3 active practice-space requests.");
+            await _practiceRequestService.AutoApproveRequestAsync(
+                context.LeagueId,
+                createdRequest.RowKey,
+                userId,
+                "Auto-approved from normalized field inventory.");
         }
 
-        var status = slot.BookingPolicy == FieldInventoryPracticeBookingPolicies.AutoApprove
-            ? FieldInventoryPracticeRequestStatuses.Approved
-            : FieldInventoryPracticeRequestStatuses.Pending;
-        var now = DateTimeOffset.UtcNow;
-        var entity = new FieldInventoryPracticeRequestEntity
-        {
-            Id = Guid.NewGuid().ToString("N"),
-            LeagueId = context.LeagueId,
-            SeasonLabel = bundle.SeasonLabel,
-            PracticeSlotKey = slot.PracticeSlotKey,
-            LiveRecordId = slot.LiveRecordId,
-            Date = slot.Date,
-            DayOfWeek = slot.DayOfWeek,
-            StartTime = slot.StartTime,
-            EndTime = slot.EndTime,
-            FieldId = slot.FieldId,
-            FieldName = slot.FieldName,
-            TeamId = teamId,
-            TeamName = teamName,
-            BookingPolicy = slot.BookingPolicy,
-            Status = status,
-            Notes = (request.Notes ?? "").Trim(),
-            CreatedBy = userId,
-            CreatedAt = now,
-            ReviewedBy = status == FieldInventoryPracticeRequestStatuses.Approved ? userId : null,
-            ReviewedAt = status == FieldInventoryPracticeRequestStatuses.Approved ? now : null,
-            ReviewReason = status == FieldInventoryPracticeRequestStatuses.Approved ? "Auto-approved from Ponytail-assigned field space." : null,
-            UpdatedAt = now,
-        };
+        return await GetCoachViewAsync(bundle.SeasonLabel, userId, context);
+    }
 
-        await _inventoryRepository.UpsertPracticeRequestAsync(entity);
+    public async Task<FieldInventoryPracticeCoachResponse> MovePracticeRequestAsync(string requestId, FieldInventoryPracticeRequestMoveRequest request, string userId, CorrelationContext context)
+    {
+        var actor = await RequireCoachMembershipAsync(context.LeagueId, userId);
+        var sourceRequest = await _practiceRequestRepository.GetRequestAsync(context.LeagueId, (requestId ?? "").Trim());
+        if (sourceRequest is null)
+        {
+            throw new ApiGuards.HttpError(404, ErrorCodes.PRACTICE_REQUEST_NOT_FOUND, "Practice request not found.");
+        }
+
+        var sourceDivision = (sourceRequest.GetString("Division") ?? "").Trim();
+        var sourceTeamId = (sourceRequest.GetString("TeamId") ?? "").Trim();
+        var sourceStatus = (sourceRequest.GetString("Status") ?? "").Trim();
+        if (!actor.IsLeagueAdminOrGlobalAdmin &&
+            (!string.Equals(actor.TeamDivision, sourceDivision, StringComparison.OrdinalIgnoreCase) ||
+             !string.Equals(actor.TeamId, sourceTeamId, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new ApiGuards.HttpError(403, ErrorCodes.FORBIDDEN, "You can only move your own team's practice requests.");
+        }
+
+        if (!string.Equals(sourceStatus, FieldInventoryPracticeRequestStatuses.Approved, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(sourceStatus, FieldInventoryPracticeRequestStatuses.Pending, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ApiGuards.HttpError(409, ErrorCodes.PRACTICE_MOVE_NOT_ALLOWED, $"Only active practice requests can be moved (status: {sourceStatus}).");
+        }
+
+        var bundle = await LoadBundleAsync(context.LeagueId, request.SeasonLabel ?? sourceRequest.GetString("PracticeSeasonLabel"));
+        var practiceSlotKey = (request.PracticeSlotKey ?? "").Trim();
+        var slot = bundle.Blocks.FirstOrDefault(block => string.Equals(block.PracticeSlotKey, practiceSlotKey, StringComparison.OrdinalIgnoreCase));
+        if (slot is null)
+        {
+            throw new ApiGuards.HttpError(404, ErrorCodes.PRACTICE_SPACE_NOT_FOUND, "Practice space not found.");
+        }
+
+        if (string.IsNullOrWhiteSpace(slot.CanonicalDivisionCode) ||
+            !string.Equals(slot.CanonicalDivisionCode, sourceDivision, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ApiGuards.HttpError(409, ErrorCodes.DIVISION_MISMATCH, "Moves must stay within the original request division.");
+        }
+
+        if (slot.BookingPolicy == FieldInventoryPracticeBookingPolicies.NotRequestable)
+        {
+            throw new ApiGuards.HttpError(409, ErrorCodes.PRACTICE_SPACE_NOT_REQUESTABLE, "This field space is not requestable through SportsCH.");
+        }
+
+        if (!string.Equals(slot.NormalizationState, "ready", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(slot.NormalizationState, "normalized", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ApiGuards.HttpError(409, ErrorCodes.PRACTICE_NORMALIZATION_CONFLICT, "This practice space must be normalized or resolved before it can be requested.");
+        }
+
+        var canonicalSlot = await EnsureCanonicalSlotAsync(slot, userId);
+        var createdMove = await _practiceRequestService.CreateMoveRequestAsync(
+            context.LeagueId,
+            userId,
+            sourceRequest.RowKey,
+            canonicalSlot.RowKey,
+            request.Notes);
+
+        if (string.Equals(slot.BookingPolicy, FieldInventoryPracticeBookingPolicies.AutoApprove, StringComparison.OrdinalIgnoreCase))
+        {
+            await _practiceRequestService.AutoApproveRequestAsync(
+                context.LeagueId,
+                createdMove.RowKey,
+                userId,
+                "Moved and auto-approved from normalized field inventory.");
+        }
+
         return await GetCoachViewAsync(bundle.SeasonLabel, userId, context);
     }
 
     public async Task<FieldInventoryPracticeAdminResponse> ApprovePracticeRequestAsync(string requestId, FieldInventoryPracticeRequestDecisionRequest request, string userId, CorrelationContext context)
     {
-        var bundle = await LoadBundleAsync(context.LeagueId, null);
-        var entity = bundle.RequestEntities.FirstOrDefault(r => string.Equals(r.Id, requestId, StringComparison.OrdinalIgnoreCase));
+        var entity = await _practiceRequestRepository.GetRequestAsync(context.LeagueId, (requestId ?? "").Trim());
         if (entity is null)
         {
             throw new ApiGuards.HttpError(404, ErrorCodes.PRACTICE_REQUEST_NOT_FOUND, "Practice request not found.");
         }
 
-        var activeCount = bundle.RequestEntities.Count(r =>
-            string.Equals(r.PracticeSlotKey, entity.PracticeSlotKey, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(r.Status, FieldInventoryPracticeRequestStatuses.Approved, StringComparison.OrdinalIgnoreCase));
-        if (!string.Equals(entity.Status, FieldInventoryPracticeRequestStatuses.Approved, StringComparison.OrdinalIgnoreCase) && activeCount >= 2)
-        {
-            throw new ApiGuards.HttpError(409, ErrorCodes.PRACTICE_SPACE_FULL, "This practice space already has 2 approved teams.");
-        }
-
-        entity.Status = FieldInventoryPracticeRequestStatuses.Approved;
-        entity.ReviewReason = (request.Reason ?? "").Trim();
-        entity.ReviewedBy = userId;
-        entity.ReviewedAt = DateTimeOffset.UtcNow;
-        entity.UpdatedAt = DateTimeOffset.UtcNow;
-        await _inventoryRepository.UpsertPracticeRequestAsync(entity);
-        return await GetAdminViewAsync(entity.SeasonLabel, context);
+        await _practiceRequestService.ApproveRequestAsync(context.LeagueId, userId, entity.RowKey, request.Reason);
+        return await GetAdminViewAsync(entity.GetString("PracticeSeasonLabel"), context);
     }
 
     public async Task<FieldInventoryPracticeAdminResponse> RejectPracticeRequestAsync(string requestId, FieldInventoryPracticeRequestDecisionRequest request, string userId, CorrelationContext context)
     {
-        var bundle = await LoadBundleAsync(context.LeagueId, null);
-        var entity = bundle.RequestEntities.FirstOrDefault(r => string.Equals(r.Id, requestId, StringComparison.OrdinalIgnoreCase));
+        var entity = await _practiceRequestRepository.GetRequestAsync(context.LeagueId, (requestId ?? "").Trim());
         if (entity is null)
         {
             throw new ApiGuards.HttpError(404, ErrorCodes.PRACTICE_REQUEST_NOT_FOUND, "Practice request not found.");
         }
 
-        entity.Status = FieldInventoryPracticeRequestStatuses.Rejected;
-        entity.ReviewReason = (request.Reason ?? "").Trim();
-        entity.ReviewedBy = userId;
-        entity.ReviewedAt = DateTimeOffset.UtcNow;
-        entity.UpdatedAt = DateTimeOffset.UtcNow;
-        await _inventoryRepository.UpsertPracticeRequestAsync(entity);
-        return await GetAdminViewAsync(entity.SeasonLabel, context);
+        await _practiceRequestService.RejectRequestAsync(context.LeagueId, userId, entity.RowKey, request.Reason);
+        return await GetAdminViewAsync(entity.GetString("PracticeSeasonLabel"), context);
     }
 
     public async Task<FieldInventoryPracticeCoachResponse> CancelPracticeRequestAsync(string requestId, string userId, CorrelationContext context)
     {
-        var actor = await RequireCoachMembershipAsync(context.LeagueId, userId);
-        var bundle = await LoadBundleAsync(context.LeagueId, null);
-        var entity = bundle.RequestEntities.FirstOrDefault(r => string.Equals(r.Id, requestId, StringComparison.OrdinalIgnoreCase));
+        var entity = await _practiceRequestRepository.GetRequestAsync(context.LeagueId, (requestId ?? "").Trim());
         if (entity is null)
         {
             throw new ApiGuards.HttpError(404, ErrorCodes.PRACTICE_REQUEST_NOT_FOUND, "Practice request not found.");
         }
 
-        if (!actor.IsLeagueAdminOrGlobalAdmin && !string.Equals(entity.TeamId, actor.TeamId, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new ApiGuards.HttpError(403, ErrorCodes.FORBIDDEN, "You can only cancel your own team's practice requests.");
-        }
-
-        entity.Status = FieldInventoryPracticeRequestStatuses.Cancelled;
-        entity.ReviewReason = "Cancelled";
-        entity.ReviewedBy = userId;
-        entity.ReviewedAt = DateTimeOffset.UtcNow;
-        entity.UpdatedAt = DateTimeOffset.UtcNow;
-        await _inventoryRepository.UpsertPracticeRequestAsync(entity);
-        return await GetCoachViewAsync(entity.SeasonLabel, userId, context);
+        await _practiceRequestService.CancelRequestAsync(context.LeagueId, userId, entity.RowKey, "Cancelled");
+        return await GetCoachViewAsync(entity.GetString("PracticeSeasonLabel"), userId, context);
     }
 
     private async Task<Bundle> LoadBundleAsync(string leagueId, string? seasonLabel)
@@ -300,7 +397,7 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
             .ToList();
         var resolvedSeason = ResolveSeasonLabel(seasonLabel, seasons);
         var liveRecords = string.IsNullOrWhiteSpace(resolvedSeason)
-            ? new List<FieldInventoryLiveRecordEntity>()
+            ? []
             : await _inventoryRepository.GetLiveRecordsAsync(leagueId, resolvedSeason);
 
         var divisions = await _divisionRepository.QueryDivisionsAsync(leagueId);
@@ -308,21 +405,42 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
         var divisionAliases = await _inventoryRepository.GetDivisionAliasesAsync(leagueId);
         var teamAliases = await _inventoryRepository.GetTeamAliasesAsync(leagueId);
         var groupPolicies = await _inventoryRepository.GetGroupPoliciesAsync(leagueId);
-        var requests = string.IsNullOrWhiteSpace(resolvedSeason)
-            ? new List<FieldInventoryPracticeRequestEntity>()
-            : await _inventoryRepository.GetPracticeRequestsAsync(leagueId, resolvedSeason);
 
-        var alignment = BuildAlignmentRows(resolvedSeason, liveRecords, divisions, teams, divisionAliases, teamAliases, groupPolicies, requests);
+        var alignedRecords = BuildAlignedRecords(
+            resolvedSeason,
+            liveRecords,
+            divisions,
+            teams,
+            divisionAliases,
+            teamAliases,
+            groupPolicies);
+        var blocks = BuildPracticeBlocks(alignedRecords);
+        var relevantSlots = await LoadRelevantSlotsAsync(leagueId, blocks);
+        ApplySlotState(blocks, relevantSlots);
+
+        var relevantRequests = await LoadRelevantRequestsAsync(leagueId, resolvedSeason, blocks, relevantSlots);
+        var teamNameLookup = teams.ToDictionary(
+            team => $"{(team.GetString("Division") ?? "").Trim()}|{team.RowKey}",
+            team => team.GetString("Name") ?? team.RowKey,
+            StringComparer.OrdinalIgnoreCase);
+        var requestDtos = BuildRequestDtos(relevantRequests, relevantSlots, blocks, teamNameLookup);
+        ApplyRequestState(blocks, requestDtos);
+        var adminRows = BuildAdminRows(alignedRecords, blocks);
+
         return new Bundle
         {
             LeagueId = leagueId,
             SeasonLabel = resolvedSeason,
-            SeasonOptions = seasons.Select((label, index) => new FieldInventoryPracticeSeasonOptionDto(label, index == 0 && string.IsNullOrWhiteSpace(seasonLabel) || string.Equals(label, resolvedSeason, StringComparison.OrdinalIgnoreCase))).ToList(),
-            LiveRecords = liveRecords,
-            RequestEntities = requests,
-            Requests = alignment.Requests,
-            AdminRows = alignment.Rows,
-            RequestableSlots = alignment.Slots,
+            SeasonOptions = seasons.Select((label, index) => new FieldInventoryPracticeSeasonOptionDto(
+                label,
+                index == 0 && string.IsNullOrWhiteSpace(seasonLabel) || string.Equals(label, resolvedSeason, StringComparison.OrdinalIgnoreCase))).ToList(),
+            AdminRows = adminRows,
+            Blocks = blocks.OrderBy(x => x.Date).ThenBy(x => x.StartTime).ThenBy(x => x.FieldName).ToList(),
+            Requests = requestDtos
+                .OrderByDescending(x => x.Date)
+                .ThenByDescending(x => x.StartTime)
+                .ThenBy(x => x.FieldName, StringComparer.OrdinalIgnoreCase)
+                .ToList(),
             CanonicalFields = BuildCanonicalFieldOptions(liveRecords),
             CanonicalDivisions = divisions
                 .Select(d => new CanonicalDivisionOptionDto(d.GetString("Code") ?? d.RowKey, d.GetString("Name") ?? d.GetString("Code") ?? d.RowKey))
@@ -336,22 +454,203 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
         };
     }
 
-    private static string ResolveSeasonLabel(string? requestedSeason, List<string> seasons)
+    private async Task<List<TableEntity>> LoadRelevantSlotsAsync(string leagueId, IReadOnlyCollection<PracticeBlockCandidate> blocks)
     {
-        var season = (requestedSeason ?? "").Trim();
-        if (!string.IsNullOrWhiteSpace(season)) return season;
-        return seasons.FirstOrDefault() ?? "";
+        if (blocks.Count == 0)
+        {
+            return [];
+        }
+
+        var dateFrom = blocks.Min(block => block.Date);
+        var dateTo = blocks.Max(block => block.Date);
+        var relevantFields = blocks
+            .Select(block => NormalizeFieldKey(block.FieldId))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var slots = await QueryAllSlotsAsync(new SlotQueryFilter
+        {
+            LeagueId = leagueId,
+            FromDate = dateFrom,
+            ToDate = dateTo,
+            PageSize = 500,
+        });
+
+        return slots
+            .Where(slot =>
+            {
+                var fieldKey = NormalizeFieldKey(slot.GetString("FieldKey"));
+                return relevantFields.Contains(fieldKey) &&
+                       !string.Equals(slot.GetString("Status"), Constants.Status.SlotCancelled, StringComparison.OrdinalIgnoreCase);
+            })
+            .ToList();
     }
 
-    private static AlignmentResult BuildAlignmentRows(
+    private async Task<List<TableEntity>> LoadRelevantRequestsAsync(
+        string leagueId,
         string seasonLabel,
-        List<FieldInventoryLiveRecordEntity> liveRecords,
-        List<TableEntity> divisions,
-        List<TableEntity> teams,
-        List<FieldInventoryDivisionAliasEntity> divisionAliases,
-        List<FieldInventoryTeamAliasEntity> teamAliases,
-        List<FieldInventoryGroupPolicyEntity> groupPolicies,
-        List<FieldInventoryPracticeRequestEntity> requests)
+        IReadOnlyCollection<PracticeBlockCandidate> blocks,
+        IReadOnlyCollection<TableEntity> slots)
+    {
+        if (blocks.Count == 0)
+        {
+            return [];
+        }
+
+        var slotIds = blocks
+            .Select(block => block.EffectiveSlotId)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var fieldKeys = blocks
+            .Select(block => NormalizeFieldKey(block.FieldId))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var dateFrom = blocks.Min(block => block.Date);
+        var dateTo = blocks.Max(block => block.Date);
+        var slotLookup = slots.ToDictionary(slot => $"{(slot.GetString("Division") ?? "").Trim()}|{slot.RowKey}", StringComparer.OrdinalIgnoreCase);
+
+        var requests = await _practiceRequestRepository.QueryRequestsAsync(leagueId, null, null, null, null);
+        return requests.Where(request =>
+        {
+            var requestSeason = (request.GetString("PracticeSeasonLabel") ?? "").Trim();
+            if (!string.IsNullOrWhiteSpace(requestSeason) &&
+                string.Equals(requestSeason, seasonLabel, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            var slotId = (request.GetString("SlotId") ?? "").Trim();
+            if (!string.IsNullOrWhiteSpace(slotId) && slotIds.Contains(slotId))
+            {
+                return true;
+            }
+
+            var fieldKey = NormalizeFieldKey(request.GetString("FieldKey"));
+            var gameDate = (request.GetString("GameDate") ?? "").Trim();
+            if (!string.IsNullOrWhiteSpace(fieldKey) &&
+                !string.IsNullOrWhiteSpace(gameDate) &&
+                fieldKeys.Contains(fieldKey) &&
+                string.CompareOrdinal(gameDate, dateFrom) >= 0 &&
+                string.CompareOrdinal(gameDate, dateTo) <= 0)
+            {
+                return true;
+            }
+
+            var division = (request.GetString("Division") ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(division) || string.IsNullOrWhiteSpace(slotId))
+            {
+                return false;
+            }
+
+            if (!slotLookup.TryGetValue($"{division}|{slotId}", out var slot))
+            {
+                return false;
+            }
+
+            var slotFieldKey = NormalizeFieldKey(slot.GetString("FieldKey"));
+            var slotDate = (slot.GetString("GameDate") ?? "").Trim();
+            return fieldKeys.Contains(slotFieldKey) &&
+                   string.CompareOrdinal(slotDate, dateFrom) >= 0 &&
+                   string.CompareOrdinal(slotDate, dateTo) <= 0;
+        }).ToList();
+    }
+
+    private async Task<List<TableEntity>> QueryAllSlotsAsync(SlotQueryFilter filter)
+    {
+        var all = new List<TableEntity>();
+        string? continuation = null;
+        do
+        {
+            var page = await _slotRepository.QuerySlotsAsync(filter, continuation);
+            if (page.Items.Count > 0)
+            {
+                all.AddRange(page.Items);
+            }
+            continuation = page.ContinuationToken;
+        }
+        while (!string.IsNullOrWhiteSpace(continuation));
+
+        return all;
+    }
+
+    private async Task<TableEntity> EnsureCanonicalSlotAsync(PracticeBlockCandidate block, string userId)
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (block.ExactSlot is not null)
+        {
+            if (!SlotEntityUtil.IsAvailability(block.ExactSlot))
+            {
+                throw new ApiGuards.HttpError(409, ErrorCodes.PRACTICE_NORMALIZATION_CONFLICT, "An existing non-availability slot already occupies this imported practice block.");
+            }
+
+            if (block.NeedsSlotMetadataSync)
+            {
+                ApplyCanonicalSlotMetadata(block.ExactSlot, block, userId, now);
+                await _slotRepository.UpdateSlotAsync(block.ExactSlot, block.ExactSlot.ETag);
+                block.NeedsSlotMetadataSync = false;
+            }
+
+            return block.ExactSlot;
+        }
+
+        if (!string.Equals(block.NormalizationState, "ready", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ApiGuards.HttpError(409, ErrorCodes.PRACTICE_NORMALIZATION_CONFLICT, "This imported practice block cannot be normalized until its conflicts are resolved.");
+        }
+
+        var entity = BuildCanonicalSlotEntity(block, userId, now);
+        try
+        {
+            await _slotRepository.CreateSlotAsync(entity);
+            block.ExactSlot = entity;
+            block.EffectiveSlotId = entity.RowKey;
+            block.NormalizationState = "normalized";
+            block.NeedsSlotMetadataSync = false;
+            return entity;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 409)
+        {
+            var existing = await _slotRepository.GetSlotAsync(block.LeagueId, block.CanonicalDivisionCode, block.DeterministicSlotId);
+            if (existing is null)
+            {
+                throw;
+            }
+
+            block.ExactSlot = existing;
+            block.EffectiveSlotId = existing.RowKey;
+            block.NormalizationState = "normalized";
+            block.NeedsSlotMetadataSync = NeedsCanonicalSlotUpdate(existing, block);
+            if (block.NeedsSlotMetadataSync)
+            {
+                ApplyCanonicalSlotMetadata(existing, block, userId, now);
+                await _slotRepository.UpdateSlotAsync(existing, existing.ETag);
+                block.NeedsSlotMetadataSync = false;
+            }
+
+            return existing;
+        }
+    }
+
+    private static List<PracticeBlockCandidate> FilterBlocks(IEnumerable<PracticeBlockCandidate> blocks, string? dateFrom, string? dateTo, string? fieldId)
+    {
+        var from = (dateFrom ?? "").Trim();
+        var to = (dateTo ?? "").Trim();
+        var field = NormalizeFieldKey(fieldId);
+        return blocks
+            .Where(block => string.IsNullOrWhiteSpace(from) || string.CompareOrdinal(block.Date, from) >= 0)
+            .Where(block => string.IsNullOrWhiteSpace(to) || string.CompareOrdinal(block.Date, to) <= 0)
+            .Where(block => string.IsNullOrWhiteSpace(field) || string.Equals(NormalizeFieldKey(block.FieldId), field, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    private static List<AlignedRecord> BuildAlignedRecords(
+        string seasonLabel,
+        IReadOnlyCollection<FieldInventoryLiveRecordEntity> liveRecords,
+        IReadOnlyCollection<TableEntity> divisions,
+        IReadOnlyCollection<TableEntity> teams,
+        IReadOnlyCollection<FieldInventoryDivisionAliasEntity> divisionAliases,
+        IReadOnlyCollection<FieldInventoryTeamAliasEntity> teamAliases,
+        IReadOnlyCollection<FieldInventoryGroupPolicyEntity> groupPolicies)
     {
         var divisionOptions = divisions
             .Select(d => new DivisionOption(d.GetString("Code") ?? d.RowKey, d.GetString("Name") ?? d.GetString("Code") ?? d.RowKey))
@@ -359,265 +658,342 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
         var teamOptions = teams
             .Select(t => new TeamOption(t.GetString("Division") ?? "", t.RowKey, t.GetString("Name") ?? t.RowKey))
             .ToList();
-        var requestDtos = requests.Select(MapRequest).ToList();
-        var rows = new List<FieldInventoryPracticeAdminRowDto>();
-        var slots = new List<FieldInventoryPracticeSlotDto>();
 
-        foreach (var record in liveRecords.OrderBy(r => r.Date).ThenBy(r => r.StartTime).ThenBy(r => r.FieldName))
-        {
-            var divisionMatch = ResolveDivision(record.AssignedDivision, divisionOptions, divisionAliases);
-            var teamMatch = ResolveTeam(record.AssignedTeamOrEvent, divisionMatch.Code, teamOptions, teamAliases);
-            var policy = ResolvePolicy(record, groupPolicies);
-            var recordBlocks = BuildPracticeSlots(seasonLabel, record, policy, requests);
-            slots.AddRange(recordBlocks);
-            var approvedCount = recordBlocks.Sum(x => x.ApprovedCount);
-            var pendingCount = recordBlocks.Sum(x => x.PendingCount);
-
-            var issues = new List<string>();
-            if (string.IsNullOrWhiteSpace(record.FieldId)) issues.Add("field_unmapped");
-            if (!string.IsNullOrWhiteSpace(record.AssignedDivision) && string.IsNullOrWhiteSpace(divisionMatch.Code)) issues.Add("division_unmapped");
-            if (!string.IsNullOrWhiteSpace(record.AssignedTeamOrEvent) && string.IsNullOrWhiteSpace(teamMatch.TeamId)) issues.Add("team_unmapped");
-            if (policy.BookingPolicy == FieldInventoryPracticeBookingPolicies.NotRequestable && policy.IsActionable) issues.Add("policy_unmapped");
-
-            rows.Add(new FieldInventoryPracticeAdminRowDto(
-                record.Id,
-                seasonLabel,
-                record.Date,
-                record.DayOfWeek,
-                record.StartTime,
-                record.EndTime,
-                record.SlotDurationMinutes,
-                record.AvailabilityStatus,
-                record.UtilizationStatus,
-                record.UsageType,
-                record.UsedBy,
-                record.FieldId,
-                record.FieldName,
-                record.RawFieldName,
-                record.AssignedGroup,
-                record.AssignedDivision,
-                record.AssignedTeamOrEvent,
-                divisionMatch.Code,
-                divisionMatch.Name,
-                teamMatch.TeamId,
-                teamMatch.TeamName,
-                policy.BookingPolicy,
-                policy.Reason,
-                recordBlocks.Count,
-                approvedCount,
-                pendingCount,
-                issues));
-        }
-
-        return new AlignmentResult(rows, slots.OrderBy(s => s.Date).ThenBy(s => s.StartTime).ThenBy(s => s.FieldName).ToList(), requestDtos);
-    }
-
-    private static List<CanonicalFieldOptionDto> BuildCanonicalFieldOptions(List<FieldInventoryLiveRecordEntity> liveRecords)
-    {
         return liveRecords
-            .Where(r => !string.IsNullOrWhiteSpace(r.FieldId))
-            .GroupBy(r => r.FieldId, StringComparer.OrdinalIgnoreCase)
-            .Select(g => new CanonicalFieldOptionDto(g.Key, g.First().FieldName, g.First().FieldName, ""))
-            .OrderBy(x => x.CanonicalFieldName, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(record => record.Date)
+            .ThenBy(record => record.StartTime)
+            .ThenBy(record => record.FieldName)
+            .Select(record =>
+            {
+                var divisionMatch = ResolveDivision(record.AssignedDivision, divisionOptions, divisionAliases);
+                var teamMatch = ResolveTeam(record.AssignedTeamOrEvent, divisionMatch.Code, teamOptions, teamAliases);
+                var policy = ResolvePolicy(record, groupPolicies);
+                var issues = new List<string>();
+                if (string.IsNullOrWhiteSpace(record.FieldId)) issues.Add("field_unmapped");
+                if (!string.IsNullOrWhiteSpace(record.AssignedDivision) && string.IsNullOrWhiteSpace(divisionMatch.Code)) issues.Add("division_unmapped");
+                if (!string.IsNullOrWhiteSpace(record.AssignedTeamOrEvent) && string.IsNullOrWhiteSpace(teamMatch.TeamId)) issues.Add("team_unmapped");
+                if (policy.BookingPolicy == FieldInventoryPracticeBookingPolicies.NotRequestable && policy.IsActionable) issues.Add("policy_unmapped");
+                return new AlignedRecord(seasonLabel, record, divisionMatch, teamMatch, policy, issues);
+            })
             .ToList();
     }
 
-    private static List<FieldInventoryPracticeSlotDto> BuildPracticeSlots(
-        string seasonLabel,
-        FieldInventoryLiveRecordEntity record,
-        PolicyDecision policy,
-        List<FieldInventoryPracticeRequestEntity> requests)
+    private static List<PracticeBlockCandidate> BuildPracticeBlocks(IEnumerable<AlignedRecord> alignedRecords)
     {
-        var results = new List<FieldInventoryPracticeSlotDto>();
-        if (policy.BookingPolicy == FieldInventoryPracticeBookingPolicies.NotRequestable) return results;
-
-        if (!string.Equals(record.AvailabilityStatus, FieldInventoryAvailabilityStatuses.Available, StringComparison.OrdinalIgnoreCase)) return results;
-        if (!string.Equals(record.UtilizationStatus, FieldInventoryUtilizationStatuses.NotUsed, StringComparison.OrdinalIgnoreCase)) return results;
-
-        if (!TryParseMinutes(record.StartTime, out var startMinutes) || !TryParseMinutes(record.EndTime, out var endMinutes)) return results;
-        if (endMinutes - startMinutes < 90) return results;
-
-        for (var blockStart = startMinutes; blockStart + 90 <= endMinutes; blockStart += 90)
+        var blocks = new List<PracticeBlockCandidate>();
+        foreach (var aligned in alignedRecords)
         {
-            var blockEnd = blockStart + 90;
-            var slotKey = $"{record.Id}|{FormatMinutes(blockStart)}|{FormatMinutes(blockEnd)}";
-            var slotRequests = requests.Where(r =>
-                string.Equals(r.PracticeSlotKey, slotKey, StringComparison.OrdinalIgnoreCase) &&
-                ActiveRequestStatuses.Contains(r.Status, StringComparer.OrdinalIgnoreCase)).ToList();
+            if (!TryParseMinutes(aligned.Record.StartTime, out var startMinutes) ||
+                !TryParseMinutes(aligned.Record.EndTime, out var endMinutes) ||
+                endMinutes - startMinutes < 90)
+            {
+                continue;
+            }
+
+            for (var blockStart = startMinutes; blockStart + 90 <= endMinutes; blockStart += 90)
+            {
+                var blockEnd = blockStart + 90;
+                var issues = new List<string>(aligned.MappingIssues);
+                var availabilityAvailable = string.Equals(aligned.Record.AvailabilityStatus, FieldInventoryAvailabilityStatuses.Available, StringComparison.OrdinalIgnoreCase);
+                var notUsed = string.Equals(aligned.Record.UtilizationStatus, FieldInventoryUtilizationStatuses.NotUsed, StringComparison.OrdinalIgnoreCase);
+                var baseRequestable = availabilityAvailable &&
+                    notUsed &&
+                    !string.IsNullOrWhiteSpace(aligned.Record.FieldId) &&
+                    !string.IsNullOrWhiteSpace(aligned.Division.Code) &&
+                    !string.Equals(aligned.Policy.BookingPolicy, FieldInventoryPracticeBookingPolicies.NotRequestable, StringComparison.OrdinalIgnoreCase);
+
+                if (!availabilityAvailable || !notUsed)
+                {
+                    issues.Add("imported_not_requestable");
+                }
+
+                blocks.Add(new PracticeBlockCandidate
+                {
+                    LeagueId = aligned.Record.LeagueId,
+                    PracticeSlotKey = $"{aligned.Record.Id}|{FormatMinutes(blockStart)}|{FormatMinutes(blockEnd)}",
+                    SeasonLabel = aligned.SeasonLabel,
+                    LiveRecordId = aligned.Record.Id,
+                    Date = aligned.Record.Date,
+                    DayOfWeek = aligned.Record.DayOfWeek,
+                    StartTime = FormatMinutes(blockStart),
+                    EndTime = FormatMinutes(blockEnd),
+                    SlotDurationMinutes = 90,
+                    FieldId = NormalizeFieldKey(aligned.Record.FieldId),
+                    FieldName = aligned.Record.FieldName,
+                    BookingPolicy = aligned.Policy.BookingPolicy,
+                    BookingPolicyReason = aligned.Policy.Reason,
+                    AssignedGroup = aligned.Record.AssignedGroup,
+                    AssignedDivision = aligned.Record.AssignedDivision,
+                    AssignedTeamOrEvent = aligned.Record.AssignedTeamOrEvent,
+                    CanonicalDivisionCode = aligned.Division.Code ?? "",
+                    CanonicalDivisionName = aligned.Division.Name,
+                    CanonicalTeamId = aligned.Team.TeamId,
+                    CanonicalTeamName = aligned.Team.TeamName,
+                    BaseRequestable = baseRequestable,
+                    MappingIssues = issues,
+                    DeterministicSlotId = SlotKeyUtil.BuildAvailabilitySlotId(aligned.Record.Date, FormatMinutes(blockStart), FormatMinutes(blockEnd), aligned.Record.FieldId),
+                    EffectiveSlotId = SlotKeyUtil.BuildAvailabilitySlotId(aligned.Record.Date, FormatMinutes(blockStart), FormatMinutes(blockEnd), aligned.Record.FieldId),
+                    NormalizationState = baseRequestable ? "ready" : "blocked",
+                    NormalizationIssues = new List<string>(issues),
+                });
+            }
+        }
+
+        return blocks;
+    }
+
+    private static void ApplySlotState(IReadOnlyCollection<PracticeBlockCandidate> blocks, IReadOnlyCollection<TableEntity> slots)
+    {
+        var exactLookup = slots
+            .GroupBy(slot => BuildIdentity(
+                (slot.GetString("Division") ?? "").Trim(),
+                slot.GetString("FieldKey") ?? "",
+                slot.GetString("GameDate") ?? "",
+                slot.GetString("StartTime") ?? "",
+                slot.GetString("EndTime") ?? ""), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        var slotsByFieldDate = slots
+            .GroupBy(slot => $"{NormalizeFieldKey(slot.GetString("FieldKey"))}|{(slot.GetString("GameDate") ?? "").Trim()}", StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
+
+        foreach (var block in blocks)
+        {
+            var identity = BuildIdentity(block.CanonicalDivisionCode, block.FieldId, block.Date, block.StartTime, block.EndTime);
+            if (!string.IsNullOrWhiteSpace(block.CanonicalDivisionCode) && exactLookup.TryGetValue(identity, out var exact))
+            {
+                block.ExactSlot = exact;
+                block.EffectiveSlotId = exact.RowKey;
+                block.NeedsSlotMetadataSync = NeedsCanonicalSlotUpdate(exact, block);
+                if (SlotEntityUtil.IsAvailability(exact))
+                {
+                    block.NormalizationState = "normalized";
+                    if (!string.Equals(block.DeterministicSlotId, exact.RowKey, StringComparison.OrdinalIgnoreCase))
+                    {
+                        block.NormalizationIssues.Add("legacy_slot_id");
+                    }
+                }
+                else
+                {
+                    block.NormalizationState = "conflict";
+                    block.NormalizationIssues.Add("slot_already_in_use");
+                }
+            }
+
+            var overlapKey = $"{NormalizeFieldKey(block.FieldId)}|{block.Date}";
+            if (slotsByFieldDate.TryGetValue(overlapKey, out var sameFieldDate))
+            {
+                var overlaps = sameFieldDate
+                    .Where(slot =>
+                    {
+                        if (block.ExactSlot is not null && string.Equals(slot.RowKey, block.ExactSlot.RowKey, StringComparison.OrdinalIgnoreCase))
+                        {
+                            return false;
+                        }
+
+                        return TimeUtil.IsValidRange(block.StartTime, block.EndTime, out var blockStart, out var blockEnd, out _) &&
+                               TimeUtil.IsValidRange(slot.GetString("StartTime") ?? "", slot.GetString("EndTime") ?? "", out var slotStart, out var slotEnd, out _) &&
+                               TimeUtil.Overlaps(blockStart, blockEnd, slotStart, slotEnd);
+                    })
+                    .ToList();
+
+                if (overlaps.Count > 0)
+                {
+                    block.OverlapSlots = overlaps;
+                    block.NormalizationState = "conflict";
+
+                    if (overlaps.Any(slot => !string.Equals((slot.GetString("Division") ?? "").Trim(), block.CanonicalDivisionCode, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        block.NormalizationIssues.Add("cross_division_overlap");
+                    }
+                    else
+                    {
+                        block.NormalizationIssues.Add("manual_overlap");
+                    }
+                }
+            }
+
+            if (string.Equals(block.NormalizationState, "ready", StringComparison.OrdinalIgnoreCase) &&
+                (string.IsNullOrWhiteSpace(block.CanonicalDivisionCode) || string.IsNullOrWhiteSpace(block.FieldId)))
+            {
+                block.NormalizationState = "blocked";
+            }
+        }
+    }
+
+    private static void ApplyRequestState(IReadOnlyCollection<PracticeBlockCandidate> blocks, IReadOnlyCollection<FieldInventoryPracticeRequestDto> requests)
+    {
+        var requestsBySlot = requests
+            .GroupBy(request => $"{request.Division}|{request.SlotId}", StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
+
+        foreach (var block in blocks)
+        {
+            var key = $"{block.CanonicalDivisionCode}|{block.EffectiveSlotId}";
+            if (string.IsNullOrWhiteSpace(block.CanonicalDivisionCode) || string.IsNullOrWhiteSpace(block.EffectiveSlotId) || !requestsBySlot.TryGetValue(key, out var slotRequests))
+            {
+                block.Capacity = 1;
+                block.RemainingCapacity =
+                    string.Equals(block.NormalizationState, "ready", StringComparison.OrdinalIgnoreCase) ||
+                    (string.Equals(block.NormalizationState, "normalized", StringComparison.OrdinalIgnoreCase) &&
+                     block.ExactSlot is not null &&
+                     string.Equals((block.ExactSlot.GetString("Status") ?? Constants.Status.SlotOpen).Trim(), Constants.Status.SlotOpen, StringComparison.OrdinalIgnoreCase))
+                        ? 1
+                        : 0;
+                continue;
+            }
+
             var approvedTeamIds = slotRequests
-                .Where(r => string.Equals(r.Status, FieldInventoryPracticeRequestStatuses.Approved, StringComparison.OrdinalIgnoreCase))
-                .Select(r => r.TeamId)
+                .Where(request => string.Equals(request.Status, FieldInventoryPracticeRequestStatuses.Approved, StringComparison.OrdinalIgnoreCase))
+                .Select(request => request.TeamId)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
             var pendingTeamIds = slotRequests
-                .Where(r => string.Equals(r.Status, FieldInventoryPracticeRequestStatuses.Pending, StringComparison.OrdinalIgnoreCase))
-                .Select(r => r.TeamId)
+                .Where(request => string.Equals(request.Status, FieldInventoryPracticeRequestStatuses.Pending, StringComparison.OrdinalIgnoreCase))
+                .Select(request => request.TeamId)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
-            var reservedCount = approvedTeamIds.Count + pendingTeamIds.Count;
-            results.Add(new FieldInventoryPracticeSlotDto(
-                slotKey,
-                seasonLabel,
-                record.Id,
-                record.Date,
-                record.DayOfWeek,
-                FormatMinutes(blockStart),
-                FormatMinutes(blockEnd),
-                90,
-                record.FieldId,
-                record.FieldName,
-                policy.BookingPolicy,
-                BookingPolicyLabel(policy.BookingPolicy),
-                policy.Reason,
-                record.AssignedGroup,
-                record.AssignedDivision,
-                record.AssignedTeamOrEvent,
-                2,
-                approvedTeamIds.Count,
-                pendingTeamIds.Count,
-                Math.Max(0, 2 - reservedCount),
-                approvedTeamIds,
-                pendingTeamIds));
-        }
 
-        return results;
+            block.Capacity = 1;
+            block.ApprovedTeamIds = approvedTeamIds;
+            block.PendingTeamIds = pendingTeamIds;
+            block.ApprovedCount = approvedTeamIds.Count;
+            block.PendingCount = pendingTeamIds.Count;
+            block.RemainingCapacity = Math.Max(0, 1 - approvedTeamIds.Count - pendingTeamIds.Count);
+        }
     }
 
-    private static PolicyDecision ResolvePolicy(FieldInventoryLiveRecordEntity record, List<FieldInventoryGroupPolicyEntity> groupPolicies)
+    private static List<FieldInventoryPracticeRequestDto> BuildRequestDtos(
+        IReadOnlyCollection<TableEntity> requests,
+        IReadOnlyCollection<TableEntity> slots,
+        IReadOnlyCollection<PracticeBlockCandidate> blocks,
+        IReadOnlyDictionary<string, string> teamNameLookup)
     {
-        var availabilityAvailable = string.Equals(record.AvailabilityStatus, FieldInventoryAvailabilityStatuses.Available, StringComparison.OrdinalIgnoreCase);
-        var notUsed = string.Equals(record.UtilizationStatus, FieldInventoryUtilizationStatuses.NotUsed, StringComparison.OrdinalIgnoreCase);
-        if (!availabilityAvailable || !notUsed)
-        {
-            return new PolicyDecision(FieldInventoryPracticeBookingPolicies.NotRequestable, "Used or unavailable inventory.", false);
-        }
+        var slotLookup = slots.ToDictionary(slot => $"{(slot.GetString("Division") ?? "").Trim()}|{slot.RowKey}", StringComparer.OrdinalIgnoreCase);
+        var requestLookup = requests.ToDictionary(request => request.RowKey, StringComparer.OrdinalIgnoreCase);
+        var blockLookup = blocks
+            .GroupBy(block => $"{block.CanonicalDivisionCode}|{block.EffectiveSlotId}", StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
 
-        var rawGroup = (record.AssignedGroup ?? "").Trim();
-        if (!string.IsNullOrWhiteSpace(rawGroup))
+        return requests.Select(request =>
         {
-            var normalizedGroup = NormalizeLookupKey(rawGroup);
-            var saved = groupPolicies.FirstOrDefault(x => string.Equals(x.NormalizedLookupKey, normalizedGroup, StringComparison.OrdinalIgnoreCase));
-            if (saved is not null)
-            {
-                return new PolicyDecision(saved.BookingPolicy, $"Mapped from group '{rawGroup}'.", true);
-            }
-        }
+            var division = (request.GetString("Division") ?? "").Trim();
+            var slotId = (request.GetString("SlotId") ?? "").Trim();
+            slotLookup.TryGetValue($"{division}|{slotId}", out var slot);
+            blockLookup.TryGetValue($"{division}|{slotId}", out var block);
 
-        if (HasPonytailSignal(record))
-        {
-            return new PolicyDecision(FieldInventoryPracticeBookingPolicies.AutoApprove, "Ponytail-assigned space auto-approves coach requests.", true);
-        }
+            var date = (request.GetString("GameDate") ?? slot?.GetString("GameDate") ?? "").Trim();
+            var startTime = (request.GetString("StartTime") ?? slot?.GetString("StartTime") ?? "").Trim();
+            var endTime = (request.GetString("EndTime") ?? slot?.GetString("EndTime") ?? "").Trim();
+            var fieldId = NormalizeFieldKey(request.GetString("FieldKey") ?? slot?.GetString("FieldKey") ?? block?.FieldId ?? "");
+            var fieldName = FirstNonBlank(
+                request.GetString("DisplayName"),
+                request.GetString("FieldName"),
+                slot?.GetString("DisplayName"),
+                slot?.GetString("FieldName"),
+                block?.FieldName,
+                fieldId);
+            var bookingPolicy = FirstNonBlank(
+                request.GetString("PracticeBookingPolicy"),
+                slot?.GetString("PracticeBookingPolicy"),
+                block?.BookingPolicy,
+                FieldInventoryPracticeBookingPolicies.CommissionerReview);
+            var teamId = (request.GetString("TeamId") ?? "").Trim();
+            var requestKind = (request.GetString("RequestKind") ?? "").Trim();
+            var moveFromRequestId = (request.GetString("MoveFromRequestId") ?? "").Trim();
+            requestLookup.TryGetValue(moveFromRequestId, out var sourceRequest);
+            var sourceDate = sourceRequest?.GetString("GameDate") ?? "";
+            var sourceStart = sourceRequest?.GetString("StartTime") ?? "";
+            var sourceEnd = sourceRequest?.GetString("EndTime") ?? "";
+            var sourceFieldName = FirstNonBlank(
+                sourceRequest?.GetString("DisplayName"),
+                sourceRequest?.GetString("FieldName"));
 
-        if (!string.IsNullOrWhiteSpace(rawGroup))
-        {
-            var normalizedGroup = NormalizeLookupKey(rawGroup);
-            if (normalizedGroup.Contains("ponytail", StringComparison.OrdinalIgnoreCase))
-            {
-                return new PolicyDecision(FieldInventoryPracticeBookingPolicies.AutoApprove, "Ponytail-assigned space auto-approves coach requests.", true);
-            }
-        }
-
-        if (string.IsNullOrWhiteSpace(record.AssignedGroup)
-            && string.IsNullOrWhiteSpace(record.AssignedDivision)
-            && string.IsNullOrWhiteSpace(record.AssignedTeamOrEvent))
-        {
-            return new PolicyDecision(FieldInventoryPracticeBookingPolicies.CommissionerReview, "Unassigned available space requires commissioner approval.", false);
-        }
-
-        return new PolicyDecision(FieldInventoryPracticeBookingPolicies.NotRequestable, "Needs policy mapping before coaches can request it.", true);
+            return new FieldInventoryPracticeRequestDto(
+                request.RowKey,
+                FirstNonBlank(request.GetString("PracticeSeasonLabel"), block?.SeasonLabel, ""),
+                FirstNonBlank(request.GetString("PracticeSlotKey"), block?.PracticeSlotKey, slotId),
+                FirstNonBlank(request.GetString("PracticeSourceRecordId"), block?.LiveRecordId, ""),
+                slotId,
+                division,
+                date,
+                WeekdayFromIso(date),
+                startTime,
+                endTime,
+                fieldId,
+                fieldName,
+                teamId,
+                teamNameLookup.TryGetValue($"{division}|{teamId}", out var teamName) ? teamName : null,
+                (request.GetString("Status") ?? FieldInventoryPracticeRequestStatuses.Pending).Trim(),
+                bookingPolicy,
+                BookingPolicyLabel(bookingPolicy),
+                string.Equals(requestKind, "Move", StringComparison.OrdinalIgnoreCase) || !string.IsNullOrWhiteSpace(moveFromRequestId),
+                string.IsNullOrWhiteSpace(moveFromRequestId) ? null : moveFromRequestId,
+                string.IsNullOrWhiteSpace(sourceDate) ? null : sourceDate,
+                string.IsNullOrWhiteSpace(sourceStart) ? null : sourceStart,
+                string.IsNullOrWhiteSpace(sourceEnd) ? null : sourceEnd,
+                string.IsNullOrWhiteSpace(sourceFieldName) ? null : sourceFieldName,
+                (request.GetString("Reason") ?? "").Trim(),
+                (request.GetString("RequestedBy") ?? "").Trim(),
+                request.GetDateTimeOffset("RequestedUtc") ?? DateTimeOffset.MinValue,
+                (request.GetString("ReviewedBy") ?? "").Trim(),
+                request.GetDateTimeOffset("ReviewedUtc"),
+                (request.GetString("ReviewReason") ?? "").Trim());
+        }).ToList();
     }
 
-    private static bool HasPonytailSignal(FieldInventoryLiveRecordEntity record)
+    private static List<FieldInventoryPracticeAdminRowDto> BuildAdminRows(
+        IReadOnlyCollection<AlignedRecord> alignedRecords,
+        IReadOnlyCollection<PracticeBlockCandidate> blocks)
     {
-        var signals = new[]
+        var blocksByRecordId = blocks
+            .GroupBy(block => block.LiveRecordId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
+
+        return alignedRecords.Select(aligned =>
         {
-            NormalizeLookupKey(record.AssignedGroup ?? ""),
-            NormalizeLookupKey(record.AssignedDivision ?? ""),
-            NormalizeLookupKey(record.AssignedTeamOrEvent ?? ""),
-        };
+            blocksByRecordId.TryGetValue(aligned.Record.Id, out var recordBlocks);
+            recordBlocks ??= [];
 
-        return signals.Any(signal =>
-            !string.IsNullOrWhiteSpace(signal) &&
-            (signal.Contains("ponytail", StringComparison.OrdinalIgnoreCase)
-                || signal.Contains("ponytails", StringComparison.OrdinalIgnoreCase)
-                || signal.Contains("pypractice", StringComparison.OrdinalIgnoreCase)
-                || signal == "py"));
+            return new FieldInventoryPracticeAdminRowDto(
+                aligned.Record.Id,
+                aligned.SeasonLabel,
+                aligned.Record.Date,
+                aligned.Record.DayOfWeek,
+                aligned.Record.StartTime,
+                aligned.Record.EndTime,
+                aligned.Record.SlotDurationMinutes,
+                aligned.Record.AvailabilityStatus,
+                aligned.Record.UtilizationStatus,
+                aligned.Record.UsageType,
+                aligned.Record.UsedBy,
+                aligned.Record.FieldId,
+                aligned.Record.FieldName,
+                aligned.Record.RawFieldName,
+                aligned.Record.AssignedGroup,
+                aligned.Record.AssignedDivision,
+                aligned.Record.AssignedTeamOrEvent,
+                aligned.Division.Code,
+                aligned.Division.Name,
+                aligned.Team.TeamId,
+                aligned.Team.TeamName,
+                aligned.Policy.BookingPolicy,
+                aligned.Policy.Reason,
+                recordBlocks.Count(block => block.BaseRequestable),
+                recordBlocks.Sum(block => block.ApprovedCount),
+                recordBlocks.Sum(block => block.PendingCount),
+                aligned.MappingIssues);
+        }).ToList();
     }
-
-    private static DivisionMatch ResolveDivision(string? rawDivision, List<DivisionOption> divisions, List<FieldInventoryDivisionAliasEntity> aliases)
-    {
-        var raw = (rawDivision ?? "").Trim();
-        if (string.IsNullOrWhiteSpace(raw)) return new DivisionMatch(null, null);
-
-        var normalized = NormalizeLookupKey(raw);
-        var alias = aliases.FirstOrDefault(x => string.Equals(x.NormalizedLookupKey, normalized, StringComparison.OrdinalIgnoreCase));
-        if (alias is not null)
-        {
-            return new DivisionMatch(alias.CanonicalDivisionCode, alias.CanonicalDivisionName);
-        }
-
-        var exact = divisions.FirstOrDefault(d =>
-            string.Equals(d.Code, raw, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(d.Name, raw, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(NormalizeLookupKey(d.Name), normalized, StringComparison.OrdinalIgnoreCase));
-        return exact is null ? new DivisionMatch(null, null) : new DivisionMatch(exact.Code, exact.Name);
-    }
-
-    private static TeamMatch ResolveTeam(string? rawTeam, string? divisionCode, List<TeamOption> teams, List<FieldInventoryTeamAliasEntity> aliases)
-    {
-        var raw = (rawTeam ?? "").Trim();
-        if (string.IsNullOrWhiteSpace(raw)) return new TeamMatch(null, null);
-
-        var normalized = NormalizeLookupKey(raw);
-        var scopedAlias = aliases.FirstOrDefault(x =>
-            string.Equals(x.CanonicalDivisionCode, divisionCode ?? "", StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(x.NormalizedLookupKey, normalized, StringComparison.OrdinalIgnoreCase));
-        if (scopedAlias is not null)
-        {
-            return new TeamMatch(scopedAlias.CanonicalTeamId, scopedAlias.CanonicalTeamName);
-        }
-
-        var candidates = teams.Where(t =>
-            string.IsNullOrWhiteSpace(divisionCode) || string.Equals(t.DivisionCode, divisionCode, StringComparison.OrdinalIgnoreCase)).ToList();
-        var exact = candidates.FirstOrDefault(t =>
-            string.Equals(t.TeamId, raw, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(t.TeamName, raw, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(NormalizeLookupKey(t.TeamName), normalized, StringComparison.OrdinalIgnoreCase));
-        return exact is null ? new TeamMatch(null, null) : new TeamMatch(exact.TeamId, exact.TeamName);
-    }
-
-    private static FieldInventoryPracticeRequestDto MapRequest(FieldInventoryPracticeRequestEntity request)
-        => new(
-            request.Id,
-            request.SeasonLabel,
-            request.PracticeSlotKey,
-            request.LiveRecordId,
-            request.Date,
-            request.DayOfWeek,
-            request.StartTime,
-            request.EndTime,
-            request.FieldId,
-            request.FieldName,
-            request.TeamId,
-            request.TeamName,
-            request.Status,
-            request.BookingPolicy,
-            BookingPolicyLabel(request.BookingPolicy),
-            request.Notes,
-            request.CreatedBy,
-            request.CreatedAt,
-            request.ReviewedBy,
-            request.ReviewedAt,
-            request.ReviewReason);
 
     private static FieldInventoryPracticeAdminResponse BuildAdminResponse(Bundle bundle)
     {
-        var summary = BuildSummary(bundle.AdminRows, bundle.Requests);
         return new FieldInventoryPracticeAdminResponse(
             bundle.SeasonLabel,
             bundle.SeasonOptions,
-            summary,
+            BuildSummary(bundle.AdminRows, bundle.Requests),
+            BuildNormalizationSummary(bundle.Blocks),
             bundle.AdminRows,
+            bundle.Blocks.Select(MapSlot).ToList(),
             bundle.Requests,
             bundle.CanonicalFields,
             bundle.CanonicalDivisions,
@@ -627,16 +1003,28 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
     private static FieldInventoryPracticeCoachResponse BuildCoachResponse(Bundle bundle, string division, string teamId, string? teamName)
     {
         var requests = bundle.Requests
-            .Where(r => string.Equals(r.TeamId, teamId, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(r => r.Date)
-            .ThenByDescending(r => r.StartTime)
+            .Where(request => string.Equals(request.TeamId, teamId, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(request => request.Date)
+            .ThenByDescending(request => request.StartTime)
             .ToList();
-        var slots = bundle.RequestableSlots
-            .Where(s => s.RemainingCapacity > 0 || requests.Any(r => string.Equals(r.PracticeSlotKey, s.PracticeSlotKey, StringComparison.OrdinalIgnoreCase)))
-            .OrderBy(s => s.Date)
-            .ThenBy(s => s.StartTime)
-            .ThenBy(s => s.FieldName)
+        var activeSlotIds = requests
+            .Where(request => ActiveRequestStatuses.Contains(request.Status, StringComparer.OrdinalIgnoreCase))
+            .Select(request => $"{request.Division}|{request.SlotId}")
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var slots = bundle.Blocks
+            .Where(block => string.Equals(block.CanonicalDivisionCode, division, StringComparison.OrdinalIgnoreCase))
+            .Where(block => block.BaseRequestable)
+            .Where(block =>
+                string.Equals(block.NormalizationState, "ready", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(block.NormalizationState, "normalized", StringComparison.OrdinalIgnoreCase))
+            .Where(block => block.RemainingCapacity > 0 || activeSlotIds.Contains($"{block.CanonicalDivisionCode}|{block.EffectiveSlotId}"))
+            .OrderBy(block => block.Date)
+            .ThenBy(block => block.StartTime)
+            .ThenBy(block => block.FieldName, StringComparer.OrdinalIgnoreCase)
+            .Select(MapSlot)
             .ToList();
+
         return new FieldInventoryPracticeCoachResponse(
             bundle.SeasonLabel,
             bundle.SeasonOptions,
@@ -648,18 +1036,63 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
             requests);
     }
 
-    private static FieldInventoryPracticeSummaryDto BuildSummary(List<FieldInventoryPracticeAdminRowDto> rows, List<FieldInventoryPracticeRequestDto> requests)
+    private static FieldInventoryPracticeSlotDto MapSlot(PracticeBlockCandidate block)
+    {
+        return new FieldInventoryPracticeSlotDto(
+            block.PracticeSlotKey,
+            block.SeasonLabel,
+            block.LiveRecordId,
+            block.EffectiveSlotId,
+            block.CanonicalDivisionCode,
+            block.Date,
+            block.DayOfWeek,
+            block.StartTime,
+            block.EndTime,
+            block.SlotDurationMinutes,
+            block.FieldId,
+            block.FieldName,
+            block.BookingPolicy,
+            BookingPolicyLabel(block.BookingPolicy),
+            block.BookingPolicyReason,
+            block.NormalizationState,
+            block.NormalizationIssues,
+            block.AssignedGroup,
+            block.AssignedDivision,
+            block.AssignedTeamOrEvent,
+            block.Capacity,
+            block.ApprovedCount,
+            block.PendingCount,
+            block.RemainingCapacity,
+            block.ApprovedTeamIds,
+            block.PendingTeamIds);
+    }
+
+    private static FieldInventoryPracticeSummaryDto BuildSummary(
+        IReadOnlyCollection<FieldInventoryPracticeAdminRowDto> rows,
+        IReadOnlyCollection<FieldInventoryPracticeRequestDto> requests)
     {
         return new FieldInventoryPracticeSummaryDto(
             rows.Count,
-            rows.Sum(r => r.RequestableBlockCount),
-            rows.Where(r => r.BookingPolicy == FieldInventoryPracticeBookingPolicies.AutoApprove).Sum(r => r.RequestableBlockCount),
-            rows.Where(r => r.BookingPolicy == FieldInventoryPracticeBookingPolicies.CommissionerReview).Sum(r => r.RequestableBlockCount),
-            requests.Count(r => string.Equals(r.Status, FieldInventoryPracticeRequestStatuses.Pending, StringComparison.OrdinalIgnoreCase)),
-            requests.Count(r => string.Equals(r.Status, FieldInventoryPracticeRequestStatuses.Approved, StringComparison.OrdinalIgnoreCase)),
-            rows.Count(r => r.MappingIssues.Contains("division_unmapped")),
-            rows.Count(r => r.MappingIssues.Contains("team_unmapped")),
-            rows.Count(r => r.MappingIssues.Contains("policy_unmapped")));
+            rows.Sum(row => row.RequestableBlockCount),
+            rows.Where(row => string.Equals(row.BookingPolicy, FieldInventoryPracticeBookingPolicies.AutoApprove, StringComparison.OrdinalIgnoreCase))
+                .Sum(row => row.RequestableBlockCount),
+            rows.Where(row => string.Equals(row.BookingPolicy, FieldInventoryPracticeBookingPolicies.CommissionerReview, StringComparison.OrdinalIgnoreCase))
+                .Sum(row => row.RequestableBlockCount),
+            requests.Count(request => string.Equals(request.Status, FieldInventoryPracticeRequestStatuses.Pending, StringComparison.OrdinalIgnoreCase)),
+            requests.Count(request => string.Equals(request.Status, FieldInventoryPracticeRequestStatuses.Approved, StringComparison.OrdinalIgnoreCase)),
+            rows.Count(row => row.MappingIssues.Contains("division_unmapped", StringComparer.OrdinalIgnoreCase)),
+            rows.Count(row => row.MappingIssues.Contains("team_unmapped", StringComparer.OrdinalIgnoreCase)),
+            rows.Count(row => row.MappingIssues.Contains("policy_unmapped", StringComparer.OrdinalIgnoreCase)));
+    }
+
+    private static FieldInventoryPracticeNormalizationSummaryDto BuildNormalizationSummary(IReadOnlyCollection<PracticeBlockCandidate> blocks)
+    {
+        return new FieldInventoryPracticeNormalizationSummaryDto(
+            blocks.Count,
+            blocks.Count(block => string.Equals(block.NormalizationState, "normalized", StringComparison.OrdinalIgnoreCase)),
+            blocks.Count(block => string.Equals(block.NormalizationState, "ready", StringComparison.OrdinalIgnoreCase)),
+            blocks.Count(block => string.Equals(block.NormalizationState, "conflict", StringComparison.OrdinalIgnoreCase)),
+            blocks.Count(block => string.Equals(block.NormalizationState, "blocked", StringComparison.OrdinalIgnoreCase)));
     }
 
     private async Task<MembershipContext> RequireCoachMembershipAsync(string leagueId, string userId)
@@ -676,8 +1109,254 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
 
         var division = ReadMembershipValue(membership, "Division", "CoachDivision");
         var teamId = ReadMembershipValue(membership, "TeamId", "CoachTeamId");
-        var teamName = membership?.GetString("TeamName");
+        var teamName = FirstNonBlank(
+            membership?.GetString("TeamName"),
+            membership?.GetString("CoachTeamName"));
         return new MembershipContext(role, isLeagueAdmin || isGlobalAdmin, division, teamId, teamName);
+    }
+
+    private static TableEntity BuildCanonicalSlotEntity(PracticeBlockCandidate block, string userId, DateTimeOffset now)
+    {
+        var entity = new TableEntity(Constants.Pk.Slots(block.LeagueId, block.CanonicalDivisionCode), block.DeterministicSlotId)
+        {
+            ["LeagueId"] = block.LeagueId,
+            ["SlotId"] = block.DeterministicSlotId,
+            ["Division"] = block.CanonicalDivisionCode,
+            ["OfferingTeamId"] = "",
+            ["HomeTeamId"] = "",
+            ["AwayTeamId"] = "",
+            ["IsExternalOffer"] = false,
+            ["IsAvailability"] = true,
+            ["OfferingEmail"] = "",
+            ["GameDate"] = block.Date,
+            ["StartTime"] = block.StartTime,
+            ["EndTime"] = block.EndTime,
+            ["Status"] = Constants.Status.SlotOpen,
+            ["Notes"] = "Normalized from committed field inventory.",
+            ["CreatedUtc"] = now,
+            ["UpdatedUtc"] = now,
+            ["LastUpdatedUtc"] = now,
+        };
+
+        ApplyCanonicalSlotMetadata(entity, block, userId, now);
+        return entity;
+    }
+
+    private static void ApplyCanonicalSlotMetadata(TableEntity entity, PracticeBlockCandidate block, string userId, DateTimeOffset now)
+    {
+        var normalizedFieldKey = NormalizeFieldKey(block.FieldId);
+        var displayName = FirstNonBlank(block.FieldName, normalizedFieldKey);
+        var fieldName = displayName;
+        var parkName = ExtractParkName(displayName, normalizedFieldKey);
+        if (displayName.Contains('>', StringComparison.Ordinal))
+        {
+            var parts = displayName.Split('>', 2, StringSplitOptions.TrimEntries);
+            parkName = FirstNonBlank(parts.ElementAtOrDefault(0), parkName);
+            fieldName = FirstNonBlank(parts.ElementAtOrDefault(1), displayName);
+        }
+
+        entity["LeagueId"] = block.LeagueId;
+        entity["SlotId"] = entity.RowKey;
+        entity["Division"] = block.CanonicalDivisionCode;
+        entity["GameDate"] = block.Date;
+        entity["StartTime"] = block.StartTime;
+        entity["EndTime"] = block.EndTime;
+        entity["FieldKey"] = normalizedFieldKey;
+        entity["ParkName"] = parkName;
+        entity["FieldName"] = fieldName;
+        entity["DisplayName"] = displayName;
+        entity["IsAvailability"] = true;
+        entity["GameType"] = "Availability";
+        entity["AllocationSlotType"] = "practice";
+        entity["PracticeBookingPolicy"] = block.BookingPolicy;
+        entity["PracticeSlotKey"] = block.PracticeSlotKey;
+        entity["PracticeSourceRecordId"] = block.LiveRecordId;
+        entity["PracticeSeasonLabel"] = block.SeasonLabel;
+        entity["PracticeNormalizationState"] = block.NormalizationState;
+        entity["PracticeAssignedGroup"] = block.AssignedGroup ?? "";
+        entity["PracticeAssignedDivision"] = block.AssignedDivision ?? "";
+        entity["PracticeAssignedTeamOrEvent"] = block.AssignedTeamOrEvent ?? "";
+        entity["PracticeNormalizedBy"] = userId;
+        entity["PracticeNormalizedUtc"] = now;
+        entity["UpdatedUtc"] = now;
+        entity["LastUpdatedUtc"] = now;
+    }
+
+    private static bool NeedsCanonicalSlotUpdate(TableEntity slot, PracticeBlockCandidate block)
+    {
+        var normalizedFieldKey = NormalizeFieldKey(block.FieldId);
+        var displayName = FirstNonBlank(block.FieldName, normalizedFieldKey);
+        var fieldName = displayName;
+        var parkName = ExtractParkName(displayName, normalizedFieldKey);
+        if (displayName.Contains('>', StringComparison.Ordinal))
+        {
+            var parts = displayName.Split('>', 2, StringSplitOptions.TrimEntries);
+            parkName = FirstNonBlank(parts.ElementAtOrDefault(0), parkName);
+            fieldName = FirstNonBlank(parts.ElementAtOrDefault(1), displayName);
+        }
+
+        return
+            !string.Equals((slot.GetString("GameDate") ?? "").Trim(), block.Date, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals((slot.GetString("StartTime") ?? "").Trim(), block.StartTime, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals((slot.GetString("EndTime") ?? "").Trim(), block.EndTime, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(NormalizeFieldKey(slot.GetString("FieldKey")), normalizedFieldKey, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals((slot.GetString("DisplayName") ?? "").Trim(), displayName, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals((slot.GetString("FieldName") ?? "").Trim(), fieldName, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals((slot.GetString("ParkName") ?? "").Trim(), parkName, StringComparison.OrdinalIgnoreCase) ||
+            !SlotEntityUtil.ReadBool(slot, "IsAvailability", false) ||
+            !string.Equals(SlotEntityUtil.ReadString(slot, "GameType"), "Availability", StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(SlotEntityUtil.ReadString(slot, "AllocationSlotType"), "practice", StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals((slot.GetString("PracticeBookingPolicy") ?? "").Trim(), block.BookingPolicy, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals((slot.GetString("PracticeSlotKey") ?? "").Trim(), block.PracticeSlotKey, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals((slot.GetString("PracticeSourceRecordId") ?? "").Trim(), block.LiveRecordId, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals((slot.GetString("PracticeSeasonLabel") ?? "").Trim(), block.SeasonLabel, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ResolveSeasonLabel(string? seasonLabel, IReadOnlyList<string> seasons)
+    {
+        var requested = (seasonLabel ?? "").Trim();
+        if (!string.IsNullOrWhiteSpace(requested))
+        {
+            return requested;
+        }
+
+        return seasons.FirstOrDefault() ?? "";
+    }
+
+    private static List<CanonicalFieldOptionDto> BuildCanonicalFieldOptions(IReadOnlyCollection<FieldInventoryLiveRecordEntity> liveRecords)
+    {
+        return liveRecords
+            .Where(record => !string.IsNullOrWhiteSpace(record.FieldId))
+            .GroupBy(record => NormalizeFieldKey(record.FieldId), StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var first = group.First();
+                var displayName = FirstNonBlank(first.FieldName, first.RawFieldName, group.Key);
+                var fieldName = displayName.Contains('>', StringComparison.Ordinal)
+                    ? FirstNonBlank(displayName.Split('>', 2, StringSplitOptions.TrimEntries).ElementAtOrDefault(1), displayName)
+                    : displayName;
+                var parkName = ExtractParkName(displayName, group.Key);
+                return new CanonicalFieldOptionDto(group.Key, displayName, fieldName, parkName);
+            })
+            .OrderBy(option => option.CanonicalFieldName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static DivisionMatch ResolveDivision(
+        string? rawDivision,
+        IReadOnlyCollection<DivisionOption> divisions,
+        IReadOnlyCollection<FieldInventoryDivisionAliasEntity> aliases)
+    {
+        var raw = (rawDivision ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return new DivisionMatch(null, null);
+        }
+
+        var normalized = NormalizeLookupKey(raw);
+        var alias = aliases.FirstOrDefault(item =>
+            string.Equals(item.NormalizedLookupKey, normalized, StringComparison.OrdinalIgnoreCase));
+        if (alias is not null)
+        {
+            return new DivisionMatch(alias.CanonicalDivisionCode, alias.CanonicalDivisionName);
+        }
+
+        var exact = divisions.FirstOrDefault(division =>
+            string.Equals(division.Code, raw, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(division.Name, raw, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(NormalizeLookupKey(division.Name), normalized, StringComparison.OrdinalIgnoreCase));
+        return exact is null
+            ? new DivisionMatch(null, null)
+            : new DivisionMatch(exact.Code, exact.Name);
+    }
+
+    private static TeamMatch ResolveTeam(
+        string? rawTeam,
+        string? divisionCode,
+        IReadOnlyCollection<TeamOption> teams,
+        IReadOnlyCollection<FieldInventoryTeamAliasEntity> aliases)
+    {
+        var raw = (rawTeam ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return new TeamMatch(null, null);
+        }
+
+        var normalized = NormalizeLookupKey(raw);
+        var scopedAlias = aliases.FirstOrDefault(item =>
+            string.Equals(item.CanonicalDivisionCode, divisionCode ?? "", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(item.NormalizedLookupKey, normalized, StringComparison.OrdinalIgnoreCase));
+        if (scopedAlias is not null)
+        {
+            return new TeamMatch(scopedAlias.CanonicalTeamId, scopedAlias.CanonicalTeamName);
+        }
+
+        var candidates = teams
+            .Where(team => string.IsNullOrWhiteSpace(divisionCode) || string.Equals(team.DivisionCode, divisionCode, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var exact = candidates.FirstOrDefault(team =>
+            string.Equals(team.TeamId, raw, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(team.TeamName, raw, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(NormalizeLookupKey(team.TeamName), normalized, StringComparison.OrdinalIgnoreCase));
+        return exact is null
+            ? new TeamMatch(null, null)
+            : new TeamMatch(exact.TeamId, exact.TeamName);
+    }
+
+    private static PolicyDecision ResolvePolicy(
+        FieldInventoryLiveRecordEntity record,
+        IReadOnlyCollection<FieldInventoryGroupPolicyEntity> groupPolicies)
+    {
+        var availabilityAvailable = string.Equals(record.AvailabilityStatus, FieldInventoryAvailabilityStatuses.Available, StringComparison.OrdinalIgnoreCase);
+        var notUsed = string.Equals(record.UtilizationStatus, FieldInventoryUtilizationStatuses.NotUsed, StringComparison.OrdinalIgnoreCase);
+        if (!availabilityAvailable || !notUsed)
+        {
+            return new PolicyDecision(FieldInventoryPracticeBookingPolicies.NotRequestable, "Used or unavailable inventory.", false);
+        }
+
+        var rawGroup = (record.AssignedGroup ?? "").Trim();
+        if (!string.IsNullOrWhiteSpace(rawGroup))
+        {
+            var normalizedGroup = NormalizeLookupKey(rawGroup);
+            var saved = groupPolicies.FirstOrDefault(item =>
+                string.Equals(item.NormalizedLookupKey, normalizedGroup, StringComparison.OrdinalIgnoreCase));
+            if (saved is not null)
+            {
+                return new PolicyDecision(NormalizeBookingPolicy(saved.BookingPolicy), $"Mapped from group '{rawGroup}'.", true);
+            }
+        }
+
+        if (HasPonytailSignal(record))
+        {
+            return new PolicyDecision(FieldInventoryPracticeBookingPolicies.AutoApprove, "Ponytail-assigned space auto-approves coach requests.", true);
+        }
+
+        if (string.IsNullOrWhiteSpace(record.AssignedGroup) &&
+            string.IsNullOrWhiteSpace(record.AssignedDivision) &&
+            string.IsNullOrWhiteSpace(record.AssignedTeamOrEvent))
+        {
+            return new PolicyDecision(FieldInventoryPracticeBookingPolicies.CommissionerReview, "Unassigned available space requires commissioner approval.", false);
+        }
+
+        return new PolicyDecision(FieldInventoryPracticeBookingPolicies.NotRequestable, "Needs policy mapping before coaches can request it.", true);
+    }
+
+    private static bool HasPonytailSignal(FieldInventoryLiveRecordEntity record)
+    {
+        var signals = new[]
+        {
+            NormalizeLookupKey(record.AssignedGroup ?? ""),
+            NormalizeLookupKey(record.AssignedDivision ?? ""),
+            NormalizeLookupKey(record.AssignedTeamOrEvent ?? ""),
+            NormalizeLookupKey(record.SourceValue),
+        };
+
+        return signals.Any(signal =>
+            !string.IsNullOrWhiteSpace(signal) &&
+            (signal.Contains("ponytail", StringComparison.OrdinalIgnoreCase) ||
+             signal.Contains("ponytails", StringComparison.OrdinalIgnoreCase) ||
+             signal.Contains("pypractice", StringComparison.OrdinalIgnoreCase) ||
+             signal == "py"));
     }
 
     private static string ReadMembershipValue(TableEntity? membership, string primary, string legacy)
@@ -685,7 +1364,7 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
         return (membership?.GetString(primary) ?? membership?.GetString(legacy) ?? "").Trim();
     }
 
-    private static string NormalizeLookupKey(string value)
+    private static string NormalizeLookupKey(string? value)
     {
         return string.Concat((value ?? "")
             .Trim()
@@ -705,24 +1384,19 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
     }
 
     private static string BookingPolicyLabel(string bookingPolicy)
-        => bookingPolicy switch
+    {
+        return NormalizeBookingPolicy(bookingPolicy) switch
         {
             FieldInventoryPracticeBookingPolicies.AutoApprove => "Auto-approve",
             FieldInventoryPracticeBookingPolicies.CommissionerReview => "Commissioner review",
             _ => "Not requestable",
         };
+    }
 
     private static bool TryParseMinutes(string? value, out int minutes)
     {
         minutes = 0;
-        if (string.IsNullOrWhiteSpace(value)) return false;
-        if (!TimeOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed)
-            && !TimeOnly.TryParse(value, out parsed))
-        {
-            return false;
-        }
-        minutes = parsed.Hour * 60 + parsed.Minute;
-        return true;
+        return !string.IsNullOrWhiteSpace(value) && TimeUtil.TryParseMinutes(value.Trim(), out minutes);
     }
 
     private static string FormatMinutes(int minutes)
@@ -731,16 +1405,61 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
         return $"{clamped / 60:D2}:{clamped % 60:D2}";
     }
 
+    private static string WeekdayFromIso(string? isoDate)
+    {
+        return DateOnly.TryParse((isoDate ?? "").Trim(), out var parsed)
+            ? parsed.DayOfWeek.ToString()
+            : "";
+    }
+
+    private static string BuildIdentity(string division, string fieldKey, string gameDate, string startTime, string endTime)
+    {
+        return SlotKeyUtil.BuildIdentity(division, fieldKey, gameDate, startTime, endTime);
+    }
+
+    private static string NormalizeFieldKey(string? fieldKey)
+    {
+        return SlotKeyUtil.NormalizeFieldKey(fieldKey ?? "");
+    }
+
+    private static string FirstNonBlank(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            var trimmed = (value ?? "").Trim();
+            if (!string.IsNullOrWhiteSpace(trimmed))
+            {
+                return trimmed;
+            }
+        }
+
+        return "";
+    }
+
+    private static string ExtractParkName(string? displayName, string? fieldKey = null)
+    {
+        var label = (displayName ?? "").Trim();
+        if (label.Contains('>', StringComparison.Ordinal))
+        {
+            return label.Split('>', 2, StringSplitOptions.TrimEntries).ElementAtOrDefault(0) ?? "";
+        }
+
+        if (SlotKeyUtil.TrySplitFieldKey(fieldKey, out var parkCode, out _))
+        {
+            return parkCode;
+        }
+
+        return "";
+    }
+
     private sealed class Bundle
     {
         public string LeagueId { get; set; } = "";
         public string SeasonLabel { get; set; } = "";
         public List<FieldInventoryPracticeSeasonOptionDto> SeasonOptions { get; set; } = [];
-        public List<FieldInventoryLiveRecordEntity> LiveRecords { get; set; } = [];
-        public List<FieldInventoryPracticeRequestEntity> RequestEntities { get; set; } = [];
-        public List<FieldInventoryPracticeRequestDto> Requests { get; set; } = [];
         public List<FieldInventoryPracticeAdminRowDto> AdminRows { get; set; } = [];
-        public List<FieldInventoryPracticeSlotDto> RequestableSlots { get; set; } = [];
+        public List<PracticeBlockCandidate> Blocks { get; set; } = [];
+        public List<FieldInventoryPracticeRequestDto> Requests { get; set; } = [];
         public List<CanonicalFieldOptionDto> CanonicalFields { get; set; } = [];
         public List<CanonicalDivisionOptionDto> CanonicalDivisions { get; set; } = [];
         public List<CanonicalTeamOptionDto> CanonicalTeams { get; set; } = [];
@@ -751,6 +1470,51 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
     private sealed record DivisionMatch(string? Code, string? Name);
     private sealed record TeamMatch(string? TeamId, string? TeamName);
     private sealed record PolicyDecision(string BookingPolicy, string Reason, bool IsActionable);
-    private sealed record AlignmentResult(List<FieldInventoryPracticeAdminRowDto> Rows, List<FieldInventoryPracticeSlotDto> Slots, List<FieldInventoryPracticeRequestDto> Requests);
     private sealed record MembershipContext(string Role, bool IsLeagueAdminOrGlobalAdmin, string TeamDivision, string TeamId, string? TeamName);
+    private sealed record AlignedRecord(
+        string SeasonLabel,
+        FieldInventoryLiveRecordEntity Record,
+        DivisionMatch Division,
+        TeamMatch Team,
+        PolicyDecision Policy,
+        List<string> MappingIssues);
+
+    private sealed class PracticeBlockCandidate
+    {
+        public string LeagueId { get; set; } = "";
+        public string PracticeSlotKey { get; set; } = "";
+        public string SeasonLabel { get; set; } = "";
+        public string LiveRecordId { get; set; } = "";
+        public string Date { get; set; } = "";
+        public string DayOfWeek { get; set; } = "";
+        public string StartTime { get; set; } = "";
+        public string EndTime { get; set; } = "";
+        public int SlotDurationMinutes { get; set; }
+        public string FieldId { get; set; } = "";
+        public string FieldName { get; set; } = "";
+        public string BookingPolicy { get; set; } = FieldInventoryPracticeBookingPolicies.NotRequestable;
+        public string BookingPolicyReason { get; set; } = "";
+        public string? AssignedGroup { get; set; }
+        public string? AssignedDivision { get; set; }
+        public string? AssignedTeamOrEvent { get; set; }
+        public string CanonicalDivisionCode { get; set; } = "";
+        public string? CanonicalDivisionName { get; set; }
+        public string? CanonicalTeamId { get; set; }
+        public string? CanonicalTeamName { get; set; }
+        public bool BaseRequestable { get; set; }
+        public List<string> MappingIssues { get; set; } = [];
+        public string DeterministicSlotId { get; set; } = "";
+        public string EffectiveSlotId { get; set; } = "";
+        public string NormalizationState { get; set; } = "blocked";
+        public List<string> NormalizationIssues { get; set; } = [];
+        public bool NeedsSlotMetadataSync { get; set; }
+        public TableEntity? ExactSlot { get; set; }
+        public List<TableEntity> OverlapSlots { get; set; } = [];
+        public int Capacity { get; set; } = 1;
+        public int ApprovedCount { get; set; }
+        public int PendingCount { get; set; }
+        public int RemainingCapacity { get; set; }
+        public List<string> ApprovedTeamIds { get; set; } = [];
+        public List<string> PendingTeamIds { get; set; } = [];
+    }
 }

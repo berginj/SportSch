@@ -1,141 +1,126 @@
 # Practice Space Workflow
 
-This workflow replaces the old coach-facing practice slot request tool with an inventory-backed practice space flow sourced from committed AGSA field inventory.
+This document describes the normalized practice-space workflow now used by the admin and coach surfaces.
 
-## Product Shape
+## Canonical Flow
 
-There are now two distinct surfaces:
+1. County workbook inventory is imported and committed.
+2. Admins review committed rows in `Manage -> Practice Space Admin`.
+3. Admins save reusable division aliases, team aliases, and booking policies.
+4. Admins preview or apply normalization.
+5. Normalization backfills deterministic canonical availability rows into `GameSwapSlots`.
+6. Coaches request, move, or cancel practice blocks from the Practice Portal.
+7. Commissioner-reviewed requests are approved or rejected from the same admin surface.
 
-- Admin review
-  - `Manage -> Practice Space Admin`
-  - review imported field availability/utilization in one place
-  - align imported division/team text to canonical SportsCH values
-  - save reusable group booking policies
-  - approve or reject commissioner-reviewed practice requests
-- Coach request page
-  - `Practice`
-  - browse requestable 90-minute practice blocks
-  - see whether a block auto-approves or needs commissioner review
-  - track and cancel the team’s requests
+## Primary Surfaces
 
-## How Requestable Space Is Derived
+- `Manage -> Practice Space Admin`
+  - review committed inventory rows
+  - inspect normalization state at the 90-minute block level
+  - save mapping and booking-policy decisions
+  - normalize missing canonical availability
+  - approve or reject pending practice requests, including moves
+- `Practice`
+  - browse normalized practice blocks for the signed-in coach's team
+  - request auto-approve or commissioner-review space
+  - move an active request to another normalized block
+  - cancel a pending or approved request
+- `Coach Onboarding`
+  - hands coaches off to the Practice Portal
+  - shows current normalized practice request status
 
-Requestable space only comes from committed field inventory records that are:
+## Normalization Model
+
+Committed inventory only becomes requestable when it is both:
 
 - `AvailabilityStatus = available`
 - `UtilizationStatus = not_used`
 
-Those records are normalized into:
+Each eligible row is split into 90-minute blocks. Each block is evaluated into one of these states:
 
-- 90-minute request blocks
-- capacity of 2 teams per block
+- `ready`
+  - the imported block is requestable and can be backfilled into `GameSwapSlots`
+- `normalized`
+  - a matching canonical availability slot already exists with aligned metadata
+- `conflict`
+  - overlapping or incompatible canonical data already exists and needs admin review
+- `blocked`
+  - the imported block cannot be normalized yet because of mapping gaps, requestability rules, or existing usage
 
-Booking policy is then applied:
+Normalization writes deterministic slot ids by using `SlotKeyUtil.BuildAvailabilitySlotId(...)`.
+
+## Booking Policies
 
 - `auto_approve`
-  - Ponytail-assigned space
-  - coach request is confirmed immediately if capacity remains
+  - imported group policy allows immediate confirmation
+  - requests are approved immediately when capacity remains
 - `commissioner_review`
-  - available but unassigned space
-  - coach request is created as pending until a commissioner approves it
+  - block is requestable but requires commissioner approval
+  - request remains pending until approved or rejected
 - `not_requestable`
-  - used, unavailable, or still missing a clear policy mapping
+  - used, unavailable, or missing enough mapping/policy information to expose safely
 
-## Admin Walkthroughs
+Each normalized practice block currently supports one active team reservation.
 
-### Iteration 1: First import review
+## Admin Workflow
+
+### First pass
 
 1. Open `Manage -> Practice Space Admin`.
-2. Review imported rows by date, field, group, raw division text, and raw team/event text.
-3. Save division mappings where AGSA workbook language does not match canonical SportsCH division codes.
-4. Save team mappings where workbook team/event text should resolve to a real SportsCH team.
-5. Save booking policies for reusable group labels.
+2. Review imported rows and the normalization calendar/table together.
+3. Save division aliases where workbook text does not match canonical division codes.
+4. Save team aliases where workbook team text should map to a canonical team.
+5. Save booking policy mappings for reusable imported group labels.
 
-Expected result:
+### Normalize missing availability
 
-- unresolved mapping counts shrink
-- previously blocked rows become requestable
-- coach page starts showing more actionable space
+1. Use `Preview Normalize` to inspect the target date range.
+2. Filter to `Missing`, `Conflict`, or a specific issue when needed.
+3. Use `Normalize Missing` for a range or `Normalize Day` for a single block.
+4. Re-check conflicts before exposing that space to coaches.
 
-### Iteration 2: Ponytail-assigned space
+### Review request queue
 
-1. Find rows where imported group is `Ponytail`.
-2. Confirm they resolve to `auto_approve`.
-3. Verify the row now shows requestable 90-minute blocks.
+1. Filter the request queue by status.
+2. Approve or reject pending requests.
+3. For move requests, confirm the replacement block before the source request is released.
 
-Expected result:
+## Coach Workflow
 
-- coaches requesting those blocks are approved immediately
-- the request queue does not grow for those blocks unless capacity is exhausted
-
-### Iteration 3: Unassigned county availability
-
-1. Find rows with available/not-used space and no assigned group, division, or team/event.
-2. Confirm they resolve to `commissioner_review`.
-3. Watch pending requests arrive in the request queue.
-4. Approve or reject from the same admin surface.
-
-Expected result:
-
-- coaches can ask for open county space
-- commissioners keep control over unassigned inventory
-
-## Coach Walkthroughs
-
-### Scenario 1: Coach requests Ponytail space
+### Request space
 
 1. Open `Practice`.
-2. Filter to the desired day and look for `Auto-approve`.
-3. Click `Book Now`.
+2. Filter by day or approval path.
+3. Request a normalized block.
 
 Result:
 
-- request becomes `Approved` immediately
-- one of the two seats is consumed
+- `Auto-approve` blocks confirm immediately.
+- `Commissioner review` blocks become pending.
 
-### Scenario 2: Coach requests unassigned available space
+### Move a request
 
-1. Open `Practice`.
-2. Filter to `Commissioner review`.
-3. Click `Request for Approval`.
-
-Result:
-
-- request becomes `Pending`
-- the seat is reserved while awaiting commissioner decision
-- commissioner approves or rejects from `Practice Space Admin`
-
-### Scenario 3: Two teams share one practice block
-
-1. Team A requests a 90-minute block.
-2. Team B requests the same block while one seat remains.
+1. In `My Practice Requests`, choose `Move` on an active request.
+2. Select a replacement normalized block.
 
 Result:
 
-- the block can hold both teams
-- once capacity reaches 2, the block is full
+- if the target block is `auto_approve`, the move completes immediately
+- if the target block needs review, the replacement request stays pending
+- the original slot remains active until the move is approved or auto-approved
 
-### Scenario 4: Coach cancels a request
+### Cancel a request
 
-1. Open `Practice -> My Practice Requests`.
-2. Cancel a pending or approved request no longer needed.
+1. Cancel a pending or approved request no longer needed.
 
 Result:
 
-- capacity reopens for another team
-- the admin queue and coach page stay aligned
+- capacity reopens on the normalized block
+- admin and coach views stay aligned
 
-## Coach Help Cues
+## Operational Notes
 
-The coach page should always make these ideas explicit:
-
-- why a block is auto-approved vs commissioner-reviewed
-- that each practice block is 90 minutes
-- that each block allows 2 teams
-- that cancelled requests reopen capacity
-
-Current UI support:
-
-- hover hints on filters and policy labels
-- in-page help links
-- a dedicated `How This Works` section on the coach page
+- The admin normalization calendar is the source of truth for imported-vs-canonical drift.
+- Conflicts are highlighted, not silently overwritten.
+- Requestable coach inventory only comes from normalized or ready practice blocks with remaining capacity.
+- Legacy `/api/practice-requests` and direct slot-claim flows are no longer the intended coach-facing workflow.

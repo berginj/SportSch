@@ -1,72 +1,76 @@
 # Coach Onboarding
 
-Current product scope:
-- `#coach-setup` is the team setup handoff page for coaches.
-- Practice selection is not embedded on onboarding anymore.
-- Recurring requests, one-off practice booking, and commissioner approval flow live in the Practice Portal.
+Coach onboarding and practice setup are now intentionally separated.
 
-## Coach flow
+## Product Scope
 
-1. Open the personalized onboarding link for your league/team.
-2. Confirm team information:
-   - team name
-   - primary contact
-   - assistant coaches
-3. Open the Practice Portal from onboarding to handle practice requests.
-4. Set clinic preference.
-5. Review the current schedule.
-6. Mark onboarding complete when ready.
+- `#coach-setup` remains the team setup handoff page for coaches.
+- Practice selection is handled by the Practice Portal, not inline on onboarding.
+- The onboarding page surfaces current practice status and links coaches into the normalized practice workflow.
 
-## Commissioner flow
+## Coach Flow
 
-1. Generate coach links from League Management.
+1. Open the personalized onboarding link for the correct league and team.
+2. Confirm team profile details.
+3. Open the Practice Portal from onboarding.
+4. Request, move, or cancel practice space there.
+5. Return to onboarding to finish setup items and mark onboarding complete.
+
+## Commissioner Flow
+
+1. Generate coach onboarding links from League Management.
 2. Send coaches their `#coach-setup` links.
-3. Track completion status from the coach link workflow and team records.
-4. Review practice requests in the Practice Requests manager / Practice Portal workflow.
+3. Track onboarding completion separately from practice-space activity.
+4. Review practice-space requests in `Manage -> Practice Space Admin`.
 
-## Links
-
-Example onboarding link:
-
-```text
-https://yourapp.com/?leagueId=BGSB2026&teamId=Panthers#coach-setup
-```
-
-The onboarding page keeps the coach in authenticated league scope and routes practice work to `#practice`.
-
-## Page responsibilities
+## Surface Responsibilities
 
 `CoachOnboardingPage.jsx`
+
 - team profile edits
 - clinic preference
 - schedule review
 - onboarding completion
-- Practice Portal handoff
+- practice-portal handoff
+- summary of the team's active normalized practice requests
 
 `PracticePortalPage.jsx`
-- recurring practice requests
-- one-off practice booking
-- division eligibility and gate checks
+
+- normalized practice-space browsing
+- auto-approve vs commissioner-review request flow
+- move flow for active requests
+- cancellation flow
 - request status tracking
 
-## API touchpoints
+## API Touchpoints
 
 Onboarding uses:
+
 - `GET /api/teams?division=...`
 - `PATCH /api/teams/{division}/{teamId}`
-- `GET /api/practice-requests?teamId=...`
+- `GET /api/field-inventory/practice/coach`
 - `GET /api/slots?division=...&status=Confirmed&dateFrom=...&dateTo=...`
 
 Practice Portal uses:
-- `GET /api/practice-portal/settings`
-- `POST /api/practice-requests`
-- `GET /api/practice-requests`
-- `PATCH /api/practice-requests/{requestId}/approve`
-- `PATCH /api/practice-requests/{requestId}/reject`
-- `POST /api/slots/{division}/{slotId}/practice`
+
+- `GET /api/field-inventory/practice/coach`
+- `POST /api/field-inventory/practice/requests`
+- `PATCH /api/field-inventory/practice/requests/{requestId}/move`
+- `PATCH /api/field-inventory/practice/requests/{requestId}/cancel`
+
+Practice Space Admin uses:
+
+- `GET /api/field-inventory/practice/admin`
+- `POST /api/field-inventory/practice/mappings/divisions`
+- `POST /api/field-inventory/practice/mappings/teams`
+- `POST /api/field-inventory/practice/policies`
+- `POST /api/field-inventory/practice/normalize`
+- `PATCH /api/field-inventory/practice/requests/{requestId}/approve`
+- `PATCH /api/field-inventory/practice/requests/{requestId}/reject`
 
 ## Notes
 
-- Coaches can still revisit onboarding after completion.
-- Team setup and practice setup are intentionally separated now to avoid duplicate workflows.
-- Use `docs/contract.md` and `docs/PRACTICE_REQUESTS_AND_CLAIMS_BEHAVIORAL_CONTRACT.md` for the canonical API and workflow rules.
+- Coaches can revisit onboarding after completion.
+- Practice setup now depends on normalized field-inventory blocks rather than the legacy practice-request page.
+- Use `docs/practice-space-workflow.md` for the current coach/admin behavior.
+- Legacy `/api/practice-requests` endpoints are compatibility surfaces, not the intended onboarding path.

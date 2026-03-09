@@ -46,11 +46,101 @@ public class PracticeRequestService : IPracticeRequestService
         string? shareWithTeamId,
         int? priority = null)
     {
+        return await CreateRequestCoreAsync(
+            leagueId,
+            userId,
+            division,
+            teamId,
+            slotId,
+            reason,
+            openToShareField,
+            shareWithTeamId,
+            priority,
+            excludedActiveRequestId: null,
+            extraProperties: null);
+    }
+
+    public async Task<TableEntity> CreateMoveRequestAsync(
+        string leagueId,
+        string userId,
+        string sourceRequestId,
+        string targetSlotId,
+        string? reason)
+    {
+        var sourceId = (sourceRequestId ?? "").Trim();
+        var targetId = (targetSlotId ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(sourceId) || string.IsNullOrWhiteSpace(targetId))
+        {
+            throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST,
+                "sourceRequestId and targetSlotId are required.");
+        }
+
+        var sourceRequest = await _practiceRequestRepo.GetRequestAsync(leagueId, sourceId);
+        if (sourceRequest is null)
+        {
+            throw new ApiGuards.HttpError((int)HttpStatusCode.NotFound, ErrorCodes.REQUEST_NOT_FOUND, "Request not found");
+        }
+
+        await EnsureRequestOwnerOrAdminAsync(leagueId, userId, sourceRequest);
+
+        var sourceStatus = (sourceRequest.GetString("Status") ?? "").Trim();
+        if (!string.Equals(sourceStatus, "Approved", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(sourceStatus, "Pending", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ApiGuards.HttpError((int)HttpStatusCode.Conflict, ErrorCodes.PRACTICE_MOVE_NOT_ALLOWED,
+                $"Only active practice requests can be moved (status: {sourceStatus}).");
+        }
+
+        var division = (sourceRequest.GetString("Division") ?? "").Trim();
+        var teamId = (sourceRequest.GetString("TeamId") ?? "").Trim();
+        var sourceSlotId = (sourceRequest.GetString("SlotId") ?? "").Trim();
+        if (string.Equals(sourceSlotId, targetId, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ApiGuards.HttpError((int)HttpStatusCode.Conflict, ErrorCodes.PRACTICE_MOVE_NOT_ALLOWED,
+                "Choose a different practice slot when moving a request.");
+        }
+
+        var extraProperties = new Dictionary<string, object?>
+        {
+            ["RequestKind"] = "Move",
+            ["MoveFromRequestId"] = sourceId,
+            ["MoveFromSlotId"] = sourceSlotId,
+            ["MoveFromStatus"] = sourceStatus,
+        };
+
+        return await CreateRequestCoreAsync(
+            leagueId,
+            userId,
+            division,
+            teamId,
+            targetId,
+            reason,
+            openToShareField: false,
+            shareWithTeamId: null,
+            priority: sourceRequest.GetInt32("Priority"),
+            excludedActiveRequestId: sourceId,
+            extraProperties: extraProperties);
+    }
+
+    private async Task<TableEntity> CreateRequestCoreAsync(
+        string leagueId,
+        string userId,
+        string division,
+        string teamId,
+        string slotId,
+        string? reason,
+        bool openToShareField,
+        string? shareWithTeamId,
+        int? priority,
+        string? excludedActiveRequestId,
+        IReadOnlyDictionary<string, object?>? extraProperties)
+    {
         division = (division ?? "").Trim();
         teamId = (teamId ?? "").Trim();
         slotId = (slotId ?? "").Trim();
         reason = (reason ?? "").Trim();
         shareWithTeamId = (shareWithTeamId ?? "").Trim();
+        excludedActiveRequestId = (excludedActiveRequestId ?? "").Trim();
 
         if (string.IsNullOrWhiteSpace(division) || string.IsNullOrWhiteSpace(teamId) || string.IsNullOrWhiteSpace(slotId))
         {
@@ -150,18 +240,18 @@ public class PracticeRequestService : IPracticeRequestService
                 "Only open availability practice slots can be requested.");
         }
 
-        var activeRequestCount = await _practiceRequestRepo.CountRequestsForTeamAsync(
-            leagueId, division, teamId, ActiveRequestStatuses);
-        if (activeRequestCount >= 3)
+        var teamRequests = await _practiceRequestRepo.QueryRequestsAsync(leagueId, null, division, teamId, null);
+        var activeRequests = (teamRequests ?? Enumerable.Empty<TableEntity>())
+            .Where(e =>
+                ActiveRequestStatuses.Contains((e.GetString("Status") ?? "").Trim(), StringComparer.OrdinalIgnoreCase) &&
+                !string.Equals(e.RowKey, excludedActiveRequestId, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (activeRequests.Count >= 3)
         {
             throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST,
                 "Team already has 3 pending/approved practice requests. Maximum is 3 slots per team.");
         }
 
-        var queryResult = await _practiceRequestRepo.QueryRequestsAsync(leagueId, null, division, teamId, null);
-        var activeRequests = (queryResult ?? Enumerable.Empty<TableEntity>())
-            .Where(e => ActiveRequestStatuses.Contains((e.GetString("Status") ?? "").Trim(), StringComparer.OrdinalIgnoreCase))
-            .ToList();
         var usedPriorities = new HashSet<int>(
             activeRequests
                 .Select(e => e.GetInt32("Priority") ?? 0)
@@ -185,16 +275,17 @@ public class PracticeRequestService : IPracticeRequestService
                 $"Priority {resolvedPriority} is already in use for another active practice request.");
         }
 
-        var hasDuplicate = await _practiceRequestRepo.ExistsRequestForTeamSlotAsync(
-            leagueId, division, teamId, slotId, ActiveRequestStatuses);
+        var hasDuplicate = activeRequests.Any(e =>
+            string.Equals((e.GetString("SlotId") ?? "").Trim(), slotId, StringComparison.OrdinalIgnoreCase));
         if (hasDuplicate)
         {
             throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, ErrorCodes.ALREADY_EXISTS,
                 "Team already requested this practice slot");
         }
 
-        var hasActiveSlotRequest = (await _practiceRequestRepo.QuerySlotRequestsAsync(
-            leagueId, division, slotId, ActiveRequestStatuses)).Count > 0;
+        var activeSlotRequests = await _practiceRequestRepo.QuerySlotRequestsAsync(leagueId, division, slotId, ActiveRequestStatuses);
+        var hasActiveSlotRequest = activeSlotRequests.Any(e =>
+            !string.Equals(e.RowKey, excludedActiveRequestId, StringComparison.OrdinalIgnoreCase));
         if (hasActiveSlotRequest)
         {
             throw new ApiGuards.HttpError((int)HttpStatusCode.Conflict, ErrorCodes.CONFLICT,
@@ -218,6 +309,23 @@ public class PracticeRequestService : IPracticeRequestService
             ["RequestedBy"] = userId,
             ["UpdatedUtc"] = now
         };
+        CaptureRequestSlotSnapshot(requestEntity, slot);
+
+        if (extraProperties is not null)
+        {
+            foreach (var (key, value) in extraProperties)
+            {
+                if (string.IsNullOrWhiteSpace(key)) continue;
+                if (value is null)
+                {
+                    requestEntity.Remove(key);
+                }
+                else
+                {
+                    requestEntity[key] = value;
+                }
+            }
+        }
 
         await _practiceRequestRepo.CreateRequestAsync(requestEntity);
 
@@ -300,75 +408,17 @@ public class PracticeRequestService : IPracticeRequestService
         string requestId,
         string? reason)
     {
-        reason = (reason ?? "").Trim();
-        var membership = await RequireAdminMembershipAsync(leagueId, userId);
-        _ = membership;
+        await RequireAdminMembershipAsync(leagueId, userId);
+        return await ApproveRequestCoreAsync(leagueId, userId, requestId, reason);
+    }
 
-        var request = await _practiceRequestRepo.GetRequestAsync(leagueId, requestId);
-        if (request is null)
-        {
-            throw new ApiGuards.HttpError((int)HttpStatusCode.NotFound, ErrorCodes.REQUEST_NOT_FOUND, "Request not found");
-        }
-
-        var requestStatus = (request.GetString("Status") ?? "Pending").Trim();
-        if (!string.Equals(requestStatus, "Pending", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new ApiGuards.HttpError((int)HttpStatusCode.Conflict, ErrorCodes.REQUEST_NOT_PENDING,
-                $"Request not pending (status: {requestStatus})");
-        }
-
-        var division = (request.GetString("Division") ?? "").Trim();
-        var teamId = (request.GetString("TeamId") ?? "").Trim();
-        var slotId = (request.GetString("SlotId") ?? "").Trim();
-        if (string.IsNullOrWhiteSpace(division) || string.IsNullOrWhiteSpace(teamId) || string.IsNullOrWhiteSpace(slotId))
-        {
-            throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, ErrorCodes.INVALID_INPUT,
-                "Request is missing division, teamId, or slotId.");
-        }
-
-        var now = DateTimeOffset.UtcNow;
-
-        // Approve request first; if slot update fails, we roll back to Pending best-effort.
-        var approvedRequest = await UpdateRequestStatusAsync(
-            leagueId: leagueId,
-            requestId: requestId,
-            expectedCurrentStatus: "Pending",
-            nextStatus: "Approved",
-            reviewedBy: userId,
-            reviewReason: reason,
-            nowUtc: now);
-
-        List<string> confirmedSlotIds;
-        try
-        {
-            confirmedSlotIds = await ConfirmPracticeRequestSlotsAsync(
-                leagueId: leagueId,
-                division: division,
-                teamId: teamId,
-                requestId: requestId,
-                approvedRequest: approvedRequest,
-                approvedByUserId: userId,
-                nowUtc: now);
-        }
-        catch
-        {
-            try
-            {
-                approvedRequest["Status"] = "Pending";
-                approvedRequest["ReviewedUtc"] = null;
-                approvedRequest["ReviewedBy"] = "";
-                approvedRequest["ReviewReason"] = "";
-                approvedRequest["UpdatedUtc"] = DateTimeOffset.UtcNow;
-                await _practiceRequestRepo.UpdateRequestAsync(approvedRequest, ETag.All);
-            }
-            catch { }
-
-            throw;
-        }
-
-        await RejectCompetingPendingSlotRequestsAsync(leagueId, division, requestId, userId, now, confirmedSlotIds);
-
-        return approvedRequest;
+    public async Task<TableEntity> AutoApproveRequestAsync(
+        string leagueId,
+        string requestId,
+        string reviewedBy,
+        string? reason)
+    {
+        return await ApproveRequestCoreAsync(leagueId, reviewedBy, requestId, reason);
     }
 
     public async Task<TableEntity> RejectRequestAsync(
@@ -463,6 +513,144 @@ public class PracticeRequestService : IPracticeRequestService
         });
 
         return rejectedRequest;
+    }
+
+    public async Task<TableEntity> CancelRequestAsync(
+        string leagueId,
+        string userId,
+        string requestId,
+        string? reason = null)
+    {
+        var request = await _practiceRequestRepo.GetRequestAsync(leagueId, (requestId ?? "").Trim());
+        if (request is null)
+        {
+            throw new ApiGuards.HttpError((int)HttpStatusCode.NotFound, ErrorCodes.REQUEST_NOT_FOUND, "Request not found");
+        }
+
+        await EnsureRequestOwnerOrAdminAsync(leagueId, userId, request);
+        return await CancelRequestCoreAsync(leagueId, request.RowKey, userId, reason, request);
+    }
+
+    private async Task<TableEntity> ApproveRequestCoreAsync(
+        string leagueId,
+        string reviewedBy,
+        string requestId,
+        string? reason)
+    {
+        reason = (reason ?? "").Trim();
+
+        var request = await _practiceRequestRepo.GetRequestAsync(leagueId, requestId);
+        if (request is null)
+        {
+            throw new ApiGuards.HttpError((int)HttpStatusCode.NotFound, ErrorCodes.REQUEST_NOT_FOUND, "Request not found");
+        }
+
+        var requestStatus = (request.GetString("Status") ?? "Pending").Trim();
+        if (!string.Equals(requestStatus, "Pending", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ApiGuards.HttpError((int)HttpStatusCode.Conflict, ErrorCodes.REQUEST_NOT_PENDING,
+                $"Request not pending (status: {requestStatus})");
+        }
+
+        var division = (request.GetString("Division") ?? "").Trim();
+        var teamId = (request.GetString("TeamId") ?? "").Trim();
+        var slotId = (request.GetString("SlotId") ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(division) || string.IsNullOrWhiteSpace(teamId) || string.IsNullOrWhiteSpace(slotId))
+        {
+            throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, ErrorCodes.INVALID_INPUT,
+                "Request is missing division, teamId, or slotId.");
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var approvedRequest = await UpdateRequestStatusAsync(
+            leagueId: leagueId,
+            requestId: requestId,
+            expectedCurrentStatus: "Pending",
+            nextStatus: "Approved",
+            reviewedBy: reviewedBy,
+            reviewReason: reason,
+            nowUtc: now);
+
+        List<string> confirmedSlotIds;
+        try
+        {
+            confirmedSlotIds = await ConfirmPracticeRequestSlotsAsync(
+                leagueId: leagueId,
+                division: division,
+                teamId: teamId,
+                requestId: requestId,
+                approvedRequest: approvedRequest,
+                approvedByUserId: reviewedBy,
+                nowUtc: now);
+        }
+        catch
+        {
+            try
+            {
+                approvedRequest["Status"] = "Pending";
+                approvedRequest["ReviewedUtc"] = null;
+                approvedRequest["ReviewedBy"] = "";
+                approvedRequest["ReviewReason"] = "";
+                approvedRequest["UpdatedUtc"] = DateTimeOffset.UtcNow;
+                await _practiceRequestRepo.UpdateRequestAsync(approvedRequest, ETag.All);
+            }
+            catch { }
+
+            throw;
+        }
+
+        await RejectCompetingPendingSlotRequestsAsync(leagueId, division, requestId, reviewedBy, now, confirmedSlotIds);
+        await FinalizeApprovedMoveSourceAsync(leagueId, approvedRequest, reviewedBy, now);
+
+        return approvedRequest;
+    }
+
+    private async Task<TableEntity> CancelRequestCoreAsync(
+        string leagueId,
+        string requestId,
+        string reviewedBy,
+        string? reason,
+        TableEntity? request)
+    {
+        var reviewReason = string.IsNullOrWhiteSpace(reason) ? "Cancelled" : reason.Trim();
+        var now = DateTimeOffset.UtcNow;
+        TableEntity? cancelledRequest = null;
+
+        await RetryUtil.WithEtagRetryAsync(async () =>
+        {
+            var fresh = request ?? await _practiceRequestRepo.GetRequestAsync(leagueId, requestId);
+            if (fresh is null)
+            {
+                throw new ApiGuards.HttpError((int)HttpStatusCode.NotFound, ErrorCodes.REQUEST_NOT_FOUND, "Request not found");
+            }
+
+            var current = (fresh.GetString("Status") ?? "").Trim();
+            if (string.Equals(current, "Cancelled", StringComparison.OrdinalIgnoreCase))
+            {
+                cancelledRequest = fresh;
+                request = fresh;
+                return;
+            }
+
+            if (!string.Equals(current, "Pending", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(current, "Approved", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ApiGuards.HttpError((int)HttpStatusCode.Conflict, ErrorCodes.INVALID_STATUS_TRANSITION,
+                    $"Only pending or approved practice requests can be cancelled (status: {current}).");
+            }
+
+            fresh["Status"] = "Cancelled";
+            fresh["ReviewedUtc"] = now;
+            fresh["ReviewedBy"] = reviewedBy;
+            fresh["ReviewReason"] = reviewReason;
+            fresh["UpdatedUtc"] = now;
+            await _practiceRequestRepo.UpdateRequestAsync(fresh, fresh.ETag);
+            cancelledRequest = fresh;
+            request = fresh;
+        });
+
+        await ReleaseCancelledRequestSlotsAsync(leagueId, cancelledRequest!, now);
+        return cancelledRequest!;
     }
 
     private async Task<List<string>> ConfirmPracticeRequestSlotsAsync(
@@ -572,9 +760,12 @@ public class PracticeRequestService : IPracticeRequestService
             ToDate = lastDate,
             PageSize = 500
         });
+        var moveFromRequestId = (approvedRequest.GetString("MoveFromRequestId") ?? "").Trim();
 
         var confirmedTeamCommitments = existingConfirmedTeamSlots
-            .Where(slot => SlotInvolvesTeam(slot, teamId))
+            .Where(slot =>
+                SlotInvolvesTeam(slot, teamId) &&
+                !string.Equals((slot.GetString("ConfirmedRequestId") ?? "").Trim(), moveFromRequestId, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
         var confirmedPracticeWeeks = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -872,6 +1063,122 @@ public class PracticeRequestService : IPracticeRequestService
         }
     }
 
+    private async Task FinalizeApprovedMoveSourceAsync(
+        string leagueId,
+        TableEntity approvedRequest,
+        string reviewedByUserId,
+        DateTimeOffset nowUtc)
+    {
+        var moveFromRequestId = (approvedRequest.GetString("MoveFromRequestId") ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(moveFromRequestId))
+            return;
+
+        try
+        {
+            await CancelRequestCoreAsync(
+                leagueId,
+                moveFromRequestId,
+                reviewedByUserId,
+                $"Moved to {(approvedRequest.GetString("DisplayName") ?? approvedRequest.GetString("FieldName") ?? approvedRequest.GetString("SlotId") ?? "another practice slot").Trim()}",
+                request: null);
+
+            approvedRequest["MoveCompletedUtc"] = nowUtc;
+            approvedRequest["UpdatedUtc"] = nowUtc;
+            await _practiceRequestRepo.UpdateRequestAsync(approvedRequest, ETag.All);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Approved move request {RequestId} could not release source request {SourceRequestId}", approvedRequest.RowKey, moveFromRequestId);
+            throw;
+        }
+    }
+
+    private async Task ReleaseCancelledRequestSlotsAsync(
+        string leagueId,
+        TableEntity request,
+        DateTimeOffset nowUtc)
+    {
+        var division = (request.GetString("Division") ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(division))
+            return;
+
+        var slotsForRequest = await FindRequestSlotsAsync(leagueId, division, request.RowKey, request);
+        foreach (var slot in slotsForRequest)
+        {
+            await RetryUtil.WithEtagRetryAsync(async () =>
+            {
+                var fresh = await _slotRepo.GetSlotAsync(leagueId, division, slot.RowKey) ?? slot;
+                var pendingRequestId = (fresh.GetString("PendingRequestId") ?? "").Trim();
+                var confirmedRequestId = (fresh.GetString("ConfirmedRequestId") ?? "").Trim();
+                var slotStatus = (fresh.GetString("Status") ?? Constants.Status.SlotOpen).Trim();
+
+                var ownsPendingReservation = string.Equals(slotStatus, "Pending", StringComparison.OrdinalIgnoreCase) &&
+                    (string.Equals(pendingRequestId, request.RowKey, StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(pendingRequestId));
+                var ownsConfirmedReservation = string.Equals(slotStatus, Constants.Status.SlotConfirmed, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(confirmedRequestId, request.RowKey, StringComparison.OrdinalIgnoreCase);
+                if (!ownsPendingReservation && !ownsConfirmedReservation)
+                {
+                    return;
+                }
+
+                var nextPending = (await _practiceRequestRepo.QuerySlotRequestsAsync(leagueId, division, slot.RowKey, PendingStatusOnly))
+                    .Where(candidate => !string.Equals(candidate.RowKey, request.RowKey, StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(candidate => candidate.GetDateTimeOffset("RequestedUtc") ?? DateTimeOffset.MaxValue)
+                    .FirstOrDefault();
+
+                if (nextPending is not null)
+                {
+                    fresh["Status"] = "Pending";
+                    fresh["PendingRequestId"] = nextPending.RowKey;
+                    fresh["PendingTeamId"] = (nextPending.GetString("TeamId") ?? "").Trim();
+                    fresh["ConfirmedRequestId"] = "";
+                    fresh["ConfirmedTeamId"] = "";
+                    fresh["ConfirmedBy"] = "";
+                    fresh["ConfirmedUtc"] = null;
+                }
+                else
+                {
+                    ResetPracticeSlotToAvailability(fresh, nowUtc);
+                }
+
+                fresh["UpdatedUtc"] = nowUtc;
+                await _slotRepo.UpdateSlotAsync(fresh, fresh.ETag);
+            });
+        }
+    }
+
+    private async Task<List<TableEntity>> FindRequestSlotsAsync(
+        string leagueId,
+        string division,
+        string requestId,
+        TableEntity request)
+    {
+        var directSlotId = (request.GetString("SlotId") ?? "").Trim();
+        var confirmedSlots = await QueryAllSlotsAsync(new SlotQueryFilter
+        {
+            LeagueId = leagueId,
+            Division = division,
+            Status = Constants.Status.SlotConfirmed,
+            PageSize = 500
+        });
+
+        var matches = confirmedSlots
+            .Where(slot => string.Equals((slot.GetString("ConfirmedRequestId") ?? "").Trim(), requestId, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (matches.Count > 0)
+        {
+            return matches;
+        }
+
+        if (string.IsNullOrWhiteSpace(directSlotId))
+        {
+            return [];
+        }
+
+        var directSlot = await _slotRepo.GetSlotAsync(leagueId, division, directSlotId);
+        return directSlot is null ? [] : [directSlot];
+    }
+
     private async Task<List<TableEntity>> QueryAllSlotsAsync(SlotQueryFilter filter)
     {
         var all = new List<TableEntity>();
@@ -911,6 +1218,41 @@ public class PracticeRequestService : IPracticeRequestService
         slot["OpenToShareField"] = openToShareField;
         slot["ShareWithTeamId"] = openToShareField ? shareWithTeamId : "";
         slot["UpdatedUtc"] = nowUtc;
+    }
+
+    private static void ResetPracticeSlotToAvailability(TableEntity slot, DateTimeOffset nowUtc)
+    {
+        slot["Status"] = Constants.Status.SlotOpen;
+        slot["ConfirmedRequestId"] = "";
+        slot["ConfirmedTeamId"] = "";
+        slot["ConfirmedBy"] = "";
+        slot["ConfirmedUtc"] = null;
+        slot["PendingRequestId"] = "";
+        slot["PendingTeamId"] = "";
+        slot["OfferingTeamId"] = "";
+        slot["HomeTeamId"] = "";
+        slot["AwayTeamId"] = "";
+        slot["OfferingEmail"] = "";
+        slot["IsAvailability"] = true;
+        slot["GameType"] = "Availability";
+        slot["PracticeBookingMode"] = "";
+        slot["OpenToShareField"] = false;
+        slot["ShareWithTeamId"] = "";
+        slot["UpdatedUtc"] = nowUtc;
+    }
+
+    private static void CaptureRequestSlotSnapshot(TableEntity request, TableEntity slot)
+    {
+        request["GameDate"] = (slot.GetString("GameDate") ?? "").Trim();
+        request["StartTime"] = (slot.GetString("StartTime") ?? "").Trim();
+        request["EndTime"] = (slot.GetString("EndTime") ?? "").Trim();
+        request["FieldKey"] = (slot.GetString("FieldKey") ?? "").Trim();
+        request["FieldName"] = (slot.GetString("FieldName") ?? "").Trim();
+        request["DisplayName"] = (slot.GetString("DisplayName") ?? "").Trim();
+        request["PracticeSeasonLabel"] = (slot.GetString("PracticeSeasonLabel") ?? "").Trim();
+        request["PracticeBookingPolicy"] = (slot.GetString("PracticeBookingPolicy") ?? "").Trim();
+        request["PracticeSlotKey"] = (slot.GetString("PracticeSlotKey") ?? "").Trim();
+        request["PracticeSourceRecordId"] = (slot.GetString("PracticeSourceRecordId") ?? "").Trim();
     }
 
     private static bool CanUseRecurringPatternApproval(TableEntity slot)
@@ -990,6 +1332,31 @@ public class PracticeRequestService : IPracticeRequestService
         }
 
         return membership;
+    }
+
+    private async Task EnsureRequestOwnerOrAdminAsync(string leagueId, string userId, TableEntity request)
+    {
+        if (await _membershipRepo.IsGlobalAdminAsync(userId))
+            return;
+
+        var membership = await _membershipRepo.GetMembershipAsync(userId, leagueId);
+        var role = (membership?.GetString("Role") ?? Constants.Roles.Viewer).Trim();
+        if (string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var teamId = (request.GetString("TeamId") ?? "").Trim();
+        var division = (request.GetString("Division") ?? "").Trim();
+        var coachTeamId = ReadMembershipTeamId(membership);
+        var coachDivision = ReadMembershipDivision(membership);
+        if (!string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase) ||
+            string.IsNullOrWhiteSpace(coachTeamId) ||
+            string.IsNullOrWhiteSpace(coachDivision) ||
+            !string.Equals(coachTeamId, teamId, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(coachDivision, division, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ApiGuards.HttpError((int)HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                "You can only manage practice requests for your assigned team.");
+        }
     }
 
     private async Task<TableEntity> UpdateRequestStatusAsync(

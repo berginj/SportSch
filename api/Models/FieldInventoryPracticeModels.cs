@@ -35,7 +35,19 @@ public record FieldInventoryPracticeRequestCreateRequest(
     string? TeamId,
     string? Notes);
 
+public record FieldInventoryPracticeRequestMoveRequest(
+    string? SeasonLabel,
+    string? PracticeSlotKey,
+    string? Notes);
+
 public record FieldInventoryPracticeRequestDecisionRequest(string? Reason);
+
+public record FieldInventoryPracticeNormalizeRequest(
+    string? SeasonLabel,
+    string? DateFrom,
+    string? DateTo,
+    string? FieldId,
+    bool DryRun);
 
 public record FieldInventoryPracticeSummaryDto(
     int TotalRecords,
@@ -83,6 +95,8 @@ public record FieldInventoryPracticeSlotDto(
     string PracticeSlotKey,
     string SeasonLabel,
     string LiveRecordId,
+    string SlotId,
+    string Division,
     string Date,
     string DayOfWeek,
     string StartTime,
@@ -93,6 +107,8 @@ public record FieldInventoryPracticeSlotDto(
     string BookingPolicy,
     string BookingPolicyLabel,
     string BookingPolicyReason,
+    string NormalizationState,
+    List<string> NormalizationIssues,
     string? AssignedGroup,
     string? AssignedDivision,
     string? AssignedTeamOrEvent,
@@ -108,6 +124,8 @@ public record FieldInventoryPracticeRequestDto(
     string SeasonLabel,
     string PracticeSlotKey,
     string LiveRecordId,
+    string SlotId,
+    string Division,
     string Date,
     string DayOfWeek,
     string StartTime,
@@ -119,6 +137,12 @@ public record FieldInventoryPracticeRequestDto(
     string Status,
     string BookingPolicy,
     string BookingPolicyLabel,
+    bool IsMove,
+    string? MoveFromRequestId,
+    string? MoveFromDate,
+    string? MoveFromStartTime,
+    string? MoveFromEndTime,
+    string? MoveFromFieldName,
     string? Notes,
     string CreatedBy,
     DateTimeOffset CreatedAt,
@@ -126,11 +150,20 @@ public record FieldInventoryPracticeRequestDto(
     DateTimeOffset? ReviewedAt,
     string? ReviewReason);
 
+public record FieldInventoryPracticeNormalizationSummaryDto(
+    int CandidateBlocks,
+    int NormalizedBlocks,
+    int MissingBlocks,
+    int ConflictBlocks,
+    int BlockedBlocks);
+
 public record FieldInventoryPracticeAdminResponse(
     string SeasonLabel,
     List<FieldInventoryPracticeSeasonOptionDto> Seasons,
     FieldInventoryPracticeSummaryDto Summary,
+    FieldInventoryPracticeNormalizationSummaryDto Normalization,
     List<FieldInventoryPracticeAdminRowDto> Rows,
+    List<FieldInventoryPracticeSlotDto> Slots,
     List<FieldInventoryPracticeRequestDto> Requests,
     List<CanonicalFieldOptionDto> CanonicalFields,
     List<CanonicalDivisionOptionDto> CanonicalDivisions,
@@ -145,6 +178,18 @@ public record FieldInventoryPracticeCoachResponse(
     FieldInventoryPracticeSummaryDto Summary,
     List<FieldInventoryPracticeSlotDto> Slots,
     List<FieldInventoryPracticeRequestDto> Requests);
+
+public record FieldInventoryPracticeNormalizeResultDto(
+    int CandidateBlocks,
+    int CreatedBlocks,
+    int UpdatedBlocks,
+    int AlreadyNormalizedBlocks,
+    int ConflictBlocks,
+    int BlockedBlocks);
+
+public record FieldInventoryPracticeNormalizeResponse(
+    FieldInventoryPracticeNormalizeResultDto Result,
+    FieldInventoryPracticeAdminResponse AdminView);
 
 public record CanonicalDivisionOptionDto(string Code, string Name);
 

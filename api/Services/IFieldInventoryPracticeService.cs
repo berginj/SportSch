@@ -10,7 +10,9 @@ public interface IFieldInventoryPracticeService
     Task<FieldInventoryPracticeAdminResponse> SaveDivisionAliasAsync(FieldInventoryDivisionAliasSaveRequest request, string userId, CorrelationContext context);
     Task<FieldInventoryPracticeAdminResponse> SaveTeamAliasAsync(FieldInventoryTeamAliasSaveRequest request, string userId, CorrelationContext context);
     Task<FieldInventoryPracticeAdminResponse> SaveGroupPolicyAsync(FieldInventoryGroupPolicySaveRequest request, string userId, CorrelationContext context);
+    Task<FieldInventoryPracticeNormalizeResponse> NormalizeAvailabilityAsync(FieldInventoryPracticeNormalizeRequest request, string userId, CorrelationContext context);
     Task<FieldInventoryPracticeCoachResponse> CreatePracticeRequestAsync(FieldInventoryPracticeRequestCreateRequest request, string userId, CorrelationContext context);
+    Task<FieldInventoryPracticeCoachResponse> MovePracticeRequestAsync(string requestId, FieldInventoryPracticeRequestMoveRequest request, string userId, CorrelationContext context);
     Task<FieldInventoryPracticeAdminResponse> ApprovePracticeRequestAsync(string requestId, FieldInventoryPracticeRequestDecisionRequest request, string userId, CorrelationContext context);
     Task<FieldInventoryPracticeAdminResponse> RejectPracticeRequestAsync(string requestId, FieldInventoryPracticeRequestDecisionRequest request, string userId, CorrelationContext context);
     Task<FieldInventoryPracticeCoachResponse> CancelPracticeRequestAsync(string requestId, string userId, CorrelationContext context);

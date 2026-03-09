@@ -30,9 +30,28 @@ public interface IPracticeRequestService
         string requestId,
         string? reason);
 
+    Task<TableEntity> AutoApproveRequestAsync(
+        string leagueId,
+        string requestId,
+        string reviewedBy,
+        string? reason);
+
     Task<TableEntity> RejectRequestAsync(
         string leagueId,
         string userId,
         string requestId,
+        string? reason);
+
+    Task<TableEntity> CancelRequestAsync(
+        string leagueId,
+        string userId,
+        string requestId,
+        string? reason = null);
+
+    Task<TableEntity> CreateMoveRequestAsync(
+        string leagueId,
+        string userId,
+        string sourceRequestId,
+        string targetSlotId,
         string? reason);
 }

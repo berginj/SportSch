@@ -33,12 +33,21 @@ const adminResponse = {
     unmappedTeams: 1,
     unmappedPolicies: 1,
   },
+  normalization: {
+    candidateBlocks: 1,
+    normalizedBlocks: 0,
+    missingBlocks: 1,
+    conflictBlocks: 0,
+    blockedBlocks: 0,
+  },
   requests: [
     {
       requestId: "req-1",
       seasonLabel: "Spring 2026",
       practiceSlotKey: "slot-1",
       liveRecordId: "live-1",
+      slotId: "canon-1",
+      division: "PONY",
       date: "2026-04-05",
       dayOfWeek: "Sunday",
       startTime: "09:00",
@@ -50,12 +59,48 @@ const adminResponse = {
       status: "Pending",
       bookingPolicy: "commissioner_review",
       bookingPolicyLabel: "Commissioner review",
+      isMove: false,
+      moveFromRequestId: null,
+      moveFromDate: null,
+      moveFromStartTime: null,
+      moveFromEndTime: null,
+      moveFromFieldName: null,
       notes: "",
       createdBy: "user-1",
       createdAt: "2026-03-09T00:00:00Z",
       reviewedBy: null,
       reviewedAt: null,
       reviewReason: null,
+    },
+  ],
+  slots: [
+    {
+      practiceSlotKey: "slot-1",
+      seasonLabel: "Spring 2026",
+      liveRecordId: "live-1",
+      slotId: "canon-1",
+      division: "PONY",
+      date: "2026-04-05",
+      dayOfWeek: "Sunday",
+      startTime: "09:00",
+      endTime: "10:30",
+      slotDurationMinutes: 90,
+      fieldId: "park1/field1",
+      fieldName: "Barcroft #3",
+      bookingPolicy: "not_requestable",
+      bookingPolicyLabel: "Not requestable",
+      bookingPolicyReason: "Needs policy mapping before coaches can request it.",
+      normalizationState: "missing",
+      normalizationIssues: ["division_unmapped", "team_unmapped", "policy_unmapped"],
+      assignedGroup: "Ponytail",
+      assignedDivision: "PONY",
+      assignedTeamOrEvent: "Red",
+      capacity: 1,
+      approvedCount: 0,
+      pendingCount: 0,
+      remainingCapacity: 1,
+      approvedTeamIds: [],
+      pendingTeamIds: [],
     },
   ],
   canonicalFields: [],
@@ -99,22 +144,36 @@ describe("PracticeSpaceManager", () => {
     vi.clearAllMocks();
     api.apiFetch.mockImplementation((path, options = {}) => {
       if (path === "/api/field-inventory/practice/admin") return Promise.resolve(adminResponse);
-      if (String(path).startsWith("/api/availability-slots?")) {
+      if (path === "/api/field-inventory/practice/normalize" && options.method === "POST") {
         return Promise.resolve({
-          items: [
-            {
-              slotId: "slot-a",
-              gameDate: "2026-04-05",
-              startTime: "09:00",
-              endTime: "12:00",
-              fieldKey: "park1/field1",
-              fieldName: "Barcroft #3",
-              displayName: "Barcroft #3",
-              division: "Ponytail",
-              isAvailability: true,
+          result: {
+            candidateBlocks: 1,
+            createdBlocks: 1,
+            updatedBlocks: 0,
+            alreadyNormalizedBlocks: 0,
+            conflictBlocks: 0,
+            blockedBlocks: 0,
+          },
+          adminView: {
+            ...adminResponse,
+            normalization: {
+              candidateBlocks: 1,
+              normalizedBlocks: 1,
+              missingBlocks: 0,
+              conflictBlocks: 0,
+              blockedBlocks: 0,
             },
-          ],
-          count: 1,
+            slots: [
+              {
+                ...adminResponse.slots[0],
+                bookingPolicy: "auto_approve",
+                bookingPolicyLabel: "Auto-approve",
+                bookingPolicyReason: "Mapped from group 'Ponytail'.",
+                normalizationState: "normalized",
+                normalizationIssues: [],
+              },
+            ],
+          },
         });
       }
       if (path === "/api/field-inventory/practice/policies" && options.method === "POST") {
@@ -129,6 +188,15 @@ describe("PracticeSpaceManager", () => {
               mappingIssues: ["division_unmapped", "team_unmapped"],
             },
           ],
+          slots: [
+            {
+              ...adminResponse.slots[0],
+              bookingPolicy: "auto_approve",
+              bookingPolicyLabel: "Auto-approve",
+              bookingPolicyReason: "Mapped from group 'Ponytail'.",
+              normalizationIssues: ["division_unmapped", "team_unmapped"],
+            },
+          ],
         });
       }
       if (path === "/api/field-inventory/practice/requests/req-1/approve" && options.method === "PATCH") {
@@ -141,16 +209,19 @@ describe("PracticeSpaceManager", () => {
     });
   });
 
-  it("saves booking policy mappings and approves pending requests", async () => {
+  it("saves policy mappings, normalizes missing blocks, and approves pending requests", async () => {
     render(<PracticeSpaceManager leagueId="league-1" />);
 
     expect(await screen.findByText("Practice Space Admin")).toBeInTheDocument();
-    expect(await screen.findByText("Inventory Comparison Calendar")).toBeInTheDocument();
+    expect(await screen.findByText("Availability Normalization")).toBeInTheDocument();
     expect(await screen.findByText("Calendar compare: 1")).toBeInTheDocument();
     fireEvent.change(screen.getByDisplayValue("Not requestable"), { target: { value: "auto_approve" } });
     fireEvent.click(screen.getByRole("button", { name: "Save Policy" }));
 
-    expect(await screen.findByText("Mapped from group 'Ponytail'.")).toBeInTheDocument();
+    expect((await screen.findAllByText("Mapped from group 'Ponytail'.")).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "Normalize Missing" }));
+
+    expect(await screen.findByText("Normalized")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
 
     expect(await screen.findByText("Approved")).toBeInTheDocument();

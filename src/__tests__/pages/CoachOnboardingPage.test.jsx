@@ -29,22 +29,59 @@ describe("CoachOnboardingPage", () => {
           },
         ]);
       }
-      if (url === "/api/practice-requests?teamId=TEAM-1") {
-        return Promise.resolve([
-          {
-            requestId: "req-1",
-            priority: 1,
-            status: "Pending",
-            openToShareField: true,
-            shareWithTeamId: "TEAM-2",
-            slot: {
-              gameDate: "2026-04-10",
+      if (url === "/api/field-inventory/practice/coach") {
+        return Promise.resolve({
+          seasonLabel: "Spring 2026",
+          seasons: [{ seasonLabel: "Spring 2026", isDefault: true }],
+          division: "AAA",
+          teamId: "TEAM-1",
+          teamName: "Blue Waves",
+          summary: {
+            totalRecords: 4,
+            requestableBlocks: 2,
+            autoApproveBlocks: 1,
+            commissionerReviewBlocks: 1,
+            pendingRequests: 1,
+            approvedRequests: 0,
+            unmappedDivisions: 0,
+            unmappedTeams: 0,
+            unmappedPolicies: 0,
+          },
+          slots: [],
+          requests: [
+            {
+              requestId: "req-1",
+              seasonLabel: "Spring 2026",
+              practiceSlotKey: "slot-1",
+              liveRecordId: "live-1",
+              slotId: "canon-slot-1",
+              division: "AAA",
+              date: "2026-04-10",
+              dayOfWeek: "Friday",
               startTime: "18:00",
               endTime: "19:30",
-              displayName: "Gunston > Turf",
+              fieldId: "park1/field1",
+              fieldName: "Gunston Turf",
+              teamId: "TEAM-1",
+              teamName: "Blue Waves",
+              status: "Pending",
+              bookingPolicy: "commissioner_review",
+              bookingPolicyLabel: "Commissioner review",
+              isMove: true,
+              moveFromRequestId: "req-0",
+              moveFromDate: "2026-04-03",
+              moveFromStartTime: "18:00",
+              moveFromEndTime: "19:30",
+              moveFromFieldName: "Wakefield #2",
+              notes: "Move requested from 2026-04-03 18:00-19:30 Wakefield #2",
+              createdBy: "user-1",
+              createdAt: "2026-03-09T00:00:00Z",
+              reviewedBy: null,
+              reviewedAt: null,
+              reviewReason: null,
             },
-          },
-        ]);
+          ],
+        });
       }
       if (url.startsWith("/api/slots?division=AAA&status=Confirmed")) {
         return Promise.resolve({
@@ -89,6 +126,7 @@ describe("CoachOnboardingPage", () => {
     await waitFor(() => expect(screen.getByText("Coach Onboarding")).toBeInTheDocument());
 
     expect(screen.getByText("Current practice requests")).toBeInTheDocument();
+    expect(screen.getByText(/Move from 2026-04-03/)).toBeInTheDocument();
     expect(screen.queryByText("Recurring practice choices")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /request p1/i })).not.toBeInTheDocument();
 
