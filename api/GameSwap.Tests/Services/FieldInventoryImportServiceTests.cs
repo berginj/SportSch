@@ -92,6 +92,51 @@ public class FieldInventoryImportServiceTests
     }
 
     [Fact]
+    public async Task CreatePreviewAsync_WithRealAgsaWorkbook_ParsesWeekdayAndWeekendTabs()
+    {
+        _fieldRepository.AddField("league-1", "agsa", "alcova-heights", "AGSA", "Alcova Heights", "AGSA > Alcova Heights");
+        _fieldRepository.AddField("league-1", "agsa", "barcroft-3", "AGSA", "Barcroft #3", "AGSA > Barcroft #3");
+        _fieldRepository.AddField("league-1", "agsa", "key-1", "AGSA", "Key #1", "AGSA > Key #1");
+        _fieldRepository.AddField("league-1", "agsa", "key-2", "AGSA", "Key #2", "AGSA > Key #2");
+        _fieldRepository.AddField("league-1", "agsa", "ats-1", "AGSA", "Key (former ATS) 1", "AGSA > Key (former ATS) 1");
+        _fieldRepository.AddField("league-1", "agsa", "ats-2", "AGSA", "Key (former ATS) 2", "AGSA > Key (former ATS) 2");
+        _fieldRepository.AddField("league-1", "agsa", "gb1", "AGSA", "Greenbrier #1", "AGSA > Greenbrier #1");
+        _fieldRepository.AddField("league-1", "agsa", "gb2", "AGSA", "Greenbrier #2", "AGSA > Greenbrier #2");
+
+        var service = CreateService(new StaticWorkbookConnector(BuildWorkbook()));
+        var context = CorrelationContext.Create("user-1", "league-1");
+        var inspect = await service.InspectUploadedWorkbookAsync(
+            "2026 AGSA Spring Field Grid (1).xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            File.ReadAllBytes(GetRealAgsaWorkbookPath()),
+            context);
+
+        var preview = await service.CreatePreviewAsync(new FieldInventoryPreviewRequest(
+            null,
+            inspect.UploadedWorkbookId,
+            "Spring 2026",
+            null,
+            new List<FieldInventorySelectedTab>
+            {
+                new("Spring 316-522", FieldInventoryParserTypes.SeasonWeekdayGrid, FieldInventoryActionTypes.Ingest, true),
+                new("Spring 525-619", FieldInventoryParserTypes.SeasonWeekdayGrid, FieldInventoryActionTypes.Ingest, true),
+                new("Weekends", FieldInventoryParserTypes.WeekendGrid, FieldInventoryActionTypes.Ingest, true),
+            }), context);
+
+        Assert.True(preview.Run.SummaryCounts.ParsedRecords > 100, "Expected real workbook preview to produce staged records.");
+        Assert.DoesNotContain(preview.Warnings, x => x.Code == "tab_layout_unknown");
+        Assert.DoesNotContain(preview.Warnings, x => x.Code == "time_header_missing");
+        var warningSummary = string.Join(" || ", preview.Warnings.Select(x => $"{x.SourceTab}:{x.Code}:{x.Message}"));
+        Assert.True(
+            preview.Records.Any(x => x.SourceTab == "Spring 316-522" && x.DayOfWeek == "Monday"),
+            $"Expected Monday weekday records. Tabs: {string.Join(", ", preview.Records.Select(x => x.SourceTab).Distinct())}. Warnings: {warningSummary}");
+        Assert.True(
+            preview.Records.Any(x => x.SourceTab == "Weekends" && (x.DayOfWeek == "Saturday" || x.DayOfWeek == "Sunday")),
+            $"Expected weekend records. Warnings: {warningSummary}");
+        Assert.Contains(preview.Records, x => x.RawFieldName == "Barcroft #3");
+    }
+
+    [Fact]
     public async Task CreatePreviewAsync_ParsesWeekdayAndWeekendTabsAndRespectsBlankCells()
     {
         _fieldRepository.AddField("league-1", "park-a", "field-1", "Park A", "Field 1", "Park A > Field 1");
@@ -559,6 +604,9 @@ public class FieldInventoryImportServiceTests
 
         return stream.ToArray();
     }
+
+    private static string GetRealAgsaWorkbookPath()
+        => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "docs", "2026 AGSA Spring Field Grid (1).xlsx"));
 
     private static void WriteEntry(ZipArchive archive, string path, XDocument document)
     {

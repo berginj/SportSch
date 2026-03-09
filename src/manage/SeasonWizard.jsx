@@ -3,6 +3,7 @@ import { apiFetch } from "../lib/api";
 import { validateIsoDates } from "../lib/date";
 import { trackEvent } from "../lib/telemetry";
 import CollapsibleSection from "../components/CollapsibleSection";
+import SeasonSummaryCalendar from "../components/SeasonSummaryCalendar";
 import Toast from "../components/Toast";
 import { useCollapsibleSectionControl } from "../lib/useCollapsibleSectionControl";
 
@@ -7012,6 +7013,20 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                         </div>
                       );
                     })}
+                  </div>
+
+                  <div className="mt-3">
+                    <div className="font-bold mb-2">DayPilot calendar view</div>
+                    <div className="subtle mb-2">
+                      Open-source DayPilot month view of regular-season daily load. Dates with a single scheduled assignment stay clickable so you can keep the existing explain/repair flow.
+                    </div>
+                    <SeasonSummaryCalendar
+                      assignments={previewCollections.regularAssignments}
+                      openSlots={previewCollections.regularUnassignedSlots}
+                      selectedAssignmentKey={selectedExplainGameKey}
+                      onSelectAssignment={setSelectedExplainGameKey}
+                      getAssignmentKey={assignmentExplainKey}
+                    />
                   </div>
 
                   <div className={`tableWrap mt-3 ${tableView === "B" ? "tableWrap--sticky" : ""}`}>

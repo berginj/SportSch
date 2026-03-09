@@ -89,12 +89,18 @@ That keeps this feature demonstrable before deeper operational integration. The 
 ## Parser Rules in v1
 
 - `season_weekday_grid`
-  - date in the left column
-  - field headers above time headers
-  - non-blank cells create records
+  - AGSA weekday matrix layout
+  - weekday blocks run across the sheet with repeating `Time / Level / Team` columns
+  - field names anchor each section down the left side
+  - season date ranges come from the tab name and are expanded into concrete dates
+  - non-blank team cells create records
   - merged cells extend slot duration across columns
 - `weekend_grid`
-  - same grid assumptions as weekday tabs
+  - AGSA dual weekend layout
+  - Saturday and Sunday sections are parsed independently from the same sheet
+  - time headers are read from each section
+  - Excel numeric dates are resolved from row context
+  - non-blank cells create records
 - `reference_grid`
   - warnings only
   - does not produce staged inventory records
@@ -108,6 +114,24 @@ Key guardrails:
 - text beats color
 - outside-group usage is visible in staged results but not treated as AGSA-available
 - unmapped fields create review items instead of silent fuzzy mapping
+
+## Local AGSA Validation
+
+The parser is now validated against the real AGSA workbook fixture in:
+
+- `docs/2026 AGSA Spring Field Grid (1).xlsx`
+
+Current local validation covers:
+
+- `Spring 316-522`
+- `Spring 525-619`
+- `Weekends`
+
+The fixture-backed test lives in:
+
+- `api/GameSwap.Tests/Services/FieldInventoryImportServiceTests.cs`
+
+That test path is the authoritative way to evolve parser behavior without depending on Google Sheets export or workbook permissions.
 
 ## Configuration and Use
 

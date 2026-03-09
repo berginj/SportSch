@@ -1,16 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { DayPilotMonth, DayPilotScheduler } from "@daypilot/daypilot-lite-react";
 import "./CalendarView.css";
-
-/**
- * Reusable calendar view component with two layout options:
- * - Option 1: Compact Week Cards (default for desktop)
- * - Option 4: Agenda List (mobile-friendly)
- */
 
 export default function CalendarView({
   slots = [],
   events = [],
-  defaultView = "week-cards",
+  defaultView = "timeline",
   onSlotClick,
   onEventClick,
   renderSlotActions,
@@ -21,73 +16,112 @@ export default function CalendarView({
   const [viewMode, setViewMode] = useState(() => {
     if (!showViewToggle) return defaultView;
     try {
-      return localStorage.getItem(storageKey) || defaultView;
+      return normalizeViewMode(localStorage.getItem(storageKey) || defaultView);
     } catch {
-      return defaultView;
+      return normalizeViewMode(defaultView);
     }
   });
 
-  const handleViewChange = (mode) => {
-    setViewMode(mode);
+  const items = useMemo(() => buildCalendarItems(slots, events), [slots, events]);
+  const resources = useMemo(() => buildResources(items), [items]);
+  const schedulerEvents = useMemo(() => items.map(buildSchedulerEvent), [items]);
+  const monthEvents = useMemo(() => items.map(buildMonthEvent), [items]);
+  const range = useMemo(() => getVisibleRange(items), [items]);
+  const [selectedItemKey, setSelectedItemKey] = useState("");
+
+  useEffect(() => {
+    if (!items.length) {
+      setSelectedItemKey("");
+      return;
+    }
+
+    if (!items.some((item) => item.key === selectedItemKey)) {
+      setSelectedItemKey(items[0].key);
+    }
+  }, [items, selectedItemKey]);
+
+  const selectedItem = useMemo(
+    () => items.find((item) => item.key === selectedItemKey) || null,
+    [items, selectedItemKey]
+  );
+
+  const schedulerConfig = useMemo(() => ({
+    startDate: range.startDate,
+    days: range.days,
+    scale: "CellDuration",
+    cellDuration: 60,
+    cellWidth: 46,
+    rowHeaderWidth: 180,
+    heightSpec: "Max",
+    height: 560,
+    businessBeginsHour: 8,
+    businessEndsHour: 22,
+    timeHeaders: [
+      { groupBy: "Month" },
+      { groupBy: "Day", format: "ddd M/d" },
+      { groupBy: "Hour", format: "h tt" },
+    ],
+    eventMoveHandling: "Disabled",
+    eventResizeHandling: "Disabled",
+    timeRangeSelectedHandling: "Disabled",
+    eventClickHandling: "Enabled",
+    durationBarVisible: false,
+    resources,
+    events: schedulerEvents,
+    onBeforeEventRender: (args) => {
+      const selected = args.data.id === selectedItemKey;
+      args.data.backColor = args.data.backColor;
+      args.data.barColor = args.data.barColor;
+      args.data.borderColor = selected ? "#1d4ed8" : args.data.borderColor;
+      args.data.fontColor = "#0f172a";
+      args.data.toolTip = args.data.toolTip;
+    },
+    onEventClick: (args) => {
+      handleItemSelect(args.e?.data?.key || "");
+    },
+  }), [range.days, range.startDate, resources, schedulerEvents, selectedItemKey]);
+
+  const monthConfig = useMemo(() => ({
+    startDate: range.startDate,
+    eventClickHandling: "Enabled",
+    events: monthEvents,
+    onBeforeEventRender: (args) => {
+      const selected = args.data.id === selectedItemKey;
+      args.data.backColor = args.data.backColor;
+      args.data.barColor = args.data.barColor;
+      args.data.borderColor = selected ? "#1d4ed8" : args.data.borderColor;
+      args.data.fontColor = "#0f172a";
+      args.data.toolTip = args.data.toolTip;
+    },
+    onEventClick: (args) => {
+      handleItemSelect(args.e?.data?.key || "");
+    },
+  }), [monthEvents, range.startDate, selectedItemKey]);
+
+  function handleItemSelect(itemKey) {
+    if (!itemKey) return;
+    setSelectedItemKey(itemKey);
+    const item = items.find((entry) => entry.key === itemKey);
+    if (!item) return;
+    if (item.kind === "slot") onSlotClick?.(item.raw);
+    else onEventClick?.(item.raw);
+  }
+
+  function handleViewChange(mode) {
+    const nextMode = normalizeViewMode(mode);
+    setViewMode(nextMode);
     try {
-      localStorage.setItem(storageKey, mode);
+      localStorage.setItem(storageKey, nextMode);
     } catch {
       // Ignore localStorage errors
     }
-  };
+  }
 
-  const weekGroups = useMemo(() => {
-    const groups = new Map();
-
-    [...slots, ...events].forEach((item) => {
-      const date = getItemDate(item);
-      if (!date) return;
-
-      const weekKey = getWeekKey(date);
-      if (!groups.has(weekKey)) {
-        groups.set(weekKey, {
-          weekKey,
-          weekStart: getWeekStart(date),
-          weekEnd: getWeekEnd(date),
-          days: new Map(),
-          slots: [],
-          events: [],
-        });
-      }
-
-      const group = groups.get(weekKey);
-      const dayKey = date;
-
-      if (isSlotItem(item)) {
-        group.slots.push(item);
-        if (!group.days.has(dayKey)) {
-          group.days.set(dayKey, { date: dayKey, slots: [], events: [] });
-        }
-        group.days.get(dayKey).slots.push(item);
-        return;
-      }
-
-      group.events.push(item);
-      if (!group.days.has(dayKey)) {
-        group.days.set(dayKey, { date: dayKey, slots: [], events: [] });
-      }
-      group.days.get(dayKey).events.push(item);
-    });
-
-    return Array.from(groups.values()).sort((a, b) => a.weekKey.localeCompare(b.weekKey));
-  }, [slots, events]);
-
-  if (viewMode === "agenda") {
+  if (!items.length) {
     return (
       <div className="calendar-view">
         {showViewToggle ? <ViewToggle currentView={viewMode} onChange={handleViewChange} /> : null}
-        <AgendaView
-          weekGroups={weekGroups}
-          onSlotClick={onSlotClick}
-          onEventClick={onEventClick}
-          renderSlotActions={renderSlotActions}
-          renderEventActions={renderEventActions}
-        />
+        <div className="subtle">No items in this range.</div>
       </div>
     );
   }
@@ -95,13 +129,28 @@ export default function CalendarView({
   return (
     <div className="calendar-view">
       {showViewToggle ? <ViewToggle currentView={viewMode} onChange={handleViewChange} /> : null}
-      <WeekCardsView
-        weekGroups={weekGroups}
-        onSlotClick={onSlotClick}
-        onEventClick={onEventClick}
-        renderSlotActions={renderSlotActions}
-        renderEventActions={renderEventActions}
-      />
+
+      <div className="calendar-view__summary">
+        <span className="pill">Fields: {resources.length}</span>
+        <span className="pill">Items: {items.length}</span>
+        <span className="pill">Range: {range.startDate} to {range.endDate}</span>
+      </div>
+
+      <div className="calendar-daypilot">
+        {viewMode === "month" ? (
+          <DayPilotMonth {...monthConfig} />
+        ) : (
+          <DayPilotScheduler {...schedulerConfig} />
+        )}
+      </div>
+
+      {selectedItem ? (
+        <SelectionPanel
+          item={selectedItem}
+          renderSlotActions={renderSlotActions}
+          renderEventActions={renderEventActions}
+        />
+      ) : null}
     </div>
   );
 }
@@ -110,301 +159,242 @@ function ViewToggle({ currentView, onChange }) {
   return (
     <div className="calendar-view-toggle">
       <button
-        className={`btn btn--ghost ${currentView === "week-cards" ? "btn--active" : ""}`}
+        className={`btn btn--ghost ${currentView === "timeline" ? "btn--active" : ""}`}
         type="button"
-        onClick={() => onChange("week-cards")}
-        title="Week card view (compact)"
+        onClick={() => onChange("timeline")}
+        title="DayPilot timeline view"
       >
-        Week Cards
+        Timeline
       </button>
       <button
-        className={`btn btn--ghost ${currentView === "agenda" ? "btn--active" : ""}`}
+        className={`btn btn--ghost ${currentView === "month" ? "btn--active" : ""}`}
         type="button"
-        onClick={() => onChange("agenda")}
-        title="Agenda list view (chronological)"
+        onClick={() => onChange("month")}
+        title="DayPilot month view"
       >
-        Agenda
+        Month
       </button>
     </div>
   );
 }
 
-function WeekCardsView({
-  weekGroups,
-  onSlotClick,
-  onEventClick,
-  renderSlotActions,
-  renderEventActions,
-}) {
-  const [expandedWeeks, setExpandedWeeks] = useState(() => new Set());
-
-  const toggleWeek = (weekKey) => {
-    setExpandedWeeks((prev) => {
-      const next = new Set(prev);
-      if (next.has(weekKey)) {
-        next.delete(weekKey);
-      } else {
-        next.add(weekKey);
-      }
-      return next;
-    });
-  };
-
-  if (weekGroups.length === 0) {
-    return <div className="subtle">No items in this range.</div>;
+function SelectionPanel({ item, renderSlotActions, renderEventActions }) {
+  if (item.kind === "slot") {
+    const slot = item.raw;
+    const actions = renderSlotActions?.(slot);
+    return (
+      <div className="calendar-selection card">
+        <div className="calendar-selection__header">
+          <div>
+            <div className="cardTitle m-0">{getMatchupLabel(slot) || "Slot"}</div>
+            <div className="subtle">
+              {slot.gameDate} | {formatTimeRange(slot.startTime, slot.endTime)} | {getFieldLabel(slot) || "Field TBD"}
+            </div>
+          </div>
+          <span className={`calendar-selection__badge calendar-selection__badge--${getSlotToneKey(slot)}`}>
+            {getSlotStatusLabel(slot)}
+          </span>
+        </div>
+        <div className="calendar-selection__meta">
+          {slot.division ? <span>Division: {slot.division}</span> : null}
+          {slot.confirmedTeamId ? <span>Confirmed: {slot.confirmedTeamId}</span> : null}
+          {slot.address ? (
+            <a
+              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(slot.address)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Open map
+            </a>
+          ) : null}
+        </div>
+        {actions ? <div className="calendar-selection__actions">{actions}</div> : null}
+      </div>
+    );
   }
 
+  const event = item.raw;
+  const actions = renderEventActions?.(event);
   return (
-    <div className="week-cards-view">
-      {weekGroups.map((week) => {
-        const isExpanded = expandedWeeks.has(week.weekKey);
-        const totalGames = week.slots.filter((slot) => !slot.isAvailability).length;
-        const totalOpen = week.slots.filter((slot) => slot.status === "Open").length;
-        const totalEvents = week.events.length;
-        const daySummaries = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((dayName) => {
-          const dayDates = Array.from(week.days.values()).filter((day) => getDayName(day.date) === dayName);
-
-          if (dayDates.length === 0) {
-            return { day: dayName, games: 0, open: 0 };
-          }
-
-          const games = dayDates.reduce(
-            (sum, day) => sum + day.slots.filter((slot) => !slot.isAvailability && slot.status !== "Open").length,
-            0
-          );
-          const open = dayDates.reduce(
-            (sum, day) => sum + day.slots.filter((slot) => slot.status === "Open").length,
-            0
-          );
-
-          return { day: dayName, games, open };
-        });
-
-        return (
-          <div key={week.weekKey} className="week-card">
-            <div className="week-card__header" onClick={() => toggleWeek(week.weekKey)}>
-              <div className="week-card__title">
-                <span className="week-card__dates">
-                  {week.weekStart} - {week.weekEnd}
-                </span>
-                <span className="week-card__stats">
-                  {totalGames} games | {totalOpen} open | {totalEvents} events
-                </span>
-              </div>
-              <button className="week-card__toggle" type="button">
-                {isExpanded ? "Hide" : "Details"}
-              </button>
-            </div>
-
-            <div className="week-card__summary">
-              <div className="week-day-grid">
-                {daySummaries.map((day) => (
-                  <div key={day.day} className="week-day-cell">
-                    <div className="week-day-cell__label">{day.day}</div>
-                    <div className="week-day-cell__count">{day.games > 0 ? `${day.games}g` : "-"}</div>
-                    {day.open > 0 ? <div className="week-day-cell__open">{day.open}o</div> : null}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {isExpanded ? (
-              <div className="week-card__details">
-                {Array.from(week.days.values())
-                  .sort((a, b) => a.date.localeCompare(b.date))
-                  .map((day) => {
-                    if (day.slots.length === 0 && day.events.length === 0) return null;
-
-                    return (
-                      <div key={day.date} className="day-detail">
-                        <div className="day-detail__header">
-                          {getDayName(day.date)}, {day.date}
-                        </div>
-                        <div className="day-detail__items">
-                          {day.slots.map((slot, idx) => {
-                            const tone = getSlotToneKey(slot);
-                            const slotActions = renderSlotActions?.(slot);
-                            const isInteractive = typeof onSlotClick === "function";
-                            return (
-                              <div
-                                key={`slot-${slot.slotId || idx}`}
-                                className={`calendar-item calendar-item--slot calendar-item--${tone}${isInteractive ? " calendar-item--interactive" : ""}`}
-                                onClick={isInteractive ? () => onSlotClick(slot) : undefined}
-                              >
-                                <div className="calendar-item__time">{formatTimeRange(slot.startTime, slot.endTime)}</div>
-                                <div className="calendar-item__field">
-                                  <span>{getFieldLabel(slot) || "Field TBD"}</span>
-                                  {slot.address ? (
-                                    <a
-                                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(slot.address)}`}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="field-directions-link"
-                                      onClick={stopItemClickPropagation}
-                                      title="Get directions to field"
-                                    >
-                                      Map
-                                    </a>
-                                  ) : null}
-                                </div>
-                                <div className="calendar-item__details">
-                                  <div className="calendar-item__matchup">{getMatchupLabel(slot) || "Slot"}</div>
-                                  <div className="calendar-item__meta">
-                                    <span className={`calendar-item__status calendar-item__status--${tone}`}>
-                                      {getSlotStatusLabel(slot)}
-                                    </span>
-                                    {slot.division ? (
-                                      <span className="calendar-item__division">{slot.division}</span>
-                                    ) : null}
-                                  </div>
-                                  {slot.confirmedTeamId ? (
-                                    <div className="calendar-item__subtitle">Confirmed: {slot.confirmedTeamId}</div>
-                                  ) : null}
-                                  {slotActions ? (
-                                    <div className="calendar-item__actions" onClick={stopItemClickPropagation}>
-                                      {slotActions}
-                                    </div>
-                                  ) : null}
-                                </div>
-                              </div>
-                            );
-                          })}
-                          {day.events.map((event, idx) => {
-                            const eventActions = renderEventActions?.(event);
-                            const subtitle = getEventSubtitle(event);
-                            const notes = getEventNotes(event);
-                            const isInteractive = typeof onEventClick === "function";
-                            return (
-                              <div
-                                key={`event-${event.eventId || idx}`}
-                                className={`calendar-item calendar-item--event${isInteractive ? " calendar-item--interactive" : ""}`}
-                                onClick={isInteractive ? () => onEventClick(event) : undefined}
-                              >
-                                <div className="calendar-item__title">{getEventTitle(event)}</div>
-                                {subtitle ? <div className="calendar-item__description">{subtitle}</div> : null}
-                                {notes ? <div className="calendar-item__description">{notes}</div> : null}
-                                {eventActions ? (
-                                  <div className="calendar-item__actions" onClick={stopItemClickPropagation}>
-                                    {eventActions}
-                                  </div>
-                                ) : null}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
-              </div>
-            ) : null}
+    <div className="calendar-selection card">
+      <div className="calendar-selection__header">
+        <div>
+          <div className="cardTitle m-0">{getEventTitle(event)}</div>
+          <div className="subtle">
+            {item.date} | {formatOptionalTimeRange(event.startTime, event.endTime) || "All day"}
           </div>
-        );
-      })}
+        </div>
+        <span className="calendar-selection__badge calendar-selection__badge--event">Event</span>
+      </div>
+      <div className="calendar-selection__meta">
+        {event.location ? <span>Location: {event.location}</span> : null}
+        {event.division ? <span>Division: {event.division}</span> : null}
+        {event.teamId ? <span>Team: {event.teamId}</span> : null}
+        {event.notes ? <span>{event.notes}</span> : null}
+      </div>
+      {actions ? <div className="calendar-selection__actions">{actions}</div> : null}
     </div>
   );
 }
 
-function AgendaView({
-  weekGroups,
-  onSlotClick,
-  onEventClick,
-  renderSlotActions,
-  renderEventActions,
-}) {
-  if (weekGroups.length === 0) {
-    return <div className="subtle">No items in this range.</div>;
+function buildCalendarItems(slots, events) {
+  return [
+    ...slots
+      .map((slot, index) => buildItem("slot", slot, `slot-${slot?.slotId || index}`))
+      .filter(Boolean),
+    ...events
+      .map((event, index) => buildItem("event", event, `event-${event?.eventId || index}`))
+      .filter(Boolean),
+  ].sort((left, right) => {
+    const leftKey = `${left.date} ${left.startTime || ""} ${left.resourceName}`;
+    const rightKey = `${right.date} ${right.startTime || ""} ${right.resourceName}`;
+    return leftKey.localeCompare(rightKey);
+  });
+}
+
+function buildItem(kind, raw, fallbackKey) {
+  const date = getItemDate(raw);
+  if (!date) return null;
+
+  const resourceName = kind === "slot"
+    ? getFieldLabel(raw) || "Field TBD"
+    : (String(raw?.location || "").trim() || "League Events");
+  const resourceId = slugify(`${kind}:${resourceName}`);
+  const startIso = combineIsoDateTime(date, kind === "slot" ? raw?.startTime : raw?.startTime);
+  const endIso = combineIsoDateTime(date, kind === "slot" ? raw?.endTime : raw?.endTime);
+  const normalizedEndIso = ensureEndAfterStart(startIso, endIso);
+  const tone = kind === "slot" ? getSlotToneKey(raw) : "event";
+
+  return {
+    key: fallbackKey,
+    kind,
+    raw,
+    date,
+    startIso,
+    endIso: normalizedEndIso,
+    startTime: raw?.startTime || "",
+    endTime: raw?.endTime || "",
+    resourceId,
+    resourceName,
+    text: kind === "slot" ? (getMatchupLabel(raw) || "Slot") : getEventTitle(raw),
+    subtitle: kind === "slot"
+      ? [raw?.division, getSlotStatusLabel(raw)].filter(Boolean).join(" | ")
+      : getEventSubtitle(raw),
+    toolTip: kind === "slot"
+      ? `${getMatchupLabel(raw) || "Slot"}\n${date} ${formatTimeRange(raw?.startTime, raw?.endTime)}\n${resourceName}`
+      : `${getEventTitle(raw)}\n${date} ${formatOptionalTimeRange(raw?.startTime, raw?.endTime)}`.trim(),
+    colors: getItemColors(tone),
+  };
+}
+
+function buildResources(items) {
+  const resources = new Map();
+  items.forEach((item) => {
+    if (!resources.has(item.resourceId)) {
+      resources.set(item.resourceId, { id: item.resourceId, name: item.resourceName });
+    }
+  });
+  return Array.from(resources.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function buildSchedulerEvent(item) {
+  return {
+    id: item.key,
+    key: item.key,
+    kind: item.kind,
+    resource: item.resourceId,
+    text: item.subtitle ? `${item.text} • ${item.subtitle}` : item.text,
+    start: item.startIso,
+    end: item.endIso,
+    toolTip: item.toolTip,
+    backColor: item.colors.backColor,
+    borderColor: item.colors.borderColor,
+    barColor: item.colors.barColor,
+  };
+}
+
+function buildMonthEvent(item) {
+  return {
+    id: item.key,
+    key: item.key,
+    kind: item.kind,
+    text: item.text,
+    start: item.startIso,
+    end: item.endIso,
+    toolTip: item.toolTip,
+    backColor: item.colors.backColor,
+    borderColor: item.colors.borderColor,
+    barColor: item.colors.barColor,
+  };
+}
+
+function getVisibleRange(items) {
+  if (!items.length) {
+    const today = new Date();
+    return {
+      startDate: formatLocalIsoDate(today),
+      endDate: formatLocalIsoDate(today),
+      days: 1,
+    };
   }
 
-  const allDays = weekGroups
-    .flatMap((week) => Array.from(week.days.values()))
-    .sort((a, b) => a.date.localeCompare(b.date));
+  const dates = items.map((item) => parseLocalIsoDate(item.date)).filter(Boolean);
+  const start = new Date(Math.min(...dates.map((date) => date.getTime())));
+  const end = new Date(Math.max(...dates.map((date) => date.getTime())));
+  const days = Math.max(1, Math.round((end - start) / 86400000) + 1);
+  return {
+    startDate: formatLocalIsoDate(start),
+    endDate: formatLocalIsoDate(end),
+    days,
+  };
+}
 
-  return (
-    <div className="agenda-view">
-      {allDays.map((day) => {
-        if (day.slots.length === 0 && day.events.length === 0) return null;
+function combineIsoDateTime(date, timeValue) {
+  const time = normalizeTimeValue(timeValue);
+  return `${date}T${time}:00`;
+}
 
-        return (
-          <div key={day.date} className="agenda-day">
-            <div className="agenda-day__header">
-              <span className="agenda-day__name">{getDayName(day.date)}</span>
-              <span className="agenda-day__date">{day.date}</span>
-            </div>
+function ensureEndAfterStart(startIso, endIso) {
+  const start = new Date(startIso);
+  const end = new Date(endIso);
+  if (Number.isNaN(start.getTime())) return endIso;
+  if (!Number.isNaN(end.getTime()) && end > start) return endIso;
+  const fallback = new Date(start.getTime() + 60 * 60 * 1000);
+  return `${formatLocalIsoDate(fallback)}T${String(fallback.getHours()).padStart(2, "0")}:${String(fallback.getMinutes()).padStart(2, "0")}:00`;
+}
 
-            <div className="agenda-day__items">
-              {groupByField(day.slots).map(({ fieldKey, fieldName, slots: fieldSlots }) => (
-                <div key={fieldKey} className="agenda-field-group">
-                  <div className="agenda-field-group__name">Field: {fieldName}</div>
-                  {fieldSlots.map((slot, idx) => {
-                    const tone = getSlotToneKey(slot);
-                    const slotActions = renderSlotActions?.(slot);
-                    const isInteractive = typeof onSlotClick === "function";
-                    return (
-                      <div
-                        key={`slot-${slot.slotId || idx}`}
-                        className={`agenda-item agenda-item--${tone}${isInteractive ? " agenda-item--interactive" : ""}`}
-                        onClick={isInteractive ? () => onSlotClick(slot) : undefined}
-                      >
-                        <div className="agenda-item__time">{formatTimeRange(slot.startTime, slot.endTime)}</div>
-                        <div className="agenda-item__body">
-                          <div className="agenda-item__matchup">{getMatchupLabel(slot) || "Slot"}</div>
-                          {slot.confirmedTeamId ? (
-                            <div className="agenda-item__subtitle">Confirmed: {slot.confirmedTeamId}</div>
-                          ) : null}
-                          {slotActions ? (
-                            <div className="agenda-item__actions" onClick={stopItemClickPropagation}>
-                              {slotActions}
-                            </div>
-                          ) : null}
-                        </div>
-                        <div className="agenda-item__meta">
-                          <span className={`agenda-item__status agenda-item__status--${tone}`}>
-                            {getSlotStatusLabel(slot)}
-                          </span>
-                          {slot.division ? <span className="agenda-item__division">{slot.division}</span> : null}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
+function normalizeTimeValue(timeValue) {
+  const trimmed = String(timeValue || "").trim();
+  if (!trimmed) return "12:00";
+  if (/^\d{2}:\d{2}$/.test(trimmed)) return trimmed;
+  const parts = trimmed.split(":");
+  if (parts.length === 2) {
+    return `${String(Number(parts[0]) || 0).padStart(2, "0")}:${String(Number(parts[1]) || 0).padStart(2, "0")}`;
+  }
+  return "12:00";
+}
 
-              {day.events.map((event, idx) => {
-                const eventActions = renderEventActions?.(event);
-                const subtitle = getEventSubtitle(event);
-                const notes = getEventNotes(event);
-                const isInteractive = typeof onEventClick === "function";
-                return (
-                  <div
-                    key={`event-${event.eventId || idx}`}
-                    className={`agenda-item agenda-item--event${isInteractive ? " agenda-item--interactive" : ""}`}
-                    onClick={isInteractive ? () => onEventClick(event) : undefined}
-                  >
-                    <div className="agenda-item__title">{getEventTitle(event)}</div>
-                    {subtitle ? <div className="agenda-item__description">{subtitle}</div> : null}
-                    {notes ? <div className="agenda-item__description">{notes}</div> : null}
-                    {eventActions ? (
-                      <div className="agenda-item__actions" onClick={stopItemClickPropagation}>
-                        {eventActions}
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
+function getItemColors(tone) {
+  switch (tone) {
+    case "open":
+      return { backColor: "#fef3c7", borderColor: "#f59e0b", barColor: "#d97706" };
+    case "confirmed":
+      return { backColor: "#dcfce7", borderColor: "#16a34a", barColor: "#15803d" };
+    case "cancelled":
+      return { backColor: "#fee2e2", borderColor: "#dc2626", barColor: "#b91c1c" };
+    case "availability":
+      return { backColor: "#dbeafe", borderColor: "#2563eb", barColor: "#1d4ed8" };
+    case "pending":
+      return { backColor: "#fef9c3", borderColor: "#ca8a04", barColor: "#a16207" };
+    case "event":
+      return { backColor: "#ede9fe", borderColor: "#7c3aed", barColor: "#6d28d9" };
+    default:
+      return { backColor: "#e2e8f0", borderColor: "#64748b", barColor: "#475569" };
+  }
 }
 
 function stopItemClickPropagation(event) {
   event.stopPropagation();
-}
-
-function isSlotItem(item) {
-  return !!(item?.slotId || item?.fieldKey);
 }
 
 function getItemDate(item) {
@@ -441,17 +431,11 @@ function getEventSubtitle(event) {
   return [
     formatOptionalTimeRange(event?.startTime, event?.endTime),
     event?.status ? `Status: ${event.status}` : "",
-    event?.opponentTeamId ? `Opponent: ${event.opponentTeamId}` : "",
     event?.location ? `Location: ${event.location}` : "",
     event?.division ? `Division: ${event.division}` : "",
-    event?.teamId ? `Team: ${event.teamId}` : "",
   ]
     .filter(Boolean)
     .join(" | ");
-}
-
-function getEventNotes(event) {
-  return String(event?.notes || event?.description || "").trim();
 }
 
 function parseLocalIsoDate(dateStr) {
@@ -471,45 +455,6 @@ function formatLocalIsoDate(date) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
-}
-
-function getWeekKey(dateStr) {
-  const date = parseLocalIsoDate(dateStr) || new Date(dateStr);
-  const year = date.getFullYear();
-  const week = getWeekNumber(date);
-  return `${year}-W${String(week).padStart(2, "0")}`;
-}
-
-function getWeekNumber(date) {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const dayNum = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
-}
-
-function getWeekStart(dateStr) {
-  const date = parseLocalIsoDate(dateStr);
-  if (!date) return "";
-  const day = date.getDay();
-  const diff = date.getDate() - day + (day === 0 ? -6 : 1);
-  const monday = new Date(date.setDate(diff));
-  return formatLocalIsoDate(monday);
-}
-
-function getWeekEnd(dateStr) {
-  const date = parseLocalIsoDate(getWeekStart(dateStr));
-  if (!date) return "";
-  date.setDate(date.getDate() + 6);
-  return formatLocalIsoDate(date);
-}
-
-function getDayName(dateStr) {
-  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const localDate = parseLocalIsoDate(dateStr);
-  if (localDate) return days[localDate.getDay()];
-  const date = new Date(dateStr);
-  return days[date.getDay()];
 }
 
 function getMatchupLabel(slot) {
@@ -540,19 +485,18 @@ function getSlotStatusLabel(slot) {
   return slot.status || "Scheduled";
 }
 
-function groupByField(slots) {
-  const grouped = new Map();
-
-  slots.forEach((slot) => {
-    const fieldKey = slot.fieldKey || "unknown";
-    const fieldName = getFieldLabel(slot) || fieldKey;
-
-    if (!grouped.has(fieldKey)) {
-      grouped.set(fieldKey, { fieldKey, fieldName, slots: [] });
-    }
-
-    grouped.get(fieldKey).slots.push(slot);
-  });
-
-  return Array.from(grouped.values()).sort((a, b) => a.fieldName.localeCompare(b.fieldName));
+function slugify(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
+
+function normalizeViewMode(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "month" || normalized === "agenda") return "month";
+  return "timeline";
+}
+
+export { stopItemClickPropagation };

@@ -11,6 +11,31 @@ vi.mock("../../lib/telemetry", () => ({
   trackEvent: vi.fn(),
 }));
 
+vi.mock("@daypilot/daypilot-lite-react", () => ({
+  DayPilotScheduler: function DayPilotSchedulerMock({ events = [], onEventClick }) {
+    return (
+      <div data-testid="daypilot-scheduler">
+        {events.map((event) => (
+          <button key={event.id} type="button" onClick={() => onEventClick?.({ e: { data: event } })}>
+            {event.text}
+          </button>
+        ))}
+      </div>
+    );
+  },
+  DayPilotMonth: function DayPilotMonthMock({ events = [], onEventClick }) {
+    return (
+      <div data-testid="daypilot-month">
+        {events.map((event) => (
+          <button key={event.id} type="button" onClick={() => onEventClick?.({ e: { data: event } })}>
+            {event.text}
+          </button>
+        ))}
+      </div>
+    );
+  },
+}));
+
 vi.mock("../../components/LeaguePicker", () => ({
   default: function LeaguePicker() {
     return <div data-testid="league-picker" />;
@@ -131,8 +156,7 @@ function renderCalendarPage({
 }
 
 async function expandWeekCards() {
-  const detailsButton = await screen.findByRole("button", { name: /Details/i });
-  fireEvent.click(detailsButton);
+  await screen.findByTestId("daypilot-scheduler");
 }
 
 describe("CalendarPage", () => {
@@ -148,8 +172,6 @@ describe("CalendarPage", () => {
 
   it("does not open the edit modal from week cards for non-admin users", async () => {
     renderCalendarPage();
-
-    await expandWeekCards();
 
     const matchup = await screen.findByText("TEAM-1 vs TEAM-2");
     fireEvent.click(matchup);
@@ -176,10 +198,8 @@ describe("CalendarPage", () => {
 
     renderCalendarPage();
 
-    await expandWeekCards();
-
     expect(await screen.findByText("Practice: Skills Clinic")).toBeInTheDocument();
-    expect(screen.getByText(/17:30-19:00/)).toBeInTheDocument();
+    expect(screen.getAllByText(/17:30-19:00/).length).toBeGreaterThan(0);
   });
 
   it("shows accept actions for coaches on open week-card slots", async () => {
@@ -206,8 +226,6 @@ describe("CalendarPage", () => {
         memberships: [{ leagueId: "league-1", role: "Coach", team: { division: "U12", teamId: "TEAM-9" } }],
       },
     });
-
-    await expandWeekCards();
 
     expect(await screen.findByRole("button", { name: "Accept" })).toBeInTheDocument();
   });
@@ -299,13 +317,13 @@ describe("CalendarPage", () => {
 
     await expandWeekCards();
 
-    expect(await screen.findByText("TEAM-1 vs TEAM-2")).toBeInTheDocument();
-    expect(screen.getByText("TEAM-3 vs TEAM-4")).toBeInTheDocument();
+    expect((await screen.findAllByText(/TEAM-1 vs TEAM-2/)).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/TEAM-3 vs TEAM-4/).length).toBeGreaterThan(0);
 
     fireEvent.change(screen.getByLabelText("Team"), { target: { value: "TEAM-1" } });
 
-    expect(await screen.findByText("TEAM-1 vs TEAM-2")).toBeInTheDocument();
-    expect(screen.queryByText("TEAM-3 vs TEAM-4")).not.toBeInTheDocument();
+    expect((await screen.findAllByText(/TEAM-1 vs TEAM-2/)).length).toBeGreaterThan(0);
+    expect(screen.queryAllByText(/TEAM-3 vs TEAM-4/)).toHaveLength(0);
   });
 
   it("offers a coach quick view for My Team", async () => {
@@ -346,13 +364,13 @@ describe("CalendarPage", () => {
 
     await expandWeekCards();
 
-    expect(await screen.findByText("TEAM-1 vs TEAM-2")).toBeInTheDocument();
-    expect(screen.getByText("TEAM-3 vs TEAM-4")).toBeInTheDocument();
+    expect((await screen.findAllByText(/TEAM-1 vs TEAM-2/)).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/TEAM-3 vs TEAM-4/).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: "My Team" }));
 
-    expect(await screen.findByText("TEAM-1 vs TEAM-2")).toBeInTheDocument();
-    expect(screen.queryByText("TEAM-3 vs TEAM-4")).not.toBeInTheDocument();
+    expect((await screen.findAllByText(/TEAM-1 vs TEAM-2/)).length).toBeGreaterThan(0);
+    expect(screen.queryAllByText(/TEAM-3 vs TEAM-4/)).toHaveLength(0);
   });
 
   it("defaults league admins to open slots when the calendar URL has no filters", async () => {
@@ -407,9 +425,9 @@ describe("CalendarPage", () => {
 
     await expandWeekCards();
 
-    expect(await screen.findByText("TEAM-1 vs TBD")).toBeInTheDocument();
-    expect(screen.queryByText("TEAM-3 vs TEAM-4")).not.toBeInTheDocument();
-    expect(screen.queryByText("Practice: Skills Clinic")).not.toBeInTheDocument();
+    expect((await screen.findAllByText(/TEAM-1 vs TBD/)).length).toBeGreaterThan(0);
+    expect(screen.queryAllByText(/TEAM-3 vs TEAM-4/)).toHaveLength(0);
+    expect(screen.queryByText(/^Practice: Skills Clinic/)).not.toBeInTheDocument();
 
     const apiPaths = api.apiFetch.mock.calls.map(([path]) => String(path || ""));
     expect(apiPaths.some((path) => path.startsWith("/api/events?"))).toBe(false);
@@ -468,17 +486,17 @@ describe("CalendarPage", () => {
 
     await expandWeekCards();
 
-    expect(await screen.findByText("TEAM-1 vs TBD")).toBeInTheDocument();
-    expect(screen.queryByText("TEAM-3 vs TEAM-4")).not.toBeInTheDocument();
-    expect(screen.queryByText("Practice: Skills Clinic")).not.toBeInTheDocument();
+    expect((await screen.findAllByText(/TEAM-1 vs TBD/)).length).toBeGreaterThan(0);
+    expect(screen.queryAllByText(/TEAM-3 vs TEAM-4/)).toHaveLength(0);
+    expect(screen.queryByText(/^Practice: Skills Clinic/)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText("Events"));
     fireEvent.click(screen.getByLabelText("Confirmed"));
     fireEvent.click(screen.getByLabelText("Open"));
 
-    expect(await screen.findByText("TEAM-3 vs TEAM-4")).toBeInTheDocument();
-    expect(screen.queryByText("TEAM-1 vs TBD")).not.toBeInTheDocument();
-    expect(screen.getByText("Practice: Skills Clinic")).toBeInTheDocument();
+    expect((await screen.findAllByText(/TEAM-3 vs TEAM-4/)).length).toBeGreaterThan(0);
+    expect(screen.queryAllByText(/TEAM-1 vs TBD/)).toHaveLength(0);
+    expect(screen.getByText(/^Practice: Skills Clinic/)).toBeInTheDocument();
     expect(screen.getByLabelText("Events")).toBeChecked();
     expect(screen.getByLabelText("Confirmed")).toBeChecked();
     expect(screen.getByLabelText("Open")).not.toBeChecked();

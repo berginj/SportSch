@@ -25,6 +25,7 @@
     "test:practice-requests": "node scripts/validate-practice-requests.mjs"
   },
   "dependencies": {
+    "@daypilot/daypilot-lite-react": "^5.4.0",
     "@microsoft/applicationinsights-web": "^3.1.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

@@ -11,6 +11,23 @@ vi.mock("../../lib/telemetry", () => ({
   trackEvent: vi.fn(),
 }));
 
+vi.mock("@daypilot/daypilot-lite-react", () => ({
+  DayPilotMonth: function DayPilotMonthMock({ events = [], onEventClick }) {
+    return (
+      <div data-testid="daypilot-month">
+        {events.map((event) => (
+          <button key={event.id} type="button" onClick={() => onEventClick?.({ e: { data: event } })}>
+            {event.text}
+          </button>
+        ))}
+      </div>
+    );
+  },
+  DayPilotScheduler: function DayPilotSchedulerMock() {
+    return <div data-testid="daypilot-scheduler" />;
+  },
+}));
+
 const BASE_PREVIEW = {
   summary: {
     teamCount: 2,

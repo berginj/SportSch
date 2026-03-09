@@ -1440,9 +1440,9 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
             <button
               className="btn btn--ghost"
               onClick={toggleCalendarView}
-              title={useNewCalendarView ? "Switch to classic list view" : "Switch to compact week card view"}
+              title={useNewCalendarView ? "Switch to classic list view" : "Switch to DayPilot calendar view"}
             >
-              {useNewCalendarView ? "Classic View" : "Week Cards"}
+              {useNewCalendarView ? "Classic View" : "DayPilot View"}
             </button>
           </div>
           {role === "Coach" && !myCoachTeamId ? (

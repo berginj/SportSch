@@ -702,6 +702,35 @@ public class FieldInventoryImportService : IFieldInventoryImportService
         CanonicalFieldCatalog fieldCatalog,
         List<FieldInventoryFieldAliasEntity> aliases)
     {
+        if (string.Equals(parserType, FieldInventoryParserTypes.SeasonWeekdayGrid, StringComparison.OrdinalIgnoreCase))
+        {
+            var agsaWeekday = ParseAgsaWeekdayMatrixSheet(run, workbook, sheet, parserType, fieldCatalog, aliases);
+            if (agsaWeekday is not null)
+            {
+                return agsaWeekday;
+            }
+        }
+
+        if (string.Equals(parserType, FieldInventoryParserTypes.WeekendGrid, StringComparison.OrdinalIgnoreCase))
+        {
+            var agsaWeekend = ParseAgsaWeekendGridSheet(run, workbook, sheet, parserType, fieldCatalog, aliases);
+            if (agsaWeekend is not null)
+            {
+                return agsaWeekend;
+            }
+        }
+
+        return ParseGenericInventorySheet(run, workbook, sheet, parserType, fieldCatalog, aliases);
+    }
+
+    private ParsedSheetResult ParseGenericInventorySheet(
+        FieldInventoryImportRunEntity run,
+        ParsedWorkbook workbook,
+        ParsedWorkbookSheet sheet,
+        string parserType,
+        CanonicalFieldCatalog fieldCatalog,
+        List<FieldInventoryFieldAliasEntity> aliases)
+    {
         var result = new ParsedSheetResult();
         var yearHint = GetYearHint(run, workbook);
         var dateColumn = DetectDateColumn(sheet, yearHint);
@@ -785,74 +814,121 @@ public class FieldInventoryImportService : IFieldInventoryImportService
                 if (!status.HasMeaningfulInventory) continue;
 
                 var resolution = ResolveFieldAlias(rawFieldName, fieldCatalog, aliases);
-                var warningFlags = new List<string>();
-                if (!resolution.IsMapped) warningFlags.Add("unmapped_field");
-                if (status.IsExternalUsage) warningFlags.Add("external_usage");
-                if (status.Confidence == FieldInventoryConfidence.Low) warningFlags.Add("low_confidence");
+                AddParsedRecord(result, run, sheet, parserType, mergedAnchors, row, column, rawFieldName, rawValue, sourceRange, parsedDate, startTime, endTime, status, resolution);
+            }
+        }
 
-                var record = new FieldInventoryStagedRecordEntity
+        result.ReviewItems = result.ReviewItems
+            .GroupBy(x => $"{x.ItemType}|{x.SourceTab}|{x.SourceCellRange}|{x.RawValue}", StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.First())
+            .ToList();
+
+        return result;
+    }
+
+    private ParsedSheetResult? ParseAgsaWeekdayMatrixSheet(
+        FieldInventoryImportRunEntity run,
+        ParsedWorkbook workbook,
+        ParsedWorkbookSheet sheet,
+        string parserType,
+        CanonicalFieldCatalog fieldCatalog,
+        List<FieldInventoryFieldAliasEntity> aliases)
+    {
+        var result = new ParsedSheetResult();
+        var yearHint = GetYearHint(run, workbook);
+        if (!TryDetectAgsaWeekdayBlocks(sheet, out var subheaderRow, out var blocks))
+        {
+            return null;
+        }
+
+        if (!TryParseSeasonDateRange(sheet.Name, yearHint, out var rangeStart, out var rangeEnd))
+        {
+            return null;
+        }
+
+        var mergedAnchors = BuildMergedAnchorMap(sheet);
+        var datesByDay = blocks
+            .GroupBy(x => x.DayOfWeek)
+            .ToDictionary(
+                x => x.Key,
+                x => EnumerateSeasonDates(rangeStart, rangeEnd, x.Key).ToList());
+
+        var currentFieldName = "";
+        var ambiguousCells = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        for (var row = subheaderRow + 1; row <= sheet.MaxRow; row++)
+        {
+            var fieldCandidate = GetCellValue(sheet, row, 2).Trim();
+            if (LooksLikeAgsaWeekdayFieldHeader(fieldCandidate) && RowHasAgsaWeekdayTime(sheet, mergedAnchors, row, blocks))
+            {
+                currentFieldName = fieldCandidate;
+            }
+
+            if (string.IsNullOrWhiteSpace(currentFieldName))
+            {
+                continue;
+            }
+
+            foreach (var block in blocks)
+            {
+                var timeText = GetMergedAwareCellValue(sheet, mergedAnchors, row, block.TimeColumn);
+                if (!TryParseSheetTimeHeader(timeText, out var slotTime))
                 {
-                    Id = BuildRecordId(sheet.Name, sourceRange, rawFieldName, parsedDate, startTime),
-                    ImportRunId = run.Id,
-                    LeagueId = run.LeagueId,
-                    FieldId = resolution.FieldId,
-                    FieldName = resolution.FieldName,
-                    RawFieldName = rawFieldName,
-                    Date = parsedDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-                    DayOfWeek = parsedDate.DayOfWeek.ToString(),
-                    StartTime = startTime.ToString("HH:mm", CultureInfo.InvariantCulture),
-                    EndTime = endTime.ToString("HH:mm", CultureInfo.InvariantCulture),
-                    SlotDurationMinutes = (int)(endTime - startTime).TotalMinutes,
-                    AvailabilityStatus = status.AvailabilityStatus,
-                    UtilizationStatus = status.UtilizationStatus,
-                    UsageType = status.UsageType,
-                    UsedBy = status.UsedBy,
-                    AssignedGroup = status.AssignedGroup,
-                    AssignedDivision = status.AssignedDivision,
-                    AssignedTeamOrEvent = status.AssignedTeamOrEvent,
-                    SourceWorkbookUrl = run.SourceWorkbookUrl,
-                    SourceTab = sheet.Name,
-                    SourceCellRange = sourceRange,
-                    SourceValue = rawValue,
-                    SourceColor = GetMergedAwareBackgroundColor(sheet, mergedAnchors, row, column),
-                    ParserType = parserType,
-                    Confidence = CombineConfidence(status.Confidence, resolution.Confidence),
-                    WarningFlags = warningFlags,
-                    ReviewStatus = !resolution.IsMapped || status.Confidence == FieldInventoryConfidence.Low
-                        ? FieldInventoryReviewStatuses.NeedsReview
-                        : FieldInventoryReviewStatuses.None,
-                    CreatedAt = DateTimeOffset.UtcNow,
-                    UpdatedAt = DateTimeOffset.UtcNow,
-                };
-
-                result.Records.Add(record);
-
-                if (!resolution.IsMapped)
-                {
-                    result.ReviewItems.Add(CreateReviewItem(
-                        run.Id,
-                        FieldInventoryReviewItemTypes.FieldMapping,
-                        FieldInventoryReviewItemSeverities.NonBlocking,
-                        $"Map field '{rawFieldName}'",
-                        $"The sheet field '{rawFieldName}' is not yet mapped to a canonical SportsCH field.",
-                        sheet.Name,
-                        sourceRange,
-                        rawFieldName,
-                        new Dictionary<string, string?>()));
+                    continue;
                 }
 
-                if (record.Confidence == FieldInventoryConfidence.Low)
+                var levelText = GetMergedAwareCellValue(sheet, mergedAnchors, row, block.LevelColumn).Trim();
+                var teamText = GetMergedAwareCellValue(sheet, mergedAnchors, row, block.TeamColumn).Trim();
+                if (string.IsNullOrWhiteSpace(levelText) && string.IsNullOrWhiteSpace(teamText))
                 {
-                    result.ReviewItems.Add(CreateReviewItem(
-                        run.Id,
-                        FieldInventoryReviewItemTypes.LowConfidence,
-                        FieldInventoryReviewItemSeverities.NonBlocking,
-                        $"Review low-confidence record {sourceRange}",
-                        "The parser created a record but could not classify all metadata with high confidence.",
-                        sheet.Name,
+                    continue;
+                }
+
+                var sourceRange = $"{ColumnName(block.TimeColumn)}{row}:{ColumnName(block.TeamColumn)}{row}";
+                var sourceValue = BuildAgsaWeekdaySourceValue(levelText, teamText);
+                if (IsAmbiguousAgsaWeekdayNote(levelText, teamText))
+                {
+                    if (ambiguousCells.Add(sourceRange))
+                    {
+                        result.ReviewItems.Add(CreateReviewItem(
+                            run.Id,
+                            FieldInventoryReviewItemTypes.AmbiguousParse,
+                            FieldInventoryReviewItemSeverities.NonBlocking,
+                            $"Review AGSA weekday note {sourceRange}",
+                            "This AGSA weekday cell includes date-specific notes or mixed open/closed instructions. SportsCH skipped auto-expanding it so you can review it explicitly.",
+                            sheet.Name,
+                            sourceRange,
+                            sourceValue,
+                            new Dictionary<string, string?>()));
+                    }
+                    continue;
+                }
+
+                var status = BuildAgsaWeekdayStatus(levelText, teamText);
+                if (!status.HasMeaningfulInventory)
+                {
+                    continue;
+                }
+
+                var resolution = ResolveFieldAlias(currentFieldName, fieldCatalog, aliases);
+                foreach (var parsedDate in datesByDay[block.DayOfWeek])
+                {
+                    AddParsedRecord(
+                        result,
+                        run,
+                        sheet,
+                        parserType,
+                        mergedAnchors,
+                        row,
+                        block.TimeColumn,
+                        currentFieldName,
+                        sourceValue,
                         sourceRange,
-                        rawValue,
-                        new Dictionary<string, string?>()));
+                        parsedDate,
+                        slotTime.StartTime,
+                        slotTime.EndTime ?? slotTime.StartTime.AddMinutes(90),
+                        status,
+                        resolution);
                 }
             }
         }
@@ -863,6 +939,413 @@ public class FieldInventoryImportService : IFieldInventoryImportService
             .ToList();
 
         return result;
+    }
+
+    private ParsedSheetResult? ParseAgsaWeekendGridSheet(
+        FieldInventoryImportRunEntity run,
+        ParsedWorkbook workbook,
+        ParsedWorkbookSheet sheet,
+        string parserType,
+        CanonicalFieldCatalog fieldCatalog,
+        List<FieldInventoryFieldAliasEntity> aliases)
+    {
+        var result = new ParsedSheetResult();
+        var yearHint = GetYearHint(run, workbook);
+        var mergedAnchors = BuildMergedAnchorMap(sheet);
+        var recognizedAnySection = false;
+
+        foreach (var side in AgsaWeekendSides)
+        {
+            var currentFieldName = "";
+            var timeByColumn = new Dictionary<int, TimeHeaderSlot>();
+
+            for (var row = 1; row <= sheet.MaxRow; row++)
+            {
+                var firstCell = GetMergedAwareCellValue(sheet, mergedAnchors, row, side.FieldColumn).Trim();
+                var headerTimes = BuildWeekendSectionTimeMap(sheet, mergedAnchors, row, side);
+                if (LooksLikeAgsaWeekendFieldHeader(firstCell) && headerTimes.Count > 0)
+                {
+                    currentFieldName = firstCell;
+                    timeByColumn = headerTimes;
+                    recognizedAnySection = true;
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(currentFieldName) || timeByColumn.Count == 0)
+                {
+                    continue;
+                }
+
+                if (!TryParseSheetDate(firstCell, yearHint, out var parsedDate))
+                {
+                    continue;
+                }
+                parsedDate = NormalizeWeekendSectionDate(parsedDate, side.ExpectedDayOfWeek);
+
+                foreach (var entry in timeByColumn)
+                {
+                    var column = entry.Key;
+                    if (!IsAnchorCell(mergedAnchors, row, column))
+                    {
+                        continue;
+                    }
+
+                    var rawValue = GetMergedAwareCellValue(sheet, mergedAnchors, row, column).Trim();
+                    if (string.IsNullOrWhiteSpace(rawValue))
+                    {
+                        continue;
+                    }
+
+                    var status = InferStatus(rawValue);
+                    if (!status.HasMeaningfulInventory)
+                    {
+                        continue;
+                    }
+
+                    var endColumn = GetMergedEndColumn(mergedAnchors, row, column);
+                    var endTime = ResolveEndTime(timeByColumn, entry.Value, column, endColumn);
+                    var sourceRange = GetMergedSourceRange(mergedAnchors, row, column);
+                    var resolution = ResolveFieldAlias(currentFieldName, fieldCatalog, aliases);
+                    AddParsedRecord(result, run, sheet, parserType, mergedAnchors, row, column, currentFieldName, rawValue, sourceRange, parsedDate, entry.Value.StartTime, endTime, status, resolution);
+                }
+            }
+        }
+
+        if (!recognizedAnySection)
+        {
+            return null;
+        }
+
+        result.ReviewItems = result.ReviewItems
+            .GroupBy(x => $"{x.ItemType}|{x.SourceTab}|{x.SourceCellRange}|{x.RawValue}", StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.First())
+            .ToList();
+
+        return result;
+    }
+
+    private static bool TryDetectAgsaWeekdayBlocks(ParsedWorkbookSheet sheet, out int subheaderRow, out List<AgsaWeekdayBlock> blocks)
+    {
+        subheaderRow = 0;
+        blocks = new List<AgsaWeekdayBlock>();
+
+        for (var row = 1; row <= Math.Min(sheet.MaxRow, 8); row++)
+        {
+            var timeColumns = Enumerable.Range(1, sheet.MaxColumn)
+                .Where(column => string.Equals(GetCellValue(sheet, row, column).Trim(), "Time", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (timeColumns.Count < 3)
+            {
+                continue;
+            }
+
+            var detected = new List<AgsaWeekdayBlock>();
+            foreach (var timeColumn in timeColumns)
+            {
+                if (!string.Equals(GetCellValue(sheet, row, timeColumn + 1).Trim(), "Level", StringComparison.OrdinalIgnoreCase)
+                    || !string.Equals(GetCellValue(sheet, row, timeColumn + 2).Trim(), "Team", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var dayLabel = GetCellValue(sheet, row - 1, timeColumn).Trim();
+                if (!TryParseWeekdayName(dayLabel, out var dayOfWeek))
+                {
+                    continue;
+                }
+
+                detected.Add(new AgsaWeekdayBlock(dayOfWeek, timeColumn, timeColumn + 1, timeColumn + 2));
+            }
+
+            if (detected.Count >= 3)
+            {
+                subheaderRow = row;
+                blocks = detected;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool RowHasAgsaWeekdayTime(ParsedWorkbookSheet sheet, Dictionary<(int row, int column), ParsedWorkbookMergedRange> mergedAnchors, int row, List<AgsaWeekdayBlock> blocks)
+        => blocks.Any(block => TryParseSheetTimeHeader(GetMergedAwareCellValue(sheet, mergedAnchors, row, block.TimeColumn), out _));
+
+    private static bool LooksLikeAgsaWeekdayFieldHeader(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        if (TryParseSheetTimeHeader(value, out _)) return false;
+        if (TryParseSheetDate(value, DateTime.UtcNow.Year, out _)) return false;
+        var normalized = value.Trim().ToLowerInvariant();
+        return !normalized.Contains("effective ")
+            && !normalized.Contains("high school")
+            && !normalized.Contains("field grid")
+            && !normalized.Contains("spring break");
+    }
+
+    private static string BuildAgsaWeekdaySourceValue(string levelText, string teamText)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(levelText)) parts.Add($"Level: {levelText}");
+        if (!string.IsNullOrWhiteSpace(teamText)) parts.Add($"Team: {teamText}");
+        return string.Join(" | ", parts);
+    }
+
+    private static bool IsAmbiguousAgsaWeekdayNote(string levelText, string teamText)
+    {
+        var combined = string.Join("\n", new[] { levelText, teamText }.Where(x => !string.IsNullOrWhiteSpace(x)));
+        if (Regex.Matches(combined, @"\b\d{1,2}/\d{1,2}\b").Count >= 2)
+        {
+            return true;
+        }
+
+        return combined.Contains("No use:", StringComparison.OrdinalIgnoreCase)
+            || combined.Contains("Available:", StringComparison.OrdinalIgnoreCase)
+            || combined.Contains("Open:", StringComparison.OrdinalIgnoreCase)
+            || combined.Contains("Limited Use", StringComparison.OrdinalIgnoreCase)
+            || levelText.Contains('\n')
+            || teamText.Contains('\n');
+    }
+
+    private static InventoryCellStatus BuildAgsaWeekdayStatus(string levelText, string teamText)
+    {
+        var primary = !string.IsNullOrWhiteSpace(teamText) ? teamText.Trim() : levelText.Trim();
+        var status = InferStatus(primary);
+        if (!status.HasMeaningfulInventory && !string.IsNullOrWhiteSpace(levelText))
+        {
+            status = InferStatus(levelText);
+        }
+
+        if (!status.HasMeaningfulInventory)
+        {
+            return status;
+        }
+
+        var assignedGroup = status.AssignedGroup;
+        if (string.IsNullOrWhiteSpace(assignedGroup) && !string.IsNullOrWhiteSpace(levelText) && !LooksLikeStatusKeyword(levelText))
+        {
+            assignedGroup = levelText.Trim();
+        }
+
+        var assignedDivision = status.AssignedDivision
+            ?? ExtractDivision(teamText)
+            ?? ExtractDivision(levelText);
+
+        var assignedTeamOrEvent = status.AssignedTeamOrEvent;
+        if (string.IsNullOrWhiteSpace(assignedTeamOrEvent)
+            && !string.IsNullOrWhiteSpace(teamText)
+            && !string.Equals(teamText.Trim(), "Available", StringComparison.OrdinalIgnoreCase))
+        {
+            assignedTeamOrEvent = teamText.Trim();
+        }
+
+        var confidence = status.Confidence;
+        if (!string.IsNullOrWhiteSpace(levelText) && !string.IsNullOrWhiteSpace(teamText) && confidence == FieldInventoryConfidence.Low)
+        {
+            confidence = FieldInventoryConfidence.Medium;
+        }
+
+        return new InventoryCellStatus(
+            status.HasMeaningfulInventory,
+            status.AvailabilityStatus,
+            status.UtilizationStatus,
+            status.UsageType,
+            status.UsedBy,
+            assignedGroup,
+            assignedDivision,
+            assignedTeamOrEvent,
+            confidence,
+            status.IsExternalUsage);
+    }
+
+    private static bool LooksLikeStatusKeyword(string value)
+    {
+        var normalized = (value ?? "").Trim().ToLowerInvariant();
+        return normalized.Contains("available")
+            || normalized.Contains("pending")
+            || normalized.Contains("requested")
+            || normalized.Contains("closed")
+            || normalized.Contains("unavailable")
+            || normalized.Contains("field prep")
+            || normalized.Contains("game")
+            || normalized.Contains("practice");
+    }
+
+    private static bool TryParseSeasonDateRange(string sheetName, int yearHint, out DateOnly startDate, out DateOnly endDate)
+    {
+        startDate = default;
+        endDate = default;
+        var value = sheetName ?? "";
+        var slashMatch = Regex.Match(value, @"(?<startMonth>\d{1,2})\s*/\s*(?<startDay>\d{1,2})\s*-\s*(?<endMonth>\d{1,2})\s*/\s*(?<endDay>\d{1,2})");
+        var compactMatch = Regex.Match(value, @"(?<startMonth>\d{1,2})(?<startDay>\d{2})\s*-\s*(?<endMonth>\d{1,2})(?<endDay>\d{2})");
+        var match = slashMatch.Success ? slashMatch : compactMatch;
+        if (!match.Success)
+        {
+            return false;
+        }
+
+        startDate = new DateOnly(yearHint, int.Parse(match.Groups["startMonth"].Value, CultureInfo.InvariantCulture), int.Parse(match.Groups["startDay"].Value, CultureInfo.InvariantCulture));
+        endDate = new DateOnly(yearHint, int.Parse(match.Groups["endMonth"].Value, CultureInfo.InvariantCulture), int.Parse(match.Groups["endDay"].Value, CultureInfo.InvariantCulture));
+        return endDate >= startDate;
+    }
+
+    private static IEnumerable<DateOnly> EnumerateSeasonDates(DateOnly startDate, DateOnly endDate, DayOfWeek dayOfWeek)
+    {
+        for (var date = startDate; date <= endDate; date = date.AddDays(1))
+        {
+            if (date.DayOfWeek == dayOfWeek)
+            {
+                yield return date;
+            }
+        }
+    }
+
+    private static bool TryParseWeekdayName(string? raw, out DayOfWeek dayOfWeek)
+    {
+        dayOfWeek = default;
+        return raw?.Trim() switch
+        {
+            "Monday" => (dayOfWeek = DayOfWeek.Monday) == DayOfWeek.Monday,
+            "Tuesday" => (dayOfWeek = DayOfWeek.Tuesday) == DayOfWeek.Tuesday,
+            "Wednesday" => (dayOfWeek = DayOfWeek.Wednesday) == DayOfWeek.Wednesday,
+            "Thursday" => (dayOfWeek = DayOfWeek.Thursday) == DayOfWeek.Thursday,
+            "Friday" => (dayOfWeek = DayOfWeek.Friday) == DayOfWeek.Friday,
+            "Saturday" => (dayOfWeek = DayOfWeek.Saturday) == DayOfWeek.Saturday,
+            "Sunday" => (dayOfWeek = DayOfWeek.Sunday) == DayOfWeek.Sunday,
+            _ => false
+        };
+    }
+
+    private static bool LooksLikeAgsaWeekendFieldHeader(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        if (TryParseSheetDate(value, DateTime.UtcNow.Year, out _)) return false;
+        if (TryParseSheetTimeHeader(value, out _)) return false;
+        return !value.Contains("am", StringComparison.OrdinalIgnoreCase)
+            && !value.Contains("pm", StringComparison.OrdinalIgnoreCase)
+            && !value.Contains("closed", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static Dictionary<int, TimeHeaderSlot> BuildWeekendSectionTimeMap(
+        ParsedWorkbookSheet sheet,
+        Dictionary<(int row, int column), ParsedWorkbookMergedRange> mergedAnchors,
+        int row,
+        AgsaWeekendSide side)
+    {
+        var output = new Dictionary<int, TimeHeaderSlot>();
+        for (var column = side.FirstTimeColumn; column <= side.LastTimeColumn; column++)
+        {
+            if (TryParseSheetTimeHeader(GetMergedAwareCellValue(sheet, mergedAnchors, row, column), out var slot))
+            {
+                output[column] = slot;
+            }
+        }
+
+        return output;
+    }
+
+    private static DateOnly NormalizeWeekendSectionDate(DateOnly parsedDate, DayOfWeek expectedDayOfWeek)
+    {
+        if (parsedDate.DayOfWeek == expectedDayOfWeek)
+        {
+            return parsedDate;
+        }
+
+        var nextDay = parsedDate.AddDays(1);
+        if (nextDay.DayOfWeek == expectedDayOfWeek)
+        {
+            return nextDay;
+        }
+
+        return parsedDate;
+    }
+
+    private void AddParsedRecord(
+        ParsedSheetResult result,
+        FieldInventoryImportRunEntity run,
+        ParsedWorkbookSheet sheet,
+        string parserType,
+        Dictionary<(int row, int column), ParsedWorkbookMergedRange> mergedAnchors,
+        int row,
+        int column,
+        string rawFieldName,
+        string rawValue,
+        string sourceRange,
+        DateOnly parsedDate,
+        TimeOnly startTime,
+        TimeOnly endTime,
+        InventoryCellStatus status,
+        FieldResolution resolution)
+    {
+        var warningFlags = new List<string>();
+        if (!resolution.IsMapped) warningFlags.Add("unmapped_field");
+        if (status.IsExternalUsage) warningFlags.Add("external_usage");
+        if (status.Confidence == FieldInventoryConfidence.Low) warningFlags.Add("low_confidence");
+
+        var record = new FieldInventoryStagedRecordEntity
+        {
+            Id = BuildRecordId(sheet.Name, sourceRange, rawFieldName, parsedDate, startTime),
+            ImportRunId = run.Id,
+            LeagueId = run.LeagueId,
+            FieldId = resolution.FieldId,
+            FieldName = resolution.FieldName,
+            RawFieldName = rawFieldName,
+            Date = parsedDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            DayOfWeek = parsedDate.DayOfWeek.ToString(),
+            StartTime = startTime.ToString("HH:mm", CultureInfo.InvariantCulture),
+            EndTime = endTime.ToString("HH:mm", CultureInfo.InvariantCulture),
+            SlotDurationMinutes = (int)(endTime - startTime).TotalMinutes,
+            AvailabilityStatus = status.AvailabilityStatus,
+            UtilizationStatus = status.UtilizationStatus,
+            UsageType = status.UsageType,
+            UsedBy = status.UsedBy,
+            AssignedGroup = status.AssignedGroup,
+            AssignedDivision = status.AssignedDivision,
+            AssignedTeamOrEvent = status.AssignedTeamOrEvent,
+            SourceWorkbookUrl = run.SourceWorkbookUrl,
+            SourceTab = sheet.Name,
+            SourceCellRange = sourceRange,
+            SourceValue = rawValue,
+            SourceColor = GetMergedAwareBackgroundColor(sheet, mergedAnchors, row, column),
+            ParserType = parserType,
+            Confidence = CombineConfidence(status.Confidence, resolution.Confidence),
+            WarningFlags = warningFlags,
+            ReviewStatus = !resolution.IsMapped || status.Confidence == FieldInventoryConfidence.Low
+                ? FieldInventoryReviewStatuses.NeedsReview
+                : FieldInventoryReviewStatuses.None,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        };
+
+        result.Records.Add(record);
+
+        if (!resolution.IsMapped)
+        {
+            result.ReviewItems.Add(CreateReviewItem(
+                run.Id,
+                FieldInventoryReviewItemTypes.FieldMapping,
+                FieldInventoryReviewItemSeverities.NonBlocking,
+                $"Map field '{rawFieldName}'",
+                $"The sheet field '{rawFieldName}' is not yet mapped to a canonical SportsCH field.",
+                sheet.Name,
+                sourceRange,
+                rawFieldName,
+                new Dictionary<string, string?>()));
+        }
+
+        if (record.Confidence == FieldInventoryConfidence.Low)
+        {
+            result.ReviewItems.Add(CreateReviewItem(
+                run.Id,
+                FieldInventoryReviewItemTypes.LowConfidence,
+                FieldInventoryReviewItemSeverities.NonBlocking,
+                $"Review low-confidence record {sourceRange}",
+                "The parser created a record but could not classify all metadata with high confidence.",
+                sheet.Name,
+                sourceRange,
+                rawValue,
+                new Dictionary<string, string?>()));
+        }
     }
 
     private async Task SaveReviewDecisionForFutureAsync(FieldInventoryImportRunEntity run, FieldInventoryReviewQueueItemEntity reviewItem, CorrelationContext context)
@@ -1210,6 +1693,14 @@ public class FieldInventoryImportService : IFieldInventoryImportService
         var value = (raw ?? "").Trim();
         if (string.IsNullOrWhiteSpace(value)) return false;
 
+        if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var oaDate)
+            && oaDate > 30000
+            && oaDate < 70000)
+        {
+            date = DateOnly.FromDateTime(DateTime.FromOADate(oaDate));
+            return true;
+        }
+
         value = Regex.Replace(value, @"\b(Mon(day)?|Tue(s(day)?)?|Wed(nesday)?|Thu(r(s(day)?)?)?|Fri(day)?|Sat(urday)?|Sun(day)?)\b", "", RegexOptions.IgnoreCase).Trim();
         return DateOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out date)
             || (DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out var parsedDateTime)
@@ -1225,6 +1716,12 @@ public class FieldInventoryImportService : IFieldInventoryImportService
         time = default;
         var value = (raw ?? "").Trim();
         if (string.IsNullOrWhiteSpace(value)) return false;
+        value = value.Replace("a.m.", "AM", StringComparison.OrdinalIgnoreCase)
+            .Replace("p.m.", "PM", StringComparison.OrdinalIgnoreCase)
+            .Replace("a.m", "AM", StringComparison.OrdinalIgnoreCase)
+            .Replace("p.m", "PM", StringComparison.OrdinalIgnoreCase);
+        value = Regex.Replace(value, @"\bnoon\b", "12:00 PM", RegexOptions.IgnoreCase);
+        value = Regex.Replace(value, @"\bmidnight\b", "12:00 AM", RegexOptions.IgnoreCase);
 
         var formats = new[] { "H:mm", "HH:mm", "h:mm tt", "h:mmtt", "htt", "h tt" };
         if (TimeOnly.TryParseExact(value, formats, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out time))
@@ -2116,6 +2613,16 @@ public class FieldInventoryImportService : IFieldInventoryImportService
     }
 
     private sealed record FieldResolution(bool IsMapped, string? FieldId, string? FieldName, string Confidence);
+
+    private sealed record AgsaWeekdayBlock(DayOfWeek DayOfWeek, int TimeColumn, int LevelColumn, int TeamColumn);
+
+    private sealed record AgsaWeekendSide(int FieldColumn, int FirstTimeColumn, int LastTimeColumn, DayOfWeek ExpectedDayOfWeek);
+
+    private static readonly AgsaWeekendSide[] AgsaWeekendSides =
+    {
+        new(1, 2, 10, DayOfWeek.Saturday),
+        new(11, 12, 20, DayOfWeek.Sunday)
+    };
 
     private sealed record InventoryCellStatus(
         bool HasMeaningfulInventory,
