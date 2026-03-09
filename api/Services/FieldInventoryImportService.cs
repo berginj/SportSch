@@ -94,6 +94,9 @@ public class FieldInventoryImportService : IFieldInventoryImportService
 
     public async Task<FieldInventoryPreviewResponse> CreatePreviewAsync(FieldInventoryPreviewRequest request, CorrelationContext context)
     {
+        var clientRequestId = string.IsNullOrWhiteSpace(request.ClientRequestId)
+            ? Guid.NewGuid().ToString("n")
+            : request.ClientRequestId.Trim();
         var selectedTabs = (request.SelectedTabs ?? new List<FieldInventorySelectedTab>())
             .Where(x => x is not null && !string.IsNullOrWhiteSpace(x.TabName))
             .Select(CloneTabSelection)
@@ -104,6 +107,9 @@ public class FieldInventoryImportService : IFieldInventoryImportService
             throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST,
                 "Select at least one workbook tab to parse.");
         }
+
+        await WriteDiagnosticAsync(context, clientRequestId, null, "request_received", "info",
+            $"Preview requested for {selectedTabs.Count} selected tab(s).");
 
         var normalizedUrl = "";
         var uploadedWorkbookId = (request.UploadedWorkbookId ?? "").Trim();
@@ -147,12 +153,13 @@ public class FieldInventoryImportService : IFieldInventoryImportService
 
         try
         {
-            return await BuildAndPersistPreviewAsync(run, context);
+            return await BuildAndPersistPreviewAsync(run, context, clientRequestId);
         }
         catch (ApiGuards.HttpError ex) when (ex.Status >= 500 || string.Equals(ex.Code, ErrorCodes.WORKBOOK_LOAD_FAILED, StringComparison.OrdinalIgnoreCase))
         {
             _logger.LogError(ex, "Field inventory preview build failed for run {RunId}", run.Id);
-            return await BuildErroredPreviewAsync(run, context, ex);
+            await WriteDiagnosticAsync(context, clientRequestId, run.Id, "preview_failed", "error", ex.Message);
+            return await BuildErroredPreviewAsync(run, context, clientRequestId, ex);
         }
         catch (ApiGuards.HttpError)
         {
@@ -161,8 +168,15 @@ public class FieldInventoryImportService : IFieldInventoryImportService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Field inventory preview build failed for run {RunId}", run.Id);
-            return await BuildErroredPreviewAsync(run, context, ex);
+            await WriteDiagnosticAsync(context, clientRequestId, run.Id, "preview_failed", "error", ex.Message);
+            return await BuildErroredPreviewAsync(run, context, clientRequestId, ex);
         }
+    }
+
+    public async Task<List<FieldInventoryDiagnosticEntryDto>> GetDiagnosticsAsync(string clientRequestId, CorrelationContext context)
+    {
+        var diagnostics = await _repository.GetDiagnosticsAsync(context.LeagueId, (clientRequestId ?? "").Trim());
+        return diagnostics.Select(MapDiagnostic).ToList();
     }
 
     public async Task<FieldInventoryPreviewResponse?> GetRunAsync(string runId, CorrelationContext context)
@@ -207,7 +221,7 @@ public class FieldInventoryImportService : IFieldInventoryImportService
         });
 
         var run = await RequireRunAsync(request.RunId, context);
-        return await BuildAndPersistPreviewAsync(run, context);
+        return await BuildAndPersistPreviewAsync(run, context, run.Id);
     }
 
     public async Task<FieldInventoryPreviewResponse> SaveTabClassificationAsync(FieldInventoryTabClassificationSaveRequest request, CorrelationContext context)
@@ -233,7 +247,7 @@ public class FieldInventoryImportService : IFieldInventoryImportService
         });
 
         var run = await RequireRunAsync(request.RunId, context);
-        return await BuildAndPersistPreviewAsync(run, context);
+        return await BuildAndPersistPreviewAsync(run, context, run.Id);
     }
 
     public async Task<FieldInventoryPreviewResponse> UpdateReviewItemAsync(string runId, string reviewItemId, FieldInventoryReviewDecisionRequest request, CorrelationContext context)
@@ -257,7 +271,7 @@ public class FieldInventoryImportService : IFieldInventoryImportService
         }
 
         await _repository.UpsertReviewItemAsync(reviewItem);
-        return await BuildAndPersistPreviewAsync(run, context);
+        return await BuildAndPersistPreviewAsync(run, context, run.Id);
     }
 
     public async Task<FieldInventoryPreviewResponse> CommitRunAsync(string runId, FieldInventoryCommitRequest request, CorrelationContext context)
@@ -330,9 +344,12 @@ public class FieldInventoryImportService : IFieldInventoryImportService
         return await BuildResponseAsync(run, commitPreview);
     }
 
-    private async Task<FieldInventoryPreviewResponse> BuildAndPersistPreviewAsync(FieldInventoryImportRunEntity run, CorrelationContext context)
+    private async Task<FieldInventoryPreviewResponse> BuildAndPersistPreviewAsync(FieldInventoryImportRunEntity run, CorrelationContext context, string clientRequestId)
     {
+        await WriteDiagnosticAsync(context, clientRequestId, run.Id, "workbook_loading", "info", "Loading workbook bytes.");
         var workbook = await LoadWorkbookAsync(run, context);
+        await WriteDiagnosticAsync(context, clientRequestId, run.Id, "workbook_loaded", "ok",
+            $"Workbook loaded with {workbook.Sheets.Count} sheet(s).");
         run.SourceWorkbookTitle = workbook.Title;
         if (string.IsNullOrWhiteSpace(run.SeasonLabel))
         {
@@ -342,6 +359,8 @@ public class FieldInventoryImportService : IFieldInventoryImportService
         var selectedTabs = NormalizeSelectedTabs(run.SelectedTabs, workbook);
         run.SelectedTabs = selectedTabs;
 
+        await WriteDiagnosticAsync(context, clientRequestId, run.Id, "reference_data_loading", "info",
+            "Loading saved mappings, tab classifications, and canonical field catalog.");
         var aliases = await _repository.GetFieldAliasesAsync(context.LeagueId);
         var classifications = await _repository.GetTabClassificationsAsync(context.LeagueId);
         var fieldCatalog = await LoadCanonicalFieldCatalogAsync(context.LeagueId);
@@ -450,13 +469,16 @@ public class FieldInventoryImportService : IFieldInventoryImportService
             run.SummaryCounts.ImportedRecords,
             run.SummaryCounts.SkippedRecords);
 
+        await WriteDiagnosticAsync(context, clientRequestId, run.Id, "preview_persisting", "info",
+            $"Persisting preview with {results.Records.Count} record(s), {results.Warnings.Count} warning(s), and {results.ReviewItems.Count} review item(s).");
         await _repository.UpsertImportRunAsync(run);
         await _repository.ReplaceRunDataAsync(run.Id, results.Records, results.Warnings, results.ReviewItems);
 
+        await WriteDiagnosticAsync(context, clientRequestId, run.Id, "response_building", "info", "Building preview response.");
         return await BuildResponseAsync(run, null);
     }
 
-    private async Task<FieldInventoryPreviewResponse> BuildErroredPreviewAsync(FieldInventoryImportRunEntity run, CorrelationContext context, Exception ex)
+    private async Task<FieldInventoryPreviewResponse> BuildErroredPreviewAsync(FieldInventoryImportRunEntity run, CorrelationContext context, string clientRequestId, Exception ex)
     {
         run.Status = FieldInventoryImportStatuses.Errored;
         run.UpdatedAt = DateTimeOffset.UtcNow;
@@ -486,8 +508,11 @@ public class FieldInventoryImportService : IFieldInventoryImportService
             run.SourceWorkbookName ?? run.SourceWorkbookUrl,
             new Dictionary<string, string?>());
 
+        await WriteDiagnosticAsync(context, clientRequestId, run.Id, "errored_preview_persisting", "error",
+            "Persisting errored preview diagnostics.");
         await _repository.UpsertImportRunAsync(run);
         await _repository.ReplaceRunDataAsync(run.Id, Array.Empty<FieldInventoryStagedRecordEntity>(), new[] { warning }, new[] { reviewItem });
+        await WriteDiagnosticAsync(context, clientRequestId, run.Id, "errored_preview_ready", "error", ex.Message);
         return await BuildResponseAsync(run, null);
     }
 
@@ -513,6 +538,39 @@ public class FieldInventoryImportService : IFieldInventoryImportService
                 .ToList(),
             commitPreview);
     }
+
+    private async Task WriteDiagnosticAsync(CorrelationContext context, string clientRequestId, string? runId, string stage, string status, string message)
+    {
+        if (string.IsNullOrWhiteSpace(clientRequestId)) return;
+        try
+        {
+            await _repository.AddDiagnosticAsync(new FieldInventoryDiagnosticEntity
+            {
+                Id = $"{DateTimeOffset.UtcNow:HHmmssfff}-{Guid.NewGuid():N}",
+                LeagueId = context.LeagueId,
+                ClientRequestId = clientRequestId,
+                RunId = runId,
+                Stage = stage,
+                Status = status,
+                Message = message,
+                CreatedAt = DateTimeOffset.UtcNow,
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to persist field inventory diagnostic stage {Stage} for request {ClientRequestId}", stage, clientRequestId);
+        }
+    }
+
+    private static FieldInventoryDiagnosticEntryDto MapDiagnostic(FieldInventoryDiagnosticEntity diagnostic)
+        => new(
+            diagnostic.Id,
+            diagnostic.ClientRequestId,
+            diagnostic.Stage,
+            diagnostic.Status,
+            diagnostic.Message,
+            diagnostic.RunId,
+            diagnostic.CreatedAt);
 
     private async Task<FieldInventoryImportRunEntity> RequireRunAsync(string? runId, CorrelationContext context)
     {

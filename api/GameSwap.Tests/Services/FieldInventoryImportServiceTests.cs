@@ -102,6 +102,7 @@ public class FieldInventoryImportServiceTests
             "https://docs.google.com/spreadsheets/d/test-sheet/edit#gid=0",
             null,
             "Spring 2026",
+            null,
             new List<FieldInventorySelectedTab>
             {
                 new("Spring 3/16-5/22", FieldInventoryParserTypes.SeasonWeekdayGrid, FieldInventoryActionTypes.Ingest, true),
@@ -125,6 +126,7 @@ public class FieldInventoryImportServiceTests
             "https://docs.google.com/spreadsheets/d/test-sheet/edit#gid=0",
             null,
             "Spring 2026",
+            null,
             new List<FieldInventorySelectedTab>
             {
                 new("Weekends", FieldInventoryParserTypes.WeekendGrid, FieldInventoryActionTypes.Ingest, true),
@@ -148,6 +150,7 @@ public class FieldInventoryImportServiceTests
             "https://docs.google.com/spreadsheets/d/test-sheet/edit#gid=0",
             null,
             "Spring 2026",
+            null,
             new List<FieldInventorySelectedTab>
             {
                 new("County Grid", FieldInventoryParserTypes.ReferenceGrid, FieldInventoryActionTypes.Reference, true),
@@ -168,6 +171,7 @@ public class FieldInventoryImportServiceTests
             "https://docs.google.com/spreadsheets/d/test-sheet/edit#gid=0",
             null,
             "Spring 2026",
+            null,
             new List<FieldInventorySelectedTab>
             {
                 new("Spring 3/16-5/22", FieldInventoryParserTypes.SeasonWeekdayGrid, FieldInventoryActionTypes.Ingest, true),
@@ -188,6 +192,7 @@ public class FieldInventoryImportServiceTests
             "https://docs.google.com/spreadsheets/d/test-sheet/edit#gid=0",
             null,
             "Spring 2026",
+            null,
             new List<FieldInventorySelectedTab>
             {
                 new("Spring 3/16-5/22", FieldInventoryParserTypes.SeasonWeekdayGrid, FieldInventoryActionTypes.Ingest, true),
@@ -215,6 +220,7 @@ public class FieldInventoryImportServiceTests
             "https://docs.google.com/spreadsheets/d/test-sheet/edit#gid=0",
             null,
             "Spring 2026",
+            null,
             new List<FieldInventorySelectedTab>
             {
                 new("Spring 3/16-5/22", FieldInventoryParserTypes.SeasonWeekdayGrid, FieldInventoryActionTypes.Ingest, true),
@@ -233,6 +239,7 @@ public class FieldInventoryImportServiceTests
             "https://docs.google.com/spreadsheets/d/test-sheet/edit#gid=0",
             null,
             "Spring 2026",
+            null,
             new List<FieldInventorySelectedTab>
             {
                 new("Spring 3/16-5/22", FieldInventoryParserTypes.SeasonWeekdayGrid, FieldInventoryActionTypes.Ingest, true),
@@ -253,6 +260,7 @@ public class FieldInventoryImportServiceTests
             "https://docs.google.com/spreadsheets/d/test-sheet/edit#gid=0",
             null,
             "Spring 2026",
+            null,
             new List<FieldInventorySelectedTab>
             {
                 new("Spring 3/16-5/22", FieldInventoryParserTypes.SeasonWeekdayGrid, FieldInventoryActionTypes.Ingest, true),
@@ -281,6 +289,7 @@ public class FieldInventoryImportServiceTests
             null,
             inspect.UploadedWorkbookId,
             "Spring 2026",
+            null,
             new List<FieldInventorySelectedTab>
             {
                 new("Spring 3/16-5/22", FieldInventoryParserTypes.SeasonWeekdayGrid, FieldInventoryActionTypes.Ingest, true),
@@ -301,6 +310,7 @@ public class FieldInventoryImportServiceTests
             "https://docs.google.com/spreadsheets/d/test-sheet/edit#gid=0",
             null,
             "Spring 2026",
+            null,
             new List<FieldInventorySelectedTab>
             {
                 new("Spring 3/16-5/22", FieldInventoryParserTypes.SeasonWeekdayGrid, FieldInventoryActionTypes.Ingest, true),
@@ -320,6 +330,7 @@ public class FieldInventoryImportServiceTests
             "https://docs.google.com/spreadsheets/d/test-sheet/edit#gid=0",
             null,
             "Spring 2026",
+            null,
             new List<FieldInventorySelectedTab>
             {
                 new("Spring 3/16-5/22", FieldInventoryParserTypes.SeasonWeekdayGrid, FieldInventoryActionTypes.Ingest, true),
@@ -583,6 +594,7 @@ public class FieldInventoryImportServiceTests
         private readonly Dictionary<string, List<FieldInventoryStagedRecordEntity>> _records = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, List<FieldInventoryWarningEntity>> _warnings = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, List<FieldInventoryReviewQueueItemEntity>> _reviewItems = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, List<FieldInventoryDiagnosticEntity>> _diagnostics = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, List<FieldInventoryFieldAliasEntity>> _aliases = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, List<FieldInventoryTabClassificationEntity>> _tabClassifications = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, List<FieldInventoryLiveRecordEntity>> _liveRecords = new(StringComparer.OrdinalIgnoreCase);
@@ -630,6 +642,24 @@ public class FieldInventoryImportServiceTests
             if (index >= 0) list[index] = reviewItem;
             else list.Add(reviewItem);
             return Task.CompletedTask;
+        }
+
+        public Task AddDiagnosticAsync(FieldInventoryDiagnosticEntity diagnostic)
+        {
+            var key = $"{diagnostic.LeagueId}|{diagnostic.ClientRequestId}";
+            if (!_diagnostics.ContainsKey(key))
+            {
+                _diagnostics[key] = new List<FieldInventoryDiagnosticEntity>();
+            }
+
+            _diagnostics[key].Add(diagnostic);
+            return Task.CompletedTask;
+        }
+
+        public Task<List<FieldInventoryDiagnosticEntity>> GetDiagnosticsAsync(string leagueId, string clientRequestId)
+        {
+            _diagnostics.TryGetValue($"{leagueId}|{clientRequestId}", out var list);
+            return Task.FromResult(list?.ToList() ?? new List<FieldInventoryDiagnosticEntity>());
         }
 
         public Task<List<FieldInventoryFieldAliasEntity>> GetFieldAliasesAsync(string leagueId)

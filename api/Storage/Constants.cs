@@ -57,6 +57,7 @@ public static class Constants
         public const string FieldInventoryWorkbookUploads = "GameSwapFieldInventoryWorkbookUploads";
         public const string FieldInventoryImportWarnings = "GameSwapFieldInventoryImportWarnings";
         public const string FieldInventoryReviewQueueItems = "GameSwapFieldInventoryReviewQueueItems";
+        public const string FieldInventoryDiagnostics = "GameSwapFieldInventoryDiagnostics";
         public const string FieldInventoryLiveRecords = "GameSwapFieldInventoryLiveRecords";
         public const string FieldInventoryCommitRuns = "GameSwapFieldInventoryCommitRuns";
     }
@@ -117,6 +118,7 @@ public static class Constants
         public static string FieldInventoryWorkbookUploads(string leagueId, string uploadId) => $"FINVUPLOAD|{leagueId}|{uploadId}";
         public static string FieldInventoryImportWarnings(string importRunId) => $"FINVWARN|{importRunId}";
         public static string FieldInventoryReviewQueueItems(string importRunId) => $"FINVREVIEW|{importRunId}";
+        public static string FieldInventoryDiagnostics(string leagueId, string clientRequestId) => $"FINVDIAG|{leagueId}|{clientRequestId}";
         public static string FieldInventoryLiveRecords(string leagueId, string seasonLabel)
             => $"FINVLIVE|{leagueId}|{Slug.Make(seasonLabel)}";
         public static string FieldInventoryCommitRuns(string leagueId) => $"FINVCOMMIT|{leagueId}";

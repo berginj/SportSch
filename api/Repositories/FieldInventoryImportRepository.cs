@@ -122,6 +122,34 @@ public class FieldInventoryImportRepository : IFieldInventoryImportRepository
         await table.UpsertEntityAsync(MapReviewItem(reviewItem), TableUpdateMode.Replace);
     }
 
+    public async Task AddDiagnosticAsync(FieldInventoryDiagnosticEntity diagnostic)
+    {
+        var table = await TableClients.GetTableAsync(_tableService, Constants.Tables.FieldInventoryDiagnostics);
+        var entity = new TableEntity(Constants.Pk.FieldInventoryDiagnostics(diagnostic.LeagueId, diagnostic.ClientRequestId), diagnostic.Id)
+        {
+            ["RunId"] = diagnostic.RunId ?? "",
+            ["Stage"] = diagnostic.Stage,
+            ["Status"] = diagnostic.Status,
+            ["Message"] = diagnostic.Message,
+            ["CreatedAt"] = diagnostic.CreatedAt,
+        };
+
+        await table.UpsertEntityAsync(entity, TableUpdateMode.Replace);
+    }
+
+    public async Task<List<FieldInventoryDiagnosticEntity>> GetDiagnosticsAsync(string leagueId, string clientRequestId)
+    {
+        var table = await TableClients.GetTableAsync(_tableService, Constants.Tables.FieldInventoryDiagnostics);
+        var filter = ODataFilterBuilder.PartitionKeyExact(Constants.Pk.FieldInventoryDiagnostics(leagueId, clientRequestId));
+        var list = new List<FieldInventoryDiagnosticEntity>();
+        await foreach (var entity in table.QueryAsync<TableEntity>(filter: filter))
+        {
+            list.Add(MapDiagnostic(entity));
+        }
+
+        return list.OrderBy(x => x.CreatedAt).ToList();
+    }
+
     public async Task<List<FieldInventoryFieldAliasEntity>> GetFieldAliasesAsync(string leagueId)
     {
         var table = await TableClients.GetTableAsync(_tableService, Constants.Tables.FieldInventoryFieldAliases);
@@ -485,6 +513,19 @@ public class FieldInventoryImportRepository : IFieldInventoryImportRepository
             IsActive = entity.GetBoolean("IsActive") ?? true,
             CreatedAt = entity.GetDateTimeOffset("CreatedAt") ?? DateTimeOffset.MinValue,
             UpdatedAt = entity.GetDateTimeOffset("UpdatedAt") ?? DateTimeOffset.MinValue,
+        };
+
+    private static FieldInventoryDiagnosticEntity MapDiagnostic(TableEntity entity)
+        => new()
+        {
+            Id = entity.RowKey,
+            LeagueId = entity.PartitionKey.Split('|', StringSplitOptions.RemoveEmptyEntries).Skip(1).FirstOrDefault() ?? "",
+            ClientRequestId = entity.PartitionKey.Split('|', StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? "",
+            RunId = EmptyAsNull(entity.GetString("RunId")),
+            Stage = entity.GetString("Stage") ?? "",
+            Status = entity.GetString("Status") ?? "",
+            Message = entity.GetString("Message") ?? "",
+            CreatedAt = entity.GetDateTimeOffset("CreatedAt") ?? DateTimeOffset.MinValue,
         };
 
     private static TableEntity MapLiveRecord(FieldInventoryLiveRecordEntity record)

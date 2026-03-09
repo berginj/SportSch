@@ -335,6 +335,28 @@ describe("FieldInventoryImportManager", () => {
           responseText: "Object reference not set to an instance of an object.",
         }));
       }
+      if (url.startsWith("/api/field-inventory/diagnostics/")) {
+        return Promise.resolve([
+          {
+            id: "diag-1",
+            clientRequestId: "client-1",
+            stage: "workbook_loaded",
+            status: "ok",
+            message: "Workbook loaded with 14 sheet(s).",
+            runId: "run-1",
+            createdAt: "2026-03-09T01:00:00Z",
+          },
+          {
+            id: "diag-2",
+            clientRequestId: "client-1",
+            stage: "preview_persisting",
+            status: "info",
+            message: "Persisting preview with 0 record(s), 2 warning(s), and 1 review item(s).",
+            runId: "run-1",
+            createdAt: "2026-03-09T01:00:01Z",
+          },
+        ]);
+      }
       throw new Error(`Unexpected apiFetch call: ${url}`);
     });
 
@@ -352,5 +374,7 @@ describe("FieldInventoryImportManager", () => {
     expect(screen.getByText("Request ID: req-500")).toBeInTheDocument();
     expect(screen.getByText("Middleware ID: mid-500")).toBeInTheDocument();
     expect(screen.getByText(/Object reference not set to an instance of an object/i)).toBeInTheDocument();
+    expect(screen.getByText(/\[ok\] workbook_loaded: Workbook loaded with 14 sheet\(s\)\./i)).toBeInTheDocument();
+    expect(screen.getByText(/\[info\] preview_persisting: Persisting preview with 0 record\(s\), 2 warning\(s\), and 1 review item\(s\)\./i)).toBeInTheDocument();
   });
 });

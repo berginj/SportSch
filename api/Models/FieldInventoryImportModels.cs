@@ -107,6 +107,7 @@ public record FieldInventoryPreviewRequest(
     string? SourceWorkbookUrl,
     string? UploadedWorkbookId,
     string? SeasonLabel,
+    string? ClientRequestId,
     List<FieldInventorySelectedTab>? SelectedTabs);
 
 public record FieldInventoryAliasSaveRequest(
@@ -186,6 +187,15 @@ public record FieldInventoryPreviewResponse(
     List<CanonicalFieldOptionDto> CanonicalFields,
     List<string> UnmappedFieldNames,
     FieldInventoryCommitPreviewDto? CommitPreview);
+
+public record FieldInventoryDiagnosticEntryDto(
+    string Id,
+    string ClientRequestId,
+    string Stage,
+    string Status,
+    string Message,
+    string? RunId,
+    DateTimeOffset CreatedAt);
 
 public record FieldInventoryStagedRecordDto(
     string Id,
@@ -364,6 +374,18 @@ public class FieldInventoryReviewQueueItemEntity
     public bool SaveDecisionForFuture { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
+}
+
+public class FieldInventoryDiagnosticEntity
+{
+    public string Id { get; set; } = "";
+    public string LeagueId { get; set; } = "";
+    public string ClientRequestId { get; set; } = "";
+    public string? RunId { get; set; }
+    public string Stage { get; set; } = "";
+    public string Status { get; set; } = "";
+    public string Message { get; set; } = "";
+    public DateTimeOffset CreatedAt { get; set; }
 }
 
 public class FieldInventoryLiveRecordEntity

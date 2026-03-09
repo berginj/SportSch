@@ -17,6 +17,8 @@ public interface IFieldInventoryImportRepository
     Task<List<FieldInventoryWarningEntity>> GetWarningsAsync(string importRunId);
     Task<List<FieldInventoryReviewQueueItemEntity>> GetReviewItemsAsync(string importRunId);
     Task UpsertReviewItemAsync(FieldInventoryReviewQueueItemEntity reviewItem);
+    Task AddDiagnosticAsync(FieldInventoryDiagnosticEntity diagnostic);
+    Task<List<FieldInventoryDiagnosticEntity>> GetDiagnosticsAsync(string leagueId, string clientRequestId);
 
     Task<List<FieldInventoryFieldAliasEntity>> GetFieldAliasesAsync(string leagueId);
     Task UpsertFieldAliasAsync(FieldInventoryFieldAliasEntity alias);

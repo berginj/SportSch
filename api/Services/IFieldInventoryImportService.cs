@@ -8,6 +8,7 @@ public interface IFieldInventoryImportService
     Task<FieldInventoryWorkbookInspectResponse> InspectWorkbookAsync(string sourceWorkbookUrl, CorrelationContext context);
     Task<FieldInventoryWorkbookInspectResponse> InspectUploadedWorkbookAsync(string fileName, string contentType, byte[] workbookBytes, CorrelationContext context);
     Task<FieldInventoryPreviewResponse> CreatePreviewAsync(FieldInventoryPreviewRequest request, CorrelationContext context);
+    Task<List<FieldInventoryDiagnosticEntryDto>> GetDiagnosticsAsync(string clientRequestId, CorrelationContext context);
     Task<FieldInventoryPreviewResponse?> GetRunAsync(string runId, CorrelationContext context);
     Task<FieldInventoryPreviewResponse> StageRunAsync(string runId, CorrelationContext context);
     Task<FieldInventoryPreviewResponse> SaveFieldAliasAsync(FieldInventoryAliasSaveRequest request, CorrelationContext context);

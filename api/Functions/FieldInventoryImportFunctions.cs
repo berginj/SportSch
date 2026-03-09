@@ -97,6 +97,22 @@ public class FieldInventoryImportFunctions
             return ApiResponses.Ok(req, response);
         });
 
+    [Function("GetFieldInventoryDiagnostics")]
+    [OpenApiOperation(operationId: "GetFieldInventoryDiagnostics", tags: new[] { "Field Inventory Import" }, Summary = "Get preview diagnostics", Description = "Returns persisted preview stage diagnostics for a client request id so generic backend failures can still be traced in the UI.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    public async Task<HttpResponseData> GetDiagnostics(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "field-inventory/diagnostics/{clientRequestId}")] HttpRequestData req,
+        string clientRequestId)
+        => await ExecuteAsync(req, async () =>
+        {
+            var leagueId = ApiGuards.RequireLeagueId(req);
+            var me = IdentityUtil.GetMe(req);
+            await ApiGuards.RequireLeagueAdminAsync(_tableService, me.UserId, leagueId);
+            var context = CorrelationContext.FromRequest(req, leagueId);
+            var response = await _service.GetDiagnosticsAsync(clientRequestId, context);
+            return ApiResponses.Ok(req, response);
+        });
+
     [Function("GetFieldInventoryImportRun")]
     [OpenApiOperation(operationId: "GetFieldInventoryImportRun", tags: new[] { "Field Inventory Import" }, Summary = "Get staged import run", Description = "Returns the latest staged records, warnings, review items, and canonical field choices for an import run.")]
     [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]

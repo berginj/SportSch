@@ -97,9 +97,10 @@ export default function FieldInventoryImportManager({ leagueId }) {
     setMessage(successMessage);
   }
 
-  async function parsePreview() {
+async function parsePreview() {
     resetMessages();
     setBusy("preview");
+    const clientRequestId = createClientRequestId();
     try {
       const result = await apiFetch("/api/field-inventory/preview", {
         method: "POST",
@@ -107,6 +108,7 @@ export default function FieldInventoryImportManager({ leagueId }) {
           sourceWorkbookUrl: workbook?.sourceType === "uploaded_workbook" ? null : sourceWorkbookUrl,
           uploadedWorkbookId: workbook?.uploadedWorkbookId || null,
           seasonLabel: seasonLabel || null,
+          clientRequestId,
           selectedTabs,
         }),
       });
@@ -115,7 +117,8 @@ export default function FieldInventoryImportManager({ leagueId }) {
       setSeasonLabel(result?.run?.seasonLabel || seasonLabel);
       setMessage("Preview parsed and stored in staging.");
     } catch (e) {
-      setError(buildImportError(e));
+      const diagnostics = await loadPreviewDiagnostics(clientRequestId);
+      setError(buildImportError(e, diagnostics));
     } finally {
       setBusy("");
     }
@@ -616,7 +619,17 @@ function SummaryCard({ label, value }) {
   );
 }
 
-function buildImportError(error) {
+async function loadPreviewDiagnostics(clientRequestId) {
+  if (!clientRequestId) return [];
+  try {
+    const diagnostics = await apiFetch(`/api/field-inventory/diagnostics/${encodeURIComponent(clientRequestId)}`);
+    return Array.isArray(diagnostics) ? diagnostics : [];
+  } catch {
+    return [];
+  }
+}
+
+function buildImportError(error, diagnostics = []) {
   const message = error?.message || "Request failed.";
   const originalMessage = error?.originalMessage || "";
   const detailMessage = typeof error?.details?.exception === "string" ? error.details.exception : "";
@@ -640,6 +653,7 @@ function buildImportError(error) {
       requestId,
       middlewareRequestId,
       responseText,
+      diagnostics,
     };
   }
 
@@ -653,7 +667,15 @@ function buildImportError(error) {
     requestId,
     middlewareRequestId,
     responseText,
+    diagnostics,
   };
+}
+
+function createClientRequestId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `finv-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function sanitizeResponseText(responseText, combinedMessage) {
@@ -691,6 +713,18 @@ function ImportErrorCallout({ error }) {
           <pre className="subtle" style={{ whiteSpace: "pre-wrap", margin: 0 }}>
             {error.responseText}
           </pre>
+        </div>
+      ) : null}
+      {Array.isArray(error?.diagnostics) && error.diagnostics.length ? (
+        <div className="mt-3">
+          <div className="font-bold mb-1">Last backend stages</div>
+          <div className="subtle">
+            {error.diagnostics.map((entry) => (
+              <div key={entry.id}>
+                [{entry.status}] {entry.stage}: {entry.message}
+              </div>
+            ))}
+          </div>
         </div>
       ) : null}
     </div>
