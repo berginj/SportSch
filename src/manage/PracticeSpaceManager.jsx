@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import Toast from "../components/Toast";
+import PracticeSpaceComparisonCalendar from "../components/PracticeSpaceComparisonCalendar";
+import { buildPracticeSpaceComparison, derivePracticeSpaceDateRange, filterPracticeSpaceComparison } from "../lib/practiceSpaceCompare";
 
 function filterRows(rows, search, policy, issue, sortBy) {
   const needle = String(search || "").trim().toLowerCase();
@@ -39,12 +41,21 @@ function filterRequests(requests, status) {
 
 export default function PracticeSpaceManager({ leagueId }) {
   const [data, setData] = useState(null);
+  const [manualSlots, setManualSlots] = useState([]);
   const [seasonLabel, setSeasonLabel] = useState("");
   const [loading, setLoading] = useState(true);
+  const [manualLoading, setManualLoading] = useState(false);
   const [savingKey, setSavingKey] = useState("");
   const [error, setError] = useState("");
   const [toast, setToast] = useState(null);
   const [search, setSearch] = useState("");
+  const [compareSearch, setCompareSearch] = useState("");
+  const [compareDateFrom, setCompareDateFrom] = useState("");
+  const [compareDateTo, setCompareDateTo] = useState("");
+  const [compareMode, setCompareMode] = useState("compare");
+  const [compareStateFilter, setCompareStateFilter] = useState("");
+  const [compareIssueFilter, setCompareIssueFilter] = useState("");
+  const [compareFieldFilter, setCompareFieldFilter] = useState("");
   const [policyFilter, setPolicyFilter] = useState("");
   const [issueFilter, setIssueFilter] = useState("");
   const [sortBy, setSortBy] = useState("date");
@@ -62,6 +73,10 @@ export default function PracticeSpaceManager({ leagueId }) {
       const result = await apiFetch(`/api/field-inventory/practice/admin${query}`);
       setData(result);
       setSeasonLabel(result?.seasonLabel || nextSeasonLabel || "");
+      const range = derivePracticeSpaceDateRange(result?.rows || [], []);
+      setCompareDateFrom(range.dateFrom);
+      setCompareDateTo(range.dateTo);
+      setCompareFieldFilter("");
     } catch (e) {
       setError(e.message || "Failed to load practice space admin view.");
     } finally {
@@ -69,10 +84,35 @@ export default function PracticeSpaceManager({ leagueId }) {
     }
   }
 
+  async function loadManualSlots(dateFrom = compareDateFrom, dateTo = compareDateTo) {
+    if (!leagueId || !dateFrom || !dateTo) return;
+    setManualLoading(true);
+    setError("");
+    try {
+      const query = new URLSearchParams();
+      query.set("dateFrom", dateFrom);
+      query.set("dateTo", dateTo);
+      const result = await apiFetch(`/api/availability-slots?${query.toString()}`);
+      const items = Array.isArray(result?.items) ? result.items : Array.isArray(result) ? result : [];
+      setManualSlots(items.filter((slot) => slot?.isAvailability));
+    } catch (e) {
+      setError(e.message || "Failed to load manual availability slots.");
+      setManualSlots([]);
+    } finally {
+      setManualLoading(false);
+    }
+  }
+
   useEffect(() => {
     load("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leagueId]);
+
+  useEffect(() => {
+    if (!data || !compareDateFrom || !compareDateTo) return;
+    loadManualSlots(compareDateFrom, compareDateTo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, compareDateFrom, compareDateTo]);
 
   const filteredRows = useMemo(
     () => filterRows(data?.rows || [], search, policyFilter, issueFilter, sortBy),
@@ -82,6 +122,33 @@ export default function PracticeSpaceManager({ leagueId }) {
   const visibleRequests = useMemo(
     () => filterRequests(data?.requests || [], requestStatusFilter),
     [data, requestStatusFilter]
+  );
+
+  const comparison = useMemo(
+    () => buildPracticeSpaceComparison(data?.rows || [], manualSlots),
+    [data, manualSlots]
+  );
+
+  const compareFieldOptions = useMemo(
+    () =>
+      Array.from(new Map((comparison.items || []).map((item) => [item.fieldId, item.fieldName])).entries())
+        .filter(([fieldId]) => !!fieldId)
+        .map(([fieldId, fieldName]) => ({ fieldId, fieldName }))
+        .sort((left, right) => left.fieldName.localeCompare(right.fieldName)),
+    [comparison]
+  );
+
+  const filteredCompareItems = useMemo(
+    () =>
+      filterPracticeSpaceComparison(comparison.items || [], {
+        search: compareSearch,
+        dateFrom: compareDateFrom,
+        dateTo: compareDateTo,
+        compareState: compareStateFilter,
+        issue: compareIssueFilter,
+        fieldId: compareFieldFilter,
+      }),
+    [comparison, compareSearch, compareDateFrom, compareDateTo, compareStateFilter, compareIssueFilter, compareFieldFilter]
   );
 
   async function saveDivisionMapping(row) {
@@ -221,6 +288,149 @@ export default function PracticeSpaceManager({ leagueId }) {
         </div>
       </div>
 
+      <div id="practice-space-calendar-compare" className="card">
+        <div className="card__header">
+          <div>
+            <div className="h2">Inventory Comparison Calendar</div>
+            <div className="subtle">Compare imported AGSA inventory against manually entered availability slots on one calendar.</div>
+          </div>
+          <div className="row gap-2 items-end">
+            <label title="Start date for the comparison window.">
+              From
+              <input type="date" value={compareDateFrom} onChange={(e) => setCompareDateFrom(e.target.value)} />
+            </label>
+            <label title="End date for the comparison window.">
+              To
+              <input type="date" value={compareDateTo} onChange={(e) => setCompareDateTo(e.target.value)} />
+            </label>
+            <button className="btn" type="button" onClick={() => loadManualSlots(compareDateFrom, compareDateTo)} disabled={manualLoading || !compareDateFrom || !compareDateTo}>
+              {manualLoading ? "Loading..." : "Reload Manual"}
+            </button>
+          </div>
+        </div>
+        <div className="card__body stack gap-4">
+          <div className="row row--wrap gap-3">
+            <div className="pill">Imported rows: {comparison.summary.importedCount}</div>
+            <div className="pill">Manual slots: {comparison.summary.manualCount}</div>
+            <div className="pill">Aligned: {comparison.summary.alignedCount}</div>
+            <div className="pill">Imported only: {comparison.summary.importedOnlyCount}</div>
+            <div className="pill">Manual only: {comparison.summary.manualOnlyCount}</div>
+            <div className="pill">Conflicts: {comparison.summary.conflictCount}</div>
+            <div className="pill">Issue rows: {comparison.summary.issueCount}</div>
+          </div>
+
+          <div className="row row--wrap gap-3">
+            <label title="Choose which source to show on the calendar.">
+              Calendar source
+              <select value={compareMode} onChange={(e) => setCompareMode(e.target.value)}>
+                <option value="compare">Comparison</option>
+                <option value="imported">Imported inventory</option>
+                <option value="manual">Manual availability</option>
+              </select>
+            </label>
+            <label title="Search by field, imported assignment, or manual division.">
+              Search
+              <input value={compareSearch} onChange={(e) => setCompareSearch(e.target.value)} placeholder="Field, division, team..." />
+            </label>
+            <label title="Limit the comparison to one field.">
+              Field
+              <select value={compareFieldFilter} onChange={(e) => setCompareFieldFilter(e.target.value)}>
+                <option value="">All fields</option>
+                {compareFieldOptions.map((field) => (
+                  <option key={field.fieldId} value={field.fieldId}>{field.fieldName}</option>
+                ))}
+              </select>
+            </label>
+            <label title="Only show one comparison state.">
+              Compare state
+              <select value={compareStateFilter} onChange={(e) => setCompareStateFilter(e.target.value)}>
+                <option value="">All</option>
+                <option value="aligned">Aligned</option>
+                <option value="imported_only">Imported only</option>
+                <option value="manual_only">Manual only</option>
+                <option value="conflict">Conflict</option>
+              </select>
+            </label>
+            <label title="Focus on a specific gap or mismatch type.">
+              Issue
+              <select value={compareIssueFilter} onChange={(e) => setCompareIssueFilter(e.target.value)}>
+                <option value="">All</option>
+                <option value="manual_missing">Manual missing</option>
+                <option value="import_missing">Import missing</option>
+                <option value="division_mismatch">Division mismatch</option>
+                <option value="manual_overlap_nonrequestable">Manual overlap on blocked import</option>
+              </select>
+            </label>
+          </div>
+
+          <PracticeSpaceComparisonCalendar items={filteredCompareItems} mode={compareMode} />
+
+          <div className="overflow-x-auto">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>When</th>
+                  <th>Field</th>
+                  <th>State</th>
+                  <th>Imported</th>
+                  <th>Manual</th>
+                  <th>Issues</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredCompareItems.map((item) => (
+                  <tr key={item.key}>
+                    <td>
+                      <div>{item.date}</div>
+                      <div className="subtle">{item.dayOfWeek} {item.startTime}-{item.endTime}</div>
+                    </td>
+                    <td>
+                      <div className="font-bold">{item.fieldName}</div>
+                      <div className="subtle">{item.fieldId}</div>
+                    </td>
+                    <td><span className="pill">{item.compareState.replace("_", " ")}</span></td>
+                    <td>
+                      {item.importedRow ? (
+                        <>
+                          <div>{item.importedRow.availabilityStatus} / {item.importedRow.utilizationStatus}</div>
+                          <div className="subtle">{item.importedRow.assignedGroup || item.importedRow.rawAssignedDivision || item.importedRow.rawAssignedTeamOrEvent || "-"}</div>
+                        </>
+                      ) : (
+                        <span className="muted">No imported row</span>
+                      )}
+                    </td>
+                    <td>
+                      {item.manualSlot ? (
+                        <>
+                          <div>{item.manualSlot.division || "-"}</div>
+                          <div className="subtle">{item.manualSlot.displayName || item.manualSlot.fieldKey}</div>
+                        </>
+                      ) : (
+                        <span className="muted">No manual slot</span>
+                      )}
+                    </td>
+                    <td>
+                      {item.issueFlags.length ? (
+                        <div className="row row--wrap gap-2">
+                          {item.issueFlags.map((issue) => <span key={issue} className="pill">{issue.replaceAll("_", " ")}</span>)}
+                        </div>
+                      ) : (
+                        <span className="muted">No issues</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {filteredCompareItems.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="muted">No comparison rows match the current filter.</td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       <div className="card">
         <div className="card__header">
           <div className="h2">Request Queue</div>
@@ -290,7 +500,7 @@ export default function PracticeSpaceManager({ leagueId }) {
         </div>
       </div>
 
-      <div className="card">
+      <div id="practice-space-review" className="card">
         <div className="card__header">
           <div className="h2">Imported Inventory Review</div>
           <div className="subtle">Align imported text to canonical divisions and teams, then set reusable booking rules for requestable groups.</div>

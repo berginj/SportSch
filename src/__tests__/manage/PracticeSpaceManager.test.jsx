@@ -13,6 +13,12 @@ vi.mock("../../components/Toast", () => ({
   },
 }));
 
+vi.mock("../../components/PracticeSpaceComparisonCalendar", () => ({
+  default: function PracticeSpaceComparisonCalendar({ items, mode }) {
+    return <div>{`Calendar ${mode}: ${items.length}`}</div>;
+  },
+}));
+
 const adminResponse = {
   seasonLabel: "Spring 2026",
   seasons: [{ seasonLabel: "Spring 2026", isDefault: true }],
@@ -93,6 +99,24 @@ describe("PracticeSpaceManager", () => {
     vi.clearAllMocks();
     api.apiFetch.mockImplementation((path, options = {}) => {
       if (path === "/api/field-inventory/practice/admin") return Promise.resolve(adminResponse);
+      if (String(path).startsWith("/api/availability-slots?")) {
+        return Promise.resolve({
+          items: [
+            {
+              slotId: "slot-a",
+              gameDate: "2026-04-05",
+              startTime: "09:00",
+              endTime: "12:00",
+              fieldKey: "park1/field1",
+              fieldName: "Barcroft #3",
+              displayName: "Barcroft #3",
+              division: "Ponytail",
+              isAvailability: true,
+            },
+          ],
+          count: 1,
+        });
+      }
       if (path === "/api/field-inventory/practice/policies" && options.method === "POST") {
         return Promise.resolve({
           ...adminResponse,
@@ -121,6 +145,8 @@ describe("PracticeSpaceManager", () => {
     render(<PracticeSpaceManager leagueId="league-1" />);
 
     expect(await screen.findByText("Practice Space Admin")).toBeInTheDocument();
+    expect(await screen.findByText("Inventory Comparison Calendar")).toBeInTheDocument();
+    expect(await screen.findByText("Calendar compare: 1")).toBeInTheDocument();
     fireEvent.change(screen.getByDisplayValue("Not requestable"), { target: { value: "auto_approve" } });
     fireEvent.click(screen.getByRole("button", { name: "Save Policy" }));
 

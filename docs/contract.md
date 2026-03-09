@@ -50,6 +50,11 @@ All endpoints return JSON with one of:
 
 Note: Paginated responses use Azure Table Storage continuation tokens. Include the continuationToken in the next request to fetch the next page.
 
+### Agent lifecycle (repo workflow)
+- Close spawned agents when their task is complete.
+- Do not leave unused or idle agents attached to the session.
+- If agent capacity is exhausted, close finished agents before spawning new ones.
+
 ### Error codes (recommended)
 - BAD_REQUEST (400)
 - UNAUTHENTICATED (401)

@@ -50,6 +50,11 @@ These are the operating rules for work in this repo.
 ## Response envelope
 - API responses must use the standard envelope: { data: ... } or { error: { code, message, details? } }.
 
+## Agent lifecycle
+- Close spawned agents when their task is complete.
+- Do not leave unused or idle agents attached to the session.
+- If agent capacity is exhausted, close finished agents before spawning new ones.
+
 ## API endpoints (preferred)
 - GET /api/me
 - GET /api/slots?division=...&status=...
