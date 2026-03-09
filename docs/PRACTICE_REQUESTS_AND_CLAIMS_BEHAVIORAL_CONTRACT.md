@@ -18,7 +18,7 @@ This contract applies to the field-inventory practice workflow exposed by:
 - `PATCH /api/field-inventory/practice/requests/{requestId}/approve`
 - `PATCH /api/field-inventory/practice/requests/{requestId}/reject`
 
-Legacy `/api/practice-requests` and direct practice-slot claim routes remain compatibility surfaces only. They are not the intended coach/admin product flow.
+Legacy `/api/practice-requests`, `practice-portal/settings`, and direct practice-slot claim routes have been removed. The field-inventory practice endpoints above are the only supported coach/admin contract.
 
 ## 2. Canonical Data Model
 
@@ -138,12 +138,13 @@ Division alias, team alias, and booking-policy writes must return a refreshed ad
 
 ## 11. Legacy Boundary
 
-The following routes are not the authoritative contract for the current product flow:
+The old compatibility routes have been removed from the codebase:
 
-- legacy `/api/practice-requests` endpoints
-- direct `POST /api/slots/{division}/{slotId}/practice`
+- `/api/practice-requests`
+- `/api/practice-portal/settings`
+- `POST /api/slots/{division}/{slotId}/practice`
 
-If they remain in the codebase for compatibility or debugging, they must not drive the primary coach/admin experience.
+Any new practice workflow change must be made through the field-inventory practice endpoints in this document rather than by reintroducing those routes.
 
 ## 12. Change Control
 

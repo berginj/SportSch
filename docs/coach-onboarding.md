@@ -73,4 +73,4 @@ Practice Space Admin uses:
 - Coaches can revisit onboarding after completion.
 - Practice setup now depends on normalized field-inventory blocks rather than the legacy practice-request page.
 - Use `docs/practice-space-workflow.md` for the current coach/admin behavior.
-- Legacy `/api/practice-requests` endpoints are compatibility surfaces, not the intended onboarding path.
+- Legacy `/api/practice-requests`, `practice-portal/settings`, and direct practice-slot claim routes have been removed from the onboarding flow.

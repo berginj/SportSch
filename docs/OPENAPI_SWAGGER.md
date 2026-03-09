@@ -60,7 +60,7 @@ The API documentation covers the active user-facing functions.
 The following functions are intentionally excluded from public documentation:
 - Admin functions (AdminWipe, AdminMigrateFields)
 - Debug functions (DebugFunctions, Ping, StorageHealth)
-- Internal functions (ClaimPracticeSlot, ClearAvailabilitySlots)
+- Internal functions (ClearAvailabilitySlots)
 
 ## Generating Client SDKs
 

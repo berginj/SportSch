@@ -123,4 +123,4 @@ Result:
 - The admin normalization calendar is the source of truth for imported-vs-canonical drift.
 - Conflicts are highlighted, not silently overwritten.
 - Requestable coach inventory only comes from normalized or ready practice blocks with remaining capacity.
-- Legacy `/api/practice-requests` and direct slot-claim flows are no longer the intended coach-facing workflow.
+- Legacy `/api/practice-requests`, `practice-portal/settings`, and direct slot-claim flows have been removed from the product path.
