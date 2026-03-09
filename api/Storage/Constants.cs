@@ -54,6 +54,7 @@ public static class Constants
         public const string FieldInventoryStagedRecords = "GameSwapFieldInventoryStagedRecords";
         public const string FieldInventoryFieldAliases = "GameSwapFieldInventoryFieldAliases";
         public const string FieldInventoryTabClassifications = "GameSwapFieldInventoryTabClassifications";
+        public const string FieldInventoryWorkbookUploads = "GameSwapFieldInventoryWorkbookUploads";
         public const string FieldInventoryImportWarnings = "GameSwapFieldInventoryImportWarnings";
         public const string FieldInventoryReviewQueueItems = "GameSwapFieldInventoryReviewQueueItems";
         public const string FieldInventoryLiveRecords = "GameSwapFieldInventoryLiveRecords";
@@ -113,6 +114,7 @@ public static class Constants
         public static string FieldInventoryStagedRecords(string importRunId) => $"FINVSTAGE|{importRunId}";
         public static string FieldInventoryFieldAliases(string leagueId) => $"FINVALIAS|{leagueId}";
         public static string FieldInventoryTabClassifications(string leagueId) => $"FINVTAB|{leagueId}";
+        public static string FieldInventoryWorkbookUploads(string leagueId, string uploadId) => $"FINVUPLOAD|{leagueId}|{uploadId}";
         public static string FieldInventoryImportWarnings(string importRunId) => $"FINVWARN|{importRunId}";
         public static string FieldInventoryReviewQueueItems(string importRunId) => $"FINVREVIEW|{importRunId}";
         public static string FieldInventoryLiveRecords(string leagueId, string seasonLabel)

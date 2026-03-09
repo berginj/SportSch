@@ -10,6 +10,7 @@ namespace GameSwap.Functions.Repositories;
 public class FieldInventoryImportRepository : IFieldInventoryImportRepository
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private const int WorkbookChunkSizeBytes = 48 * 1024;
 
     private readonly TableServiceClient _tableService;
     private readonly ILogger<FieldInventoryImportRepository> _logger;
@@ -26,7 +27,10 @@ public class FieldInventoryImportRepository : IFieldInventoryImportRepository
         var entity = new TableEntity(Constants.Pk.FieldInventoryImportRuns(run.LeagueId), run.Id)
         {
             ["LeagueId"] = run.LeagueId,
+            ["SourceType"] = run.SourceType,
             ["SourceWorkbookUrl"] = run.SourceWorkbookUrl,
+            ["UploadedWorkbookId"] = run.UploadedWorkbookId ?? "",
+            ["SourceWorkbookName"] = run.SourceWorkbookName ?? "",
             ["SourceWorkbookTitle"] = run.SourceWorkbookTitle,
             ["SeasonLabel"] = run.SeasonLabel,
             ["SelectedTabsJson"] = JsonSerializer.Serialize(run.SelectedTabs, JsonOptions),
@@ -154,6 +158,52 @@ public class FieldInventoryImportRepository : IFieldInventoryImportRepository
         await table.UpsertEntityAsync(MapTabClassification(classification), TableUpdateMode.Replace);
     }
 
+    public async Task SaveWorkbookUploadAsync(FieldInventoryWorkbookUploadEntity upload, byte[] workbookBytes)
+    {
+        await ReplacePartitionAsync(
+            Constants.Tables.FieldInventoryWorkbookUploads,
+            Constants.Pk.FieldInventoryWorkbookUploads(upload.LeagueId, upload.Id),
+            BuildWorkbookUploadEntities(upload, workbookBytes));
+    }
+
+    public async Task<FieldInventoryWorkbookUploadEntity?> GetWorkbookUploadAsync(string leagueId, string uploadId)
+    {
+        var table = await TableClients.GetTableAsync(_tableService, Constants.Tables.FieldInventoryWorkbookUploads);
+        try
+        {
+            var entity = (await table.GetEntityAsync<TableEntity>(Constants.Pk.FieldInventoryWorkbookUploads(leagueId, uploadId), "meta")).Value;
+            return MapWorkbookUpload(entity);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return null;
+        }
+    }
+
+    public async Task<byte[]?> GetWorkbookUploadBytesAsync(string leagueId, string uploadId)
+    {
+        var table = await TableClients.GetTableAsync(_tableService, Constants.Tables.FieldInventoryWorkbookUploads);
+        var filter = ODataFilterBuilder.PartitionKeyExact(Constants.Pk.FieldInventoryWorkbookUploads(leagueId, uploadId));
+        var chunks = new List<(string RowKey, byte[] Content)>();
+        await foreach (var entity in table.QueryAsync<TableEntity>(filter: filter))
+        {
+            if (!entity.RowKey.StartsWith("chunk|", StringComparison.OrdinalIgnoreCase)) continue;
+            var content = entity.GetBinary("Content");
+            if (content is null || content.Length == 0) continue;
+            chunks.Add((entity.RowKey, content));
+        }
+
+        if (chunks.Count == 0) return null;
+
+        using var stream = new MemoryStream();
+        foreach (var chunk in chunks.OrderBy(x => x.RowKey, StringComparer.OrdinalIgnoreCase))
+        {
+            stream.Write(chunk.Content, 0, chunk.Content.Length);
+        }
+
+        return stream.ToArray();
+    }
+
     public async Task<List<FieldInventoryLiveRecordEntity>> GetLiveRecordsAsync(string leagueId, string seasonLabel)
     {
         var table = await TableClients.GetTableAsync(_tableService, Constants.Tables.FieldInventoryLiveRecords);
@@ -220,7 +270,10 @@ public class FieldInventoryImportRepository : IFieldInventoryImportRepository
         {
             Id = entity.RowKey,
             LeagueId = entity.GetString("LeagueId") ?? "",
+            SourceType = entity.GetString("SourceType") ?? FieldInventorySourceTypes.GoogleSheet,
             SourceWorkbookUrl = entity.GetString("SourceWorkbookUrl") ?? "",
+            UploadedWorkbookId = EmptyAsNull(entity.GetString("UploadedWorkbookId")),
+            SourceWorkbookName = EmptyAsNull(entity.GetString("SourceWorkbookName")),
             SourceWorkbookTitle = entity.GetString("SourceWorkbookTitle") ?? "",
             SeasonLabel = entity.GetString("SeasonLabel") ?? "",
             SelectedTabs = Deserialize<List<FieldInventorySelectedTab>>(entity.GetString("SelectedTabsJson")) ?? new(),
@@ -527,4 +580,46 @@ public class FieldInventoryImportRepository : IFieldInventoryImportRepository
 
     private static string? EmptyAsNull(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value;
+
+    private static IEnumerable<TableEntity> BuildWorkbookUploadEntities(FieldInventoryWorkbookUploadEntity upload, byte[] workbookBytes)
+    {
+        var partitionKey = Constants.Pk.FieldInventoryWorkbookUploads(upload.LeagueId, upload.Id);
+        yield return new TableEntity(partitionKey, "meta")
+        {
+            ["LeagueId"] = upload.LeagueId,
+            ["FileName"] = upload.FileName,
+            ["ContentType"] = upload.ContentType,
+            ["ByteCount"] = upload.ByteCount,
+            ["CreatedAt"] = upload.CreatedAt,
+            ["UpdatedAt"] = upload.UpdatedAt,
+            ["CreatedBy"] = upload.CreatedBy,
+        };
+
+        var chunkIndex = 0;
+        for (var offset = 0; offset < workbookBytes.Length; offset += WorkbookChunkSizeBytes)
+        {
+            var count = Math.Min(WorkbookChunkSizeBytes, workbookBytes.Length - offset);
+            var chunk = new byte[count];
+            Buffer.BlockCopy(workbookBytes, offset, chunk, 0, count);
+            yield return new TableEntity(partitionKey, $"chunk|{chunkIndex:D6}")
+            {
+                ["Content"] = chunk,
+                ["ByteCount"] = count,
+            };
+            chunkIndex++;
+        }
+    }
+
+    private static FieldInventoryWorkbookUploadEntity MapWorkbookUpload(TableEntity entity)
+        => new()
+        {
+            Id = entity.PartitionKey.Split('|', StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? "",
+            LeagueId = entity.GetString("LeagueId") ?? "",
+            FileName = entity.GetString("FileName") ?? "",
+            ContentType = entity.GetString("ContentType") ?? "",
+            ByteCount = entity.GetInt64("ByteCount") ?? 0,
+            CreatedAt = entity.GetDateTimeOffset("CreatedAt") ?? DateTimeOffset.MinValue,
+            UpdatedAt = entity.GetDateTimeOffset("UpdatedAt") ?? DateTimeOffset.MinValue,
+            CreatedBy = entity.GetString("CreatedBy") ?? "",
+        };
 }

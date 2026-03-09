@@ -44,6 +44,7 @@ public sealed class TableStartup : IHostedService
             Constants.Tables.FieldInventoryStagedRecords,
             Constants.Tables.FieldInventoryFieldAliases,
             Constants.Tables.FieldInventoryTabClassifications,
+            Constants.Tables.FieldInventoryWorkbookUploads,
             Constants.Tables.FieldInventoryImportWarnings,
             Constants.Tables.FieldInventoryReviewQueueItems,
             Constants.Tables.FieldInventoryLiveRecords,

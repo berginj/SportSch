@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 using Azure.Data.Tables;
 using GameSwap.Functions.Models;
 using GameSwap.Functions.Repositories;
@@ -61,11 +64,31 @@ public class FieldInventoryImportServiceTests
         var service = CreateService(new StaticWorkbookConnector(BuildWorkbook()));
         var result = await service.InspectWorkbookAsync("https://docs.google.com/spreadsheets/d/test-sheet/edit#gid=0", CorrelationContext.Create("user-1", "league-1"));
 
+        Assert.Equal(FieldInventorySourceTypes.GoogleSheet, result.SourceType);
         Assert.Equal("Spring 2026 County Inventory", result.SourceWorkbookTitle);
         Assert.Contains(result.Tabs, x => x.TabName == "Spring 3/16-5/22" && x.InferredParserType == FieldInventoryParserTypes.SeasonWeekdayGrid);
         Assert.Contains(result.Tabs, x => x.TabName == "Weekends" && x.InferredParserType == FieldInventoryParserTypes.WeekendGrid);
         Assert.Contains(result.Tabs, x => x.TabName == "County Grid" && x.InferredActionType == FieldInventoryActionTypes.Ignore);
         Assert.Contains(result.Tabs, x => x.TabName == "Request Forms" && x.InferredActionType == FieldInventoryActionTypes.Ignore);
+    }
+
+    [Fact]
+    public async Task InspectUploadedWorkbookAsync_StoresUploadAndClassifiesTabs()
+    {
+        var service = CreateService(new StaticWorkbookConnector(BuildWorkbook()));
+
+        var result = await service.InspectUploadedWorkbookAsync(
+            "CountyInventory.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            BuildWorkbookArchiveBytes(BuildWorkbook()),
+            CorrelationContext.Create("user-1", "league-1"));
+
+        Assert.Equal(FieldInventorySourceTypes.UploadedWorkbook, result.SourceType);
+        Assert.False(string.IsNullOrWhiteSpace(result.UploadedWorkbookId));
+        Assert.Equal("CountyInventory.xlsx", result.SourceWorkbookName);
+        var upload = await _repository.GetWorkbookUploadAsync("league-1", result.UploadedWorkbookId!);
+        Assert.NotNull(upload);
+        Assert.Equal("CountyInventory.xlsx", upload!.FileName);
     }
 
     [Fact]
@@ -77,6 +100,7 @@ public class FieldInventoryImportServiceTests
 
         var preview = await service.CreatePreviewAsync(new FieldInventoryPreviewRequest(
             "https://docs.google.com/spreadsheets/d/test-sheet/edit#gid=0",
+            null,
             "Spring 2026",
             new List<FieldInventorySelectedTab>
             {
@@ -99,6 +123,7 @@ public class FieldInventoryImportServiceTests
 
         var preview = await service.CreatePreviewAsync(new FieldInventoryPreviewRequest(
             "https://docs.google.com/spreadsheets/d/test-sheet/edit#gid=0",
+            null,
             "Spring 2026",
             new List<FieldInventorySelectedTab>
             {
@@ -121,6 +146,7 @@ public class FieldInventoryImportServiceTests
 
         var preview = await service.CreatePreviewAsync(new FieldInventoryPreviewRequest(
             "https://docs.google.com/spreadsheets/d/test-sheet/edit#gid=0",
+            null,
             "Spring 2026",
             new List<FieldInventorySelectedTab>
             {
@@ -140,6 +166,7 @@ public class FieldInventoryImportServiceTests
 
         var preview = await service.CreatePreviewAsync(new FieldInventoryPreviewRequest(
             "https://docs.google.com/spreadsheets/d/test-sheet/edit#gid=0",
+            null,
             "Spring 2026",
             new List<FieldInventorySelectedTab>
             {
@@ -159,6 +186,7 @@ public class FieldInventoryImportServiceTests
 
         var preview = await service.CreatePreviewAsync(new FieldInventoryPreviewRequest(
             "https://docs.google.com/spreadsheets/d/test-sheet/edit#gid=0",
+            null,
             "Spring 2026",
             new List<FieldInventorySelectedTab>
             {
@@ -185,6 +213,7 @@ public class FieldInventoryImportServiceTests
 
         var preview = await service.CreatePreviewAsync(new FieldInventoryPreviewRequest(
             "https://docs.google.com/spreadsheets/d/test-sheet/edit#gid=0",
+            null,
             "Spring 2026",
             new List<FieldInventorySelectedTab>
             {
@@ -202,6 +231,7 @@ public class FieldInventoryImportServiceTests
         var service = CreateService(new StaticWorkbookConnector(BuildWorkbook()));
         var preview = await service.CreatePreviewAsync(new FieldInventoryPreviewRequest(
             "https://docs.google.com/spreadsheets/d/test-sheet/edit#gid=0",
+            null,
             "Spring 2026",
             new List<FieldInventorySelectedTab>
             {
@@ -221,6 +251,7 @@ public class FieldInventoryImportServiceTests
         var service = CreateService(new StaticWorkbookConnector(BuildWorkbook()));
         var preview = await service.CreatePreviewAsync(new FieldInventoryPreviewRequest(
             "https://docs.google.com/spreadsheets/d/test-sheet/edit#gid=0",
+            null,
             "Spring 2026",
             new List<FieldInventorySelectedTab>
             {
@@ -232,6 +263,33 @@ public class FieldInventoryImportServiceTests
 
         Assert.Equal(FieldInventoryImportStatuses.Imported, result.Run.Status);
         Assert.NotEmpty(live);
+    }
+
+    [Fact]
+    public async Task CreatePreviewAsync_WithUploadedWorkbookId_UsesStoredWorkbook()
+    {
+        _fieldRepository.AddField("league-1", "park-a", "field-1", "Park A", "Field 1", "Park A > Field 1");
+        var service = CreateService(new StaticWorkbookConnector(BuildWorkbook()));
+        var context = CorrelationContext.Create("user-1", "league-1");
+        var inspect = await service.InspectUploadedWorkbookAsync(
+            "CountyInventory.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            BuildWorkbookArchiveBytes(BuildWorkbook()),
+            context);
+
+        var preview = await service.CreatePreviewAsync(new FieldInventoryPreviewRequest(
+            null,
+            inspect.UploadedWorkbookId,
+            "Spring 2026",
+            new List<FieldInventorySelectedTab>
+            {
+                new("Spring 3/16-5/22", FieldInventoryParserTypes.SeasonWeekdayGrid, FieldInventoryActionTypes.Ingest, true),
+            }), context);
+
+        Assert.Equal(FieldInventorySourceTypes.UploadedWorkbook, preview.Run.SourceType);
+        Assert.Equal(inspect.UploadedWorkbookId, preview.Run.UploadedWorkbookId);
+        Assert.Equal("CountyInventory.xlsx", preview.Run.SourceWorkbookName);
+        Assert.NotEmpty(preview.Records);
     }
 
     private FieldInventoryImportService CreateService(FieldInventoryImportService.IFieldInventoryWorkbookConnector connector)
@@ -364,6 +422,83 @@ public class FieldInventoryImportServiceTests
         }
     }
 
+    private static byte[] BuildWorkbookArchiveBytes(ParsedWorkbook workbook)
+    {
+        XNamespace mainNs = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+        XNamespace relNs = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+        XNamespace pkgRelNs = "http://schemas.openxmlformats.org/package/2006/relationships";
+        XNamespace cpNs = "http://schemas.openxmlformats.org/package/2006/metadata/core-properties";
+        XNamespace dcNs = "http://purl.org/dc/elements/1.1/";
+
+        using var stream = new MemoryStream();
+        using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            var workbookXml = new XDocument(
+                new XElement(mainNs + "workbook",
+                    new XAttribute(XNamespace.Xmlns + "r", relNs),
+                    new XElement(mainNs + "sheets",
+                        workbook.Sheets.OrderBy(x => x.Index).Select((sheet, index) =>
+                            new XElement(mainNs + "sheet",
+                                new XAttribute("name", sheet.Name),
+                                new XAttribute("sheetId", index + 1),
+                                new XAttribute(relNs + "id", $"rId{index + 1}"),
+                                sheet.IsHidden ? new XAttribute("state", "hidden") : null)))));
+            WriteEntry(archive, "xl/workbook.xml", workbookXml);
+
+            var relsXml = new XDocument(
+                new XElement(pkgRelNs + "Relationships",
+                    workbook.Sheets.OrderBy(x => x.Index).Select((sheet, index) =>
+                        new XElement(pkgRelNs + "Relationship",
+                            new XAttribute("Id", $"rId{index + 1}"),
+                            new XAttribute("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"),
+                            new XAttribute("Target", $"worksheets/sheet{index + 1}.xml")))));
+            WriteEntry(archive, "xl/_rels/workbook.xml.rels", relsXml);
+
+            var coreXml = new XDocument(
+                new XElement(cpNs + "coreProperties",
+                    new XAttribute(XNamespace.Xmlns + "dc", dcNs),
+                    new XElement(dcNs + "title", workbook.Title)));
+            WriteEntry(archive, "docProps/core.xml", coreXml);
+
+            foreach (var sheet in workbook.Sheets.OrderBy(x => x.Index))
+            {
+                var rows = sheet.CellsByIndex.Values
+                    .GroupBy(x => x.Row)
+                    .OrderBy(x => x.Key)
+                    .Select(group =>
+                        new XElement(mainNs + "row",
+                            new XAttribute("r", group.Key),
+                            group.OrderBy(x => x.Column).Select(cell =>
+                                new XElement(mainNs + "c",
+                                    new XAttribute("r", cell.Reference),
+                                    new XAttribute("t", "inlineStr"),
+                                    new XElement(mainNs + "is",
+                                        new XElement(mainNs + "t", cell.Value))))));
+
+                var worksheetXml = new XDocument(
+                    new XElement(mainNs + "worksheet",
+                        new XElement(mainNs + "sheetData", rows),
+                        sheet.MergedRanges.Any()
+                            ? new XElement(mainNs + "mergeCells",
+                                new XAttribute("count", sheet.MergedRanges.Count),
+                                sheet.MergedRanges.Select(range =>
+                                    new XElement(mainNs + "mergeCell", new XAttribute("ref", range.Reference))))
+                            : null));
+
+                WriteEntry(archive, $"xl/worksheets/sheet{sheet.Index + 1}.xml", worksheetXml);
+            }
+        }
+
+        return stream.ToArray();
+    }
+
+    private static void WriteEntry(ZipArchive archive, string path, XDocument document)
+    {
+        var entry = archive.CreateEntry(path);
+        using var writer = new StreamWriter(entry.Open());
+        document.Save(writer);
+    }
+
     private sealed class StaticWorkbookConnector : FieldInventoryImportService.IFieldInventoryWorkbookConnector
     {
         private readonly ParsedWorkbook _workbook;
@@ -388,6 +523,8 @@ public class FieldInventoryImportServiceTests
         private readonly Dictionary<string, List<FieldInventoryFieldAliasEntity>> _aliases = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, List<FieldInventoryTabClassificationEntity>> _tabClassifications = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, List<FieldInventoryLiveRecordEntity>> _liveRecords = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, FieldInventoryWorkbookUploadEntity> _uploads = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, byte[]> _uploadBytes = new(StringComparer.OrdinalIgnoreCase);
 
         public Task UpsertImportRunAsync(FieldInventoryImportRunEntity run)
         {
@@ -460,6 +597,25 @@ public class FieldInventoryImportServiceTests
             _tabClassifications[classification.LeagueId].RemoveAll(x => x.RawTabName == classification.RawTabName);
             _tabClassifications[classification.LeagueId].Add(classification);
             return Task.CompletedTask;
+        }
+
+        public Task SaveWorkbookUploadAsync(FieldInventoryWorkbookUploadEntity upload, byte[] workbookBytes)
+        {
+            _uploads[$"{upload.LeagueId}|{upload.Id}"] = upload;
+            _uploadBytes[$"{upload.LeagueId}|{upload.Id}"] = workbookBytes.ToArray();
+            return Task.CompletedTask;
+        }
+
+        public Task<FieldInventoryWorkbookUploadEntity?> GetWorkbookUploadAsync(string leagueId, string uploadId)
+        {
+            _uploads.TryGetValue($"{leagueId}|{uploadId}", out var upload);
+            return Task.FromResult(upload);
+        }
+
+        public Task<byte[]?> GetWorkbookUploadBytesAsync(string leagueId, string uploadId)
+        {
+            _uploadBytes.TryGetValue($"{leagueId}|{uploadId}", out var bytes);
+            return Task.FromResult(bytes);
         }
 
         public Task<List<FieldInventoryLiveRecordEntity>> GetLiveRecordsAsync(string leagueId, string seasonLabel)

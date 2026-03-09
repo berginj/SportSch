@@ -89,6 +89,12 @@ public static class FieldInventoryCommitModes
     public const string Upsert = "upsert";
 }
 
+public static class FieldInventorySourceTypes
+{
+    public const string GoogleSheet = "google_sheet";
+    public const string UploadedWorkbook = "uploaded_workbook";
+}
+
 public record FieldInventoryWorkbookInspectRequest(string? SourceWorkbookUrl);
 
 public record FieldInventorySelectedTab(
@@ -99,6 +105,7 @@ public record FieldInventorySelectedTab(
 
 public record FieldInventoryPreviewRequest(
     string? SourceWorkbookUrl,
+    string? UploadedWorkbookId,
     string? SeasonLabel,
     List<FieldInventorySelectedTab>? SelectedTabs);
 
@@ -128,7 +135,10 @@ public record FieldInventoryCommitRequest(
     bool ReplaceExistingSeason = true);
 
 public record FieldInventoryWorkbookInspectResponse(
+    string SourceType,
     string SourceWorkbookUrl,
+    string? UploadedWorkbookId,
+    string? SourceWorkbookName,
     string SpreadsheetId,
     string SourceWorkbookTitle,
     List<FieldInventoryWorkbookTabDto> Tabs);
@@ -155,7 +165,10 @@ public record FieldInventorySummaryCountsDto(
 
 public record FieldInventoryRunDto(
     string Id,
+    string SourceType,
     string SourceWorkbookUrl,
+    string? UploadedWorkbookId,
+    string? SourceWorkbookName,
     string SourceWorkbookTitle,
     string SeasonLabel,
     string Status,
@@ -247,7 +260,10 @@ public class FieldInventoryImportRunEntity
 {
     public string Id { get; set; } = "";
     public string LeagueId { get; set; } = "";
+    public string SourceType { get; set; } = FieldInventorySourceTypes.GoogleSheet;
     public string SourceWorkbookUrl { get; set; } = "";
+    public string? UploadedWorkbookId { get; set; }
+    public string? SourceWorkbookName { get; set; }
     public string SourceWorkbookTitle { get; set; } = "";
     public string SeasonLabel { get; set; } = "";
     public List<FieldInventorySelectedTab> SelectedTabs { get; set; } = new();
@@ -397,6 +413,18 @@ public class FieldInventoryCommitRunEntity
     public int SkippedUnmappedCount { get; set; }
     public string CreatedBy { get; set; } = "";
     public DateTimeOffset CreatedAt { get; set; }
+}
+
+public class FieldInventoryWorkbookUploadEntity
+{
+    public string Id { get; set; } = "";
+    public string LeagueId { get; set; } = "";
+    public string FileName { get; set; } = "";
+    public string ContentType { get; set; } = "";
+    public long ByteCount { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public string CreatedBy { get; set; } = "";
 }
 
 public class ParsedWorkbook

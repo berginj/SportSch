@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`Field Inventory Import` adds a safe county-workbook ingest workflow to SportsCH. It parses a public Google Sheets workbook into normalized field inventory records, stores those staged results separately from live operational data, and only writes to live inventory storage when a league admin runs an explicit import or upsert action.
+`Field Inventory Import` adds a safe county-workbook ingest workflow to SportsCH. It parses either a public Google Sheets workbook or an uploaded `.xlsx` workbook into normalized field inventory records, stores those staged results separately from live operational data, and only writes to live inventory storage when a league admin runs an explicit import or upsert action.
 
 This is intentionally deterministic. The parser is built around known workbook patterns and saved review decisions, not a freeform spreadsheet interpreter.
 
@@ -14,6 +14,7 @@ This is intentionally deterministic. The parser is built around known workbook p
   - adds the `Field Inventory Import` management tab
 - `src/manage/FieldInventoryImportManager.jsx`
   - workbook URL input
+  - direct `.xlsx` upload
   - tab selection and parser/action overrides
   - preview summary
   - warnings panel
@@ -24,10 +25,11 @@ This is intentionally deterministic. The parser is built around known workbook p
 ### Backend
 
 - `api/Functions/FieldInventoryImportFunctions.cs`
-  - HTTP entry points for inspect, preview, staging, review updates, mapping persistence, and commit
+  - HTTP entry points for URL inspect, upload inspect, preview, staging, review updates, mapping persistence, and commit
 - `api/Services/FieldInventoryImportService.cs`
   - Google Sheets URL validation
   - public workbook download via Google export `format=xlsx`
+  - uploaded workbook parsing from persisted `.xlsx` bytes
   - workbook inspector
   - deterministic tab classification
   - weekday/weekend/reference parsing
@@ -45,6 +47,7 @@ New storage tables:
 - `FieldInventoryStagedRecords`
 - `FieldInventoryFieldAliases`
 - `FieldInventoryTabClassifications`
+- `FieldInventoryWorkbookUploads`
 - `FieldInventoryImportWarnings`
 - `FieldInventoryReviewQueueItems`
 - `FieldInventoryLiveRecords`
@@ -58,6 +61,7 @@ Preview parsing writes to:
 
 - `FieldInventoryImportRuns`
 - `FieldInventoryStagedRecords`
+- `FieldInventoryWorkbookUploads` for uploaded `.xlsx` sources
 - `FieldInventoryImportWarnings`
 - `FieldInventoryReviewQueueItems`
 
@@ -73,7 +77,7 @@ That keeps this feature demonstrable before deeper operational integration. The 
 
 ## Workflow
 
-1. Load workbook metadata from a public Google Sheets link.
+1. Load workbook metadata from either a public Google Sheets link or an uploaded `.xlsx` workbook.
 2. Select tabs and optionally override inferred parser/action.
 3. Parse preview into staged records.
 4. Review warnings and review queue items.
@@ -111,11 +115,13 @@ Requirements:
 
 - user must be a league admin or global admin
 - request must include `x-league-id`
-- workbook must be publicly downloadable through Google Sheets export
+- Google Sheets sources must be publicly downloadable through Google Sheets export
+- uploaded workbook sources must be valid `.xlsx` files
 
 Typical calls:
 
 - `POST /api/field-inventory/workbook/inspect`
+- `POST /api/field-inventory/workbook/upload-inspect`
 - `POST /api/field-inventory/preview`
 - `PATCH /api/field-inventory/runs/{runId}/stage`
 - `POST /api/field-inventory/field-aliases`

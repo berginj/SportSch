@@ -24,6 +24,10 @@ public interface IFieldInventoryImportRepository
     Task<List<FieldInventoryTabClassificationEntity>> GetTabClassificationsAsync(string leagueId);
     Task UpsertTabClassificationAsync(FieldInventoryTabClassificationEntity classification);
 
+    Task SaveWorkbookUploadAsync(FieldInventoryWorkbookUploadEntity upload, byte[] workbookBytes);
+    Task<FieldInventoryWorkbookUploadEntity?> GetWorkbookUploadAsync(string leagueId, string uploadId);
+    Task<byte[]?> GetWorkbookUploadBytesAsync(string leagueId, string uploadId);
+
     Task<List<FieldInventoryLiveRecordEntity>> GetLiveRecordsAsync(string leagueId, string seasonLabel);
     Task ReplaceLiveRecordsAsync(string leagueId, string seasonLabel, IEnumerable<FieldInventoryLiveRecordEntity> records);
 

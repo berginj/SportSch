@@ -44,32 +44,56 @@ public class FieldInventoryImportService : IFieldInventoryImportService
         var workbook = await LoadWorkbookAsync(normalizedUrl);
         var classifications = await _repository.GetTabClassificationsAsync(context.LeagueId);
 
-        return new FieldInventoryWorkbookInspectResponse(
+        return BuildInspectResponse(
+            workbook,
+            FieldInventorySourceTypes.GoogleSheet,
             normalizedUrl,
-            workbook.SpreadsheetId,
-            workbook.Title,
-            workbook.Sheets
-                .OrderBy(x => x.Index)
-                .Select(sheet =>
-                {
-                    var decision = InferTabClassification(sheet, workbook.Title, classifications);
-                    return new FieldInventoryWorkbookTabDto(
-                        sheet.Name,
-                        sheet.Index,
-                        sheet.IsHidden,
-                        decision.ParserType,
-                        decision.ActionType,
-                        decision.Confidence,
-                        decision.Reason,
-                        sheet.Cells.Count(x => !string.IsNullOrWhiteSpace(x.Value.Value)),
-                        sheet.MergedRanges.Count);
-                })
-                .ToList());
+            null,
+            null,
+            classifications);
+    }
+
+    public async Task<FieldInventoryWorkbookInspectResponse> InspectUploadedWorkbookAsync(string fileName, string contentType, byte[] workbookBytes, CorrelationContext context)
+    {
+        if (workbookBytes is null || workbookBytes.Length == 0)
+        {
+            throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, ErrorCodes.WORKBOOK_FILE_REQUIRED, "Upload an .xlsx workbook file.");
+        }
+
+        var trimmedFileName = (fileName ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(trimmedFileName))
+        {
+            trimmedFileName = "county-field-inventory.xlsx";
+        }
+
+        var uploadId = Guid.NewGuid().ToString("n");
+        var sourceWorkbookUrl = BuildUploadedWorkbookUrl(uploadId, trimmedFileName);
+        var workbook = LoadWorkbookFromBytes(workbookBytes, sourceWorkbookUrl, uploadId);
+
+        await _repository.SaveWorkbookUploadAsync(new FieldInventoryWorkbookUploadEntity
+        {
+            Id = uploadId,
+            LeagueId = context.LeagueId,
+            FileName = trimmedFileName,
+            ContentType = string.IsNullOrWhiteSpace(contentType) ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : contentType.Trim(),
+            ByteCount = workbookBytes.Length,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+            CreatedBy = context.UserId,
+        }, workbookBytes);
+
+        var classifications = await _repository.GetTabClassificationsAsync(context.LeagueId);
+        return BuildInspectResponse(
+            workbook,
+            FieldInventorySourceTypes.UploadedWorkbook,
+            sourceWorkbookUrl,
+            uploadId,
+            trimmedFileName,
+            classifications);
     }
 
     public async Task<FieldInventoryPreviewResponse> CreatePreviewAsync(FieldInventoryPreviewRequest request, CorrelationContext context)
     {
-        var normalizedUrl = GoogleSheetUrlParser.NormalizeWorkbookUrl(request.SourceWorkbookUrl);
         var selectedTabs = (request.SelectedTabs ?? new List<FieldInventorySelectedTab>())
             .Where(x => x is not null && !string.IsNullOrWhiteSpace(x.TabName))
             .Select(CloneTabSelection)
@@ -81,11 +105,37 @@ public class FieldInventoryImportService : IFieldInventoryImportService
                 "Select at least one workbook tab to parse.");
         }
 
+        var normalizedUrl = "";
+        var uploadedWorkbookId = (request.UploadedWorkbookId ?? "").Trim();
+        var sourceType = string.IsNullOrWhiteSpace(uploadedWorkbookId)
+            ? FieldInventorySourceTypes.GoogleSheet
+            : FieldInventorySourceTypes.UploadedWorkbook;
+        string? sourceWorkbookName = null;
+
+        if (sourceType == FieldInventorySourceTypes.GoogleSheet)
+        {
+            normalizedUrl = GoogleSheetUrlParser.NormalizeWorkbookUrl(request.SourceWorkbookUrl);
+        }
+        else
+        {
+            var upload = await _repository.GetWorkbookUploadAsync(context.LeagueId, uploadedWorkbookId);
+            if (upload is null)
+            {
+                throw new ApiGuards.HttpError((int)HttpStatusCode.NotFound, ErrorCodes.NOT_FOUND, "Uploaded workbook not found.");
+            }
+
+            normalizedUrl = BuildUploadedWorkbookUrl(upload.Id, upload.FileName);
+            sourceWorkbookName = upload.FileName;
+        }
+
         var run = new FieldInventoryImportRunEntity
         {
             Id = Guid.NewGuid().ToString("n"),
             LeagueId = context.LeagueId,
+            SourceType = sourceType,
             SourceWorkbookUrl = normalizedUrl,
+            UploadedWorkbookId = sourceType == FieldInventorySourceTypes.UploadedWorkbook ? uploadedWorkbookId : null,
+            SourceWorkbookName = sourceWorkbookName,
             SourceWorkbookTitle = "",
             SeasonLabel = (request.SeasonLabel ?? "").Trim(),
             SelectedTabs = selectedTabs,
@@ -265,7 +315,7 @@ public class FieldInventoryImportService : IFieldInventoryImportService
 
     private async Task<FieldInventoryPreviewResponse> BuildAndPersistPreviewAsync(FieldInventoryImportRunEntity run, CorrelationContext context)
     {
-        var workbook = await LoadWorkbookAsync(run.SourceWorkbookUrl);
+        var workbook = await LoadWorkbookAsync(run, context);
         run.SourceWorkbookTitle = workbook.Title;
         if (string.IsNullOrWhiteSpace(run.SeasonLabel))
         {
@@ -405,6 +455,27 @@ public class FieldInventoryImportService : IFieldInventoryImportService
         return run;
     }
 
+    private async Task<ParsedWorkbook> LoadWorkbookAsync(FieldInventoryImportRunEntity run, CorrelationContext context)
+    {
+        if (run.SourceType == FieldInventorySourceTypes.UploadedWorkbook)
+        {
+            if (string.IsNullOrWhiteSpace(run.UploadedWorkbookId))
+            {
+                throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, ErrorCodes.WORKBOOK_FILE_REQUIRED, "Uploaded workbook id is required.");
+            }
+
+            var bytes = await _repository.GetWorkbookUploadBytesAsync(context.LeagueId, run.UploadedWorkbookId);
+            if (bytes is null || bytes.Length == 0)
+            {
+                throw new ApiGuards.HttpError((int)HttpStatusCode.NotFound, ErrorCodes.NOT_FOUND, "Uploaded workbook data was not found.");
+            }
+
+            return LoadWorkbookFromBytes(bytes, run.SourceWorkbookUrl, run.UploadedWorkbookId);
+        }
+
+        return await LoadWorkbookAsync(run.SourceWorkbookUrl);
+    }
+
     private async Task<ParsedWorkbook> LoadWorkbookAsync(string normalizedUrl)
     {
         try
@@ -420,6 +491,21 @@ public class FieldInventoryImportService : IFieldInventoryImportService
             _logger.LogError(ex, "Workbook load failed for {Url}", normalizedUrl);
             throw new ApiGuards.HttpError((int)HttpStatusCode.BadGateway, ErrorCodes.WORKBOOK_LOAD_FAILED,
                 "Unable to load the Google Sheets workbook.");
+        }
+    }
+
+    private ParsedWorkbook LoadWorkbookFromBytes(byte[] workbookBytes, string sourceWorkbookUrl, string workbookId)
+    {
+        try
+        {
+            using var stream = new MemoryStream(workbookBytes, writable: false);
+            return WorkbookXlsxReader.Read(stream, sourceWorkbookUrl, workbookId);
+        }
+        catch (Exception ex) when (ex is InvalidDataException or InvalidOperationException)
+        {
+            _logger.LogError(ex, "Uploaded workbook parse failed for {WorkbookId}", workbookId);
+            throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, ErrorCodes.WORKBOOK_LOAD_FAILED,
+                "The uploaded workbook could not be read. Upload a valid .xlsx workbook export.");
         }
     }
 
@@ -1228,7 +1314,10 @@ public class FieldInventoryImportService : IFieldInventoryImportService
     private static FieldInventoryRunDto MapRun(FieldInventoryImportRunEntity run)
         => new(
             run.Id,
+            run.SourceType,
             run.SourceWorkbookUrl,
+            run.UploadedWorkbookId,
+            run.SourceWorkbookName,
             run.SourceWorkbookTitle,
             run.SeasonLabel,
             run.Status,
@@ -1396,6 +1485,41 @@ public class FieldInventoryImportService : IFieldInventoryImportService
         }
         return name;
     }
+
+    private static string BuildUploadedWorkbookUrl(string uploadId, string fileName)
+        => $"uploaded://{uploadId}/{Slug.Make(fileName)}";
+
+    private static FieldInventoryWorkbookInspectResponse BuildInspectResponse(
+        ParsedWorkbook workbook,
+        string sourceType,
+        string sourceWorkbookUrl,
+        string? uploadedWorkbookId,
+        string? sourceWorkbookName,
+        List<FieldInventoryTabClassificationEntity> classifications)
+        => new(
+            sourceType,
+            sourceWorkbookUrl,
+            uploadedWorkbookId,
+            sourceWorkbookName,
+            workbook.SpreadsheetId,
+            workbook.Title,
+            workbook.Sheets
+                .OrderBy(x => x.Index)
+                .Select(sheet =>
+                {
+                    var decision = InferTabClassification(sheet, workbook.Title, classifications);
+                    return new FieldInventoryWorkbookTabDto(
+                        sheet.Name,
+                        sheet.Index,
+                        sheet.IsHidden,
+                        decision.ParserType,
+                        decision.ActionType,
+                        decision.Confidence,
+                        decision.Reason,
+                        sheet.Cells.Count(x => !string.IsNullOrWhiteSpace(x.Value.Value)),
+                        sheet.MergedRanges.Count);
+                })
+                .ToList());
 
     public interface IFieldInventoryWorkbookConnector
     {

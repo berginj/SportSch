@@ -16,6 +16,7 @@ const ACTION_OPTIONS = [
 
 export default function FieldInventoryImportManager({ leagueId }) {
   const [sourceWorkbookUrl, setSourceWorkbookUrl] = useState("");
+  const [workbookFile, setWorkbookFile] = useState(null);
   const [seasonLabel, setSeasonLabel] = useState("");
   const [workbook, setWorkbook] = useState(null);
   const [selectedTabs, setSelectedTabs] = useState([]);
@@ -51,23 +52,49 @@ export default function FieldInventoryImportManager({ leagueId }) {
         method: "POST",
         body: JSON.stringify({ sourceWorkbookUrl }),
       });
-      setWorkbook(result);
-      setSelectedTabs(
-        (result?.tabs || []).map((tab) => ({
-          tabName: tab.tabName,
-          parserType: tab.inferredParserType,
-          actionType: tab.inferredActionType,
-          selected: tab.inferredActionType !== "ignore",
-        }))
-      );
-      setPreview(null);
-      setCommitPreview(null);
-      setMessage("Workbook loaded. Select tabs and parse a preview.");
+      applyLoadedWorkbook(result, "Workbook loaded. Select tabs and parse a preview.");
     } catch (e) {
       setError(formatImportError(e));
     } finally {
       setBusy("");
     }
+  }
+
+  async function uploadWorkbook() {
+    resetMessages();
+    setBusy("upload");
+    try {
+      if (!workbookFile) {
+        throw new Error("Choose a .xlsx workbook file to upload.");
+      }
+
+      const formData = new FormData();
+      formData.append("file", workbookFile);
+      const result = await apiFetch("/api/field-inventory/workbook/upload-inspect", {
+        method: "POST",
+        body: formData,
+      });
+      applyLoadedWorkbook(result, "Workbook uploaded. Select tabs and parse a preview.");
+    } catch (e) {
+      setError(formatImportError(e));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function applyLoadedWorkbook(result, successMessage) {
+    setWorkbook(result);
+    setSelectedTabs(
+      (result?.tabs || []).map((tab) => ({
+        tabName: tab.tabName,
+        parserType: tab.inferredParserType,
+        actionType: tab.inferredActionType,
+        selected: tab.inferredActionType !== "ignore",
+      }))
+    );
+    setPreview(null);
+    setCommitPreview(null);
+    setMessage(successMessage);
   }
 
   async function parsePreview() {
@@ -77,7 +104,8 @@ export default function FieldInventoryImportManager({ leagueId }) {
       const result = await apiFetch("/api/field-inventory/preview", {
         method: "POST",
         body: JSON.stringify({
-          sourceWorkbookUrl,
+          sourceWorkbookUrl: workbook?.sourceType === "uploaded_workbook" ? null : sourceWorkbookUrl,
+          uploadedWorkbookId: workbook?.uploadedWorkbookId || null,
           seasonLabel: seasonLabel || null,
           selectedTabs,
         }),
@@ -248,9 +276,32 @@ export default function FieldInventoryImportManager({ leagueId }) {
         </label>
       </div>
 
+      <div className="card">
+        <div className="card__header">
+          <div className="h2">Alternate Source</div>
+          <div className="subtle">Upload the county `.xlsx` workbook directly when Google export or permissions are unreliable.</div>
+        </div>
+        <div className="card__body">
+          <label>
+            Workbook file
+            <input
+              type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              onChange={(e) => setWorkbookFile(e.target.files?.[0] || null)}
+            />
+          </label>
+          <div className="subtle">
+            Upload preserves merged cells and layout. This is the recommended source for AGSA workbook parsing.
+          </div>
+        </div>
+      </div>
+
       <div className="row gap-2">
         <button className="btn btn--primary" type="button" onClick={loadWorkbook} disabled={!leagueId || busy === "load"}>
           {busy === "load" ? "Loading..." : "Load Workbook"}
+        </button>
+        <button className="btn btn--primary" type="button" onClick={uploadWorkbook} disabled={!leagueId || !workbookFile || busy === "upload"}>
+          {busy === "upload" ? "Uploading..." : "Upload Workbook"}
         </button>
         <button className="btn btn--ghost" type="button" onClick={parsePreview} disabled={!selectedTabs.some((tab) => tab.selected) || busy === "preview"}>
           {busy === "preview" ? "Parsing..." : "Parse Preview"}
@@ -261,7 +312,10 @@ export default function FieldInventoryImportManager({ leagueId }) {
         <div className="card">
           <div className="card__header">
             <div className="h2">Workbook Tabs</div>
-            <div className="subtle">{workbook.sourceWorkbookTitle} - {workbook.tabs.length} tabs</div>
+            <div className="subtle">
+              {workbook.sourceWorkbookTitle} - {workbook.tabs.length} tabs
+              {workbook.sourceType === "uploaded_workbook" && workbook.sourceWorkbookName ? ` - uploaded file ${workbook.sourceWorkbookName}` : ""}
+            </div>
           </div>
           <div className="card__body overflow-x-auto">
             <table className="table" aria-label="Workbook tabs">
@@ -286,8 +340,9 @@ export default function FieldInventoryImportManager({ leagueId }) {
                     actionType: tab.inferredActionType,
                     selected: false,
                   };
+                  const actionAppearance = getTabActionAppearance(current.actionType, current.selected);
                   return (
-                    <tr key={tab.tabName}>
+                    <tr key={tab.tabName} className={actionAppearance.rowClassName}>
                       <td>
                         <input
                           type="checkbox"
@@ -295,7 +350,10 @@ export default function FieldInventoryImportManager({ leagueId }) {
                           onChange={(e) => updateTab(tab.tabName, { selected: e.target.checked })}
                         />
                       </td>
-                      <td>{tab.tabName}</td>
+                      <td>
+                        <div className="font-bold">{tab.tabName}</div>
+                        <div className={`pill ${actionAppearance.badgeClassName} mt-2`}>{actionAppearance.label}</div>
+                      </td>
                       <td>{tab.isHidden ? "Hidden" : "Visible"}</td>
                       <td>
                         <select value={current.parserType} onChange={(e) => updateTab(tab.tabName, { parserType: e.target.value })}>
@@ -355,7 +413,7 @@ export default function FieldInventoryImportManager({ leagueId }) {
           </div>
 
           {!preview.records.length ? (
-            <div className="callout">
+            <div className="callout callout--warning">
               <div className="font-bold mb-2">No records were parsed</div>
               <div className="subtle">
                 SportsCH could inspect the workbook, but the selected tabs did not match the expected inventory grid layout closely enough to create staged records. Use the review queue to mark non-inventory tabs as ignore/reference, then retry the AGSA inventory tabs after checking date columns, time headers, and saved tab classifications.
@@ -364,7 +422,7 @@ export default function FieldInventoryImportManager({ leagueId }) {
           ) : null}
 
           {commitPreview ? (
-            <div className="callout">
+            <div className="callout callout--info">
               <div className="font-bold mb-2">Commit Preview</div>
               <div className="grid2">
                 <div>Create: {commitPreview.createCount}</div>
@@ -386,8 +444,11 @@ export default function FieldInventoryImportManager({ leagueId }) {
               {preview.warnings.length ? (
                 <ul className="stack gap-2">
                   {preview.warnings.map((warning) => (
-                    <li key={warning.id} className="callout">
-                      <div className="font-bold">{warning.code}</div>
+                    <li key={warning.id} className={`callout ${getWarningCalloutClass(warning)}`}>
+                      <div className="row gap-2">
+                        <div className="font-bold">{warning.code}</div>
+                        <div className={`pill ${getWarningBadgeClass(warning)}`}>{getWarningLabel(warning)}</div>
+                      </div>
                       <div>{warning.message}</div>
                       <div className="subtle">{warning.sourceTab}{warning.sourceCellRange ? ` - ${warning.sourceCellRange}` : ""}</div>
                     </li>
@@ -407,11 +468,15 @@ export default function FieldInventoryImportManager({ leagueId }) {
             <div className="card__body stack gap-3">
               {preview.reviewItems.length ? (
                 preview.reviewItems.map((item) => (
-                  <div key={item.id} className="callout">
+                  <div key={item.id} className={`callout ${getReviewItemCalloutClass(item)}`}>
                     <div className="row items-center justify-between gap-2">
                       <div>
                         <div className="font-bold">{item.title}</div>
-                        <div className="subtle">{item.itemType} - {item.severity} - {item.status}</div>
+                        <div className="row gap-2 mt-2">
+                          <div className={`pill ${getReviewSeverityBadgeClass(item.severity)}`}>{formatLabel(item.severity)}</div>
+                          <div className={`pill ${getReviewStatusBadgeClass(item.status)}`}>{formatLabel(item.status)}</div>
+                          <div className="pill">{formatLabel(item.itemType)}</div>
+                        </div>
                       </div>
                       <div className="subtle">{item.sourceTab}{item.sourceCellRange ? ` - ${item.sourceCellRange}` : ""}</div>
                     </div>
@@ -563,4 +628,67 @@ function formatImportError(error) {
   return detailMessage && detailMessage !== message
     ? `${message} ${detailMessage}`
     : message;
+}
+
+function getTabActionAppearance(actionType, selected) {
+  if (actionType === "ingest" && selected) {
+    return {
+      label: "Will Ingest",
+      rowClassName: "tableRow--ok",
+      badgeClassName: "pill--ok",
+    };
+  }
+
+  if (actionType === "reference" && selected) {
+    return {
+      label: "Reference Only",
+      rowClassName: "tableRow--warning",
+      badgeClassName: "pill--warning",
+    };
+  }
+
+  return {
+    label: "Ignored",
+    rowClassName: "tableRow--danger",
+    badgeClassName: "pill--danger",
+  };
+}
+
+function getWarningCalloutClass(warning) {
+  if (warning?.severity === "info" || warning?.code === "reference_tab") return "callout--info";
+  return "callout--warning";
+}
+
+function getWarningBadgeClass(warning) {
+  if (warning?.severity === "info" || warning?.code === "reference_tab") return "pill--info";
+  return "pill--warning";
+}
+
+function getWarningLabel(warning) {
+  if (warning?.code === "reference_tab") return "Reference";
+  return formatLabel(warning?.severity || "warning");
+}
+
+function getReviewItemCalloutClass(item) {
+  if (item?.severity === "blocking" && item?.status === "open") return "callout--error";
+  if (item?.status === "resolved") return "callout--ok";
+  if (item?.status === "ignored") return "callout--info";
+  return "callout--warning";
+}
+
+function getReviewSeverityBadgeClass(severity) {
+  return severity === "blocking" ? "pill--danger" : "pill--warning";
+}
+
+function getReviewStatusBadgeClass(status) {
+  if (status === "resolved") return "pill--ok";
+  if (status === "ignored") return "pill--info";
+  return "pill--warning";
+}
+
+function formatLabel(value) {
+  return String(value || "")
+    .replace(/_/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }

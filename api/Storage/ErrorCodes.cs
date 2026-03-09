@@ -34,6 +34,7 @@ public static class ErrorCodes
     public const string DIVISION_MISMATCH = "DIVISION_MISMATCH";
     public const string INVALID_WORKBOOK_URL = "INVALID_WORKBOOK_URL";
     public const string WORKBOOK_LOAD_FAILED = "WORKBOOK_LOAD_FAILED";
+    public const string WORKBOOK_FILE_REQUIRED = "WORKBOOK_FILE_REQUIRED";
     public const string FIELD_ALIAS_REQUIRED = "FIELD_ALIAS_REQUIRED";
     public const string REVIEW_REQUIRED = "REVIEW_REQUIRED";
 

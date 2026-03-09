@@ -1,4 +1,5 @@
 using System.Net;
+using System.Linq;
 using GameSwap.Functions.Models;
 using GameSwap.Functions.Services;
 using GameSwap.Functions.Storage;
@@ -47,6 +48,30 @@ public class FieldInventoryImportFunctions
 
             var context = CorrelationContext.FromRequest(req, leagueId);
             var response = await _service.InspectWorkbookAsync(body.SourceWorkbookUrl ?? "", context);
+            return ApiResponses.Ok(req, response);
+        });
+
+    [Function("InspectUploadedFieldInventoryWorkbook")]
+    [OpenApiOperation(operationId: "InspectUploadedFieldInventoryWorkbook", tags: new[] { "Field Inventory Import" }, Summary = "Inspect an uploaded workbook", Description = "Loads workbook metadata from an uploaded .xlsx workbook and infers parser/action for each tab.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    public async Task<HttpResponseData> InspectUploadedWorkbook(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "field-inventory/workbook/upload-inspect")] HttpRequestData req)
+        => await ExecuteAsync(req, async () =>
+        {
+            var leagueId = ApiGuards.RequireLeagueId(req);
+            var me = IdentityUtil.GetMe(req);
+            await ApiGuards.RequireLeagueAdminAsync(_tableService, me.UserId, leagueId);
+
+            var form = await MultipartFormDataReader.ReadAsync(req);
+            var file = form.Files.FirstOrDefault(x => string.Equals(x.Name, "file", StringComparison.OrdinalIgnoreCase))
+                ?? form.Files.FirstOrDefault();
+            if (file is null || file.Content.Length == 0)
+            {
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, ErrorCodes.WORKBOOK_FILE_REQUIRED, "Upload an .xlsx workbook file.");
+            }
+
+            var context = CorrelationContext.FromRequest(req, leagueId);
+            var response = await _service.InspectUploadedWorkbookAsync(file.FileName, file.ContentType, file.Content, context);
             return ApiResponses.Ok(req, response);
         });
 

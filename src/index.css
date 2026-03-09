@@ -363,6 +363,10 @@
 
   .pill { @apply inline-flex items-center gap-1.5 rounded-full border-2 border-border bg-gray-50 px-2.5 py-1 text-xs text-muted; }
   .pill.is-active { @apply border-accent bg-accent text-gray-900 font-semibold; }
+  .pill--ok { @apply border-green-300 bg-green-50 text-green-700 font-semibold; }
+  .pill--warning { @apply border-amber-300 bg-amber-50 text-amber-800 font-semibold; }
+  .pill--danger { @apply border-red-300 bg-red-50 text-red-700 font-semibold; }
+  .pill--info { @apply border-blue-300 bg-blue-50 text-blue-700 font-semibold; }
   .msg { @apply mt-2.5 rounded-[14px] border-2 border-border bg-gray-50 px-3 py-2.5 text-text; }
   .msg.error { @apply border-red-300 bg-red-50; }
   .msg.ok { @apply border-green-300 bg-green-50; }
@@ -394,6 +398,15 @@
   .table tr:last-child td { @apply border-b-0; }
   .tableRow--selected td {
     background: rgba(243, 194, 79, 0.14);
+  }
+  .tableRow--ok td {
+    background: rgba(34, 197, 94, 0.08);
+  }
+  .tableRow--warning td {
+    background: rgba(245, 158, 11, 0.1);
+  }
+  .tableRow--danger td {
+    background: rgba(239, 68, 68, 0.08);
   }
   .table--compact th { @apply py-1.5 px-2 text-[11px]; }
   .table--compact td { @apply py-1.5 px-2; }

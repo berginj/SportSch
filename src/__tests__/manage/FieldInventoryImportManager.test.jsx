@@ -11,7 +11,10 @@ function installApiMock() {
   const previewResponse = {
     run: {
       id: "run-1",
+      sourceType: "google_sheet",
       sourceWorkbookUrl: "https://docs.google.com/spreadsheets/d/test-sheet/edit",
+      uploadedWorkbookId: null,
+      sourceWorkbookName: null,
       sourceWorkbookTitle: "Spring 2026 County Inventory",
       seasonLabel: "Spring 2026",
       status: "parsed",
@@ -127,7 +130,10 @@ function installApiMock() {
   api.apiFetch.mockImplementation((url, options = {}) => {
     if (url === "/api/field-inventory/workbook/inspect") {
       return Promise.resolve({
+        sourceType: "google_sheet",
         sourceWorkbookUrl: "https://docs.google.com/spreadsheets/d/test-sheet/edit",
+        uploadedWorkbookId: null,
+        sourceWorkbookName: null,
         spreadsheetId: "test-sheet",
         sourceWorkbookTitle: "Spring 2026 County Inventory",
         tabs: [
@@ -152,6 +158,29 @@ function installApiMock() {
             reason: "Hidden workbook tab",
             nonEmptyCellCount: 8,
             mergedRangeCount: 0,
+          },
+        ],
+      });
+    }
+    if (url === "/api/field-inventory/workbook/upload-inspect") {
+      return Promise.resolve({
+        sourceType: "uploaded_workbook",
+        sourceWorkbookUrl: "uploaded://upload-1/spring-2026-county-inventory-xlsx",
+        uploadedWorkbookId: "upload-1",
+        sourceWorkbookName: "Spring-2026-County-Inventory.xlsx",
+        spreadsheetId: "upload-1",
+        sourceWorkbookTitle: "Spring 2026 County Inventory",
+        tabs: [
+          {
+            tabName: "Spring 3/16-5/22",
+            index: 0,
+            isHidden: false,
+            inferredParserType: "season_weekday_grid",
+            inferredActionType: "ingest",
+            confidence: "high",
+            reason: "AGSA weekday inventory tab",
+            nonEmptyCellCount: 12,
+            mergedRangeCount: 1,
           },
         ],
       });
@@ -203,6 +232,8 @@ describe("FieldInventoryImportManager", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Load Workbook" }));
     expect(await screen.findByText("Workbook loaded. Select tabs and parse a preview.")).toBeInTheDocument();
+    expect(screen.getByText("Will Ingest")).toBeInTheDocument();
+    expect(screen.getByText("Ignored")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Parse Preview" }));
     expect(await screen.findByText("Preview parsed and stored in staging.")).toBeInTheDocument();
@@ -243,5 +274,30 @@ describe("FieldInventoryImportManager", () => {
     fireEvent.click(screen.getByRole("button", { name: "Load Workbook" }));
 
     expect(await screen.findByText(/Anyone with the link can view/i)).toBeInTheDocument();
+  });
+
+  it("uploads an xlsx workbook and uses the uploaded workbook id for preview", async () => {
+    render(<FieldInventoryImportManager leagueId="league-1" />);
+
+    const file = new File(["xlsx-bytes"], "Spring-2026-County-Inventory.xlsx", {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+
+    fireEvent.change(screen.getByLabelText(/Workbook file/i), {
+      target: { files: [file] },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Upload Workbook" }));
+
+    expect(await screen.findByText("Workbook uploaded. Select tabs and parse a preview.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Parse Preview" }));
+
+    await waitFor(() => {
+      expect(api.apiFetch).toHaveBeenCalledWith("/api/field-inventory/preview", expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining("\"uploadedWorkbookId\":\"upload-1\""),
+      }));
+    });
   });
 });
