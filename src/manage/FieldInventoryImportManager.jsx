@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
+import CalendarView from "../components/CalendarView";
 
 const PARSER_OPTIONS = [
   { value: "season_weekday_grid", label: "Season Weekday Grid" },
@@ -27,6 +28,7 @@ export default function FieldInventoryImportManager({ leagueId }) {
   const [message, setMessage] = useState("");
   const [mappingDrafts, setMappingDrafts] = useState({});
   const [classificationDrafts, setClassificationDrafts] = useState({});
+  const [recordsViewMode, setRecordsViewMode] = useState("table");
 
   const sortedFields = useMemo(
     () => [...(preview?.canonicalFields || [])].sort((a, b) => a.canonicalFieldName.localeCompare(b.canonicalFieldName)),
@@ -463,7 +465,7 @@ async function parsePreview() {
             </div>
           </div>
 
-          <div className="card">
+          <div className="card" aria-label="Review Queue">
             <div className="card__header">
               <div className="h2">Review Queue</div>
               <div className="subtle">Save reusable field and tab decisions so future imports need less cleanup.</div>
@@ -560,10 +562,57 @@ async function parsePreview() {
 
           <div className="card">
             <div className="card__header">
-              <div className="h2">Staged Records</div>
-              <div className="subtle">Preview of normalized availability and utilization stored separately from live scheduling data.</div>
+              <div className="row row--between items-center">
+                <div>
+                  <div className="h2">Staged Records</div>
+                  <div className="subtle">Preview of normalized availability and utilization stored separately from live scheduling data.</div>
+                </div>
+                <button
+                  className="btn btn--ghost"
+                  type="button"
+                  onClick={() => setRecordsViewMode(recordsViewMode === "table" ? "calendar" : "table")}
+                  disabled={!preview.records.length}
+                  title={recordsViewMode === "table" ? "Switch to calendar view" : "Switch to table view"}
+                >
+                  {recordsViewMode === "table" ? "📅 Calendar View" : "📋 Table View"}
+                </button>
+              </div>
             </div>
             <div className="card__body overflow-x-auto">
+              {recordsViewMode === "calendar" && preview.records.length > 0 ? (
+                <CalendarView
+                  slots={preview.records.map(record => ({
+                    slotId: record.id,
+                    gameDate: record.date,
+                    startTime: record.startTime,
+                    endTime: record.endTime,
+                    fieldKey: record.fieldName || record.rawFieldName,
+                    displayName: record.fieldName || record.rawFieldName,
+                    homeTeamId: record.usedBy || record.assignedTeamOrEvent || "",
+                    awayTeamId: "",
+                    status: record.fieldName ? "Mapped" : "Unmapped",
+                    isAvailability: true,
+                    division: record.divisionLevel || "",
+                    // Custom fields for visualization
+                    availabilityStatus: record.availabilityStatus,
+                    utilizationStatus: record.utilizationStatus,
+                    confidence: record.confidence,
+                    sourceTab: record.sourceTab
+                  }))}
+                  events={[]}
+                  defaultView="week-cards"
+                  onSlotClick={(slot) => {
+                    // If unmapped field, scroll to review queue
+                    if (slot.status === "Unmapped") {
+                      const reviewSection = document.querySelector('[aria-label="Review Queue"]');
+                      if (reviewSection) {
+                        reviewSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }
+                    }
+                  }}
+                  showViewToggle={true}
+                />
+              ) : (
               <table className="table" aria-label="Staged field inventory records">
                 <thead>
                   <tr>
@@ -600,6 +649,7 @@ async function parsePreview() {
                   )}
                 </tbody>
               </table>
+              )}
             </div>
           </div>
         </>
