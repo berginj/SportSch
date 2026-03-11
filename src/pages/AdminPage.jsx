@@ -753,32 +753,32 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
         <div className="controlBand">
           <div className="tabs">
           <button
-            className={`tabBtn ${activeSection === 'dashboard' ? 'active' : ''}`}
+            className={`btn btn--ghost ${activeSection === 'dashboard' ? 'is-active' : ''}`}
             onClick={() => setActiveSection('dashboard')}
           >
             Dashboard
           </button>
           <button
-            className={`tabBtn ${activeSection === 'access-requests' ? 'active' : ''}`}
+            className={`btn btn--ghost ${activeSection === 'access-requests' ? 'is-active' : ''}`}
             onClick={() => setActiveSection('access-requests')}
           >
             Access Requests
           </button>
           <button
-            className={`tabBtn ${activeSection === 'coaches' ? 'active' : ''}`}
+            className={`btn btn--ghost ${activeSection === 'coaches' ? 'is-active' : ''}`}
             onClick={() => setActiveSection('coaches')}
           >
             Coach Assignments
           </button>
           <button
-            className={`tabBtn ${activeSection === 'import' ? 'active' : ''}`}
+            className={`btn btn--ghost ${activeSection === 'import' ? 'is-active' : ''}`}
             onClick={() => setActiveSection('import')}
           >
             CSV Import
           </button>
           {isGlobalAdmin && (
             <button
-              className={`tabBtn ${activeSection === 'global' ? 'active' : ''}`}
+              className={`btn btn--ghost ${activeSection === 'global' ? 'is-active' : ''}`}
               onClick={() => setActiveSection('global')}
             >
               Global Admin
