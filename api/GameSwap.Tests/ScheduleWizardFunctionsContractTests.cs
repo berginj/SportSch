@@ -133,6 +133,26 @@ public class ScheduleWizardFunctionsContractTests
         Assert.Contains(12, counts.Values);
     }
 
+    [Fact]
+    public void BuildRepeatedMatchups_DoesNotReduceLeagueTargetWhenGuestsExist()
+    {
+        var teams = new List<string> { "Blue Wave", "Corgi Chaos", "Diamond Dogs", "Flames", "Flamingos", "Honey Badgers", "Porcupine Pirates", "Storm", "Team 2" };
+
+        var matchups = (List<MatchupPair>)InvokePrivateStatic(
+            "BuildRepeatedMatchups",
+            teams,
+            11);
+
+        var counts = teams.ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
+        foreach (var matchup in matchups)
+        {
+            counts[matchup.HomeTeamId] += 1;
+            counts[matchup.AwayTeamId] += 1;
+        }
+
+        Assert.All(counts.Values, total => Assert.True(total >= 11));
+    }
+
     private static Type GetNestedType(string name) =>
         typeof(ScheduleWizardFunctions).GetNestedType(name, BindingFlags.NonPublic)
         ?? throw new InvalidOperationException($"Nested type '{name}' not found.");

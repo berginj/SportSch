@@ -523,15 +523,7 @@ public class ScheduleWizardFunctions
             var regularMaxTotalGamesPerTeam = minGamesPerTeam > 0
                 ? ComputeTotalGamesCeilingPerTeam(minGamesPerTeam, teams.Count)
                 : (int?)null;
-            var regularLeagueGamesPerTeamTarget = ComputeLeagueMatchupTargetPerTeam(
-                minGamesPerTeam,
-                teams.Count,
-                regularSlots,
-                externalOfferPerWeek,
-                guestAnchors,
-                seasonStart,
-                bracketStart,
-                bracketEnd, blockedRanges);
+            var regularLeagueGamesPerTeamTarget = minGamesPerTeam;
             var regularLeagueGamesPerTeamMax = regularLeagueGamesPerTeamTarget > 0
                 ? ComputeTotalGamesCeilingPerTeam(regularLeagueGamesPerTeamTarget, teams.Count)
                 : (int?)null;
@@ -597,14 +589,6 @@ public class ScheduleWizardFunctions
             if (regularSlots.Count == 0) warnings.Add(new { code = "NO_REGULAR_SLOTS", message = "No regular season slots available." });
             if (poolStart.HasValue && poolSlots.Count == 0) warnings.Add(new { code = "NO_POOL_SLOTS", message = "No pool play slots available." });
             if (bracketStart.HasValue && bracketSlots.Count == 0) warnings.Add(new { code = "NO_BRACKET_SLOTS", message = "No bracket slots available." });
-            if (externalOfferPerWeek > 0 && regularLeagueGamesPerTeamTarget < minGamesPerTeam)
-            {
-                warnings.Add(new
-                {
-                    code = "LEAGUE_TARGET_REDUCED_FOR_GUEST_CAPACITY",
-                    message = $"Regular league matchup target was reduced to {regularLeagueGamesPerTeamTarget} game(s)/team (from {minGamesPerTeam}) to reserve guest-slot capacity while keeping the total regular-season target at {minGamesPerTeam}."
-                });
-            }
             if (blockedOutSlots > 0) warnings.Add(new { code = "SLOTS_BLOCKED_BY_DATES", message = $"{blockedOutSlots} slot(s) were excluded by blocked date ranges." });
             if (leagueRuleFilteredOutSlots > 0) warnings.Add(new { code = "SLOTS_FILTERED_BY_RULES", message = $"{leagueRuleFilteredOutSlots} slot(s) were excluded by no-games date/time rules." });
             if (requestGameAssignments.Count > 0)
@@ -1406,8 +1390,7 @@ public class ScheduleWizardFunctions
             var lockedRequestAssignments = regularAssignments.Where(a => a.IsRequestGame).ToList();
             var replaySnapshotAssignments = regularAssignments.Where(a => !a.IsRequestGame).ToList();
             var regularTargetGamesPerTeam = Math.Max(0, wizard.minGamesPerTeam ?? 0);
-            var expectedGuestGamesPerTeam = teams.Count > 0 ? reservedExternalSlots.Count / teams.Count : 0;
-            var regularLeagueGamesPerTeamTarget = Math.Max(0, regularTargetGamesPerTeam - expectedGuestGamesPerTeam);
+            var regularLeagueGamesPerTeamTarget = regularTargetGamesPerTeam;
             var regularMatchups = BuildRepeatedMatchups(teams, regularLeagueGamesPerTeamTarget);
             var resolvedSeed = seed ?? StableWizardSeed(division, seasonStart, seasonEnd);
             var replayProblem = BuildRegularSeasonSchedulingProblem(
@@ -3275,38 +3258,6 @@ public class ScheduleWizardFunctions
         if (key.StartsWith("fri")) return DayOfWeek.Friday;
         if (key.StartsWith("sat")) return DayOfWeek.Saturday;
         return null;
-    }
-
-    private static int ComputeLeagueMatchupTargetPerTeam(
-        int regularTargetGamesPerTeam,
-        int teamCount,
-        IReadOnlyList<SlotInfo> regularSlots,
-        int externalOfferPerWeek,
-        GuestAnchorSet? guestAnchors,
-        DateOnly seasonStart,
-        DateOnly? bracketStart,
-        DateOnly? bracketEnd, List<BlockedDateRange> blockedRanges)
-    {
-        if (regularTargetGamesPerTeam <= 0 || teamCount <= 0)
-            return 0;
-        if (externalOfferPerWeek <= 0 || regularSlots.Count == 0)
-            return regularTargetGamesPerTeam;
-
-        var reservedExternalSlots = SelectReservedExternalSlots(
-            regularSlots.ToList(),
-            externalOfferPerWeek,
-            guestAnchors,
-            seasonStart,
-            bracketStart,
-            bracketEnd, blockedRanges);
-        if (reservedExternalSlots.Count == 0)
-            return regularTargetGamesPerTeam;
-
-        var expectedGuestGamesPerTeam = reservedExternalSlots.Count / teamCount;
-        if (expectedGuestGamesPerTeam <= 0)
-            return regularTargetGamesPerTeam;
-
-        return Math.Max(0, regularTargetGamesPerTeam - expectedGuestGamesPerTeam);
     }
 
     private static int ComputeTotalGamesCeilingPerTeam(int targetGamesPerTeam, int teamCount)
