@@ -520,7 +520,9 @@ public class ScheduleWizardFunctions
                 ? FilterSlots(filteredAllSlots, bracketStart.Value, bracketEnd.Value)
                 : new List<SlotInfo>();
 
-            var regularMaxTotalGamesPerTeam = minGamesPerTeam > 0 ? minGamesPerTeam : (int?)null;
+            var regularMaxTotalGamesPerTeam = minGamesPerTeam > 0
+                ? ComputeTotalGamesCeilingPerTeam(minGamesPerTeam, teams.Count)
+                : (int?)null;
             var regularLeagueGamesPerTeamTarget = ComputeLeagueMatchupTargetPerTeam(
                 minGamesPerTeam,
                 teams.Count,
@@ -530,6 +532,9 @@ public class ScheduleWizardFunctions
                 seasonStart,
                 bracketStart,
                 bracketEnd, blockedRanges);
+            var regularLeagueGamesPerTeamMax = regularLeagueGamesPerTeamTarget > 0
+                ? ComputeTotalGamesCeilingPerTeam(regularLeagueGamesPerTeamTarget, teams.Count)
+                : (int?)null;
             var regularMatchups = BuildRepeatedMatchups(teams, regularLeagueGamesPerTeamTarget);
             var poolMatchups = BuildTargetMatchups(teams, poolGamesPerTeam);
             var bracketMatchups = BuildBracketMatchups();
@@ -551,7 +556,7 @@ public class ScheduleWizardFunctions
                 externalOfferPerWeek,
                 slots: regularSlots.Select(ToScheduleSlot).ToList());
 
-            var regularAssignments = AssignPhaseSlots("Regular Season", regularSlots, regularMatchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek, hardLeagueRules.MaxExternalOffersPerTeamSeason, regularMaxTotalGamesPerTeam, regularLeagueGamesPerTeamTarget > 0 ? regularLeagueGamesPerTeamTarget : null, preferredDays, strictPreferredWeeknights, guestAnchors, scheduleBackward: useBackwardRegularSeason, tieBreakSeed: seed, seasonStart: seasonStart, bracketStart: bracketStart, bracketEnd: bracketEnd, blockedRanges: blockedRanges, matchupPriorityByPair: regularMatchupPriorityByPair, fixedAssignments: regularRequestAssignments);
+            var regularAssignments = AssignPhaseSlots("Regular Season", regularSlots, regularMatchups, teams, maxGamesPerWeek, noDoubleHeaders, balanceHomeAway, externalOfferPerWeek, hardLeagueRules.MaxExternalOffersPerTeamSeason, regularMaxTotalGamesPerTeam, regularLeagueGamesPerTeamMax, preferredDays, strictPreferredWeeknights, guestAnchors, scheduleBackward: useBackwardRegularSeason, tieBreakSeed: seed, seasonStart: seasonStart, bracketStart: bracketStart, bracketEnd: bracketEnd, blockedRanges: blockedRanges, matchupPriorityByPair: regularMatchupPriorityByPair, fixedAssignments: regularRequestAssignments);
             var poolAssignments = AssignPhaseSlots("Pool Play", poolSlots, poolMatchups, teams, null, noDoubleHeaders, balanceHomeAway, 0, hardLeagueRules.MaxExternalOffersPerTeamSeason, null, null, preferredDays: new List<DayOfWeek>(), strictPreferredWeeknights: false, guestAnchors: null, scheduleBackward: false, tieBreakSeed: seed, seasonStart: seasonStart, bracketStart: bracketStart, bracketEnd: bracketEnd, blockedRanges: blockedRanges, fixedAssignments: poolRequestAssignments);
             var bracketAssignments = AssignBracketSlots(bracketSlots, bracketMatchups, bracketRequestAssignments);
             var regularScheduledCount = regularAssignments.Assignments.Count(a => !a.IsRequestGame);
@@ -3304,6 +3309,18 @@ public class ScheduleWizardFunctions
         return Math.Max(0, regularTargetGamesPerTeam - expectedGuestGamesPerTeam);
     }
 
+    private static int ComputeTotalGamesCeilingPerTeam(int targetGamesPerTeam, int teamCount)
+    {
+        if (targetGamesPerTeam <= 0 || teamCount <= 0)
+            return Math.Max(0, targetGamesPerTeam);
+
+        // League matchups add two team-games at a time. When teamCount * target is odd,
+        // one team must be allowed to absorb one extra game so every team can still reach the minimum.
+        return (teamCount * targetGamesPerTeam) % 2 == 0
+            ? targetGamesPerTeam
+            : targetGamesPerTeam + 1;
+    }
+
     private static List<MatchupPair> BuildRepeatedMatchups(IReadOnlyList<string> teams, int gamesPerTeam)
     {
         if (teams.Count < 2) return new List<MatchupPair>();
@@ -3317,7 +3334,7 @@ public class ScheduleWizardFunctions
         // use target-based generation so we do not round up and over-schedule.
         if (remainderGames > 0)
         {
-            return BuildTargetMatchups(teams, gamesPerTeam);
+            return BuildTargetMatchups(teams, gamesPerTeam, ComputeTotalGamesCeilingPerTeam(gamesPerTeam, teams.Count));
         }
 
         var result = new List<MatchupPair>();
@@ -3335,12 +3352,13 @@ public class ScheduleWizardFunctions
         return result;
     }
 
-    private static List<MatchupPair> BuildTargetMatchups(IReadOnlyList<string> teams, int gamesPerTeam)
+    private static List<MatchupPair> BuildTargetMatchups(IReadOnlyList<string> teams, int gamesPerTeam, int? maxGamesPerTeam = null)
     {
         if (teams.Count < 2) return new List<MatchupPair>();
         if (gamesPerTeam <= 0) return new List<MatchupPair>();
 
         var counts = teams.ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
+        var perTeamCeiling = Math.Max(gamesPerTeam, maxGamesPerTeam ?? gamesPerTeam);
         var matchups = new List<MatchupPair>();
 
         var rounds = Math.Max(1, gamesPerTeam);
@@ -3354,7 +3372,7 @@ public class ScheduleWizardFunctions
 
             foreach (var m in roundMatchups)
             {
-                if (counts[m.HomeTeamId] >= gamesPerTeam || counts[m.AwayTeamId] >= gamesPerTeam)
+                if (counts[m.HomeTeamId] >= perTeamCeiling || counts[m.AwayTeamId] >= perTeamCeiling)
                     continue;
 
                 matchups.Add(m);

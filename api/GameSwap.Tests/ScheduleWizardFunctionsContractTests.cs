@@ -110,6 +110,29 @@ public class ScheduleWizardFunctionsContractTests
         Assert.Equal("early-high-priority", orderedSlots[1].SlotId);
     }
 
+    [Fact]
+    public void BuildRepeatedMatchups_AllowsParityExtraGameForOddTeamTargets()
+    {
+        var teams = new List<string> { "Team-1", "Team-2", "Team-3", "Team-4", "Team-5" };
+
+        var matchups = (List<MatchupPair>)InvokePrivateStatic(
+            "BuildRepeatedMatchups",
+            teams,
+            11);
+
+        Assert.Equal(28, matchups.Count);
+
+        var counts = teams.ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
+        foreach (var matchup in matchups)
+        {
+            counts[matchup.HomeTeamId] += 1;
+            counts[matchup.AwayTeamId] += 1;
+        }
+
+        Assert.All(counts.Values, total => Assert.True(total >= 11));
+        Assert.Contains(12, counts.Values);
+    }
+
     private static Type GetNestedType(string name) =>
         typeof(ScheduleWizardFunctions).GetNestedType(name, BindingFlags.NonPublic)
         ?? throw new InvalidOperationException($"Nested type '{name}' not found.");
