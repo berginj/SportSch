@@ -12,6 +12,8 @@ namespace GameSwap.Functions.Services;
 
 public class FieldInventoryImportService : IFieldInventoryImportService
 {
+    private const long MaxWorkbookSizeBytes = 50 * 1024 * 1024; // 50MB max file size
+    
     private readonly IFieldInventoryImportRepository _repository;
     private readonly IFieldRepository _fieldRepository;
     private readonly ILogger<FieldInventoryImportService> _logger;
@@ -58,6 +60,13 @@ public class FieldInventoryImportService : IFieldInventoryImportService
         if (workbookBytes is null || workbookBytes.Length == 0)
         {
             throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, ErrorCodes.WORKBOOK_FILE_REQUIRED, "Upload an .xlsx workbook file.");
+        }
+
+        if (workbookBytes.Length > MaxWorkbookSizeBytes)
+        {
+            var maxSizeMb = MaxWorkbookSizeBytes / (1024 * 1024);
+            throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST, 
+                $"File exceeds {maxSizeMb}MB limit. Please upload a smaller workbook.");
         }
 
         var trimmedFileName = (fileName ?? "").Trim();

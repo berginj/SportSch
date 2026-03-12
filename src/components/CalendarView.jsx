@@ -45,9 +45,20 @@ export default function CalendarView({
     [items, selectedItemKey]
   );
 
-  const schedulerConfig = useMemo(() => ({
-    startDate: range.startDate,
-    days: range.days,
+  // Memoize the event click handler to prevent unnecessary re-renders
+  const handleItemSelect = useMemo(() => {
+    return (itemKey) => {
+      if (!itemKey) return;
+      setSelectedItemKey(itemKey);
+      const item = items.find((entry) => entry.key === itemKey);
+      if (!item) return;
+      if (item.kind === "slot") onSlotClick?.(item.raw);
+      else onEventClick?.(item.raw);
+    };
+  }, [items, onSlotClick, onEventClick]);
+
+  // Base scheduler configuration (stable, non-dynamic)
+  const baseSchedulerConfig = useMemo(() => ({
     scale: "CellDuration",
     cellDuration: 60,
     cellWidth: 46,
@@ -66,46 +77,44 @@ export default function CalendarView({
     timeRangeSelectedHandling: "Disabled",
     eventClickHandling: "Enabled",
     durationBarVisible: false,
+  }), []);
+
+  // Dynamic scheduler configuration (depends on data that changes)
+  const schedulerConfig = useMemo(() => ({
+    ...baseSchedulerConfig,
+    startDate: range.startDate,
+    days: range.days,
     resources,
     events: schedulerEvents,
     onBeforeEventRender: (args) => {
       const selected = args.data.id === selectedItemKey;
-      args.data.backColor = args.data.backColor;
-      args.data.barColor = args.data.barColor;
       args.data.borderColor = selected ? "#1d4ed8" : args.data.borderColor;
       args.data.fontColor = "#0f172a";
-      args.data.toolTip = args.data.toolTip;
     },
     onEventClick: (args) => {
       handleItemSelect(args.e?.data?.key || "");
     },
-  }), [range.days, range.startDate, resources, schedulerEvents, selectedItemKey]);
+  }), [baseSchedulerConfig, range.days, range.startDate, resources, schedulerEvents, selectedItemKey, handleItemSelect]);
 
-  const monthConfig = useMemo(() => ({
-    startDate: range.startDate,
+  // Base month configuration (stable)
+  const baseMonthConfig = useMemo(() => ({
     eventClickHandling: "Enabled",
+  }), []);
+
+  // Dynamic month configuration
+  const monthConfig = useMemo(() => ({
+    ...baseMonthConfig,
+    startDate: range.startDate,
     events: monthEvents,
     onBeforeEventRender: (args) => {
       const selected = args.data.id === selectedItemKey;
-      args.data.backColor = args.data.backColor;
-      args.data.barColor = args.data.barColor;
       args.data.borderColor = selected ? "#1d4ed8" : args.data.borderColor;
       args.data.fontColor = "#0f172a";
-      args.data.toolTip = args.data.toolTip;
     },
     onEventClick: (args) => {
       handleItemSelect(args.e?.data?.key || "");
     },
-  }), [monthEvents, range.startDate, selectedItemKey]);
-
-  function handleItemSelect(itemKey) {
-    if (!itemKey) return;
-    setSelectedItemKey(itemKey);
-    const item = items.find((entry) => entry.key === itemKey);
-    if (!item) return;
-    if (item.kind === "slot") onSlotClick?.(item.raw);
-    else onEventClick?.(item.raw);
-  }
+  }), [baseMonthConfig, monthEvents, range.startDate, selectedItemKey, handleItemSelect]);
 
   function handleViewChange(mode) {
     const nextMode = normalizeViewMode(mode);

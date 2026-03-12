@@ -1,10 +1,12 @@
 using Microsoft.Azure.Functions.Worker.Http;
+using Azure.Data.Tables;
 
 namespace GameSwap.Functions.Storage;
 
 /// <summary>
 /// Context for tracking requests across service boundaries.
 /// Includes correlation ID for distributed tracing and user/league context.
+/// Provides request-scoped caching for frequently accessed data.
 /// </summary>
 public class CorrelationContext
 {
@@ -12,6 +14,28 @@ public class CorrelationContext
     public string UserId { get; set; } = "";
     public string? UserEmail { get; set; }
     public string LeagueId { get; set; } = "";
+
+    // Request-scoped cache for membership lookups to avoid redundant queries
+    private Dictionary<string, TableEntity?> _membershipCache = new();
+    
+    /// <summary>
+    /// Gets or sets a cached membership entity. Lookups within a request reuse cached results.
+    /// </summary>
+    public TableEntity? GetCachedMembership(string userId, string leagueId)
+    {
+        var key = $"{userId}:{leagueId}";
+        _membershipCache.TryGetValue(key, out var cached);
+        return cached;
+    }
+
+    /// <summary>
+    /// Caches a membership entity for reuse within this request.
+    /// </summary>
+    public void SetCachedMembership(string userId, string leagueId, TableEntity? membership)
+    {
+        var key = $"{userId}:{leagueId}";
+        _membershipCache[key] = membership;
+    }
 
     /// <summary>
     /// Creates a correlation context from an HTTP request.

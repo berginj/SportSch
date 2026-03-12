@@ -39,6 +39,7 @@ export function useSession() {
 
   const markSignedOut = (message) => {
     setMe({ userId: "UNKNOWN", email: "UNKNOWN", memberships: [] });
+    persistLeagueId(""); // Clear invalid leagueId on logout
     if (message) setError(message);
   };
 
@@ -82,6 +83,20 @@ export function useSession() {
       setLeagueId((prev) => prev || initial);
     }
   }, [me]);
+
+  // Validate leagueId is in user's memberships; clear if invalid or user removed from league
+  useEffect(() => {
+    if (!me || !Array.isArray(me.memberships)) return;
+    
+    // Check if current leagueId is valid for this user
+    const isValidMembership = leagueId && me.memberships.some(m => m.leagueId === leagueId);
+    
+    if (leagueId && !isValidMembership) {
+      // User no longer belongs to this league; pick a new valid one
+      const initial = getInitialLeagueId(me);
+      setLeagueId(initial || "");
+    }
+  }, [me, leagueId]);
 
   // Persist league changes
   useEffect(() => {

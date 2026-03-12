@@ -24,6 +24,34 @@ public class AuthorizationService : IAuthorizationService
         _logger = logger;
     }
 
+    /// <summary>
+    /// Gets membership with request-scoped caching to avoid redundant queries.
+    /// </summary>
+    private async Task<TableEntity?> GetMembershipWithCacheAsync(
+        string userId, string leagueId, CorrelationContext? context = null)
+    {
+        // Check request-scoped cache first
+        if (context != null)
+        {
+            var cached = context.GetCachedMembership(userId, leagueId);
+            if (cached != null)
+            {
+                return cached;
+            }
+        }
+
+        // Query repository
+        var membership = await _membershipRepo.GetMembershipAsync(userId, leagueId);
+
+        // Cache for rest of request
+        if (context != null)
+        {
+            context.SetCachedMembership(userId, leagueId, membership);
+        }
+
+        return membership;
+    }
+
     public async Task<string> GetUserRoleAsync(string userId, string leagueId)
     {
         // Check if global admin first

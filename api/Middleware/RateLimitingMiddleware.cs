@@ -75,7 +75,7 @@ public class RateLimitingMiddleware : IFunctionsWorkerMiddleware
 
     private string GetIdentifier(HttpRequestData req)
     {
-        // Try to get user ID from headers
+        // Try to get user ID from headers (first priority)
         if (req.Headers.TryGetValues("x-user-id", out var userIds))
         {
             var userId = userIds.FirstOrDefault();
@@ -85,13 +85,22 @@ public class RateLimitingMiddleware : IFunctionsWorkerMiddleware
             }
         }
 
-        // Fall back to IP address
+        // Use X-Forwarded-For with proper validation
+        // To prevent spoofing, we use the rightmost (last proxy) IP in the chain,
+        // as attackers cannot spoof IPs to the right of legitimate reverse proxies
         if (req.Headers.TryGetValues("X-Forwarded-For", out var forwardedFor))
         {
-            var ip = forwardedFor.FirstOrDefault()?.Split(',').FirstOrDefault()?.Trim();
-            if (!string.IsNullOrWhiteSpace(ip))
+            var chainStr = forwardedFor.FirstOrDefault() ?? "";
+            var ips = chainStr.Split(',').Select(s => s.Trim()).Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
+            
+            if (ips.Count > 0)
             {
-                return $"ip:{ip}";
+                // Use the rightmost IP (last proxy in chain) - hardest to spoof
+                var ip = ips[ips.Count - 1];
+                if (!string.IsNullOrWhiteSpace(ip))
+                {
+                    return $"ip:{ip}";
+                }
             }
         }
 
