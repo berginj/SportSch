@@ -153,6 +153,63 @@ public class ScheduleWizardFunctionsContractTests
         Assert.All(counts.Values, total => Assert.True(total >= 11));
     }
 
+    [Fact]
+    public void ComputeTotalGamesCeilingPerTeamIncludingRequiredGuests_AllowsGuestCapacityForOddTeamTargets()
+    {
+        var ceiling = (int)InvokePrivateStatic(
+            "ComputeTotalGamesCeilingPerTeamIncludingRequiredGuests",
+            11,
+            9,
+            9);
+
+        Assert.Equal(13, ceiling);
+    }
+
+    [Fact]
+    public void BuildWizardInvariantIssues_DoesNotCountGuestGamesAsRegularOverflow()
+    {
+        var slotInfoType = GetNestedType("SlotInfo");
+        var teams = Enumerable.Range(1, 9).Select(index => $"TEAM-{index}").ToList();
+        var regularAssignments = new List<ScheduleAssignment>();
+
+        for (var index = 0; index < 11; index += 1)
+        {
+            var opponent = teams[(index % (teams.Count - 1)) + 1];
+            regularAssignments.Add(new ScheduleAssignment(
+                SlotId: $"slot-{index}",
+                GameDate: "2026-04-07",
+                StartTime: "18:00",
+                EndTime: "20:00",
+                FieldKey: "FIELD-1",
+                HomeTeamId: teams[0],
+                AwayTeamId: opponent,
+                IsExternalOffer: false));
+        }
+
+        regularAssignments.Add(new ScheduleAssignment(
+            SlotId: "guest-1",
+            GameDate: "2026-04-14",
+            StartTime: "18:00",
+            EndTime: "20:00",
+            FieldKey: "FIELD-2",
+            HomeTeamId: teams[0],
+            AwayTeamId: "",
+            IsExternalOffer: true));
+
+        var issues = InvokePrivateStatic(
+            "BuildWizardInvariantIssues",
+            new List<ScheduleWizardFunctions.WizardSlotDto>(),
+            CreateTypedList(slotInfoType),
+            regularAssignments,
+            teams,
+            11,
+            null);
+
+        Assert.DoesNotContain(
+            ToObjectList(issues),
+            issue => string.Equals(GetPropertyValue<string>(issue, "ruleId"), "regular-team-target-overflow", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static Type GetNestedType(string name) =>
         typeof(ScheduleWizardFunctions).GetNestedType(name, BindingFlags.NonPublic)
         ?? throw new InvalidOperationException($"Nested type '{name}' not found.");
@@ -184,4 +241,11 @@ public class ScheduleWizardFunctionsContractTests
 
     private static List<object> ToObjectList(object value) =>
         ((IEnumerable)value).Cast<object>().ToList();
+
+    private static T? GetPropertyValue<T>(object source, string propertyName)
+    {
+        var property = source.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase)
+            ?? throw new InvalidOperationException($"Property '{propertyName}' not found on '{source.GetType().FullName}'.");
+        return (T?)property.GetValue(source);
+    }
 }

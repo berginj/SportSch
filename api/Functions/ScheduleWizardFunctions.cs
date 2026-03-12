@@ -519,9 +519,19 @@ public class ScheduleWizardFunctions
             var bracketSlots = bracketStart.HasValue && bracketEnd.HasValue
                 ? FilterSlots(filteredAllSlots, bracketStart.Value, bracketEnd.Value)
                 : new List<SlotInfo>();
+            var reservedGuestOfferCount = externalOfferPerWeek > 0
+                ? SelectReservedExternalSlots(
+                    regularSlots,
+                    externalOfferPerWeek,
+                    guestAnchors,
+                    seasonStart,
+                    bracketStart,
+                    bracketEnd,
+                    blockedRanges).Count
+                : 0;
 
             var regularMaxTotalGamesPerTeam = minGamesPerTeam > 0
-                ? ComputeTotalGamesCeilingPerTeam(minGamesPerTeam, teams.Count)
+                ? ComputeTotalGamesCeilingPerTeamIncludingRequiredGuests(minGamesPerTeam, teams.Count, reservedGuestOfferCount)
                 : (int?)null;
             var regularLeagueGamesPerTeamTarget = minGamesPerTeam;
             var regularLeagueGamesPerTeamMax = regularLeagueGamesPerTeamTarget > 0
@@ -681,16 +691,7 @@ public class ScheduleWizardFunctions
                     details = new Dictionary<string, object?> { ["count"] = bracketAssignments.UnassignedMatchups.Count, ["phase"] = "Bracket" }
                 });
             }
-            var expectedReservedGuestOfferCount = externalOfferPerWeek > 0
-                ? SelectReservedExternalSlots(
-                    regularSlots,
-                    externalOfferPerWeek,
-                    guestAnchors,
-                    seasonStart,
-                    bracketStart,
-                    bracketEnd,
-                    blockedRanges).Count
-                : 0;
+            var expectedReservedGuestOfferCount = reservedGuestOfferCount;
             var regularExternalOfferAssignments = regularAssignments.Assignments
                 .Where(a => a.IsExternalOffer)
                 .ToList();
@@ -839,6 +840,7 @@ public class ScheduleWizardFunctions
 
         if (regularTargetGamesPerTeam > 0 && teams.Count > 0)
         {
+            var maxAllowedGamesPerTeam = ComputeTotalGamesCeilingPerTeam(regularTargetGamesPerTeam, teams.Count);
             var counts = teams
                 .Where(teamId => !string.IsNullOrWhiteSpace(teamId))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -846,12 +848,6 @@ public class ScheduleWizardFunctions
 
             foreach (var assignment in regularAssignments)
             {
-                if (assignment.IsExternalOffer)
-                {
-                    IncrementTeamCount(counts, assignment.HomeTeamId);
-                    continue;
-                }
-
                 if (assignment.IsRequestGame)
                 {
                     continue;
@@ -862,7 +858,7 @@ public class ScheduleWizardFunctions
             }
 
             var overflow = counts
-                .Where(kvp => kvp.Value > regularTargetGamesPerTeam)
+                .Where(kvp => kvp.Value > maxAllowedGamesPerTeam)
                 .OrderByDescending(kvp => kvp.Value)
                 .ThenBy(kvp => kvp.Key, StringComparer.OrdinalIgnoreCase)
                 .ToList();
@@ -875,7 +871,8 @@ public class ScheduleWizardFunctions
                         ["teamId"] = kvp.Key,
                         ["assignedGames"] = kvp.Value,
                         ["targetGames"] = regularTargetGamesPerTeam,
-                        ["overflowGames"] = kvp.Value - regularTargetGamesPerTeam
+                        ["maxAllowedGames"] = maxAllowedGamesPerTeam,
+                        ["overflowGames"] = kvp.Value - maxAllowedGamesPerTeam
                     })
                     .ToList();
                 issues.Add(new
@@ -883,11 +880,12 @@ public class ScheduleWizardFunctions
                     phase = "Regular Season",
                     ruleId = "regular-team-target-overflow",
                     severity = "error",
-                    message = $"{overflow.Count} team(s) exceed the regular-season target of {regularTargetGamesPerTeam} games.",
+                    message = $"{overflow.Count} team(s) exceed the allowed regular-season workload ceiling of {maxAllowedGamesPerTeam} game(s).",
                     details = new Dictionary<string, object?>
                     {
                         ["count"] = overflow.Count,
                         ["targetGames"] = regularTargetGamesPerTeam,
+                        ["maxAllowedGames"] = maxAllowedGamesPerTeam,
                         ["offenders"] = offenders
                     }
                 });
@@ -3270,6 +3268,21 @@ public class ScheduleWizardFunctions
         return (teamCount * targetGamesPerTeam) % 2 == 0
             ? targetGamesPerTeam
             : targetGamesPerTeam + 1;
+    }
+
+    private static int ComputeTotalGamesCeilingPerTeamIncludingRequiredGuests(int targetGamesPerTeam, int teamCount, int requiredGuestOffers)
+    {
+        var regularCeiling = ComputeTotalGamesCeilingPerTeam(targetGamesPerTeam, teamCount);
+        if (requiredGuestOffers <= 0 || teamCount <= 0 || targetGamesPerTeam <= 0)
+            return regularCeiling;
+
+        var regularTeamGamesRequired = teamCount * targetGamesPerTeam;
+        if (regularTeamGamesRequired % 2 != 0)
+            regularTeamGamesRequired += 1;
+
+        var totalTeamGamesRequired = regularTeamGamesRequired + requiredGuestOffers;
+        var guestAdjustedCeiling = (int)Math.Ceiling(totalTeamGamesRequired / (double)teamCount);
+        return Math.Max(regularCeiling, guestAdjustedCeiling);
     }
 
     private static List<MatchupPair> BuildRepeatedMatchups(IReadOnlyList<string> teams, int gamesPerTeam)

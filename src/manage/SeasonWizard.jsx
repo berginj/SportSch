@@ -1003,6 +1003,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
   const [step, setStep] = useState(0);
   const [preview, setPreview] = useState(null);
+  const [previewConfigSignature, setPreviewConfigSignature] = useState("");
   const [scheduleOptions, setScheduleOptions] = useState([]);
   const [selectedScheduleOption, setSelectedScheduleOption] = useState(null);
   const [generatingOptions, setGeneratingOptions] = useState(false);
@@ -2264,7 +2265,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     });
   }
 
-  function buildWizardPayload(slotPlanOverride) {
+  function buildWizardPayload(slotPlanOverride, options = {}) {
+    const { includePreviewContext = true } = options;
     const sourceSlotPlan = Array.isArray(slotPlanOverride) ? slotPlanOverride : slotPlan;
     const slotPlanPayload = sourceSlotPlan.map((slot) => {
       const rank = Number(slot.priorityRank);
@@ -2280,12 +2282,6 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     const noGamesOnDates = parsedNoGamesOnDates.values;
     const normalizedNoGamesBeforeTime = normalizeClockInput(noGamesBeforeTime);
     const normalizedNoGamesAfterTime = normalizeClockInput(noGamesAfterTime);
-    const previewSeed = Number(preview?.seed);
-    const previewConstructionStrategy = String(preview?.constructionStrategy || "")
-      .trim()
-      .toLowerCase()
-      .split("+")[0];
-
     const payload = {
       division,
       seasonStart,
@@ -2303,9 +2299,16 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       noDoubleHeaders: true,
       balanceHomeAway,
       slotPlan: slotPlanPayload,
-      seed: Number.isFinite(previewSeed) ? previewSeed : undefined,
-      constructionStrategy: previewConstructionStrategy || undefined,
     };
+    if (includePreviewContext) {
+      const previewSeed = Number(preview?.seed);
+      const previewConstructionStrategy = String(preview?.constructionStrategy || "")
+        .trim()
+        .toLowerCase()
+        .split("+")[0];
+      if (Number.isFinite(previewSeed)) payload.seed = previewSeed;
+      if (previewConstructionStrategy) payload.constructionStrategy = previewConstructionStrategy;
+    }
     if (blockedDateRanges.length) payload.blockedDateRanges = blockedDateRanges;
     if (noGamesOnDates.length) payload.noGamesOnDates = noGamesOnDates;
     if (normalizedNoGamesBeforeTime) payload.noGamesBeforeTime = normalizedNoGamesBeforeTime;
@@ -2319,6 +2322,35 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     if (secondaryAnchor) payload.guestAnchorSecondary = secondaryAnchor;
     return payload;
   }
+
+  const currentPreviewConfigSignature = useMemo(() => {
+    const { resetGeneratedSlotsBeforeApply: _ignored, ...payload } = buildWizardPayload(undefined, { includePreviewContext: false });
+    return JSON.stringify(payload);
+  }, [
+    division,
+    seasonStart,
+    seasonEnd,
+    poolStart,
+    poolEnd,
+    bracketStart,
+    bracketEnd,
+    minGamesPerTeam,
+    poolGamesPerTeam,
+    guestGamesPerWeek,
+    maxExternalOffersPerTeamSeason,
+    maxGamesPerWeek,
+    balanceHomeAway,
+    slotPlan,
+    activeBlockedRanges,
+    parsedNoGamesOnDates.values,
+    noGamesBeforeTime,
+    noGamesAfterTime,
+    rivalryPayload,
+    requestGamesPayload,
+    guestAnchorPrimarySlotId,
+    guestAnchorSecondarySlotId,
+    slotPatterns,
+  ]);
 
   async function fetchFeasibility() {
     if (!division || !seasonStart || !seasonEnd) return;
@@ -2465,6 +2497,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
           id: i + 1,
           seed: payload.seed,
           strategy: payload.constructionStrategy,
+          signature: currentPreviewConfigSignature,
           preview: result,
           metrics
         });
@@ -2489,6 +2522,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         );
         setSelectedScheduleOption(best.id);
         setPreview(best.preview);
+        setPreviewConfigSignature(best.signature || currentPreviewConfigSignature);
       }
 
       if (validOptions.length === 0) {
@@ -2519,6 +2553,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     const option = scheduleOptions.find(o => o.id === optionId);
     if (option && option.preview) {
       setPreview(option.preview);
+      setPreviewConfigSignature(option.signature || currentPreviewConfigSignature);
     }
   }
 
@@ -2601,6 +2636,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         body: JSON.stringify(payload),
       });
       setPreview(data || null);
+      setPreviewConfigSignature(currentPreviewConfigSignature);
       setStep(4);
       trackEvent("ui_season_wizard_preview", { leagueId, division });
     } catch (e) {
@@ -2662,7 +2698,10 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         body: JSON.stringify(payload),
       });
       const appliedPreview = data && typeof data === "object" ? data : null;
-      if (appliedPreview) setPreview(appliedPreview);
+      if (appliedPreview) {
+        setPreview(appliedPreview);
+        setPreviewConfigSignature(currentPreviewConfigSignature);
+      }
 
       const summarySource = appliedPreview?.summary || preview?.summary || {};
       const regularAssigned = Number(summarySource?.regularSeason?.slotsAssigned || 0);
@@ -2745,6 +2784,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         body: JSON.stringify(payload),
       });
       setPreview(data || null);
+      setPreviewConfigSignature(currentPreviewConfigSignature);
       setToast({ tone: "success", message: "Preview repair applied and revalidated." });
     } catch (e) {
       setErr(normalizeRequestErrorMessage(e, "Repair request failed."));
@@ -3032,11 +3072,17 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     return "";
   }, [maxGamesPerWeek, minGamesPerTeam, poolGamesPerTeam, guestGamesPerWeek, maxExternalOffersPerTeamSeason, leagueRuleIssues, rivalryRowIssues, requestGameRowIssues]);
 
+  const previewIsStale = Boolean(
+    preview &&
+    previewConfigSignature &&
+    previewConfigSignature !== currentPreviewConfigSignature
+  );
   const previewError = useMemo(() => {
     if (!preview) return "";
+    if (previewIsStale) return 'Preview is out of date. Run "Preview schedule" again.';
     if ((preview.totalIssues || 0) > 0) return `${preview.totalIssues} validation issue(s) in preview.`;
     return "";
-  }, [preview]);
+  }, [preview, previewIsStale]);
 
   const previewRuleHealth = preview && typeof preview.ruleHealth === "object" ? preview.ruleHealth : null;
   const previewRepairProposals = useMemo(
@@ -3080,7 +3126,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const previewIssueCount = Number(preview?.totalIssues || 0) > 0
     ? Number(preview?.totalIssues || 0)
     : previewCollections.issues.length;
-  const applyActionBlocked = false;
+  const applyActionBlocked = previewIsStale;
   const stepErrors = useMemo(
     () => [basicsError, postseasonError, slotPlanError, rulesError, previewError],
     [basicsError, postseasonError, slotPlanError, rulesError, previewError]
@@ -3104,6 +3150,14 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
     if (!preview) return 'Run "Preview schedule" to unlock Preview.';
     return "";
   }, [firstBlockedForwardStep, forwardStepErrors, preview, steps]);
+
+  useEffect(() => {
+    if (!scheduleOptions.length) return;
+    const optionSignature = String(scheduleOptions[0]?.signature || "");
+    if (!optionSignature || optionSignature === currentPreviewConfigSignature) return;
+    setScheduleOptions([]);
+    setSelectedScheduleOption(null);
+  }, [scheduleOptions, currentPreviewConfigSignature]);
 
   useEffect(() => {
     if (!preview) {
@@ -3383,11 +3437,6 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       addAssigned(assignment?.homeTeamId);
       addAssigned(assignment?.awayTeamId);
     });
-    // Include guest/external offer games in assigned count (they count toward total!)
-    const regularGuestAssignments = previewCollections.regularAssignments.filter(a => a?.isExternalOffer);
-    regularGuestAssignments.forEach((assignment) => {
-      addAssigned(assignment?.homeTeamId);  // Guest game counts for home team
-    });
     regularUnassignedMatchups.forEach((matchup) => {
       addUnassigned(matchup?.homeTeamId);
       addUnassigned(matchup?.awayTeamId);
@@ -3611,10 +3660,9 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       regularWeekKeys = buildIsoWeekKeys(seasonStart, regularRangeEnd);
     }
 
-    const minGamesTarget = Math.max(0, Number(minGamesPerTeam) || 0);
     const teamRows = [...teamStats.values()]
       .map((row) => {
-        const target = minGamesTarget;
+        const target = row.games + row.unassigned;
         const coveragePct = target > 0 ? Math.round((row.games / target) * 100) : 100;
         const homeAwayGap = Math.abs(row.home - row.away);
         const teamWeeks = weeklyActivityByTeam.get(row.teamId) || new Map();
@@ -6135,6 +6183,11 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
                     <div className="subtle">Start here. Check readiness, then move through fixes, coverage, and assignments below.</div>
                   </div>
                   <div className="card__body stack gap-3">
+                    {previewIsStale ? (
+                      <div className="callout callout--warning">
+                        This preview no longer matches the current wizard settings. Run <b>Preview schedule</b> again before applying.
+                      </div>
+                    ) : null}
                     <div className="layoutStatRow">
                       <div className="layoutStat">
                         <div className="layoutStat__value">{preview.summary?.regularSeason?.slotsAssigned ?? 0}</div>

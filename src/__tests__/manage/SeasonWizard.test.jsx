@@ -647,6 +647,25 @@ describe("SeasonWizard", () => {
     }
   });
 
+  it("keeps preview targets tied to the preview snapshot when rules change afterward", async () => {
+    await advanceToPreview();
+
+    fireEvent.click(screen.getByRole("button", { name: "4. Rules" }));
+    const minGamesInput = screen.getByLabelText(/Min games per team \(regular season\)/i);
+    fireEvent.change(minGamesInput, { target: { value: "2" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "5. Preview" }));
+    await waitFor(() => expect(screen.getByText("Preview overview")).toBeInTheDocument());
+
+    expect(screen.getByText(/This preview no longer matches the current wizard settings\./i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Apply schedule" })).toBeDisabled();
+
+    const teamRow = screen.getAllByRole("row").find((row) => row.textContent?.includes("TEAM-1"));
+    expect(teamRow).toBeTruthy();
+    const cells = within(teamRow).getAllByRole("cell").map((cell) => cell.textContent?.trim());
+    expect(cells.slice(0, 8)).toEqual(["TEAM-1", "1", "1", "0", "0", "0", "1", "100%"]);
+  });
+
   it("keeps apply available for hard-rule failures and uses warning labeling", async () => {
     installApiMock({ previewResponse: RULE_HINT_PREVIEW });
     await advanceToPreview();

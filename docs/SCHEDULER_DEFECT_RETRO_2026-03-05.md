@@ -19,7 +19,7 @@ Primary commits reviewed:
 2. Guest games inflated per-team totals beyond target
 - Symptom: team projections showed extreme totals (example: ~19 when target was 14 total season games).
 - Root cause: external/guest placement was additive without a hard cap tied to regular-season team target.
-- Fix: guest assignment picker now enforces `maxTotalGamesPerTeam` for regular season, derived from `minGamesPerTeam`.
+- Fix: guest assignment picker now enforces `maxTotalGamesPerTeam` for regular season, derived from `minGamesPerTeam` plus required guest-offer load when guest weeks are configured.
 
 3. Apply looked like it didn’t run
 - Symptom: clicking Apply in wizard appeared to do nothing / unclear outcome.
@@ -37,7 +37,7 @@ Primary commits reviewed:
 `api/Functions/ScheduleWizardFunctions.cs`
 - Added wizard invariant checks that emit hard issues and block apply when violated:
   - `non-game-slot-assignment`: any non-request assignment not on a game-capable slot.
-  - `regular-team-target-overflow`: any team above regular-season target (`minGamesPerTeam`).
+  - `regular-team-target-overflow`: any team above the allowed total regular-season workload ceiling, including parity spillover and additive guest-game limits.
 
 ### Regression tests (frontend)
 `src/__tests__/manage/SeasonWizard.test.jsx`
