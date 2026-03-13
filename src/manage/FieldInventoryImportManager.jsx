@@ -574,7 +574,7 @@ async function parsePreview() {
                   disabled={!preview.records.length}
                   title={recordsViewMode === "table" ? "Switch to calendar view" : "Switch to table view"}
                 >
-                  {recordsViewMode === "table" ? "📅 Calendar View" : "📋 Table View"}
+                  {recordsViewMode === "table" ? "Calendar View" : "Table View"}
                 </button>
               </div>
             </div>
@@ -590,8 +590,9 @@ async function parsePreview() {
                     displayName: record.fieldName || record.rawFieldName,
                     homeTeamId: record.usedBy || record.assignedTeamOrEvent || "",
                     awayTeamId: "",
-                    status: record.fieldName ? "Mapped" : "Unmapped",
+                    status: record.availabilityStatus || "",
                     isAvailability: true,
+                    mappingStatus: record.fieldName ? "mapped" : "unmapped",
                     division: record.divisionLevel || "",
                     // Custom fields for visualization
                     availabilityStatus: record.availabilityStatus,
@@ -600,10 +601,10 @@ async function parsePreview() {
                     sourceTab: record.sourceTab
                   }))}
                   events={[]}
-                  defaultView="week-cards"
+                  defaultView="timeline"
                   onSlotClick={(slot) => {
                     // If unmapped field, scroll to review queue
-                    if (slot.status === "Unmapped") {
+                    if (slot.mappingStatus === "unmapped") {
                       const reviewSection = document.querySelector('[aria-label="Review Queue"]');
                       if (reviewSection) {
                         reviewSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -611,6 +612,7 @@ async function parsePreview() {
                     }
                   }}
                   showViewToggle={true}
+                  viewStorageKey="field-inventory-import-calendar-view-preference"
                 />
               ) : (
               <table className="table" aria-label="Staged field inventory records">

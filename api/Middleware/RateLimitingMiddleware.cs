@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Net;
+using GameSwap.Functions.Storage;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Azure.Functions.Worker.Middleware;
@@ -75,19 +76,15 @@ public class RateLimitingMiddleware : IFunctionsWorkerMiddleware
 
     private string GetIdentifier(HttpRequestData req)
     {
-        // Try to get user ID from headers (first priority)
-        if (req.Headers.TryGetValues("x-user-id", out var userIds))
+        // Prefer authenticated SWA/EasyAuth identity only; do not trust client-supplied dev headers here.
+        var authenticatedUserId = IdentityUtil.GetAuthenticatedUserId(req);
+        if (!string.IsNullOrWhiteSpace(authenticatedUserId))
         {
-            var userId = userIds.FirstOrDefault();
-            if (!string.IsNullOrWhiteSpace(userId) && userId != "UNKNOWN")
-            {
-                return $"user:{userId}";
-            }
+            return $"user:{authenticatedUserId}";
         }
 
-        // Use X-Forwarded-For with proper validation
-        // To prevent spoofing, we use the rightmost (last proxy) IP in the chain,
-        // as attackers cannot spoof IPs to the right of legitimate reverse proxies
+        // X-Forwarded-For is ordered client -> proxy1 -> proxy2.
+        // Use the leftmost IP so rate limiting tracks the originating client instead of the nearest proxy.
         if (req.Headers.TryGetValues("X-Forwarded-For", out var forwardedFor))
         {
             var chainStr = forwardedFor.FirstOrDefault() ?? "";
@@ -95,8 +92,7 @@ public class RateLimitingMiddleware : IFunctionsWorkerMiddleware
             
             if (ips.Count > 0)
             {
-                // Use the rightmost IP (last proxy in chain) - hardest to spoof
-                var ip = ips[ips.Count - 1];
+                var ip = ips[0];
                 if (!string.IsNullOrWhiteSpace(ip))
                 {
                     return $"ip:{ip}";

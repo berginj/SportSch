@@ -31,7 +31,6 @@
                     "Content-Type",
                     "Authorization",
                     "x-league-id",
-                    "x-user-id",
                     "x-correlation-id"
                 ],
                 "exposedHeaders": [

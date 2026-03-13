@@ -238,6 +238,7 @@ describe("FieldInventoryImportManager", () => {
     fireEvent.click(screen.getByRole("button", { name: "Parse Preview" }));
     expect(await screen.findByText("Preview parsed and stored in staging.")).toBeInTheDocument();
     expect(screen.getByText("Map field 'County Diamond 9'")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Calendar View" })).toBeInTheDocument();
 
     fireEvent.change(screen.getByDisplayValue("Select canonical field"), {
       target: { value: "park-b/field-9" },

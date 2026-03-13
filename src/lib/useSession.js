@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "./api";
-import { LEAGUE_STORAGE_KEY } from "./constants";
+import { ErrorCodes, LEAGUE_STORAGE_KEY } from "./constants";
 
 export function persistLeagueId(leagueId) {
   try {
@@ -14,22 +14,40 @@ export function persistLeagueId(leagueId) {
   }
 }
 
-export function getInitialLeagueId(me) {
-  // 1) Persisted value
+export function isLeagueAccessible(me, leagueId) {
+  const normalizedLeagueId = String(leagueId || "").trim();
+  if (!normalizedLeagueId) return false;
+  if (me?.isGlobalAdmin) return true;
+  const memberships = Array.isArray(me?.memberships) ? me.memberships : [];
+  return memberships.some((membership) => String(membership?.leagueId || "").trim() === normalizedLeagueId);
+}
+
+export function getInitialLeagueId(me, options = {}) {
+  const { includeStored = true } = options;
+
+  // 1) Persisted value, but only if still accessible for this session.
   try {
-    const saved = (localStorage.getItem(LEAGUE_STORAGE_KEY) || "").trim();
-    if (saved) return saved;
+    if (includeStored) {
+      const saved = (localStorage.getItem(LEAGUE_STORAGE_KEY) || "").trim();
+      if (isLeagueAccessible(me, saved)) return saved;
+    }
   } catch {
     // ignore
   }
 
   // 2) Home league preference
   const homeLeagueId = (me?.homeLeagueId || "").trim();
-  if (homeLeagueId) return homeLeagueId;
+  if (isLeagueAccessible(me, homeLeagueId)) return homeLeagueId;
 
   // 3) First membership, if any
   const memberships = Array.isArray(me?.memberships) ? me.memberships : [];
   return (memberships[0]?.leagueId || "").trim();
+}
+
+export function isUnauthenticatedError(error) {
+  if (!error) return false;
+  if (Number(error?.status) === 401) return true;
+  return String(error?.code || "").trim() === ErrorCodes.UNAUTHENTICATED;
 }
 
 export function useSession() {
@@ -54,7 +72,7 @@ export function useSession() {
       } catch (e) {
         if (cancelled) return;
         const message = e?.message || "Failed to load session";
-        if (message.startsWith("401 ")) {
+        if (isUnauthenticatedError(e)) {
           markSignedOut(message);
         } else {
           setError(message);
@@ -73,7 +91,13 @@ export function useSession() {
   const hasMemberships = memberships.length > 0;
   const isGlobalAdmin = !!me?.isGlobalAdmin;
 
-  const [leagueId, setLeagueId] = useState("");
+  const [leagueId, setLeagueId] = useState(() => {
+    try {
+      return (localStorage.getItem(LEAGUE_STORAGE_KEY) || "").trim();
+    } catch {
+      return "";
+    }
+  });
 
   // Pick an initial leagueId once `me` loads.
   useEffect(() => {
@@ -87,20 +111,18 @@ export function useSession() {
   // Validate leagueId is in user's memberships; clear if invalid or user removed from league
   useEffect(() => {
     if (!me || !Array.isArray(me.memberships)) return;
-    
-    // Check if current leagueId is valid for this user
-    const isValidMembership = leagueId && me.memberships.some(m => m.leagueId === leagueId);
-    
-    if (leagueId && !isValidMembership) {
-      // User no longer belongs to this league; pick a new valid one
-      const initial = getInitialLeagueId(me);
-      setLeagueId(initial || "");
+
+    if (leagueId && !isLeagueAccessible(me, leagueId)) {
+      // User no longer belongs to this league; clear stale storage and pick a new valid one.
+      persistLeagueId("");
+      const fallback = getInitialLeagueId(me, { includeStored: false });
+      setLeagueId(fallback || "");
     }
   }, [me, leagueId]);
 
   // Persist league changes
   useEffect(() => {
-    if (leagueId) persistLeagueId(leagueId);
+    persistLeagueId(leagueId);
   }, [leagueId]);
 
   return {
@@ -119,7 +141,7 @@ export function useSession() {
         return data;
       } catch (e) {
         const message = e?.message || "Failed to load session";
-        if (message.startsWith("401 ")) {
+        if (isUnauthenticatedError(e)) {
           markSignedOut(message);
           return { userId: "UNKNOWN", email: "UNKNOWN", memberships: [] };
         }

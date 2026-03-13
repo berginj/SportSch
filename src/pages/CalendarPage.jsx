@@ -1456,11 +1456,12 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
             <CalendarView
               slots={visibleSlots}
               events={visibleEvents}
-              defaultView="week-cards"
+              defaultView="timeline"
               onSlotClick={isGlobalAdmin || role === "LeagueAdmin" ? openEditSlot : undefined}
               renderSlotActions={renderSlotActions}
               renderEventActions={renderEventActions}
               showViewToggle={true}
+              viewStorageKey="calendar-page-view-preference"
             />
           ) : (
             <div className="stack">

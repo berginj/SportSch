@@ -496,7 +496,7 @@ describe("CalendarPage", () => {
 
     expect((await screen.findAllByText(/TEAM-3 vs TEAM-4/)).length).toBeGreaterThan(0);
     expect(screen.queryAllByText(/TEAM-1 vs TBD/)).toHaveLength(0);
-    expect(screen.getByText(/^Practice: Skills Clinic/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Practice: Skills Clinic/ })).toBeInTheDocument();
     expect(screen.getByLabelText("Events")).toBeChecked();
     expect(screen.getByLabelText("Confirmed")).toBeChecked();
     expect(screen.getByLabelText("Open")).not.toBeChecked();

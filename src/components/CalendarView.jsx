@@ -11,12 +11,12 @@ export default function CalendarView({
   renderSlotActions,
   renderEventActions,
   showViewToggle = true,
+  viewStorageKey = "",
 }) {
-  const storageKey = "calendar-view-preference";
   const [viewMode, setViewMode] = useState(() => {
-    if (!showViewToggle) return defaultView;
+    if (!showViewToggle || !viewStorageKey) return normalizeViewMode(defaultView);
     try {
-      return normalizeViewMode(localStorage.getItem(storageKey) || defaultView);
+      return normalizeViewMode(localStorage.getItem(viewStorageKey) || defaultView);
     } catch {
       return normalizeViewMode(defaultView);
     }
@@ -45,7 +45,18 @@ export default function CalendarView({
     [items, selectedItemKey]
   );
 
-  // Memoize the event click handler to prevent unnecessary re-renders
+  useEffect(() => {
+    if (!showViewToggle || !viewStorageKey) {
+      setViewMode(normalizeViewMode(defaultView));
+      return;
+    }
+    try {
+      setViewMode(normalizeViewMode(localStorage.getItem(viewStorageKey) || defaultView));
+    } catch {
+      setViewMode(normalizeViewMode(defaultView));
+    }
+  }, [defaultView, showViewToggle, viewStorageKey]);
+
   const handleItemSelect = useMemo(() => {
     return (itemKey) => {
       if (!itemKey) return;
@@ -57,7 +68,6 @@ export default function CalendarView({
     };
   }, [items, onSlotClick, onEventClick]);
 
-  // Base scheduler configuration (stable, non-dynamic)
   const baseSchedulerConfig = useMemo(() => ({
     scale: "CellDuration",
     cellDuration: 60,
@@ -79,7 +89,6 @@ export default function CalendarView({
     durationBarVisible: false,
   }), []);
 
-  // Dynamic scheduler configuration (depends on data that changes)
   const schedulerConfig = useMemo(() => ({
     ...baseSchedulerConfig,
     startDate: range.startDate,
@@ -96,12 +105,10 @@ export default function CalendarView({
     },
   }), [baseSchedulerConfig, range.days, range.startDate, resources, schedulerEvents, selectedItemKey, handleItemSelect]);
 
-  // Base month configuration (stable)
   const baseMonthConfig = useMemo(() => ({
     eventClickHandling: "Enabled",
   }), []);
 
-  // Dynamic month configuration
   const monthConfig = useMemo(() => ({
     ...baseMonthConfig,
     startDate: range.startDate,
@@ -119,8 +126,9 @@ export default function CalendarView({
   function handleViewChange(mode) {
     const nextMode = normalizeViewMode(mode);
     setViewMode(nextMode);
+    if (!viewStorageKey) return;
     try {
-      localStorage.setItem(storageKey, nextMode);
+      localStorage.setItem(viewStorageKey, nextMode);
     } catch {
       // Ignore localStorage errors
     }
@@ -269,8 +277,8 @@ function buildItem(kind, raw, fallbackKey) {
     ? getFieldLabel(raw) || "Field TBD"
     : (String(raw?.location || "").trim() || "League Events");
   const resourceId = slugify(`${kind}:${resourceName}`);
-  const startIso = combineIsoDateTime(date, kind === "slot" ? raw?.startTime : raw?.startTime);
-  const endIso = combineIsoDateTime(date, kind === "slot" ? raw?.endTime : raw?.endTime);
+  const startIso = combineIsoDateTime(date, raw?.startTime);
+  const endIso = combineIsoDateTime(date, raw?.endTime);
   const normalizedEndIso = ensureEndAfterStart(startIso, endIso);
   const tone = kind === "slot" ? getSlotToneKey(raw) : "event";
 
@@ -312,7 +320,7 @@ function buildSchedulerEvent(item) {
     key: item.key,
     kind: item.kind,
     resource: item.resourceId,
-    text: item.subtitle ? `${item.text} • ${item.subtitle}` : item.text,
+    text: item.subtitle ? `${item.text} | ${item.subtitle}` : item.text,
     start: item.startIso,
     end: item.endIso,
     toolTip: item.toolTip,
@@ -385,6 +393,10 @@ function normalizeTimeValue(timeValue) {
 
 function getItemColors(tone) {
   switch (tone) {
+    case "mapped":
+      return { backColor: "#dcfce7", borderColor: "#16a34a", barColor: "#15803d" };
+    case "unmapped":
+      return { backColor: "#fee2e2", borderColor: "#dc2626", barColor: "#b91c1c" };
     case "open":
       return { backColor: "#fef3c7", borderColor: "#f59e0b", barColor: "#d97706" };
     case "confirmed":
@@ -481,6 +493,9 @@ function getMatchupLabel(slot) {
 }
 
 function getSlotToneKey(slot) {
+  const availabilityMappingStatus = getAvailabilityMappingStatus(slot);
+  if (availabilityMappingStatus === "mapped") return "mapped";
+  if (availabilityMappingStatus === "unmapped") return "unmapped";
   if (slot.status === "Cancelled") return "cancelled";
   if (slot.isAvailability) return "availability";
   if (slot.status === "Confirmed") return "confirmed";
@@ -490,8 +505,18 @@ function getSlotToneKey(slot) {
 }
 
 function getSlotStatusLabel(slot) {
+  const availabilityMappingStatus = getAvailabilityMappingStatus(slot);
+  if (availabilityMappingStatus === "mapped") return "Mapped";
+  if (availabilityMappingStatus === "unmapped") return "Unmapped";
   if (slot.isAvailability) return "Availability";
   return slot.status || "Scheduled";
+}
+
+function getAvailabilityMappingStatus(slot) {
+  if (!slot?.isAvailability) return "";
+  const normalized = String(slot?.mappingStatus || "").trim().toLowerCase();
+  if (normalized === "mapped" || normalized === "unmapped") return normalized;
+  return "";
 }
 
 function slugify(value) {
@@ -504,6 +529,7 @@ function slugify(value) {
 
 function normalizeViewMode(value) {
   const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "timeline" || normalized === "week-cards") return "timeline";
   if (normalized === "month" || normalized === "agenda") return "month";
   return "timeline";
 }

@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Azure.Functions.Worker.Http;
 using System.Linq;
+using System;
 
 namespace GameSwap.Functions.Storage;
 
@@ -12,71 +13,118 @@ public static class IdentityUtil
     public static Me GetMe(HttpRequestData req)
     {
         // 1) Static Web Apps / EasyAuth principal header (best)
-        // Support both common casings.
-        if (TryGetHeader(req, "x-ms-client-principal", out var encoded) ||
-            TryGetHeader(req, "X-MS-CLIENT-PRINCIPAL", out encoded))
+        if (TryGetAuthenticatedPrincipal(req, out var principal))
         {
-            if (!string.IsNullOrWhiteSpace(encoded))
-            {
-                try
-                {
-                    var json = Encoding.UTF8.GetString(Convert.FromBase64String(encoded));
-                    using var doc = JsonDocument.Parse(json);
-                    var root = doc.RootElement;
-
-                    // Prefer canonical SWA root fields first (most reliable)
-                    var userId = TryGetString(root, "userId");
-                    var userDetails = TryGetString(root, "userDetails"); // often email/username
-
-                    // Then fall back to claims if needed
-                    var claims = root.TryGetProperty("claims", out var c) ? c : default;
-
-                    string? FindClaim(params string[] types)
-                    {
-                        if (claims.ValueKind != JsonValueKind.Array) return null;
-                        foreach (var item in claims.EnumerateArray())
-                        {
-                            var typ = item.TryGetProperty("typ", out var t) ? t.GetString() : null;
-                            var val = item.TryGetProperty("val", out var v) ? v.GetString() : null;
-                            if (typ != null && val != null && types.Contains(typ)) return val;
-                        }
-                        return null;
-                    }
-
-                    userId ??=
-                        FindClaim(
-                            "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier",
-                            "nameidentifier",
-                            "sub"
-                        );
-
-                    var email = userDetails;
-                    email ??=
-                        FindClaim(
-                            "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress",
-                            "emails",
-                            "email",
-                            "preferred_username",
-                            "upn"
-                        );
-
-                    return new Me(
-                        string.IsNullOrWhiteSpace(userId) ? "UNKNOWN" : userId!,
-                        string.IsNullOrWhiteSpace(email) ? "UNKNOWN" : email!
-                    );
-                }
-                catch
-                {
-                    // fall through to dev headers
-                }
-            }
+            return principal;
         }
 
         // 2) Fallback headers (useful for local/dev/testing)
-        var userIdFallback = req.Headers.TryGetValues("x-user-id", out var ids) ? ids.FirstOrDefault() : null;
-        var emailFallback = req.Headers.TryGetValues("x-user-email", out var emails) ? emails.FirstOrDefault() : null;
+        if (AllowsDevIdentityHeaders(req))
+        {
+            var userIdFallback = req.Headers.TryGetValues("x-user-id", out var ids) ? ids.FirstOrDefault() : null;
+            var emailFallback = req.Headers.TryGetValues("x-user-email", out var emails) ? emails.FirstOrDefault() : null;
 
-        return new Me(userIdFallback ?? "UNKNOWN", emailFallback ?? "UNKNOWN");
+            return new Me(userIdFallback ?? "UNKNOWN", emailFallback ?? "UNKNOWN");
+        }
+
+        return new Me("UNKNOWN", "UNKNOWN");
+    }
+
+    public static string? GetAuthenticatedUserId(HttpRequestData req)
+    {
+        return TryGetAuthenticatedPrincipal(req, out var principal) && !string.Equals(principal.UserId, "UNKNOWN", StringComparison.OrdinalIgnoreCase)
+            ? principal.UserId
+            : null;
+    }
+
+    private static bool TryGetAuthenticatedPrincipal(HttpRequestData req, out Me principal)
+    {
+        principal = new Me("UNKNOWN", "UNKNOWN");
+
+        // Support both common casings.
+        if (!(TryGetHeader(req, "x-ms-client-principal", out var encoded) ||
+            TryGetHeader(req, "X-MS-CLIENT-PRINCIPAL", out encoded)) ||
+            string.IsNullOrWhiteSpace(encoded))
+        {
+            return false;
+        }
+
+        try
+        {
+            var json = Encoding.UTF8.GetString(Convert.FromBase64String(encoded));
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            // Prefer canonical SWA root fields first (most reliable)
+            var userId = TryGetString(root, "userId");
+            var userDetails = TryGetString(root, "userDetails"); // often email/username
+
+            // Then fall back to claims if needed
+            var claims = root.TryGetProperty("claims", out var c) ? c : default;
+
+            string? FindClaim(params string[] types)
+            {
+                if (claims.ValueKind != JsonValueKind.Array) return null;
+                foreach (var item in claims.EnumerateArray())
+                {
+                    var typ = item.TryGetProperty("typ", out var t) ? t.GetString() : null;
+                    var val = item.TryGetProperty("val", out var v) ? v.GetString() : null;
+                    if (typ != null && val != null && types.Contains(typ)) return val;
+                }
+                return null;
+            }
+
+            userId ??=
+                FindClaim(
+                    "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier",
+                    "nameidentifier",
+                    "sub"
+                );
+
+            var email = userDetails;
+            email ??=
+                FindClaim(
+                    "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress",
+                    "emails",
+                    "email",
+                    "preferred_username",
+                    "upn"
+                );
+
+            principal = new Me(
+                string.IsNullOrWhiteSpace(userId) ? "UNKNOWN" : userId!,
+                string.IsNullOrWhiteSpace(email) ? "UNKNOWN" : email!
+            );
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool AllowsDevIdentityHeaders(HttpRequestData req)
+    {
+        var environment = Environment.GetEnvironmentVariable("AZURE_FUNCTIONS_ENVIRONMENT")
+            ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+            ?? "";
+        if (string.Equals(environment, "Development", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        try
+        {
+            var host = req.Url.Host;
+            return string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(host, "127.0.0.1", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(host, "::1", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(host, "[::1]", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static bool TryGetHeader(HttpRequestData req, string name, out string? value)

@@ -114,6 +114,18 @@
   color: #1d4ed8;
 }
 
+.calendar-selection__badge--mapped {
+  background: #dcfce7;
+  border-color: #16a34a;
+  color: #166534;
+}
+
+.calendar-selection__badge--unmapped {
+  background: #fee2e2;
+  border-color: #dc2626;
+  color: #991b1b;
+}
+
 .calendar-selection__badge--scheduled,
 .calendar-selection__badge--event {
   background: #e2e8f0;
