@@ -65,10 +65,12 @@ public class RateLimitingMiddleware : IFunctionsWorkerMiddleware
             return;
         }
 
-        // Add rate limit headers to response
-        AddRateLimitHeaders(requestData, identifier);
-
         await next(context);
+
+        if (context.GetInvocationResult().Value is HttpResponseData outgoingResponse)
+        {
+            AddRateLimitHeaders(outgoingResponse, identifier);
+        }
 
         // Clean up old windows periodically
         CleanupOldWindows();
@@ -125,16 +127,16 @@ public class RateLimitingMiddleware : IFunctionsWorkerMiddleware
         }
     }
 
-    private void AddRateLimitHeaders(HttpRequestData req, string identifier)
+    private void AddRateLimitHeaders(HttpResponseData response, string identifier)
     {
         if (_requestWindows.TryGetValue(identifier, out var window))
         {
             lock (window)
             {
                 var remaining = Math.Max(0, MaxRequestsPerMinute - window.Requests.Count);
-                req.Headers.Add("X-RateLimit-Limit", MaxRequestsPerMinute.ToString());
-                req.Headers.Add("X-RateLimit-Remaining", remaining.ToString());
-                req.Headers.Add("X-RateLimit-Reset", GetResetTime(identifier).ToString());
+                response.Headers.Add("X-RateLimit-Limit", MaxRequestsPerMinute.ToString());
+                response.Headers.Add("X-RateLimit-Remaining", remaining.ToString());
+                response.Headers.Add("X-RateLimit-Reset", GetResetTime(identifier).ToString());
             }
         }
     }

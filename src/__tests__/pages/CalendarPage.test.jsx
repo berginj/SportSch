@@ -227,6 +227,7 @@ describe("CalendarPage", () => {
       },
     });
 
+    fireEvent.click(await screen.findByRole("button", { name: /TEAM-1 vs TBD \| U12 \| Open/i }));
     expect(await screen.findByRole("button", { name: "Accept" })).toBeInTheDocument();
   });
 

@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 using GameSwap.Functions.Middleware;
@@ -58,11 +59,42 @@ public class RateLimitingMiddlewareTests
         Assert.Equal("ip:198.51.100.10", identifier);
     }
 
+    [Fact]
+    public void AddRateLimitHeaders_WritesHeadersToResponse()
+    {
+        var logger = new Mock<ILogger<RateLimitingMiddleware>>();
+        var functionContext = new Mock<FunctionContext>();
+        var responseHeaders = new HttpHeadersCollection();
+        var response = new Mock<HttpResponseData>(functionContext.Object);
+        response.SetupGet(r => r.Headers).Returns(responseHeaders);
+
+        var middleware = new RateLimitingMiddleware(logger.Object);
+        var isAllowed = typeof(RateLimitingMiddleware).GetMethod("IsAllowed", BindingFlags.NonPublic | BindingFlags.Instance)
+            ?? throw new InvalidOperationException("IsAllowed method not found.");
+        var addRateLimitHeaders = typeof(RateLimitingMiddleware).GetMethod("AddRateLimitHeaders", BindingFlags.NonPublic | BindingFlags.Instance)
+            ?? throw new InvalidOperationException("AddRateLimitHeaders method not found.");
+
+        var identifier = $"ip:198.51.100.{Random.Shared.Next(200, 255)}";
+        _ = isAllowed.Invoke(middleware, new object[] { identifier });
+        addRateLimitHeaders.Invoke(middleware, new object[] { response.Object, identifier });
+
+        Assert.Equal("100", GetHeader(responseHeaders, "X-RateLimit-Limit"));
+        Assert.Equal("99", GetHeader(responseHeaders, "X-RateLimit-Remaining"));
+        Assert.False(string.IsNullOrWhiteSpace(GetHeader(responseHeaders, "X-RateLimit-Reset")));
+    }
+
     private static string BuildClientPrincipal(string userId, string email)
     {
         var json = $$"""
         {"userId":"{{userId}}","userDetails":"{{email}}","claims":[]}
         """;
         return Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
+    }
+
+    private static string GetHeader(HttpHeadersCollection headers, string name)
+    {
+        return headers.TryGetValues(name, out var values)
+            ? values.FirstOrDefault() ?? string.Empty
+            : string.Empty;
     }
 }

@@ -2,8 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import CalendarView from "../../components/CalendarView";
 
+let lastSchedulerProps = null;
+
 vi.mock("@daypilot/daypilot-lite-react", () => ({
-  DayPilotScheduler: function DayPilotSchedulerMock({ events = [], onEventClick }) {
+  DayPilotScheduler: function DayPilotSchedulerMock(props) {
+    lastSchedulerProps = props;
+    const { events = [], onEventClick } = props;
     return (
       <div data-testid="daypilot-scheduler">
         {events.map((event) => (
@@ -40,6 +44,7 @@ const BASE_SLOT = {
 describe("CalendarView", () => {
   beforeEach(() => {
     localStorage.clear();
+    lastSchedulerProps = null;
   });
 
   it("keeps view preference scoped to the provided storage key", async () => {
@@ -120,5 +125,34 @@ describe("CalendarView", () => {
 
     const badge = screen.getByText("Unmapped");
     expect(badge.className).toContain("calendar-selection__badge--unmapped");
+  });
+
+  it("limits timeline hours to the visible content window with a buffer", () => {
+    render(
+      <CalendarView
+        slots={[
+          {
+            ...BASE_SLOT,
+            startTime: "18:30",
+            endTime: "20:00",
+          },
+        ]}
+        events={[
+          {
+            eventId: "event-1",
+            title: "Skills Clinic",
+            eventDate: "2026-03-16",
+            startTime: "17:00",
+            endTime: "21:30",
+            location: "County Diamond 9",
+          },
+        ]}
+        defaultView="timeline"
+        showViewToggle={false}
+      />
+    );
+
+    expect(lastSchedulerProps.businessBeginsHour).toBe(16);
+    expect(lastSchedulerProps.businessEndsHour).toBe(23);
   });
 });

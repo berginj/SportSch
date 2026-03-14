@@ -27,6 +27,7 @@ export default function CalendarView({
   const schedulerEvents = useMemo(() => items.map(buildSchedulerEvent), [items]);
   const monthEvents = useMemo(() => items.map(buildMonthEvent), [items]);
   const range = useMemo(() => getVisibleRange(items), [items]);
+  const visibleHours = useMemo(() => getVisibleHours(items), [items]);
   const [selectedItemKey, setSelectedItemKey] = useState("");
 
   useEffect(() => {
@@ -75,8 +76,6 @@ export default function CalendarView({
     rowHeaderWidth: 180,
     heightSpec: "Max",
     height: 560,
-    businessBeginsHour: 8,
-    businessEndsHour: 22,
     timeHeaders: [
       { groupBy: "Month" },
       { groupBy: "Day", format: "ddd M/d" },
@@ -93,6 +92,8 @@ export default function CalendarView({
     ...baseSchedulerConfig,
     startDate: range.startDate,
     days: range.days,
+    businessBeginsHour: visibleHours.startHour,
+    businessEndsHour: visibleHours.endHour,
     resources,
     events: schedulerEvents,
     onBeforeEventRender: (args) => {
@@ -103,7 +104,7 @@ export default function CalendarView({
     onEventClick: (args) => {
       handleItemSelect(args.e?.data?.key || "");
     },
-  }), [baseSchedulerConfig, range.days, range.startDate, resources, schedulerEvents, selectedItemKey, handleItemSelect]);
+  }), [baseSchedulerConfig, range.days, range.startDate, resources, schedulerEvents, selectedItemKey, handleItemSelect, visibleHours.endHour, visibleHours.startHour]);
 
   const baseMonthConfig = useMemo(() => ({
     eventClickHandling: "Enabled",
@@ -366,6 +367,37 @@ function getVisibleRange(items) {
   };
 }
 
+function getVisibleHours(items) {
+  const DEFAULT_HOURS = { startHour: 8, endHour: 22 };
+  if (!items.length) return DEFAULT_HOURS;
+
+  let earliestMinute = Number.POSITIVE_INFINITY;
+  let latestMinute = Number.NEGATIVE_INFINITY;
+
+  items.forEach((item) => {
+    const startMinute = parseTimeMinutes(item.startTime);
+    const endMinute = parseTimeMinutes(item.endTime);
+    if (startMinute != null) {
+      earliestMinute = Math.min(earliestMinute, startMinute);
+      latestMinute = Math.max(latestMinute, endMinute ?? (startMinute + 60));
+      return;
+    }
+    if (endMinute != null) {
+      earliestMinute = Math.min(earliestMinute, Math.max(0, endMinute - 60));
+      latestMinute = Math.max(latestMinute, endMinute);
+    }
+  });
+
+  if (!Number.isFinite(earliestMinute) || !Number.isFinite(latestMinute)) {
+    return DEFAULT_HOURS;
+  }
+
+  const bufferHours = 1;
+  const startHour = Math.max(0, Math.floor(earliestMinute / 60) - bufferHours);
+  const endHour = Math.min(24, Math.max(startHour + 1, Math.ceil(latestMinute / 60) + bufferHours));
+  return { startHour, endHour };
+}
+
 function combineIsoDateTime(date, timeValue) {
   const time = normalizeTimeValue(timeValue);
   return `${date}T${time}:00`;
@@ -389,6 +421,17 @@ function normalizeTimeValue(timeValue) {
     return `${String(Number(parts[0]) || 0).padStart(2, "0")}:${String(Number(parts[1]) || 0).padStart(2, "0")}`;
   }
   return "12:00";
+}
+
+function parseTimeMinutes(timeValue) {
+  const normalized = String(timeValue || "").trim();
+  const match = normalized.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute)) return null;
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  return hour * 60 + minute;
 }
 
 function getItemColors(tone) {

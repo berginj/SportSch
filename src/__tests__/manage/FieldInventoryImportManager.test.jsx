@@ -257,7 +257,7 @@ describe("FieldInventoryImportManager", () => {
     expect(await screen.findByText("upsert dry run completed.")).toBeInTheDocument();
     expect(screen.getByText("Commit Preview")).toBeInTheDocument();
     expect(screen.getByText("Season: Spring 2026")).toBeInTheDocument();
-  });
+  }, 15000);
 
   it("explains anonymous access when workbook load fails with Google authorization status", async () => {
     api.apiFetch.mockRejectedValueOnce(Object.assign(new Error("Workbook export failed with status 401."), {

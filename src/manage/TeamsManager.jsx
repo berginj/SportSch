@@ -1,41 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { ROLE } from "../lib/constants";
+import { buildTeamsTemplateCsv, downloadCsv } from "../lib/csvUtils";
 import { trackEvent } from "../lib/telemetry";
 import Toast from "../components/Toast";
-
-function csvEscape(value) {
-  const raw = String(value ?? "");
-  if (!/[",\n]/.test(raw)) return raw;
-  return `"${raw.replace(/"/g, '""')}"`;
-}
-
-function buildTeamsTemplateCsv(divisions) {
-  const header = ["division", "teamId", "name", "coachName", "coachEmail", "coachPhone"];
-  const rows = (divisions || [])
-    .map((d) => {
-      if (!d) return "";
-      if (typeof d === "string") return d;
-      if (d.isActive === false) return "";
-      return d.code || "";
-    })
-    .filter(Boolean)
-    .map((code) => [code, "", "", "", "", ""]);
-
-  return [header, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n");
-}
-
-function downloadCsv(csv, filename) {
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.setAttribute("download", filename);
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
 
 export default function TeamsManager({ leagueId, tableView = "A" }) {
   const [teams, setTeams] = useState([]);

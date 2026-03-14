@@ -44,7 +44,7 @@ describe('csvUtils', () => {
     it('should generate rows for division objects', () => {
       const divisions = [
         { code: 'U8', isActive: true },
-        { division: 'U10', isActive: true },
+        { code: 'U10', isActive: true },
       ];
       const csv = buildTeamsTemplateCsv(divisions);
       const lines = csv.split('\n');
