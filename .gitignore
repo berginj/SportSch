@@ -276,6 +276,7 @@ dist-ssr
 *.local
 playwright-report/
 test-results/
+coverage/
 
 # Generated API client (regenerate with npm run generate:api)
 src/generated-api/

@@ -141,6 +141,5 @@ export function useNotifications(leagueId, pollInterval = 30000) {
     fetchNotifications,
     markAsRead,
     markAllAsRead,
-    refreshCount: fetchUnreadCount,
   };
 }
