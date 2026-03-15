@@ -45,15 +45,18 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
   const [globalOk, setGlobalOk] = useState("");
   const [globalLoading, setGlobalLoading] = useState(false);
   const [globalLeagues, setGlobalLeagues] = useState([]);
+  const [globalLeaguesLoaded, setGlobalLeaguesLoaded] = useState(false);
   const [userSearch, setUserSearch] = useState("");
   const [usersLoading, setUsersLoading] = useState(false);
   const [users, setUsers] = useState([]);
+  const [usersLoaded, setUsersLoaded] = useState(false);
   const [userDraft, setUserDraft] = useState({ userId: "", email: "", homeLeagueId: "", role: "" });
   const [memberSearch, setMemberSearch] = useState("");
   const [memberLeague, setMemberLeague] = useState("");
   const [memberRole, setMemberRole] = useState("");
   const [membersLoadingAll, setMembersLoadingAll] = useState(false);
   const [membersAll, setMembersAll] = useState([]);
+  const [membersAllLoaded, setMembersAllLoaded] = useState(false);
   const [newLeague, setNewLeague] = useState({ leagueId: "", name: "" });
   const [seasonLeagueId, setSeasonLeagueId] = useState("");
   const [seasonDraft, setSeasonDraft] = useState({
@@ -197,21 +200,25 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
 
   useEffect(() => {
     if (!isGlobalAdmin) return;
+    if (activeSection !== 'access-requests' && activeSection !== 'global') return;
+    if (globalLeaguesLoaded || globalLoading) return;
     loadGlobalLeagues();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isGlobalAdmin]);
+  }, [activeSection, globalLeaguesLoaded, globalLoading, isGlobalAdmin]);
 
   useEffect(() => {
-    if (!isGlobalAdmin) return;
+    if (!isGlobalAdmin || activeSection !== 'global') return;
+    if (usersLoaded || usersLoading) return;
     loadUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isGlobalAdmin]);
+  }, [activeSection, isGlobalAdmin, usersLoaded, usersLoading]);
 
   useEffect(() => {
-    if (!isGlobalAdmin) return;
+    if (!isGlobalAdmin || activeSection !== 'global') return;
+    if (membersAllLoaded || membersLoadingAll) return;
     loadAllMemberships();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isGlobalAdmin]);
+  }, [activeSection, isGlobalAdmin, membersAllLoaded, membersLoadingAll]);
 
   async function loadGlobalLeagues() {
     setGlobalErr("");
@@ -226,6 +233,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
       setGlobalErr(e?.message || "Failed to load leagues");
       setGlobalLeagues([]);
     } finally {
+      setGlobalLeaguesLoaded(true);
       setGlobalLoading(false);
     }
   }
@@ -241,6 +249,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
       setToast({ tone: "error", message: e?.message || "Failed to load users" });
       setUsers([]);
     } finally {
+      setUsersLoaded(true);
       setUsersLoading(false);
     }
   }
@@ -286,6 +295,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
       setToast({ tone: "error", message: e?.message || "Failed to load memberships" });
       setMembersAll([]);
     } finally {
+      setMembersAllLoaded(true);
       setMembersLoadingAll(false);
     }
   }

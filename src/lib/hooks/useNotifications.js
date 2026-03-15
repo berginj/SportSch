@@ -124,12 +124,11 @@ export function useNotifications(leagueId, pollInterval = 30000) {
     };
   }, [leagueId, pollInterval, fetchUnreadCount]);
 
-  // Fetch notifications when dropdown opens
+  // Refresh the list whenever the dropdown opens or the unread badge changes while open.
   useEffect(() => {
-    if (isOpen && notifications.length === 0) {
-      fetchNotifications();
-    }
-  }, [isOpen, notifications.length, fetchNotifications]);
+    if (!isOpen) return;
+    fetchNotifications();
+  }, [isOpen, unreadCount, fetchNotifications]);
 
   return {
     unreadCount,

@@ -17,7 +17,7 @@ public static class ApiResponses
             {
                 code,
                 message,
-                details = BuildErrorDetails(req, details),
+                details = BuildErrorDetails(req, status, details),
             }
         });
     }
@@ -40,13 +40,18 @@ public static class ApiResponses
         return Error(req, status, code, ex.Message);
     }
 
-    private static object BuildErrorDetails(HttpRequestData req, object? details)
+    private static object BuildErrorDetails(HttpRequestData req, HttpStatusCode status, object? details)
     {
         var requestId = req.FunctionContext.InvocationId.ToString();
         var merged = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
         {
             ["requestId"] = requestId,
         };
+
+        if ((int)status >= 500)
+        {
+            return merged;
+        }
 
         if (details is null)
         {

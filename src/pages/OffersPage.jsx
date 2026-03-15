@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
-import { readPagedItems } from "../lib/pagedResults";
+import { fetchAllPagedItems } from "../lib/pagedResults";
 import LeaguePicker from "../components/LeaguePicker";
 import StatusCard from "../components/StatusCard";
 import Toast from "../components/Toast";
@@ -175,12 +175,15 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
   const fetchDivisionSlots = useCallback(async (selectedDivision) => {
     const normalizedDivision = String(selectedDivision || "").trim();
     if (!normalizedDivision) return [];
-    const params = new URLSearchParams({
-      division: normalizedDivision,
-      status: "Open",
+    return fetchAllPagedItems(async (continuationToken) => {
+      const params = new URLSearchParams({
+        division: normalizedDivision,
+        status: "Open",
+        pageSize: "250",
+      });
+      if (continuationToken) params.set("continuationToken", continuationToken);
+      return apiFetch(`/api/slots?${params.toString()}`);
     });
-    const data = await apiFetch(`/api/slots?${params.toString()}`);
-    return readPagedItems(data);
   }, []);
 
   async function loadAll(selectedDivision) {

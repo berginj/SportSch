@@ -52,7 +52,7 @@ public class StorageHealth
         {
             _log.LogError(ex, "StorageHealth failed");
             var status = ex.Status > 0 ? (HttpStatusCode)ex.Status : HttpStatusCode.BadGateway;
-            return ApiResponses.Error(req, status, "STORAGE_ERROR", ex.Message);
+            return ApiResponses.Error(req, status, "STORAGE_ERROR", "Storage health check failed.");
         }
         catch (Exception ex)
         {

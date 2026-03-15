@@ -1,19 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../lib/api';
-import { readPagedItems } from '../lib/pagedResults';
 import StatusCard from '../components/StatusCard';
-
-function isGameCapableSlot(slot) {
-  if (!slot || slot.isAvailability) return false;
-  const gameType = String(slot.gameType || '').trim().toLowerCase();
-  return gameType !== 'practice';
-}
-
-function isActiveGameCapableSlot(slot) {
-  if (!isGameCapableSlot(slot)) return false;
-  const status = String(slot.status || '').trim().toLowerCase();
-  return status !== 'cancelled';
-}
 
 /**
  * AdminDashboard - League admin dashboard with health metrics and quick actions
@@ -38,52 +25,17 @@ export default function AdminDashboard({ leagueId, onNavigate }) {
     setError('');
 
     try {
-      // Fetch metrics from multiple endpoints
-      // TODO: Create dedicated /admin/dashboard/metrics endpoint for better performance
-      const [accessRequests, memberships, slots, divisions] = await Promise.all([
-        apiFetch('/api/accessrequests?status=Pending').catch(() => []),
-        apiFetch('/api/memberships').catch(() => []),
-        apiFetch('/api/slots').catch(() => []),
-        apiFetch('/api/divisions').catch(() => []),
-      ]);
-
-      // Calculate metrics
-      const pendingRequests = Array.isArray(accessRequests) ? accessRequests.length : 0;
-
-      const coaches = (Array.isArray(memberships) ? memberships : [])
-        .filter(m => m.role === 'Coach');
-      const unassignedCoaches = coaches.filter(m => !m.team || !m.team.teamId).length;
-
-      const allSlots = readPagedItems(slots);
-      const activeGameSlots = allSlots.filter(isActiveGameCapableSlot);
-      const confirmedSlots = activeGameSlots.filter(s => s.status === 'Confirmed').length;
-      const openSlots = activeGameSlots.filter(s => s.status === 'Open').length;
-      const totalSlots = activeGameSlots.length;
-      const scheduleCoverage = totalSlots > 0
-        ? Math.round((confirmedSlots / totalSlots) * 100)
-        : 0;
-
-      // Upcoming games (next 7 days)
-      const today = new Date();
-      const nextWeek = new Date(today);
-      nextWeek.setDate(today.getDate() + 7);
-      const todayStr = formatDateYMD(today);
-      const nextWeekStr = formatDateYMD(nextWeek);
-
-      const upcomingGames = activeGameSlots
-        .filter(s => s.status === 'Confirmed' && s.gameDate >= todayStr && s.gameDate <= nextWeekStr)
-        .length;
-
+      const data = await apiFetch('/api/admin/dashboard');
       setMetrics({
-        pendingRequests,
-        unassignedCoaches,
-        totalCoaches: coaches.length,
-        scheduleCoverage,
-        upcomingGames,
-        totalSlots,
-        confirmedSlots,
-        openSlots,
-        divisions: Array.isArray(divisions) ? divisions.length : 0,
+        pendingRequests: Number(data?.pendingRequests || 0),
+        unassignedCoaches: Number(data?.unassignedCoaches || 0),
+        totalCoaches: Number(data?.totalCoaches || 0),
+        scheduleCoverage: Number(data?.scheduleCoverage || 0),
+        upcomingGames: Number(data?.upcomingGames || 0),
+        totalSlots: Number(data?.totalSlots || 0),
+        confirmedSlots: Number(data?.confirmedSlots || 0),
+        openSlots: Number(data?.openSlots || 0),
+        divisions: Number(data?.divisions || 0),
       });
     } catch (err) {
       setError(err.message || 'Failed to load metrics');
@@ -304,11 +256,4 @@ function MetricCard({ title, value, subtitle, color = 'gray', actionLabel, onAct
       </div>
     </div>
   );
-}
-
-function formatDateYMD(date) {
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
-  const dd = String(date.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { LEAGUE_HEADER_NAME } from "../lib/constants";
 import { trackEvent } from "../lib/telemetry";
@@ -24,15 +24,12 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
   const [notes, setNotes] = useState("");
   const [requestLeagueId, setRequestLeagueId] = useState(leagueId || "");
   const [mine, setMine] = useState([]);
-  const [mineLoaded, setMineLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
 
   const signedIn = (me?.userId || "UNKNOWN") !== "UNKNOWN";
   const email = me?.email || "";
-  const autoSubmitted = useRef(false);
-  const autoRequested = useRef(false);
   const requestSummary = useMemo(() => ({
     total: mine.length,
     pending: mine.filter((request) => (request?.status || "").trim() === "Pending").length,
@@ -63,8 +60,7 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
     const params = new URLSearchParams(window.location.search);
     const desiredLeague = (params.get("leagueId") || "").trim();
     const requestedRole = (params.get("requestRole") || "").trim();
-    const autoSubmit = ["1", "true", "yes"].includes((params.get("autoSubmit") || "").toLowerCase());
-    return { desiredLeague, requestedRole, autoSubmit };
+    return { desiredLeague, requestedRole };
   }, []);
 
   const refresh = useCallback(async () => {
@@ -76,10 +72,8 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
       ]);
       setLeagues(Array.isArray(ls) ? ls : []);
       setMine(Array.isArray(my) ? my : []);
-      setMineLoaded(true);
     } catch (e) {
       setErr(e?.message || "Failed to load.");
-      setMineLoaded(true);
     }
   }, [signedIn]);
 
@@ -143,6 +137,8 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
     else params.delete("leagueId");
     if (role) params.set("role", role);
     else params.delete("role");
+    params.delete("autoSubmit");
+    params.delete("requestRole");
     const next = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
     window.history.replaceState({}, "", next);
   }, [leagueId, role]);
@@ -182,32 +178,6 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
       setRequestLeagueId(leagueId);
     }
   }, [leagueId, requestLeagueId]);
-
-  useEffect(() => {
-    if (!signedIn || !mineLoaded || autoRequested.current) return;
-    if (accessIntent?.autoSubmit) return;
-    if (!leagueId || leagues.length === 0) return;
-    if (mine.length > 0) return;
-    autoRequested.current = true;
-    submitRequest(role, "auto").catch(() => {});
-  }, [signedIn, mineLoaded, mine, leagueId, leagues.length, role, accessIntent, submitRequest]);
-
-  useEffect(() => {
-    if (!accessIntent || autoSubmitted.current) return;
-    if (!accessIntent.autoSubmit || !signedIn) return;
-    if (!leagueId) return;
-
-    const requestedRole = accessIntent.requestedRole === "Viewer" ? "Viewer" : "Coach";
-    autoSubmitted.current = true;
-    submitRequest(requestedRole, "auto").catch(() => {});
-
-    if (typeof window !== "undefined") {
-      const url = new URL(window.location.href);
-      url.searchParams.delete("autoSubmit");
-      url.searchParams.delete("requestRole");
-      window.history.replaceState({}, "", url.pathname + url.search);
-    }
-  }, [accessIntent, leagueId, signedIn, submitRequest]);
 
   return (
     <div className="page">

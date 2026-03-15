@@ -97,38 +97,43 @@ export default function NotificationDropdown({
             {notifications.map((notification) => (
               <li
                 key={notification.notificationId}
-                onClick={() => handleNotificationClick(notification)}
                 className={[
                   'notificationDropdown__item',
                   notification.isRead ? 'is-read' : 'is-unread',
-                  notification.link ? 'is-link' : '',
+                  notification.link || !notification.isRead ? 'is-link' : '',
                 ].filter(Boolean).join(' ')}
               >
-                <div className="notificationDropdown__row">
-                  {/* Unread Indicator */}
-                  {!notification.isRead && (
-                    <div className="notificationDropdown__dot" aria-label="Unread" />
-                  )}
-
-                  <div className="notificationDropdown__content">
-                    {/* Notification Type Badge */}
-                    {notification.type && (
-                      <span className="notificationDropdown__type">
-                        {notification.type.replace(/([A-Z])/g, ' $1').trim()}
-                      </span>
+                <button
+                  type="button"
+                  className="notificationDropdown__itemButton"
+                  onClick={() => handleNotificationClick(notification)}
+                >
+                  <div className="notificationDropdown__row">
+                    {/* Unread Indicator */}
+                    {!notification.isRead && (
+                      <div className="notificationDropdown__dot" aria-label="Unread" />
                     )}
 
-                    {/* Message */}
-                    <p className="notificationDropdown__message">
-                      {notification.message}
-                    </p>
+                    <div className="notificationDropdown__content">
+                      {/* Notification Type Badge */}
+                      {notification.type && (
+                        <span className="notificationDropdown__type">
+                          {notification.type.replace(/([A-Z])/g, ' $1').trim()}
+                        </span>
+                      )}
 
-                    {/* Time */}
-                    <span className="notificationDropdown__time">
-                      {formatTimeAgo(notification.createdUtc)}
-                    </span>
+                      {/* Message */}
+                      <p className="notificationDropdown__message">
+                        {notification.message}
+                      </p>
+
+                      {/* Time */}
+                      <span className="notificationDropdown__time">
+                        {formatTimeAgo(notification.createdUtc)}
+                      </span>
+                    </div>
                   </div>
-                </div>
+                </button>
               </li>
             ))}
           </ul>

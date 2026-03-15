@@ -1,19 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../lib/api';
-import { readPagedItems } from '../lib/pagedResults';
 import StatusCard from '../components/StatusCard';
-
-function isGameSlot(slot) {
-  if (!slot || slot.isAvailability) return false;
-  const gameType = String(slot.gameType || '').trim().toLowerCase();
-  return gameType !== 'practice';
-}
-
-function isOpenOfferSlot(slot) {
-  if (!isGameSlot(slot)) return false;
-  if (String(slot.status || '').trim() !== 'Open') return false;
-  return String(slot.gameType || '').trim().toLowerCase() !== 'request';
-}
 
 /**
  * Coach Dashboard - Personalized home page for coaches
@@ -23,16 +10,10 @@ function isOpenOfferSlot(slot) {
  * - Action items (new open offers, upcoming games)
  * - Quick actions
  */
-export default function CoachDashboard({ me, leagueId, setTab }) {
+export default function CoachDashboard({ leagueId, setTab }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [dashboard, setDashboard] = useState(null);
-
-  // Get coach's team assignment
-  const membership = (me?.memberships || []).find(m => m.leagueId === leagueId && m.role === 'Coach');
-  const team = membership?.team;
-  const division = team?.division;
-  const teamId = team?.teamId;
 
   const loadDashboard = useCallback(async () => {
     if (!leagueId) {
@@ -45,60 +26,19 @@ export default function CoachDashboard({ me, leagueId, setTab }) {
     setError('');
 
     try {
-      // For now, fetch data from existing endpoints
-      // TODO: Create dedicated /coach/dashboard endpoint for better performance
-      const [slots, teams] = await Promise.all([
-        apiFetch(`/api/slots?dateFrom=${getTodayDate()}&dateTo=${getDateInDays(30)}`).catch(() => []),
-        division ? apiFetch(`/api/teams?division=${division}`).catch(() => []) : Promise.resolve([])
-      ]);
-
-      // Filter slots for team's upcoming games (confirmed and where team is playing)
-      const slotItems = readPagedItems(slots);
-      const upcomingGames = slotItems
-        .filter(slot => {
-          if (!isGameSlot(slot)) return false;
-          if (slot.status !== 'Confirmed') return false;
-          if (!teamId) return false;
-          return slot.offeringTeamId === teamId || slot.confirmedTeamId === teamId ||
-                 slot.homeTeamId === teamId || slot.awayTeamId === teamId;
-        })
-        .sort((a, b) => {
-          const dateA = `${a.gameDate} ${a.startTime}`;
-          const dateB = `${b.gameDate} ${b.startTime}`;
-          return dateA.localeCompare(dateB);
-        })
-        .slice(0, 5); // Next 5 games
-
-      // Count open offers in division
-      const openOffersInDivision = slotItems
-        .filter(slot => {
-          return isOpenOfferSlot(slot) &&
-                 slot.division === division &&
-                 slot.offeringTeamId !== teamId; // Not my own offers
-        }).length;
-
-      // Count my open offers
-      const myOpenOffers = slotItems
-        .filter(slot => {
-          return isOpenOfferSlot(slot) && slot.offeringTeamId === teamId;
-        }).length;
-
-      // Find team details
-      const teamDetails = (Array.isArray(teams) ? teams : [])
-        .find(t => t.division === division && t.teamId === teamId);
-
+      const data = await apiFetch('/api/coach/dashboard');
       setDashboard({
-        team: teamDetails || { teamId, division, name: teamId },
-        upcomingGames,
-        openOffersInDivision,
-        myOpenOffers,
+        team: data?.team || null,
+        upcomingGames: Array.isArray(data?.upcomingGames) ? data.upcomingGames : [],
+        openOffersInDivision: Number(data?.openOffersInDivision || 0),
+        myOpenOffers: Number(data?.myOpenOffers || 0),
       });
     } catch (err) {
       setError(err.message || 'Failed to load dashboard');
     } finally {
       setLoading(false);
     }
-  }, [leagueId, division, teamId]);
+  }, [leagueId]);
 
   useEffect(() => {
     loadDashboard();
@@ -124,7 +64,7 @@ export default function CoachDashboard({ me, leagueId, setTab }) {
   }
 
   // No team assigned yet
-  if (!team) {
+  if (!dashboard?.team) {
     return (
       <div className="page">
         <div className="card">
@@ -192,7 +132,7 @@ export default function CoachDashboard({ me, leagueId, setTab }) {
           </div>
           <div className="grid gap-3">
             {dashboard.upcomingGames.map((game, idx) => (
-              <GameCard key={game.slotId || idx} game={game} teamId={teamId} />
+              <GameCard key={game.slotId || idx} game={game} teamId={dashboard.team?.teamId} />
             ))}
           </div>
           <button className="btn btn--ghost" onClick={() => setTab('calendar')}>
@@ -374,17 +314,6 @@ function GameCard({ game, teamId }) {
 }
 
 // Helper functions
-function getTodayDate() {
-  const now = new Date();
-  return now.toISOString().split('T')[0];
-}
-
-function getDateInDays(days) {
-  const date = new Date();
-  date.setDate(date.getDate() + days);
-  return date.toISOString().split('T')[0];
-}
-
 function isWithinDays(dateStr, days) {
   const gameDate = new Date(dateStr);
   const today = new Date();

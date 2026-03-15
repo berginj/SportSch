@@ -9,3 +9,24 @@ export function readContinuationToken(payload) {
     ? payload.continuationToken.trim()
     : "";
 }
+
+export async function fetchAllPagedItems(fetchPage) {
+  const items = [];
+  const seenTokens = new Set();
+  let continuationToken = "";
+
+  while (true) {
+    const payload = await fetchPage(continuationToken);
+    items.push(...readPagedItems(payload));
+
+    const nextToken = readContinuationToken(payload);
+    if (!nextToken || seenTokens.has(nextToken)) {
+      break;
+    }
+
+    seenTokens.add(nextToken);
+    continuationToken = nextToken;
+  }
+
+  return items;
+}

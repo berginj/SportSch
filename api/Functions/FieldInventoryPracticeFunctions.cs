@@ -209,9 +209,9 @@ public class FieldInventoryPracticeFunctions
         {
             return ApiResponses.FromHttpError(req, ex);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, ErrorCodes.INTERNAL_ERROR, ex.Message);
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, ErrorCodes.INTERNAL_ERROR, "An unexpected error occurred.");
         }
     }
 }

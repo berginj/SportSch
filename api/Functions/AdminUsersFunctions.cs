@@ -48,7 +48,6 @@ public class AdminUsersFunctions
 
             var search = (ApiGuards.GetQueryParam(req, "search") ?? "").Trim();
             var usersTable = await TableClients.GetTableAsync(_svc, Constants.Tables.Users);
-            var memTable = await TableClients.GetTableAsync(_svc, Constants.Tables.Memberships);
 
             var list = new List<UserProfileDto>();
             await foreach (var e in usersTable.QueryAsync<TableEntity>(x => x.PartitionKey == Constants.Pk.Users))
@@ -56,23 +55,15 @@ public class AdminUsersFunctions
                 var userId = (e.RowKey ?? "").Trim();
                 var email = (e.GetString("Email") ?? "").Trim();
                 var homeLeagueId = (e.GetString("HomeLeagueId") ?? "").Trim();
+                var homeRole = (e.GetString("HomeLeagueRole") ?? "").Trim();
                 var updatedUtc = e.GetDateTimeOffset("UpdatedUtc") ?? DateTimeOffset.MinValue;
 
-                string? homeRole = null;
-                if (!string.IsNullOrWhiteSpace(homeLeagueId))
-                {
-                    try
-                    {
-                        var mem = (await memTable.GetEntityAsync<TableEntity>(userId, homeLeagueId)).Value;
-                        homeRole = (mem.GetString("Role") ?? "").Trim();
-                    }
-                    catch (RequestFailedException ex) when (ex.Status == 404)
-                    {
-                        homeRole = null;
-                    }
-                }
-
-                list.Add(new UserProfileDto(userId, email, homeLeagueId, homeRole, updatedUtc));
+                list.Add(new UserProfileDto(
+                    userId,
+                    email,
+                    homeLeagueId,
+                    string.IsNullOrWhiteSpace(homeRole) ? null : homeRole,
+                    updatedUtc));
             }
 
             if (!string.IsNullOrWhiteSpace(search))
@@ -123,24 +114,24 @@ public class AdminUsersFunctions
                 ApiGuards.EnsureValidTableKeyPart("homeLeagueId", homeLeagueId);
 
             var usersTable = await TableClients.GetTableAsync(_svc, Constants.Tables.Users);
-            var now = DateTimeOffset.UtcNow;
-            var userEntity = new TableEntity(Constants.Pk.Users, userId)
+            TableEntity? existingUser = null;
+            try
             {
-                ["UserId"] = userId,
-                ["Email"] = email,
-                ["HomeLeagueId"] = homeLeagueId,
-                ["UpdatedUtc"] = now
-            };
-
-            await usersTable.UpsertEntityAsync(userEntity, TableUpdateMode.Merge);
+                existingUser = (await usersTable.GetEntityAsync<TableEntity>(Constants.Pk.Users, userId)).Value;
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                existingUser = null;
+            }
 
             var role = (body.role ?? "").Trim();
+            var normalizedRole = "";
             if (!string.IsNullOrWhiteSpace(role))
             {
                 if (string.IsNullOrWhiteSpace(homeLeagueId))
                     return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "homeLeagueId is required when role is provided");
 
-                var normalizedRole = role switch
+                normalizedRole = role switch
                 {
                     var r when r.Equals(Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase) => Constants.Roles.Coach,
                     var r when r.Equals(Constants.Roles.Viewer, StringComparison.OrdinalIgnoreCase) => Constants.Roles.Viewer,
@@ -150,7 +141,35 @@ public class AdminUsersFunctions
 
                 if (string.IsNullOrWhiteSpace(normalizedRole))
                     return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "role must be Coach, Viewer, or LeagueAdmin");
+            }
 
+            var priorHomeLeagueId = (existingUser?.GetString("HomeLeagueId") ?? "").Trim();
+            var priorHomeRole = (existingUser?.GetString("HomeLeagueRole") ?? "").Trim();
+            var storedHomeRole = priorHomeRole;
+            if (!string.IsNullOrWhiteSpace(normalizedRole))
+            {
+                storedHomeRole = normalizedRole;
+            }
+            else if (string.IsNullOrWhiteSpace(homeLeagueId) ||
+                !string.Equals(homeLeagueId, priorHomeLeagueId, StringComparison.OrdinalIgnoreCase))
+            {
+                storedHomeRole = "";
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            var userEntity = new TableEntity(Constants.Pk.Users, userId)
+            {
+                ["UserId"] = userId,
+                ["Email"] = email,
+                ["HomeLeagueId"] = homeLeagueId,
+                ["HomeLeagueRole"] = storedHomeRole,
+                ["UpdatedUtc"] = now
+            };
+
+            await usersTable.UpsertEntityAsync(userEntity, TableUpdateMode.Merge);
+
+            if (!string.IsNullOrWhiteSpace(role))
+            {
                 var leagues = await TableClients.GetTableAsync(_svc, Constants.Tables.Leagues);
                 try
                 {
@@ -172,22 +191,12 @@ public class AdminUsersFunctions
                 await memTable.UpsertEntityAsync(mem, TableUpdateMode.Merge);
             }
 
-            string? homeRole = null;
-            if (!string.IsNullOrWhiteSpace(homeLeagueId))
-            {
-                try
-                {
-                    var memTable = await TableClients.GetTableAsync(_svc, Constants.Tables.Memberships);
-                    var mem = (await memTable.GetEntityAsync<TableEntity>(userId, homeLeagueId)).Value;
-                    homeRole = (mem.GetString("Role") ?? "").Trim();
-                }
-                catch (RequestFailedException ex) when (ex.Status == 404)
-                {
-                    homeRole = null;
-                }
-            }
-
-            return ApiResponses.Ok(req, new UserProfileDto(userId, email, homeLeagueId, homeRole, now));
+            return ApiResponses.Ok(req, new UserProfileDto(
+                userId,
+                email,
+                homeLeagueId,
+                string.IsNullOrWhiteSpace(storedHomeRole) ? null : storedHomeRole,
+                now));
         }
         catch (ApiGuards.HttpError ex)
         {

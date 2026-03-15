@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
-import { readContinuationToken, readPagedItems } from "../lib/pagedResults";
+import { fetchAllPagedItems } from "../lib/pagedResults";
 import { getDefaultRangeFallback, getSeasonRange } from "../lib/season";
 import { SLOT_STATUS } from "../lib/constants";
 import LeaguePicker from "../components/LeaguePicker";
@@ -320,26 +320,12 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
   );
 
   async function loadAllSlots(slotsQuery) {
-    const merged = [];
-    let continuationToken = "";
-    let pageCount = 0;
-    const maxPages = 40;
-    const pageSize = 100;
-
-    while (pageCount < maxPages) {
+    return fetchAllPagedItems(async (continuationToken) => {
       const query = new URLSearchParams(slotsQuery);
-      query.set("pageSize", String(pageSize));
+      query.set("pageSize", "250");
       if (continuationToken) query.set("continuationToken", continuationToken);
-      const response = await apiFetch(`/api/slots?${query.toString()}`);
-      const items = readPagedItems(response);
-      merged.push(...items);
-
-      continuationToken = readContinuationToken(response);
-      pageCount += 1;
-      if (!continuationToken || items.length === 0) break;
-    }
-
-    return merged;
+      return apiFetch(`/api/slots?${query.toString()}`);
+    });
   }
 
   async function loadMeta() {
@@ -904,8 +890,12 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
       params.set("dateTo", next.gameDate);
       params.set("fieldKey", next.fieldKey);
       params.set("status", `${SLOT_STATUS.OPEN},${SLOT_STATUS.CONFIRMED}`);
-      const result = await apiFetch(`/api/slots?${params.toString()}`);
-      const candidates = readPagedItems(result);
+      const candidates = await fetchAllPagedItems(async (continuationToken) => {
+        const query = new URLSearchParams(params);
+        query.set("pageSize", "250");
+        if (continuationToken) query.set("continuationToken", continuationToken);
+        return apiFetch(`/api/slots?${query.toString()}`);
+      });
       const overlaps = candidates.filter((candidate) => {
         if (!candidate || candidate.slotId === editingSlot.slotId) return false;
         if ((candidate.status || "") === SLOT_STATUS.CANCELLED) return false;

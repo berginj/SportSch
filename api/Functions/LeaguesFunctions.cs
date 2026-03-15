@@ -43,6 +43,7 @@ public class LeaguesFunctions
         List<BlackoutRange> blackouts
     );
     public record LeagueDto(string leagueId, string name, string timezone, string status, LeagueContact contact, SeasonConfig season);
+    public record PublicLeagueDto(string leagueId, string name);
     public record CreateLeagueReq(string? leagueId, string? name, string? timezone);
     public record PatchLeagueReq(string? name, string? timezone, string? status, LeagueContact? contact);
     public record PatchSeasonReq(SeasonConfig? season);
@@ -101,9 +102,13 @@ public class LeaguesFunctions
         try
         {
             var entities = await _leagueRepo.QueryLeaguesAsync(includeAll: false);
-            var list = new List<LeagueDto>();
+            var list = new List<PublicLeagueDto>();
             foreach (var e in entities)
-                list.Add(ToDto(e));
+            {
+                list.Add(new PublicLeagueDto(
+                    leagueId: e.RowKey,
+                    name: (e.GetString("Name") ?? e.RowKey).Trim()));
+            }
 
             return ApiResponses.Ok(req, list.OrderBy(x => x.name).ThenBy(x => x.leagueId));
         }

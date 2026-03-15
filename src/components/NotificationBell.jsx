@@ -15,9 +15,9 @@ export default function NotificationBell({ leagueId }) {
     isOpen,
     toggleDropdown,
     closeDropdown,
+    fetchNotifications,
     markAsRead,
     markAllAsRead,
-    refreshCount,
   } = useNotifications(leagueId);
 
   const bellRef = useRef(null);
@@ -82,7 +82,7 @@ export default function NotificationBell({ leagueId }) {
             onMarkAsRead={markAsRead}
             onMarkAllAsRead={markAllAsRead}
             onClose={closeDropdown}
-            onRefresh={refreshCount}
+            onRefresh={fetchNotifications}
           />
         </div>
       )}

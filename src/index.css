@@ -1935,9 +1935,23 @@
   }
 
   .notificationDropdown__item {
-    padding: 0.9rem 1rem;
     border-bottom: 1px solid rgba(196, 207, 218, 0.32);
     transition: background-color 0.18s ease;
+  }
+
+  .notificationDropdown__itemButton {
+    width: 100%;
+    display: block;
+    padding: 0.9rem 1rem;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+  }
+
+  .notificationDropdown__itemButton:focus {
+    outline: none;
   }
 
   .notificationDropdown__item.is-read {
@@ -1952,7 +1966,21 @@
     cursor: pointer;
   }
 
-  .notificationDropdown__item.is-link:hover {
+  .notificationDropdown__item.is-link .notificationDropdown__itemButton {
+    cursor: pointer;
+  }
+
+  .notificationDropdown__item:not(.is-link) .notificationDropdown__itemButton {
+    cursor: default;
+  }
+
+  .notificationDropdown__item:focus-within {
+    outline: 2px solid rgba(46, 111, 174, 0.28);
+    outline-offset: -2px;
+  }
+
+  .notificationDropdown__item.is-link:hover,
+  .notificationDropdown__item.is-link:focus-within {
     background: rgba(243, 194, 79, 0.12);
   }
 
@@ -2476,7 +2504,8 @@
     background: rgba(108, 169, 226, 0.15);
   }
 
-  :root[data-theme="dark"] .notificationDropdown__item.is-link:hover {
+  :root[data-theme="dark"] .notificationDropdown__item.is-link:hover,
+  :root[data-theme="dark"] .notificationDropdown__item.is-link:focus-within {
     background: rgba(243, 194, 79, 0.18);
   }
 
