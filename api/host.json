@@ -14,8 +14,8 @@
             "routePrefix": "api",
             "cors": {
                 "allowedOrigins": [
-                    "https://your-production-domain.com",
-                    "https://www-your-production-domain.com",
+                    "https://softball.sports.fifthseasonadvisors.com",
+                    "https://green-meadow-08081740f.5.azurestaticapps.net",
                     "http://localhost:5173",
                     "http://127.0.0.1:5173"
                 ],
