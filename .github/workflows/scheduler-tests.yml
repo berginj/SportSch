@@ -1,0 +1,55 @@
+name: Scheduler Contract Tests
+
+on:
+  pull_request:
+    paths:
+      - 'api/Scheduling/**'
+      - 'api/Functions/ScheduleWizardFunctions.cs'
+      - 'src/manage/SeasonWizard.jsx'
+  push:
+    branches:
+      - main
+    paths:
+      - 'api/Scheduling/**'
+      - 'api/Functions/ScheduleWizardFunctions.cs'
+
+jobs:
+  scheduler-backend-tests:
+    name: Backend Scheduler Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore api/GameSwap.Tests/GameSwap.Tests.csproj
+
+      - name: Build
+        run: dotnet build api/GameSwap.Tests/GameSwap.Tests.csproj --no-restore
+
+      - name: Run Scheduler Tests
+        run: dotnet test api/GameSwap.Tests/GameSwap.Tests.csproj --filter "FullyQualifiedName~Schedule" --no-build --verbosity normal
+
+  scheduler-frontend-tests:
+    name: Frontend Wizard Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run SeasonWizard Tests
+        run: npm test -- src/__tests__/manage/SeasonWizard.test.jsx --run
