@@ -40,12 +40,13 @@ public class MembershipsFunctions
     public record MembershipAdminDto(string userId, string email, string leagueId, string role, CoachTeam? team);
 
     [Function("ListMemberships")]
-    [OpenApiOperation(operationId: "ListMemberships", tags: new[] { "Memberships" }, Summary = "List memberships", Description = "Retrieves memberships for a league (league admin) or all memberships (global admin with all=true). Supports filtering by role, leagueId, and search.")]
+    [OpenApiOperation(operationId: "ListMemberships", tags: new[] { "Memberships" }, Summary = "List memberships", Description = "Retrieves memberships for a league (league admin) or exact-user membership review for global admins with all=true. Global admin review uses the canonical user partition and supports optional leagueId, role, and search filtering.")]
     [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
-    [OpenApiParameter(name: "all", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Set to 'true' to list all memberships across all leagues (global admin only)")]
-    [OpenApiParameter(name: "leagueId", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Filter by league ID (only with all=true)")]
+    [OpenApiParameter(name: "all", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Set to 'true' for global admin exact-user membership review")]
+    [OpenApiParameter(name: "userId", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Required with all=true. Exact user ID lookup that uses the canonical membership partition and avoids cross-league scans.")]
+    [OpenApiParameter(name: "leagueId", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Optional league filter applied after the exact user lookup")]
     [OpenApiParameter(name: "role", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Filter by role (Coach, Viewer, LeagueAdmin)")]
-    [OpenApiParameter(name: "search", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Search by userId, email, leagueId, or role")]
+    [OpenApiParameter(name: "search", In = ParameterLocation.Query, Required = false, Type = typeof(string), Description = "Search the loaded membership rows by userId, email, leagueId, or role")]
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(object), Description = "Memberships retrieved successfully")]
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Only league admins or global admins can list memberships")]
     public async Task<HttpResponseData> List(
@@ -86,28 +87,8 @@ public class MembershipsFunctions
             {
                 // List memberships for specific league
                 var leagueId = ApiGuards.RequireLeagueId(req);
-                var entities = await _membershipRepo.QueryAllMembershipsAsync(leagueId);
-                var list = new List<MembershipDto>();
-
-                foreach (var e in entities)
-                {
-                    var role = (e.GetString("Role") ?? "").Trim();
-                    var email = (e.GetString("Email") ?? "").Trim();
-                    var division = ReadMembershipDivision(e);
-                    var teamId = ReadMembershipTeamId(e);
-
-                    CoachTeam? team = null;
-                    if (string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase)
-                        && !string.IsNullOrWhiteSpace(division)
-                        && !string.IsNullOrWhiteSpace(teamId))
-                        team = new CoachTeam(division, teamId);
-
-                    list.Add(new MembershipDto(
-                        userId: e.PartitionKey,
-                        email: email,
-                        role: role,
-                        team: team));
-                }
+                var entities = await _membershipRepo.GetLeagueMembershipsAsync(leagueId);
+                var list = entities.Select(MapMembershipDto).ToList();
 
                 // stable-ish ordering for admin UX
                 var ordered = list
@@ -118,53 +99,31 @@ public class MembershipsFunctions
             }
 
             // List all memberships (global admin)
+            var userIdFilter = (ApiGuards.GetQueryParam(req, "userId") ?? "").Trim();
             var leagueFilter = (ApiGuards.GetQueryParam(req, "leagueId") ?? "").Trim();
             var roleFilter = (ApiGuards.GetQueryParam(req, "role") ?? "").Trim();
             var search = (ApiGuards.GetQueryParam(req, "search") ?? "").Trim();
 
-            var entities2 = await _membershipRepo.QueryAllMembershipsAsync(
-                string.IsNullOrWhiteSpace(leagueFilter) ? null : leagueFilter);
-
-            var listAll = new List<MembershipAdminDto>();
-
-            foreach (var e in entities2)
+            if (string.IsNullOrWhiteSpace(userIdFilter))
             {
-                var role = (e.GetString("Role") ?? "").Trim();
-                var email = (e.GetString("Email") ?? "").Trim();
-                var division = ReadMembershipDivision(e);
-                var teamId = ReadMembershipTeamId(e);
-                var rowLeagueId = (e.RowKey ?? "").Trim();
-
-                CoachTeam? team = null;
-                if (string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase)
-                    && !string.IsNullOrWhiteSpace(division)
-                    && !string.IsNullOrWhiteSpace(teamId))
-                    team = new CoachTeam(division, teamId);
-
-                listAll.Add(new MembershipAdminDto(
-                    userId: e.PartitionKey,
-                    email: email,
-                    leagueId: rowLeagueId,
-                    role: role,
-                    team: team));
+                return ApiResponses.Error(
+                    req,
+                    HttpStatusCode.BadRequest,
+                    "BAD_REQUEST",
+                    "userId is required when all=true");
             }
 
-            if (!string.IsNullOrWhiteSpace(roleFilter))
+            if (!string.IsNullOrWhiteSpace(leagueFilter))
             {
-                listAll = listAll
-                    .Where(x => string.Equals(x.role, roleFilter, StringComparison.OrdinalIgnoreCase))
-                    .ToList();
+                ApiGuards.EnsureValidTableKeyPart("leagueId", leagueFilter);
             }
 
-            if (!string.IsNullOrWhiteSpace(search))
-            {
-                listAll = listAll.Where(x =>
-                        x.userId.Contains(search, StringComparison.OrdinalIgnoreCase) ||
-                        x.email.Contains(search, StringComparison.OrdinalIgnoreCase) ||
-                        x.leagueId.Contains(search, StringComparison.OrdinalIgnoreCase) ||
-                        x.role.Contains(search, StringComparison.OrdinalIgnoreCase))
-                    .ToList();
-            }
+            var entities2 = await LoadAdminMembershipEntitiesAsync(userIdFilter);
+            var listAll = FilterMembershipAdminDtos(
+                entities2.Select(MapMembershipAdminDto),
+                leagueFilter,
+                roleFilter,
+                search);
 
             var orderedAll = listAll
                 .OrderBy(x => x.leagueId)
@@ -375,6 +334,74 @@ public class MembershipsFunctions
     private static string ReadMembershipTeamId(TableEntity membership)
     {
         return (membership.GetString("TeamId") ?? "").Trim();
+    }
+
+    private async Task<List<TableEntity>> LoadAdminMembershipEntitiesAsync(string userIdFilter)
+    {
+        ApiGuards.EnsureValidTableKeyPart("userId", userIdFilter);
+        return await _membershipRepo.GetUserMembershipsAsync(userIdFilter);
+    }
+
+    private static MembershipDto MapMembershipDto(TableEntity entity)
+    {
+        var role = (entity.GetString("Role") ?? "").Trim();
+        var division = ReadMembershipDivision(entity);
+        var teamId = ReadMembershipTeamId(entity);
+
+        CoachTeam? team = null;
+        if (string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(division)
+            && !string.IsNullOrWhiteSpace(teamId))
+        {
+            team = new CoachTeam(division, teamId);
+        }
+
+        return new MembershipDto(
+            userId: entity.PartitionKey,
+            email: (entity.GetString("Email") ?? "").Trim(),
+            role: role,
+            team: team);
+    }
+
+    private static MembershipAdminDto MapMembershipAdminDto(TableEntity entity)
+    {
+        var mapped = MapMembershipDto(entity);
+        return new MembershipAdminDto(
+            userId: mapped.userId,
+            email: mapped.email,
+            leagueId: (entity.RowKey ?? "").Trim(),
+            role: mapped.role,
+            team: mapped.team);
+    }
+
+    private static List<MembershipAdminDto> FilterMembershipAdminDtos(
+        IEnumerable<MembershipAdminDto> items,
+        string leagueFilter,
+        string roleFilter,
+        string search)
+    {
+        var filtered = items;
+
+        if (!string.IsNullOrWhiteSpace(leagueFilter))
+        {
+            filtered = filtered.Where(x => string.Equals(x.leagueId, leagueFilter, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(roleFilter))
+        {
+            filtered = filtered.Where(x => string.Equals(x.role, roleFilter, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            filtered = filtered.Where(x =>
+                x.userId.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                x.email.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                x.leagueId.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                x.role.Contains(search, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return filtered.ToList();
     }
 
     private async Task SaveCanonicalMembershipAsync(TableEntity membership)

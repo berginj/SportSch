@@ -51,12 +51,11 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
   const [users, setUsers] = useState([]);
   const [usersLoaded, setUsersLoaded] = useState(false);
   const [userDraft, setUserDraft] = useState({ userId: "", email: "", homeLeagueId: "", role: "" });
-  const [memberSearch, setMemberSearch] = useState("");
+  const [memberUserId, setMemberUserId] = useState("");
   const [memberLeague, setMemberLeague] = useState("");
   const [memberRole, setMemberRole] = useState("");
   const [membersLoadingAll, setMembersLoadingAll] = useState(false);
   const [membersAll, setMembersAll] = useState([]);
-  const [membersAllLoaded, setMembersAllLoaded] = useState(false);
   const [newLeague, setNewLeague] = useState({ leagueId: "", name: "" });
   const [seasonLeagueId, setSeasonLeagueId] = useState("");
   const [seasonDraft, setSeasonDraft] = useState({
@@ -213,13 +212,6 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSection, isGlobalAdmin, usersLoaded, usersLoading]);
 
-  useEffect(() => {
-    if (!isGlobalAdmin || activeSection !== 'global') return;
-    if (membersAllLoaded || membersLoadingAll) return;
-    loadAllMemberships();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSection, isGlobalAdmin, membersAllLoaded, membersLoadingAll]);
-
   async function loadGlobalLeagues() {
     setGlobalErr("");
     setGlobalLoading(true);
@@ -276,28 +268,51 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
       trackEvent("ui_admin_user_save", { userId });
       setUserDraft({ userId: "", email: "", homeLeagueId: "", role: "" });
       await loadUsers();
+      if (memberUserId && userId && userId === memberUserId) {
+        await loadAllMemberships(userId);
+      }
     } catch (e) {
       setToast({ tone: "error", message: e?.message || "Failed to save user" });
     }
   }
 
-  async function loadAllMemberships() {
+  async function loadAllMemberships(userIdOverride = memberUserId, filterOverrides = null) {
+    const userId = (typeof userIdOverride === "string" ? userIdOverride : memberUserId || "").trim();
+    const leagueFilter = typeof filterOverrides?.leagueId === "string"
+      ? filterOverrides.leagueId.trim()
+      : memberLeague.trim();
+    const roleFilter = typeof filterOverrides?.role === "string"
+      ? filterOverrides.role.trim()
+      : memberRole.trim();
+    if (!userId) {
+      setMembersAll([]);
+      return;
+    }
+
     setMembersLoadingAll(true);
     try {
       const qs = new URLSearchParams();
       qs.set("all", "true");
-      if (memberSearch.trim()) qs.set("search", memberSearch.trim());
-      if (memberLeague.trim()) qs.set("leagueId", memberLeague.trim());
-      if (memberRole.trim()) qs.set("role", memberRole.trim());
+      qs.set("userId", userId);
+      if (leagueFilter) qs.set("leagueId", leagueFilter);
+      if (roleFilter) qs.set("role", roleFilter);
       const data = await apiFetch(`/api/memberships?${qs.toString()}`);
       setMembersAll(Array.isArray(data) ? data : []);
     } catch (e) {
       setToast({ tone: "error", message: e?.message || "Failed to load memberships" });
       setMembersAll([]);
     } finally {
-      setMembersAllLoaded(true);
       setMembersLoadingAll(false);
     }
+  }
+
+  async function inspectMembershipsForUser(user) {
+    const userId = (user?.userId || "").trim();
+    if (!userId) return;
+    setMemberUserId(userId);
+    setMemberLeague("");
+    setMemberRole("");
+    await loadAllMemberships(userId, { leagueId: "", role: "" });
   }
 
   async function createLeague() {
@@ -904,8 +919,8 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
             setUserDraft={setUserDraft}
             saveUser={saveUser}
             users={users}
-            memberSearch={memberSearch}
-            setMemberSearch={setMemberSearch}
+            memberUserId={memberUserId}
+            setMemberUserId={setMemberUserId}
             memberLeague={memberLeague}
             setMemberLeague={setMemberLeague}
             memberRole={memberRole}
@@ -913,6 +928,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
             loadAllMemberships={loadAllMemberships}
             membersLoadingAll={membersLoadingAll}
             membersAll={membersAll}
+            inspectMembershipsForUser={inspectMembershipsForUser}
           />
         </Suspense>
       )}

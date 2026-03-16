@@ -87,6 +87,95 @@ public class ApiContractHardeningTests
     }
 
     [Fact]
+    public async Task ListMemberships_AllRequiresUserId()
+    {
+        var memberships = new Mock<IMembershipRepository>();
+        memberships
+            .Setup(x => x.IsGlobalAdminAsync("global-admin"))
+            .ReturnsAsync(true);
+
+        var functions = new MembershipsFunctions(
+            memberships.Object,
+            Mock.Of<TableServiceClient>(),
+            CreateLoggerFactory());
+
+        var response = await functions.List(
+            CreateAuthenticatedRequest("http://localhost:7071/api/memberships?all=true", "global-admin"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        using var json = await ReadJsonAsync(response);
+        var error = json.RootElement.GetProperty("error");
+        Assert.Equal("BAD_REQUEST", error.GetProperty("code").GetString());
+        Assert.Contains("userId", error.GetProperty("message").GetString() ?? "");
+
+        memberships.Verify(x => x.GetUserMembershipsAsync(It.IsAny<string>()), Times.Never);
+        memberships.Verify(x => x.QueryAllMembershipsAsync(It.IsAny<string?>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ListMemberships_AllWithUserId_UsesExactUserPartition()
+    {
+        var memberships = new Mock<IMembershipRepository>();
+        memberships
+            .Setup(x => x.IsGlobalAdminAsync("global-admin"))
+            .ReturnsAsync(true);
+        memberships
+            .Setup(x => x.GetUserMembershipsAsync("user-1"))
+            .ReturnsAsync(new System.Collections.Generic.List<TableEntity>
+            {
+                new("user-1", "LEAGUE-1")
+                {
+                    ["Email"] = "viewer@example.com",
+                    ["Role"] = Constants.Roles.Viewer,
+                },
+                new("user-1", "LEAGUE-2")
+                {
+                    ["Email"] = "coach@example.com",
+                    ["Role"] = Constants.Roles.Coach,
+                    ["Division"] = "AAA",
+                    ["TeamId"] = "TEAM-9",
+                },
+            });
+
+        var functions = new MembershipsFunctions(
+            memberships.Object,
+            Mock.Of<TableServiceClient>(),
+            CreateLoggerFactory());
+
+        var response = await functions.List(
+            CreateAuthenticatedRequest(
+                "http://localhost:7071/api/memberships?all=true&userId=user-1&leagueId=LEAGUE-2&role=Coach&search=coach",
+                "global-admin"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var json = await ReadJsonAsync(response);
+        var rows = json.RootElement.GetProperty("data").EnumerateArray().ToArray();
+        Assert.Single(rows);
+
+        var item = rows[0];
+        Assert.Equal("user-1", item.GetProperty("userId").GetString());
+        Assert.Equal("LEAGUE-2", item.GetProperty("leagueId").GetString());
+        Assert.Equal(Constants.Roles.Coach, item.GetProperty("role").GetString());
+        Assert.Equal("coach@example.com", item.GetProperty("email").GetString());
+
+        var team = item.GetProperty("team");
+        Assert.Equal("AAA", team.GetProperty("division").GetString());
+        Assert.Equal("TEAM-9", team.GetProperty("teamId").GetString());
+
+        memberships.Verify(x => x.GetUserMembershipsAsync("user-1"), Times.Once);
+        memberships.Verify(x => x.QueryAllMembershipsAsync(It.IsAny<string?>()), Times.Never);
+        memberships.Verify(
+            x => x.QueryLeagueMembershipsAsync(
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<int>()),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task GetAdminDashboard_AggregatesAcrossPagedSlots()
     {
         var openDate = DateTime.UtcNow.AddDays(3).ToString("yyyy-MM-dd");
@@ -271,6 +360,20 @@ public class ApiContractHardeningTests
         var context = new Mock<FunctionContext>();
         context.SetupGet(x => x.InvocationId).Returns(Guid.NewGuid().ToString());
         return new TestHttpRequestData(context.Object, new Uri(url), new HttpHeadersCollection());
+    }
+
+    private static HttpRequestData CreateAuthenticatedRequest(string url, string userId)
+    {
+        var context = new Mock<FunctionContext>();
+        context.SetupGet(x => x.InvocationId).Returns(Guid.NewGuid().ToString());
+
+        return new TestHttpRequestData(
+            context.Object,
+            new Uri(url),
+            new HttpHeadersCollection
+            {
+                { "x-user-id", userId },
+            });
     }
 
     private static HttpRequestData CreateLeagueScopedRequest(string url, string userId, string leagueId)

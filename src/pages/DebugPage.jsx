@@ -514,6 +514,7 @@ export default function DebugPage({ leagueId, me }) {
       setMemberSearch(userId);
       setMemberLeague("");
       setMemberRole("");
+      void loadAllMemberships(userId, { leagueId: "", role: "" });
     }
     setMemberDraft({
       userId,
@@ -523,16 +524,28 @@ export default function DebugPage({ leagueId, me }) {
     });
   }
 
-  async function loadAllMemberships() {
+  async function loadAllMemberships(userIdOverride = memberSearch, filterOverrides = null) {
     if (!isGlobalAdmin) return;
+    const userId = (typeof userIdOverride === "string" ? userIdOverride : memberSearch || "").trim();
+    const leagueFilter = typeof filterOverrides?.leagueId === "string"
+      ? filterOverrides.leagueId.trim()
+      : memberLeague.trim();
+    const roleFilter = typeof filterOverrides?.role === "string"
+      ? filterOverrides.role.trim()
+      : memberRole.trim();
+    if (!userId) {
+      setMemberErr("Enter an exact user ID or choose Memberships from the user list.");
+      setMembershipsAll([]);
+      return;
+    }
     setMembersLoadingAll(true);
     setMemberErr("");
     try {
       const qs = new URLSearchParams();
       qs.set("all", "true");
-      if (memberSearch.trim()) qs.set("search", memberSearch.trim());
-      if (memberLeague.trim()) qs.set("leagueId", memberLeague.trim());
-      if (memberRole.trim()) qs.set("role", memberRole.trim());
+      qs.set("userId", userId);
+      if (leagueFilter) qs.set("leagueId", leagueFilter);
+      if (roleFilter) qs.set("role", roleFilter);
       const data = await apiFetch(`/api/memberships?${qs.toString()}`);
       setMembershipsAll(Array.isArray(data) ? data : []);
     } catch (e) {
@@ -589,7 +602,7 @@ export default function DebugPage({ leagueId, me }) {
         delete next[`${userId}|${leagueId}`];
         return next;
       });
-      await loadAllMemberships();
+      await loadAllMemberships(userId);
       await loadUsers();
     } catch (e) {
       setMemberErr(e?.message || "Failed to save membership.");
@@ -615,7 +628,7 @@ export default function DebugPage({ leagueId, me }) {
       });
       setMemberOk(`Added ${userId} to ${leagueId}.`);
       setMemberDraft({ userId: "", email: "", leagueId: "", role: "" });
-      await loadAllMemberships();
+      await loadAllMemberships(userId);
       await loadUsers();
     } catch (e) {
       setMemberErr(e?.message || "Failed to save membership.");
@@ -828,7 +841,6 @@ export default function DebugPage({ leagueId, me }) {
   useEffect(() => {
     if (!isGlobalAdmin) return;
     loadUsers();
-    loadAllMemberships();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isGlobalAdmin]);
 
@@ -966,7 +978,7 @@ export default function DebugPage({ leagueId, me }) {
         <div className="card">
           <div className="card__header">
             <div className="h2">Debug: league memberships</div>
-            <div className="subtle">Assign users to leagues and adjust roles from <code>GameSwapMemberships</code>.</div>
+            <div className="subtle">Assign users to leagues and inspect one exact user partition at a time from <code>GameSwapMemberships</code>.</div>
           </div>
 
           <div className="formGrid">
@@ -1020,11 +1032,11 @@ export default function DebugPage({ leagueId, me }) {
 
           <div className="row gap-3 row--wrap mb-2">
             <label>
-              Search
+              User ID
               <input
                 value={memberSearch}
                 onChange={(e) => setMemberSearch(e.target.value)}
-                placeholder="userId, email, league, role"
+                placeholder="Exact user ID"
               />
             </label>
             <label>
@@ -1048,8 +1060,12 @@ export default function DebugPage({ leagueId, me }) {
                 ))}
               </select>
             </label>
-            <button className="btn" onClick={loadAllMemberships} disabled={membersLoadingAll}>
-              {membersLoadingAll ? "Loading..." : "Refresh memberships"}
+            <button
+              className="btn"
+              onClick={() => loadAllMemberships()}
+              disabled={membersLoadingAll || !memberSearch.trim()}
+            >
+              {membersLoadingAll ? "Loading..." : "Load memberships"}
             </button>
           </div>
 
@@ -1058,6 +1074,8 @@ export default function DebugPage({ leagueId, me }) {
 
           {membersLoadingAll ? (
             <div className="muted">Loading...</div>
+          ) : !memberSearch.trim() ? (
+            <div className="muted">Choose a user above or enter an exact user ID to inspect memberships.</div>
           ) : membershipsAll.length === 0 ? (
             <div className="muted">No memberships returned.</div>
           ) : (

@@ -160,7 +160,22 @@ public class MembershipRepository : IMembershipRepository
             return new List<TableEntity>();
         }
 
-        var result = await QueryAllMembershipsAsync(leagueId);
+        var result = new List<TableEntity>();
+        var seenTokens = new HashSet<string>(StringComparer.Ordinal);
+        string? continuationToken = null;
+
+        while (true)
+        {
+            var page = await QueryLeagueMembershipsAsync(leagueId, continuationToken: continuationToken, pageSize: 250);
+            result.AddRange(page.Items);
+
+            if (string.IsNullOrWhiteSpace(page.ContinuationToken) || !seenTokens.Add(page.ContinuationToken))
+            {
+                break;
+            }
+
+            continuationToken = page.ContinuationToken;
+        }
 
         _logger.LogDebug("Retrieved {Count} memberships for league {LeagueId}", result.Count, leagueId);
         return result;

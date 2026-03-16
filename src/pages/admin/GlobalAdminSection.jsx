@@ -28,8 +28,8 @@ export default function GlobalAdminSection({
   setUserDraft,
   saveUser,
   users,
-  memberSearch,
-  setMemberSearch,
+  memberUserId,
+  setMemberUserId,
   memberLeague,
   setMemberLeague,
   memberRole,
@@ -37,6 +37,7 @@ export default function GlobalAdminSection({
   loadAllMemberships,
   membersLoadingAll,
   membersAll,
+  inspectMembershipsForUser,
 }) {
   return (
     <div className="card mt-4">
@@ -201,6 +202,7 @@ export default function GlobalAdminSection({
                   <th>Email</th>
                   <th>Home league</th>
                   <th>Home role</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -210,6 +212,11 @@ export default function GlobalAdminSection({
                     <td>{u.email || ""}</td>
                     <td>{u.homeLeagueId || ""}</td>
                     <td>{u.homeLeagueRole || ""}</td>
+                    <td>
+                      <button className="btn btn--ghost btn--sm" onClick={() => inspectMembershipsForUser(u)}>
+                        Memberships
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -219,15 +226,15 @@ export default function GlobalAdminSection({
       </div>
 
       <div className="card mt-4">
-        <h4 className="m-0">Memberships (all leagues)</h4>
-        <p className="muted">Review all memberships across leagues. Use filters to narrow results.</p>
+        <h4 className="m-0">Memberships by user</h4>
+        <p className="muted">Load memberships for one exact user at a time. This uses the canonical membership partition and avoids cross-league scans.</p>
         <div className="row gap-3 row--wrap mb-3">
           <label className="min-w-[200px]">
-            Search
+            User ID
             <input
-              value={memberSearch}
-              onChange={(e) => setMemberSearch(e.target.value)}
-              placeholder="userId or email"
+              value={memberUserId}
+              onChange={(e) => setMemberUserId(e.target.value)}
+              placeholder="Exact user ID"
             />
           </label>
           <label className="min-w-[180px]">
@@ -250,13 +257,19 @@ export default function GlobalAdminSection({
               ))}
             </select>
           </label>
-          <button className="btn" onClick={loadAllMemberships} disabled={membersLoadingAll}>
-            {membersLoadingAll ? "Loading..." : "Refresh"}
+          <button
+            className="btn"
+            onClick={() => loadAllMemberships()}
+            disabled={membersLoadingAll || !memberUserId.trim()}
+          >
+            {membersLoadingAll ? "Loading..." : "Load memberships"}
           </button>
         </div>
 
-        {membersAll.length === 0 ? (
-          <div className="muted">No memberships found.</div>
+        {!memberUserId.trim() ? (
+          <div className="muted">Choose a user above or enter an exact user ID to review memberships.</div>
+        ) : membersAll.length === 0 ? (
+          <div className="muted">No memberships found for this user.</div>
         ) : (
           <div className="tableWrap">
             <table className="table">
