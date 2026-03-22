@@ -84,6 +84,13 @@ function formatTeams(slot) {
   return home ? `${home} vs TBD` : "";
 }
 
+function resolvePreferredDivision(selectedDivision, divisions, coachDivision, canPickTeam) {
+  const requestedDivision = String(selectedDivision || "").trim();
+  if (!canPickTeam && coachDivision) return coachDivision;
+  if (requestedDivision) return requestedDivision;
+  return divisions?.[0]?.code || "";
+}
+
 export default function OffersPage({ me, leagueId, setLeagueId }) {
   const email = me?.email || "";
   const isGlobalAdmin = !!me?.isGlobalAdmin;
@@ -120,6 +127,8 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
     if (!mem?.team?.division || !mem?.team?.teamId) return null;
     return { division: mem.team.division, teamId: mem.team.teamId };
   }, [canPickTeam, memberships, leagueId]);
+  const coachDivision = String(coachTeam?.division || "").trim();
+  const coachTeamId = String(coachTeam?.teamId || "").trim();
 
   const fieldByKey = useMemo(() => {
     const m = new Map();
@@ -186,7 +195,7 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
     });
   }, []);
 
-  async function loadAll(selectedDivision) {
+  const loadAll = useCallback(async (selectedDivision) => {
     setErr("");
     setLoading(true);
     try {
@@ -197,7 +206,7 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
       ]);
       const divList = Array.isArray(divs) ? divs : [];
       setDivisions(divList);
-      const firstDiv = selectedDivision || divList?.[0]?.code || "";
+      const firstDiv = resolvePreferredDivision(selectedDivision, divList, coachDivision, canPickTeam);
       setDivision(firstDiv);
 
       const fieldList = Array.isArray(flds) ? flds : [];
@@ -215,21 +224,20 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [canPickTeam, coachDivision, fetchDivisionSlots]);
 
   useEffect(() => {
     const preferred = applyFiltersFromUrl();
     setSlotTypeFilter(preferred.type);
-    loadAll(preferred.division);
+    if (coachTeamId) setOfferingTeamId(coachTeamId);
+    void loadAll(preferred.division);
     initializedRef.current = true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leagueId]);
+  }, [applyFiltersFromUrl, coachTeamId, leagueId, loadAll]);
 
   useEffect(() => {
     if (!coachTeam || canPickTeam) return;
-    if (coachTeam.division) setDivision(coachTeam.division);
-    if (coachTeam.teamId) setOfferingTeamId(coachTeam.teamId);
-  }, [coachTeam, canPickTeam]);
+    if (coachTeamId) setOfferingTeamId(coachTeamId);
+  }, [coachTeam, canPickTeam, coachTeamId]);
 
   async function reloadSlots(nextDivision) {
     const d = nextDivision ?? division;
