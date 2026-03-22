@@ -291,3 +291,7 @@ src/generated-api/
 *.sln
 *.sw?
 .claude/
+
+# Local cleanup artifacts
+_cleanup_backup/
+.github/workflows/sportsch-swa.yml
