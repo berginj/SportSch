@@ -50,6 +50,16 @@ describe("AdminDashboard", () => {
     expect(upcomingCard).toHaveTextContent("1");
   });
 
+  it("renders metric failures with an error tone", async () => {
+    api.apiFetch.mockRejectedValueOnce(new Error("Metrics unavailable"));
+
+    render(<AdminDashboard leagueId="league-1" onNavigate={() => {}} />);
+
+    await waitFor(() => expect(screen.getByText("Error")).toBeInTheDocument());
+    expect(screen.getByText("Error").closest(".statusCard")).toHaveClass("statusCard--error");
+    expect(screen.getByText("Metrics unavailable")).toBeInTheDocument();
+  });
+
   it("routes manage shortcuts into the intended subsections", async () => {
     const replaceStateSpy = vi.spyOn(window.history, "replaceState");
 

@@ -60,7 +60,7 @@ export default function AdminDashboard({ leagueId, onNavigate }) {
   if (error) {
     return (
       <div className="page">
-        <StatusCard title="Error" message={error} variant="error" />
+        <StatusCard title="Error" message={error} tone="error" />
         <button className="btn mt-3" onClick={loadMetrics}>
           Retry
         </button>

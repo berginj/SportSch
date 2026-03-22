@@ -62,6 +62,21 @@ describe("CoachDashboard", () => {
     expect(screen.getByText("1 New Offer")).toBeInTheDocument();
   });
 
+  it("renders dashboard failures with an error tone", async () => {
+    api.apiFetch.mockRejectedValueOnce(new Error("Dashboard unavailable"));
+
+    render(
+      <CoachDashboard
+        leagueId="league-1"
+        setTab={() => {}}
+      />
+    );
+
+    await waitFor(() => expect(screen.getByText("Error")).toBeInTheDocument());
+    expect(screen.getByText("Error").closest(".statusCard")).toHaveClass("statusCard--error");
+    expect(screen.getByText("Dashboard unavailable")).toBeInTheDocument();
+  });
+
   it("routes quick actions into the intended offer and calendar workflows", async () => {
     const setTab = vi.fn();
     const replaceStateSpy = vi.spyOn(window.history, "replaceState");

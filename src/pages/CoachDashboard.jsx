@@ -72,7 +72,7 @@ export default function CoachDashboard({ leagueId, setTab }) {
   if (error) {
     return (
       <div className="page">
-        <StatusCard title="Error" message={error} variant="error" />
+        <StatusCard title="Error" message={error} tone="error" />
         <button className="btn mt-3" onClick={loadDashboard}>
           Retry
         </button>
