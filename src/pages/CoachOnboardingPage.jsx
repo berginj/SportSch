@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
-import { readPagedItems } from "../lib/pagedResults";
+import { fetchAllPagedItems } from "../lib/pagedResults";
 import StatusCard from "../components/StatusCard";
 import Toast from "../components/Toast";
 import { ConfirmDialog } from "../components/Dialogs";
 import { useConfirmDialog } from "../lib/useDialogs";
+import { SLOT_STATUS } from "../lib/constants";
+import { navigateToCalendarTab } from "../lib/navigation";
 
 function getTodayDate() {
   return new Date().toISOString().split("T")[0];
@@ -42,6 +44,21 @@ export default function CoachOnboardingPage({ me, leagueId, setTab }) {
 
   const { confirmState, requestConfirm, handleConfirm, handleCancel } = useConfirmDialog();
 
+  const loadUpcomingGames = useCallback(async () => {
+    if (!division) return [];
+    return fetchAllPagedItems(async (continuationToken) => {
+      const params = new URLSearchParams({
+        division,
+        status: SLOT_STATUS.CONFIRMED,
+        dateFrom: getTodayDate(),
+        dateTo: getDateInDays(90),
+        pageSize: "250",
+      });
+      if (continuationToken) params.set("continuationToken", continuationToken);
+      return apiFetch(`/api/slots?${params.toString()}`);
+    });
+  }, [division]);
+
   const loadAll = useCallback(async () => {
     if (!division || !teamId) {
       setLoading(false);
@@ -55,9 +72,7 @@ export default function CoachOnboardingPage({ me, leagueId, setTab }) {
       const [teamResp, requestsResp, gamesResp] = await Promise.all([
         apiFetch(`/api/teams?division=${encodeURIComponent(division)}`).catch(() => []),
         apiFetch("/api/field-inventory/practice/coach").catch(() => null),
-        apiFetch(
-          `/api/slots?division=${encodeURIComponent(division)}&status=Confirmed&dateFrom=${getTodayDate()}&dateTo=${getDateInDays(90)}`
-        ).catch(() => ({ items: [] })),
+        loadUpcomingGames().catch(() => []),
       ]);
 
       const myTeam = (Array.isArray(teamResp) ? teamResp : []).find(
@@ -78,7 +93,7 @@ export default function CoachOnboardingPage({ me, leagueId, setTab }) {
       setPracticePortal(portalData);
       setPracticeRequests(Array.isArray(portalData?.requests) ? portalData.requests : []);
 
-      const teamGames = readPagedItems(gamesResp).filter(
+      const teamGames = (Array.isArray(gamesResp) ? gamesResp : []).filter(
         (game) =>
           game.offeringTeamId === teamId ||
           game.confirmedTeamId === teamId ||
@@ -91,7 +106,17 @@ export default function CoachOnboardingPage({ me, leagueId, setTab }) {
     } finally {
       setLoading(false);
     }
-  }, [division, teamId]);
+  }, [division, loadUpcomingGames, teamId]);
+
+  const openFullSchedule = useCallback(() => {
+    navigateToCalendarTab(setTab, {
+      division,
+      showSlots: true,
+      showEvents: true,
+      statuses: [SLOT_STATUS.CONFIRMED],
+      teamId,
+    });
+  }, [division, setTab, teamId]);
 
   useEffect(() => {
     loadAll();
@@ -480,6 +505,12 @@ export default function CoachOnboardingPage({ me, leagueId, setTab }) {
         <div className="card__header">
           <div className="h2">4. Your Game Schedule</div>
           <div className="subtle">Review your team's upcoming games for the season.</div>
+        </div>
+        <div className="row row--between row--wrap mb-3">
+          <div className="muted">Showing the next 90 days of confirmed games for your team.</div>
+          <button className="btn" onClick={openFullSchedule}>
+            View Full Schedule
+          </button>
         </div>
 
         {upcomingGames.length === 0 ? (

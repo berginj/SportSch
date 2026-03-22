@@ -106,6 +106,7 @@ describe("CoachOnboardingPage", () => {
 
   it("routes practice setup through the Practice Portal instead of embedding recurring request actions", async () => {
     const setTab = vi.fn();
+    const replaceStateSpy = vi.spyOn(window.history, "replaceState");
 
     render(
       <CoachOnboardingPage
@@ -132,5 +133,97 @@ describe("CoachOnboardingPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open Practice Portal" }));
     expect(setTab).toHaveBeenCalledWith("practice");
+
+    fireEvent.click(screen.getByRole("button", { name: "View Full Schedule" }));
+    expect(setTab).toHaveBeenLastCalledWith("calendar");
+    expect(replaceStateSpy).toHaveBeenLastCalledWith({}, "", expect.stringContaining("division=AAA"));
+    expect(replaceStateSpy).toHaveBeenLastCalledWith({}, "", expect.stringContaining("teamId=TEAM-1"));
+    expect(replaceStateSpy).toHaveBeenLastCalledWith({}, "", expect.stringContaining("status=Confirmed"));
+    expect(replaceStateSpy).toHaveBeenLastCalledWith({}, "", expect.stringContaining("#calendar"));
+  });
+
+  it("loads upcoming games across all slot pages", async () => {
+    api.apiFetch.mockImplementation((path) => {
+      const url = String(path || "");
+      if (url === "/api/teams?division=AAA") {
+        return Promise.resolve([
+          {
+            division: "AAA",
+            teamId: "TEAM-1",
+            name: "Blue Waves",
+            clinicPreference: "weekday-evenings",
+            primaryContact: {
+              name: "Coach Blue",
+              email: "coach@example.com",
+            },
+            assistantCoaches: [],
+            onboardingComplete: false,
+          },
+        ]);
+      }
+      if (url === "/api/field-inventory/practice/coach") {
+        return Promise.resolve({
+          division: "AAA",
+          teamId: "TEAM-1",
+          requests: [],
+        });
+      }
+      if (url.includes("continuationToken=page-2")) {
+        return Promise.resolve({
+          items: [
+            {
+              slotId: "slot-2",
+              gameDate: "2026-04-19",
+              startTime: "17:30",
+              displayName: "Diamond 2",
+              homeTeamId: "TEAM-3",
+              awayTeamId: "TEAM-1",
+            },
+          ],
+          continuationToken: "",
+          pageSize: 1,
+        });
+      }
+      if (url.startsWith("/api/slots?division=AAA&status=Confirmed")) {
+        return Promise.resolve({
+          items: [
+            {
+              slotId: "slot-1",
+              gameDate: "2026-04-12",
+              startTime: "18:00",
+              displayName: "Gunston > Turf",
+              homeTeamId: "TEAM-1",
+              awayTeamId: "TEAM-2",
+            },
+          ],
+          continuationToken: "page-2",
+          pageSize: 1,
+        });
+      }
+      throw new Error(`Unexpected apiFetch call: ${url}`);
+    });
+
+    render(
+      <CoachOnboardingPage
+        me={{
+          memberships: [
+            {
+              leagueId: "league-1",
+              role: "Coach",
+              team: { division: "AAA", teamId: "TEAM-1" },
+            },
+          ],
+        }}
+        leagueId="league-1"
+        setTab={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(screen.getByText("Coach Onboarding")).toBeInTheDocument());
+
+    const upcomingGamesStat = screen.getByText("Upcoming games (90 days)").closest(".layoutStat");
+    expect(upcomingGamesStat).toHaveTextContent("2");
+    expect(screen.getByText("2026-04-19 - 17:30")).toBeInTheDocument();
+    expect(api.apiFetch).toHaveBeenCalledWith(expect.stringContaining("continuationToken=page-2"));
   });
 });
