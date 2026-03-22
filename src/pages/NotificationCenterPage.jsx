@@ -100,8 +100,17 @@ export default function NotificationCenterPage({ leagueId }) {
     }
 
     if (notification.link) {
-      window.location.hash = notification.link;
+      const nextHash = String(notification.link).startsWith("#")
+        ? notification.link
+        : `#${notification.link}`;
+      window.location.hash = nextHash;
     }
+  };
+
+  const handleNotificationKeyDown = (event, notification) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    handleNotificationClick(notification);
   };
 
   const filteredNotifications = useMemo(() => notifications.filter((notification) => {
@@ -259,6 +268,10 @@ export default function NotificationCenterPage({ leagueId }) {
                 <div
                   key={notification.notificationId}
                   onClick={() => handleNotificationClick(notification)}
+                  onKeyDown={(event) => handleNotificationKeyDown(event, notification)}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Notification: ${notification.message || formatNotificationType(notification.type)}`}
                   className={`notificationCenterItem ${notification.isRead ? "is-read" : "is-unread"} ${notification.link ? "is-link" : ""}`}
                 >
                   <div className="notificationCenterItem__row">
