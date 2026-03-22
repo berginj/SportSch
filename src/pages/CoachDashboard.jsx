@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../lib/api';
 import StatusCard from '../components/StatusCard';
+import { SLOT_STATUS } from "../lib/constants";
+import { navigateToCalendarTab, navigateToOffersTab } from "../lib/navigation";
 
 /**
  * Coach Dashboard - Personalized home page for coaches
@@ -44,6 +46,21 @@ export default function CoachDashboard({ leagueId, setTab }) {
     loadDashboard();
   }, [loadDashboard]);
 
+  const openUnassignedOpenGames = () =>
+    navigateToCalendarTab(setTab, {
+      showSlots: true,
+      showEvents: false,
+      slotType: "offer",
+      statuses: [SLOT_STATUS.OPEN],
+    });
+
+  const openUnassignedSchedule = () =>
+    navigateToCalendarTab(setTab, {
+      showSlots: true,
+      showEvents: true,
+      statuses: [SLOT_STATUS.CONFIRMED],
+    });
+
   if (loading) {
     return (
       <div className="page">
@@ -79,11 +96,50 @@ export default function CoachDashboard({ leagueId, setTab }) {
               Contact your league administrator to get assigned to your team.
             </div>
           </div>
-          <QuickActionsPanel setTab={setTab} hasTeam={false} />
+          <QuickActionsPanel
+            hasTeam={false}
+            onBrowseAvailableSlots={openUnassignedOpenGames}
+            onViewTeamSchedule={openUnassignedSchedule}
+          />
         </div>
       </div>
     );
   }
+
+  const openOffersBoard = () =>
+    navigateToOffersTab(setTab, {
+      division: dashboard.team?.division || "",
+      slotType: "offer",
+    });
+
+  const openOpenGames = () =>
+    navigateToCalendarTab(setTab, {
+      division: dashboard.team?.division || "",
+      showSlots: true,
+      showEvents: false,
+      slotType: "offer",
+      statuses: [SLOT_STATUS.OPEN],
+    });
+
+  const openMyOpenOffers = () =>
+    navigateToCalendarTab(setTab, {
+      division: dashboard.team?.division || "",
+      showSlots: true,
+      showEvents: false,
+      slotType: "offer",
+      statuses: [SLOT_STATUS.OPEN],
+      teamId: dashboard.team?.teamId || "",
+    });
+
+  const openTeamSchedule = () =>
+    navigateToCalendarTab(setTab, {
+      division: dashboard.team?.division || "",
+      showSlots: true,
+      showEvents: true,
+      slotType: "all",
+      statuses: [SLOT_STATUS.CONFIRMED],
+      teamId: dashboard.team?.teamId || "",
+    });
 
   return (
     <div className="page">
@@ -119,10 +175,17 @@ export default function CoachDashboard({ leagueId, setTab }) {
           openOffersInDivision={dashboard.openOffersInDivision}
           myOpenOffers={dashboard.myOpenOffers}
           upcomingGames={dashboard.upcomingGames}
-          setTab={setTab}
+          onReviewOpenGames={openOpenGames}
+          onReviewMyOffers={openMyOpenOffers}
+          onReviewSchedule={openTeamSchedule}
         />
 
-        <QuickActionsPanel setTab={setTab} hasTeam={true} />
+        <QuickActionsPanel
+          hasTeam={true}
+          onOfferGameSlot={openOffersBoard}
+          onBrowseAvailableSlots={openOpenGames}
+          onViewTeamSchedule={openTeamSchedule}
+        />
       </div>
 
       {dashboard.upcomingGames.length > 0 && (
@@ -135,7 +198,7 @@ export default function CoachDashboard({ leagueId, setTab }) {
               <GameCard key={game.slotId || idx} game={game} teamId={dashboard.team?.teamId} />
             ))}
           </div>
-          <button className="btn btn--ghost" onClick={() => setTab('calendar')}>
+          <button className="btn btn--ghost" onClick={openTeamSchedule}>
             View Full Schedule
           </button>
         </div>
@@ -149,7 +212,7 @@ export default function CoachDashboard({ leagueId, setTab }) {
           <div className="callout callout--info">
             <div>No upcoming games scheduled in the next 30 days.</div>
             <div className="mt-2">
-              Check the <button className="link" onClick={() => setTab('calendar')}>Calendar</button> for available game slots.
+              Check the <button className="link" onClick={openOpenGames}>Calendar</button> for available game slots.
             </div>
           </div>
         </div>
@@ -187,7 +250,14 @@ function TeamSummaryCard({ team }) {
   );
 }
 
-function ActionItemsCard({ openOffersInDivision, myOpenOffers, upcomingGames, setTab }) {
+function ActionItemsCard({
+  openOffersInDivision,
+  myOpenOffers,
+  upcomingGames,
+  onReviewOpenGames,
+  onReviewMyOffers,
+  onReviewSchedule,
+}) {
   const hasActions = openOffersInDivision > 0 || myOpenOffers > 0 || upcomingGames.length > 0;
 
   return (
@@ -210,7 +280,7 @@ function ActionItemsCard({ openOffersInDivision, myOpenOffers, upcomingGames, se
               </div>
               <button
                 className="btn btn--sm btn--primary"
-                onClick={() => setTab('calendar')}
+                onClick={onReviewOpenGames}
               >
                 Review
               </button>
@@ -227,7 +297,7 @@ function ActionItemsCard({ openOffersInDivision, myOpenOffers, upcomingGames, se
               </div>
               <button
                 className="btn btn--sm btn--ghost"
-                onClick={() => setTab('calendar')}
+                onClick={onReviewMyOffers}
               >
                 View
               </button>
@@ -244,7 +314,7 @@ function ActionItemsCard({ openOffersInDivision, myOpenOffers, upcomingGames, se
               </div>
               <button
                 className="btn btn--sm btn--ghost"
-                onClick={() => setTab('calendar')}
+                onClick={onReviewSchedule}
               >
                 Details
               </button>
@@ -256,7 +326,7 @@ function ActionItemsCard({ openOffersInDivision, myOpenOffers, upcomingGames, se
   );
 }
 
-function QuickActionsPanel({ setTab, hasTeam }) {
+function QuickActionsPanel({ hasTeam, onOfferGameSlot, onBrowseAvailableSlots, onViewTeamSchedule }) {
   return (
     <div className="card">
       <div className="card__header">
@@ -266,7 +336,7 @@ function QuickActionsPanel({ setTab, hasTeam }) {
         {hasTeam && (
           <button
             className="btn btn--primary w-full justify-center"
-            onClick={() => setTab('calendar')}
+            onClick={onOfferGameSlot}
             title="Offer a game slot to other teams"
           >
             Offer a Game Slot
@@ -274,14 +344,14 @@ function QuickActionsPanel({ setTab, hasTeam }) {
         )}
         <button
           className="btn w-full justify-center"
-          onClick={() => setTab('calendar')}
+          onClick={onBrowseAvailableSlots}
           title="Browse available game slots"
         >
           Browse Available Slots
         </button>
         <button
           className="btn w-full justify-center"
-          onClick={() => setTab('calendar')}
+          onClick={onViewTeamSchedule}
           title="View your team's schedule"
         >
           View Team Schedule

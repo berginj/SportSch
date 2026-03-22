@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import CoachDashboard from "../../pages/CoachDashboard";
 import * as api from "../../lib/api";
 
@@ -10,6 +10,7 @@ vi.mock("../../lib/api", () => ({
 describe("CoachDashboard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.history.replaceState({}, "", "/");
 
     api.apiFetch.mockImplementation((path) => {
       const url = String(path || "");
@@ -59,5 +60,40 @@ describe("CoachDashboard", () => {
     expect(upcomingGames).toHaveTextContent("1");
 
     expect(screen.getByText("1 New Offer")).toBeInTheDocument();
+  });
+
+  it("routes quick actions into the intended offer and calendar workflows", async () => {
+    const setTab = vi.fn();
+    const replaceStateSpy = vi.spyOn(window.history, "replaceState");
+
+    render(
+      <CoachDashboard
+        leagueId="league-1"
+        setTab={setTab}
+      />
+    );
+
+    await waitFor(() => expect(screen.getByText("Coach Dashboard")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Offer a Game Slot" }));
+    expect(setTab).toHaveBeenLastCalledWith("offers");
+    expect(replaceStateSpy).toHaveBeenLastCalledWith({}, "", expect.stringContaining("division=AAA"));
+    expect(replaceStateSpy).toHaveBeenLastCalledWith({}, "", expect.stringContaining("slotType=offer"));
+    expect(replaceStateSpy).toHaveBeenLastCalledWith({}, "", expect.stringContaining("#offers"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Browse Available Slots" }));
+    expect(setTab).toHaveBeenLastCalledWith("calendar");
+    expect(replaceStateSpy).toHaveBeenLastCalledWith({}, "", expect.stringContaining("showSlots=1"));
+    expect(replaceStateSpy).toHaveBeenLastCalledWith({}, "", expect.not.stringContaining("showEvents=1"));
+    expect(replaceStateSpy).toHaveBeenLastCalledWith({}, "", expect.stringContaining("slotType=offer"));
+    expect(replaceStateSpy).toHaveBeenLastCalledWith({}, "", expect.stringContaining("status=Open"));
+    expect(replaceStateSpy).toHaveBeenLastCalledWith({}, "", expect.stringContaining("#calendar"));
+
+    fireEvent.click(screen.getByRole("button", { name: "View Team Schedule" }));
+    expect(setTab).toHaveBeenLastCalledWith("calendar");
+    expect(replaceStateSpy).toHaveBeenLastCalledWith({}, "", expect.stringContaining("showSlots=1"));
+    expect(replaceStateSpy).toHaveBeenLastCalledWith({}, "", expect.stringContaining("showEvents=1"));
+    expect(replaceStateSpy).toHaveBeenLastCalledWith({}, "", expect.stringContaining("status=Confirmed"));
+    expect(replaceStateSpy).toHaveBeenLastCalledWith({}, "", expect.stringContaining("teamId=TEAM-1"));
   });
 });

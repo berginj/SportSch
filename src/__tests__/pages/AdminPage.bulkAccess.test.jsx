@@ -87,6 +87,7 @@ describe("AdminPage bulk access actions", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    window.history.replaceState({}, "", "/#admin");
     requestPromptMock.mockResolvedValue("Not eligible");
     vi.mocked(usePromptDialog).mockReturnValue({
       promptState: null,
@@ -170,5 +171,28 @@ describe("AdminPage bulk access actions", () => {
       action: "deny",
       items: [{ userId: "user-deny", leagueId: "league-1", reason: "Not eligible" }],
     });
+  });
+
+  it("keeps admin section changes in query state", async () => {
+    const replaceStateSpy = vi.spyOn(window.history, "replaceState");
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: /coach assignments/i }));
+    expect(await screen.findByText("Coach section")).toBeInTheDocument();
+    expect(replaceStateSpy).toHaveBeenLastCalledWith(
+      {},
+      "",
+      expect.stringContaining("adminSection=coaches")
+    );
+    expect(replaceStateSpy).toHaveBeenLastCalledWith({}, "", expect.stringContaining("#admin"));
+
+    fireEvent.click(screen.getByRole("button", { name: /csv import/i }));
+    expect(await screen.findByText("Import section")).toBeInTheDocument();
+    expect(replaceStateSpy).toHaveBeenLastCalledWith(
+      {},
+      "",
+      expect.stringContaining("adminSection=import")
+    );
+    expect(replaceStateSpy).toHaveBeenLastCalledWith({}, "", expect.stringContaining("#admin"));
   });
 });

@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../lib/api';
 import StatusCard from '../components/StatusCard';
+import { navigateToCalendarTab, navigateToManageTab } from "../lib/navigation";
 
 /**
  * AdminDashboard - League admin dashboard with health metrics and quick actions
@@ -67,6 +68,25 @@ export default function AdminDashboard({ leagueId, onNavigate }) {
     );
   }
 
+  function openManageCommissioner() {
+    navigateToManageTab(null, "commissioner");
+  }
+
+  function openManageSettings() {
+    navigateToManageTab(null, "settings");
+  }
+
+  function openManageFields() {
+    navigateToManageTab(null, "fields");
+  }
+
+  function openCalendar() {
+    navigateToCalendarTab(null, {
+      showSlots: true,
+      showEvents: true,
+    });
+  }
+
   return (
     <div className="page">
       <div className="card">
@@ -119,7 +139,7 @@ export default function AdminDashboard({ leagueId, onNavigate }) {
           subtitle={`${metrics.confirmedSlots} of ${metrics.totalSlots} slots`}
           color={metrics.scheduleCoverage >= 80 ? 'green' : metrics.scheduleCoverage >= 50 ? 'yellow' : 'red'}
           actionLabel="Generate"
-          onAction={() => window.location.hash = '#manage'}
+          onAction={openManageCommissioner}
         />
 
         <MetricCard
@@ -155,7 +175,7 @@ export default function AdminDashboard({ leagueId, onNavigate }) {
           </button>
           <button
             className="btn w-full justify-center"
-            onClick={() => window.location.hash = '#manage'}
+            onClick={openManageSettings}
           >
             League Setup
           </button>
@@ -194,21 +214,21 @@ export default function AdminDashboard({ leagueId, onNavigate }) {
           <div className="grid gap-2">
             <button
               className="layoutItem layoutItem--link"
-              onClick={() => window.location.hash = '#manage'}
+              onClick={openManageSettings}
             >
               <div className="font-semibold text-sm">Teams & Divisions</div>
               <div className="subtle">Manage teams and division setup</div>
             </button>
             <button
               className="layoutItem layoutItem--link"
-              onClick={() => window.location.hash = '#manage'}
+              onClick={openManageFields}
             >
               <div className="font-semibold text-sm">Fields</div>
               <div className="subtle">Manage field locations</div>
             </button>
             <button
               className="layoutItem layoutItem--link"
-              onClick={() => window.location.hash = '#calendar'}
+              onClick={openCalendar}
             >
               <div className="font-semibold text-sm">Schedule</div>
               <div className="subtle">View calendar and manage games</div>

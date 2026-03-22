@@ -5,6 +5,12 @@ import StatusCard from "../components/StatusCard";
 import CoachDashboard from "./CoachDashboard";
 import { SLOT_STATUS } from "../lib/constants";
 import { getDefaultRangeFallback, getSeasonRange } from "../lib/season";
+import {
+  navigateToAdminSection,
+  navigateToCalendarTab,
+  navigateToManageTab,
+  navigateToOffersTab,
+} from "../lib/navigation";
 
 function toDateInputValue(d) {
   const yyyy = d.getFullYear();
@@ -219,28 +225,18 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
   );
 
   function goToCalendarWithStatus(status) {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    if (division) params.set("division", division);
-    else params.delete("division");
-    if (dateFrom) params.set("dateFrom", dateFrom);
-    else params.delete("dateFrom");
-    if (dateTo) params.set("dateTo", dateTo);
-    else params.delete("dateTo");
-    params.set("showSlots", "1");
-    if (showEvents) params.set("showEvents", "1");
-    else params.delete("showEvents");
-    params.set("status", status);
-    const next = `${window.location.pathname}?${params.toString()}#calendar`;
-    window.history.replaceState({}, "", next);
-    setTab("calendar");
+    navigateToCalendarTab(setTab, {
+      division,
+      dateFrom,
+      dateTo,
+      showSlots: true,
+      showEvents,
+      statuses: [status],
+    });
   }
 
   function openAccessRequests() {
-    setTab("admin");
-    if (typeof window !== "undefined") {
-      window.location.hash = "#admin";
-    }
+    navigateToAdminSection(setTab, "access-requests");
   }
 
   const nextItems = useMemo(() => {
@@ -294,9 +290,9 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
             <div className="layoutMeta">Power tasks for {leagueId || "your league"}</div>
           </div>
           <div className="layoutRow">
-            <button className="btn" onClick={() => setTab("manage")}>League Management</button>
-            <button className="btn" onClick={() => setTab("offers")}>Create offer/request</button>
-            <button className="btn" onClick={() => setTab("admin")}>Access requests</button>
+            <button className="btn" onClick={() => navigateToManageTab(setTab, "commissioner")}>League Management</button>
+            <button className="btn" onClick={() => navigateToOffersTab(setTab, { division, slotType: "offer" })}>Create offer/request</button>
+            <button className="btn" onClick={openAccessRequests}>Access requests</button>
           </div>
         </div>
         <div className="layoutGrid">
@@ -353,10 +349,18 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
           <div className="layoutPanel">
             <div className="layoutPanel__title">Shortcuts</div>
             <div className="layoutList">
-              <button className="layoutItem layoutItem--link" onClick={() => setTab("manage")} type="button">
+              <button
+                className="layoutItem layoutItem--link"
+                onClick={() => navigateToManageTab(setTab, "settings")}
+                type="button"
+              >
                 Teams and coaches
               </button>
-              <button className="layoutItem layoutItem--link" onClick={() => setTab("manage")} type="button">
+              <button
+                className="layoutItem layoutItem--link"
+                onClick={() => navigateToManageTab(setTab, "invites")}
+                type="button"
+              >
                 Invites
               </button>
               <button className="layoutItem layoutItem--link" onClick={() => setTab("calendar")} type="button">
@@ -378,7 +382,7 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
             <div className="layoutMeta">Find open offers, accept, and confirm quickly.</div>
           </div>
           <div className="layoutRow">
-            <button className="btn" onClick={() => setTab("offers")}>Create offer/request</button>
+            <button className="btn" onClick={() => navigateToOffersTab(setTab, { division, slotType: "offer" })}>Create offer/request</button>
             <button className="btn btn--ghost" onClick={() => setTab("calendar")}>Calendar</button>
           </div>
         </div>

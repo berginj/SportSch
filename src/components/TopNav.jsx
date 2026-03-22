@@ -24,16 +24,6 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId, theme =
     setLeagueId(id);
   }
 
-  function goManage() {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      params.set("manageTab", "commissioner");
-      const next = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
-      window.history.replaceState({}, "", next);
-    }
-    setTab("manage");
-  }
-
   useEffect(() => {
     if (!isGlobalAdmin) return;
     let cancelled = false;
@@ -133,7 +123,7 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId, theme =
           {canManage && (
           <button
             className={tab === "manage" ? "tab tab--active" : "tab"}
-            onClick={goManage}
+            onClick={() => setTab("manage")}
             disabled={!hasLeagues}
             title="League management"
             aria-current={tab === "manage" ? "page" : undefined}
