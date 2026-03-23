@@ -1,6 +1,7 @@
 import { Suspense, lazy, useMemo, useState, useEffect } from "react";
 import LeaguePicker from "../components/LeaguePicker";
 import CollapsibleSection from "../components/CollapsibleSection";
+import { readLocationSearchParams, replaceLocation, subscribeToLocationChanges } from "../lib/locationState";
 
 const FieldsImport = lazy(() => import("../manage/FieldsImport"));
 const InvitesManager = lazy(() => import("../manage/InvitesManager"));
@@ -53,7 +54,7 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
   };
   const [active, setActive] = useState(() => {
     if (typeof window === "undefined") return defaultTabId;
-    const params = new URLSearchParams(window.location.search);
+    const params = readLocationSearchParams();
     const next = resolveTabId(params.get("manageTab"));
     if (next && tabIds.has(next)) return next;
     return defaultTabId;
@@ -64,22 +65,17 @@ export default function ManagePage({ leagueId, me, setLeagueId, tableView }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const onPopState = () => {
-      const params = new URLSearchParams(window.location.search);
+      const params = readLocationSearchParams();
       const next = resolveTabId(params.get("manageTab") || defaultTabId);
       const safeNext = tabIds.has(next) ? next : defaultTabId;
       setActive(safeNext);
     };
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
+    return subscribeToLocationChanges(onPopState, { popstate: true, hashchange: false });
   }, [tabIds, defaultTabId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    if (activeTabId) params.set("manageTab", activeTabId);
-    else params.delete("manageTab");
-    const next = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
-    window.history.replaceState({}, "", next);
+    replaceLocation({ setParams: { manageTab: activeTabId } });
   }, [activeTabId]);
 
   return (

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
+import { readLocationSearchParams, subscribeToLocationChanges, updateLocationSearch } from "../lib/locationState";
 import { readPagedItems } from "../lib/pagedResults";
 import StatusCard from "../components/StatusCard";
 import CoachDashboard from "./CoachDashboard";
@@ -113,7 +114,7 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
 
   const applyFiltersFromUrl = useCallback((defaults) => {
     if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
+    const params = readLocationSearchParams();
     setDivision((params.get("division") || "").trim());
     setDateFrom((params.get("dateFrom") || "").trim() || defaults.from);
     setDateTo((params.get("dateTo") || "").trim() || defaults.to);
@@ -142,34 +143,31 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const onPopState = () => applyFiltersFromUrl(defaultsRef.current);
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
+    return subscribeToLocationChanges(onPopState, { popstate: true, hashchange: false });
   }, [applyFiltersFromUrl]);
 
   useEffect(() => {
     if (!initializedRef.current || typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    if (division) params.set("division", division);
-    else params.delete("division");
-    if (dateFrom) params.set("dateFrom", dateFrom);
-    else params.delete("dateFrom");
-    if (dateTo) params.set("dateTo", dateTo);
-    else params.delete("dateTo");
-    if (showSlots) params.set("showSlots", "1");
-    else params.delete("showSlots");
-    if (showEvents) params.set("showEvents", "1");
-    else params.delete("showEvents");
+    updateLocationSearch((params) => {
+      if (division) params.set("division", division);
+      else params.delete("division");
+      if (dateFrom) params.set("dateFrom", dateFrom);
+      else params.delete("dateFrom");
+      if (dateTo) params.set("dateTo", dateTo);
+      else params.delete("dateTo");
+      if (showSlots) params.set("showSlots", "1");
+      else params.delete("showSlots");
+      if (showEvents) params.set("showEvents", "1");
+      else params.delete("showEvents");
 
-    const activeStatuses = [
-      SLOT_STATUS.OPEN,
-      SLOT_STATUS.CONFIRMED,
-      SLOT_STATUS.CANCELLED,
-    ].filter((s) => slotStatusFilter[s]);
-    if (activeStatuses.length) params.set("status", activeStatuses.join(","));
-    else params.delete("status");
-
-    const next = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
-    window.history.replaceState({}, "", next);
+      const activeStatuses = [
+        SLOT_STATUS.OPEN,
+        SLOT_STATUS.CONFIRMED,
+        SLOT_STATUS.CANCELLED,
+      ].filter((s) => slotStatusFilter[s]);
+      if (activeStatuses.length) params.set("status", activeStatuses.join(","));
+      else params.delete("status");
+    });
   }, [division, dateFrom, dateTo, showSlots, showEvents, slotStatusFilter]);
 
   async function load() {

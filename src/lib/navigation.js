@@ -1,3 +1,5 @@
+import { replaceLocation } from "./locationState";
+
 const CALENDAR_FILTER_KEYS = [
   "division",
   "dateFrom",
@@ -11,35 +13,12 @@ const CALENDAR_FILTER_KEYS = [
 
 const OFFERS_FILTER_KEYS = ["division", "slotType"];
 
-function buildPathname(url) {
-  const search = url.searchParams.toString();
-  return `${url.pathname}${search ? `?${search}` : ""}`;
-}
-
-function writeSearchParams(url, setParams = {}, clearParams = []) {
-  clearParams.forEach((key) => url.searchParams.delete(key));
-
-  Object.entries(setParams).forEach(([key, value]) => {
-    if (value == null || value === "") {
-      url.searchParams.delete(key);
-      return;
-    }
-    url.searchParams.set(key, String(value));
-  });
-}
-
 function navigateWithHash(setTab, tab, setParams = {}, clearParams = []) {
   if (typeof window === "undefined") return;
 
-  const base = window.location.origin && window.location.origin !== "null"
-    ? window.location.origin
-    : "http://localhost";
-  const url = new URL(window.location.href || "/", base);
-  writeSearchParams(url, setParams, clearParams);
-  const nextPath = buildPathname(url);
   const nextHash = tab ? `#${tab}` : "";
   const previousHash = window.location.hash;
-  window.history.replaceState({}, "", `${nextPath}${nextHash}`);
+  replaceLocation({ setParams, clearParams, hash: nextHash });
   if (typeof setTab === "function") {
     setTab(tab);
     return;

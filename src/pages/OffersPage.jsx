@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
+import { readLocationSearchParams, updateLocationSearch } from "../lib/locationState";
 import { fetchAllPagedItems } from "../lib/pagedResults";
 import LeaguePicker from "../components/LeaguePicker";
 import StatusCard from "../components/StatusCard";
@@ -174,7 +175,7 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
 
   const applyFiltersFromUrl = useCallback(() => {
     if (typeof window === "undefined") return { division: "", type: "offer" };
-    const params = new URLSearchParams(window.location.search);
+    const params = readLocationSearchParams();
     const div = (params.get("division") || "").trim();
     const rawType = (params.get("slotType") || "").trim().toLowerCase();
     const type = rawType === "request" || rawType === "offer" ? rawType : "offer";
@@ -257,13 +258,12 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
 
   useEffect(() => {
     if (!initializedRef.current || typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    if (division) params.set("division", division);
-    else params.delete("division");
-    if (slotTypeFilter && slotTypeFilter !== "all") params.set("slotType", slotTypeFilter);
-    else params.delete("slotType");
-    const next = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
-    window.history.replaceState({}, "", next);
+    updateLocationSearch((params) => {
+      if (division) params.set("division", division);
+      else params.delete("division");
+      if (slotTypeFilter && slotTypeFilter !== "all") params.set("slotType", slotTypeFilter);
+      else params.delete("slotType");
+    });
   }, [division, slotTypeFilter]);
 
   const teamsForDivision = useMemo(() => {

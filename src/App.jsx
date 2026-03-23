@@ -1,5 +1,12 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import StatusCard from "./components/StatusCard";
+import {
+  readHashValue,
+  readLocationSearchParams,
+  replaceLocation,
+  updateLocationSearch,
+  subscribeToLocationChanges,
+} from "./lib/locationState";
 import { useSession } from "./lib/useSession";
 import { trackPageView } from "./lib/telemetry";
 import { useKeyboardShortcuts, COMMON_SHORTCUTS } from "./lib/hooks/useKeyboardShortcuts";
@@ -24,7 +31,7 @@ const VALID_TABS = new Set(["home", "calendar", "offers", "manage", "admin", "de
 
 function readInviteFromUrl() {
   if (typeof window === "undefined") return null;
-  const params = new URLSearchParams(window.location.search);
+  const params = readLocationSearchParams();
   const inviteId = (params.get("inviteId") || "").trim();
   const leagueId = (params.get("leagueId") || "").trim();
   if (!inviteId || !leagueId) return null;
@@ -32,9 +39,7 @@ function readInviteFromUrl() {
 }
 
 function readTabFromHash() {
-  if (typeof window === "undefined") return "home";
-  const hash = (window.location.hash || "").replace("#", "").trim();
-  return VALID_TABS.has(hash) ? hash : "home";
+  return readHashValue({ fallback: "home", validValues: VALID_TABS });
 }
 
 function readThemePreference() {
@@ -106,7 +111,7 @@ export default function App() {
     if (typeof window === "undefined") return;
     const nextHash = `#${effectiveTab}`;
     if (window.location.hash !== nextHash) {
-      window.history.replaceState({}, "", `${window.location.pathname}${window.location.search}${nextHash}`);
+      replaceLocation({ hash: nextHash });
     }
   }, [effectiveTab]);
 
@@ -116,8 +121,7 @@ export default function App() {
       const next = readTabFromHash();
       setTab((prev) => (prev === next ? prev : next));
     };
-    window.addEventListener("hashchange", onHashChange);
-    return () => window.removeEventListener("hashchange", onHashChange);
+    return subscribeToLocationChanges(onHashChange, { hashchange: true, popstate: false });
   }, []);
 
   useEffect(() => {
@@ -163,12 +167,10 @@ export default function App() {
 
   if (invite) {
     const clearInvite = () => {
-      if (typeof window !== "undefined") {
-        const url = new URL(window.location.href);
-        url.searchParams.delete("inviteId");
-        url.searchParams.delete("leagueId");
-        window.history.replaceState({}, "", url.pathname + url.search);
-      }
+      updateLocationSearch((params) => {
+        params.delete("inviteId");
+        params.delete("leagueId");
+      }, { hash: "" });
       setInvite(null);
     };
 

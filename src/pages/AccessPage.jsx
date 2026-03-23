@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { LEAGUE_HEADER_NAME } from "../lib/constants";
+import { readLocationSearchParams, subscribeToLocationChanges, updateLocationSearch } from "../lib/locationState";
 import { trackEvent } from "../lib/telemetry";
 
 const ROLE_OPTIONS = [
@@ -38,7 +39,7 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
 
   const applyFiltersFromUrl = useCallback(() => {
     if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
+    const params = readLocationSearchParams();
     const desiredLeague = (params.get("leagueId") || "").trim();
     const desiredRole = (params.get("role") || "").trim();
     if (desiredLeague) {
@@ -57,7 +58,7 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
 
   const accessIntent = useMemo(() => {
     if (typeof window === "undefined") return null;
-    const params = new URLSearchParams(window.location.search);
+    const params = readLocationSearchParams();
     const desiredLeague = (params.get("leagueId") || "").trim();
     const requestedRole = (params.get("requestRole") || "").trim();
     return { desiredLeague, requestedRole };
@@ -126,21 +127,19 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const onPopState = () => applyFiltersFromUrl();
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
+    return subscribeToLocationChanges(onPopState, { popstate: true, hashchange: false });
   }, [applyFiltersFromUrl]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    if (leagueId) params.set("leagueId", leagueId);
-    else params.delete("leagueId");
-    if (role) params.set("role", role);
-    else params.delete("role");
-    params.delete("autoSubmit");
-    params.delete("requestRole");
-    const next = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
-    window.history.replaceState({}, "", next);
+    updateLocationSearch((params) => {
+      if (leagueId) params.set("leagueId", leagueId);
+      else params.delete("leagueId");
+      if (role) params.set("role", role);
+      else params.delete("role");
+      params.delete("autoSubmit");
+      params.delete("requestRole");
+    });
   }, [leagueId, role]);
 
   useEffect(() => {

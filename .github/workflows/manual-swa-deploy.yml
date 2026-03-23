@@ -2,6 +2,11 @@ name: Manual SWA Deploy
 
 on:
   workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to deploy
+        required: false
+        default: main
 
 jobs:
   build_and_deploy_job:
@@ -12,6 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.inputs.ref }}
           submodules: true
           lfs: false
       - name: Use Node ${{ env.NODE_VERSION }}

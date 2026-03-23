@@ -4,6 +4,7 @@ import Toast from "../components/Toast";
 import { PromptDialog } from "../components/Dialogs";
 import { usePromptDialog } from "../lib/useDialogs";
 import { LEAGUE_HEADER_NAME } from "../lib/constants";
+import { readLocationSearchParams, replaceLocation, subscribeToLocationChanges } from "../lib/locationState";
 import { trackEvent } from "../lib/telemetry";
 import { buildTeamsTemplateCsv, downloadCsv } from "../lib/csvUtils";
 const AdminDashboard = lazy(() => import("./AdminDashboard"));
@@ -21,13 +22,6 @@ const ROLE_OPTIONS = [
 const BASE_ADMIN_SECTIONS = ["dashboard", "access-requests", "coaches", "import"];
 const GLOBAL_ADMIN_SECTION = "global";
 const ADMIN_HASH = "#admin";
-
-function buildAdminUrl(params) {
-  if (typeof window === "undefined") return "";
-  const search = params.toString();
-  const hash = window.location.hash || ADMIN_HASH;
-  return `${window.location.pathname}${search ? `?${search}` : ""}${hash}`;
-}
 
 export default function AdminPage({ me, leagueId, setLeagueId }) {
   const [loading, setLoading] = useState(true);
@@ -147,7 +141,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
+    const params = readLocationSearchParams();
     setActiveSection(resolveAdminSection(params.get("adminSection")));
     adminSectionInitializedRef.current = true;
   }, [resolveAdminSection]);
@@ -155,20 +149,19 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const onPopState = () => {
-      const params = new URLSearchParams(window.location.search);
+      const params = readLocationSearchParams();
       setActiveSection(resolveAdminSection(params.get("adminSection")));
     };
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
+    return subscribeToLocationChanges(onPopState, { popstate: true, hashchange: false });
   }, [resolveAdminSection]);
 
   useEffect(() => {
     if (!adminSectionInitializedRef.current) return;
     if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    if (activeSection && activeSection !== "dashboard") params.set("adminSection", activeSection);
-    else params.delete("adminSection");
-    window.history.replaceState({}, "", buildAdminUrl(params));
+    replaceLocation({
+      setParams: { adminSection: activeSection !== "dashboard" ? activeSection : "" },
+      hash: window.location.hash || ADMIN_HASH,
+    });
   }, [activeSection]);
 
   useEffect(() => {
@@ -182,7 +175,7 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
+    const params = readLocationSearchParams();
     const status = (params.get("accessStatus") || "Pending").trim();
     const allowed = new Set(["Pending", "Approved", "Denied"]);
     setAccessStatus(allowed.has(status) ? status : "Pending");
@@ -190,15 +183,15 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    if (accessStatus) params.set("accessStatus", accessStatus);
-    else params.delete("accessStatus");
-    window.history.replaceState({}, "", buildAdminUrl(params));
+    replaceLocation({
+      setParams: { accessStatus },
+      hash: window.location.hash || ADMIN_HASH,
+    });
   }, [accessStatus]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
+    const params = readLocationSearchParams();
     const scopeParam = params.get("accessScope");
     const scope = (scopeParam || "").trim();
     if (!scopeParam && isGlobalAdmin) {
@@ -217,25 +210,27 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    if (isGlobalAdmin && accessAll) params.set("accessScope", "all");
-    else params.delete("accessScope");
-    window.history.replaceState({}, "", buildAdminUrl(params));
+    replaceLocation({
+      setParams: { accessScope: isGlobalAdmin && accessAll ? "all" : "" },
+      hash: window.location.hash || ADMIN_HASH,
+    });
   }, [accessAll, isGlobalAdmin]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
+    const params = readLocationSearchParams();
     const league = (params.get("accessLeague") || "").trim();
     setAccessLeagueFilter(league);
   }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    if (isGlobalAdmin && accessAll && accessLeagueFilter) params.set("accessLeague", accessLeagueFilter);
-    else params.delete("accessLeague");
-    window.history.replaceState({}, "", buildAdminUrl(params));
+    replaceLocation({
+      setParams: {
+        accessLeague: isGlobalAdmin && accessAll && accessLeagueFilter ? accessLeagueFilter : "",
+      },
+      hash: window.location.hash || ADMIN_HASH,
+    });
   }, [accessAll, accessLeagueFilter, isGlobalAdmin]);
 
   useEffect(() => {
