@@ -81,6 +81,30 @@ function summarizeNormalizationText(result) {
   ].join(" | ");
 }
 
+function describeRequestSharing(request) {
+  if (request?.openToShareField && request?.shareWithTeamId) {
+    return `Sharing with ${request.shareWithTeamId}`;
+  }
+  const reservedTeamIds = Array.isArray(request?.reservedTeamIds) ? request.reservedTeamIds.filter(Boolean) : [];
+  if (reservedTeamIds.length > 1) {
+    return `Sharing with ${reservedTeamIds.slice(1).join(", ")}`;
+  }
+  return "Exclusive booking";
+}
+
+function buildAvailabilityQuery({ seasonLabel, date, startTime, endTime, division, fieldKey }) {
+  const params = new URLSearchParams();
+  if (seasonLabel) params.set("seasonLabel", seasonLabel);
+  if (date) params.set("date", date);
+  if (startTime && endTime) {
+    params.set("startTime", startTime);
+    params.set("endTime", endTime);
+  }
+  if (division) params.set("division", division);
+  if (fieldKey) params.set("fieldKey", fieldKey);
+  return params.toString();
+}
+
 export default function PracticeSpaceManager({ leagueId }) {
   const [data, setData] = useState(null);
   const [seasonLabel, setSeasonLabel] = useState("");
@@ -105,6 +129,15 @@ export default function PracticeSpaceManager({ leagueId }) {
   const [divisionDrafts, setDivisionDrafts] = useState({});
   const [teamDrafts, setTeamDrafts] = useState({});
   const [policyDrafts, setPolicyDrafts] = useState({});
+  const [availabilityDate, setAvailabilityDate] = useState("");
+  const [availabilityStartTime, setAvailabilityStartTime] = useState("");
+  const [availabilityEndTime, setAvailabilityEndTime] = useState("");
+  const [availabilityDivision, setAvailabilityDivision] = useState("");
+  const [availabilityFieldKey, setAvailabilityFieldKey] = useState("");
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [availabilityError, setAvailabilityError] = useState("");
+  const [availabilityOptions, setAvailabilityOptions] = useState(null);
+  const [availabilityCheck, setAvailabilityCheck] = useState(null);
 
   function applyAdminView(nextData, resetRange = false) {
     setData(nextData);
@@ -118,6 +151,8 @@ export default function PracticeSpaceManager({ leagueId }) {
       setCompareFieldFilter("");
       setCompareDivisionFilter("");
       setInventoryDivisionFilter("");
+      setAvailabilityDivision(nextData?.canonicalDivisions?.[0]?.code || "");
+      setAvailabilityDate((current) => current || derivePracticeSpaceDateRange(nextData?.rows || [], nextData?.slots || []).dateFrom);
     }
   }
 
@@ -200,6 +235,38 @@ export default function PracticeSpaceManager({ leagueId }) {
       }),
     [comparison, compareSearch, compareDateFrom, compareDateTo, compareStateFilter, compareIssueFilter, compareFieldFilter, compareDivisionFilter]
   );
+
+  const exactAvailabilityWindowRequested = !!availabilityStartTime && !!availabilityEndTime;
+
+  async function runAvailabilityQuery() {
+    if (!availabilityDate || !availabilityDivision) return;
+    setAvailabilityLoading(true);
+    setAvailabilityError("");
+    try {
+      const query = buildAvailabilityQuery({
+        seasonLabel,
+        date: availabilityDate,
+        startTime: availabilityStartTime,
+        endTime: availabilityEndTime,
+        division: availabilityDivision,
+        fieldKey: availabilityFieldKey,
+      });
+      const [optionsResult, checkResult] = await Promise.all([
+        apiFetch(`/api/field-inventory/practice/availability/options?${query}`),
+        exactAvailabilityWindowRequested
+          ? apiFetch(`/api/field-inventory/practice/availability/check?${query}`)
+          : Promise.resolve(null),
+      ]);
+      setAvailabilityOptions(optionsResult);
+      setAvailabilityCheck(checkResult);
+    } catch (e) {
+      setAvailabilityError(e.message || "Failed to load practice availability.");
+      setAvailabilityOptions(null);
+      setAvailabilityCheck(null);
+    } finally {
+      setAvailabilityLoading(false);
+    }
+  }
 
   async function saveDivisionMapping(row) {
     const canonicalDivisionCode = (divisionDrafts[row.recordId] || row.canonicalDivisionCode || "").trim();
@@ -510,6 +577,100 @@ export default function PracticeSpaceManager({ leagueId }) {
 
       <div className="card">
         <div className="card__header">
+          <div>
+            <div className="h2">Availability Search</div>
+            <div className="subtle">Query the canonical practice availability API by day, division, and optional exact window.</div>
+          </div>
+          <button className="btn" type="button" onClick={runAvailabilityQuery} disabled={availabilityLoading || !availabilityDate || !availabilityDivision}>
+            {availabilityLoading ? "Searching..." : "Search Availability"}
+          </button>
+        </div>
+        <div className="card__body stack gap-3">
+          {availabilityError ? <div className="callout callout--error">{availabilityError}</div> : null}
+          <div className="row row--wrap gap-3">
+            <label>
+              Date
+              <input type="date" value={availabilityDate} onChange={(e) => setAvailabilityDate(e.target.value)} />
+            </label>
+            <label>
+              Division
+              <select value={availabilityDivision} onChange={(e) => setAvailabilityDivision(e.target.value)}>
+                <option value="">Select division</option>
+                {(data?.canonicalDivisions || []).map((division) => (
+                  <option key={division.code} value={division.code}>{division.name} ({division.code})</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Start
+              <input type="time" value={availabilityStartTime} onChange={(e) => setAvailabilityStartTime(e.target.value)} />
+            </label>
+            <label>
+              End
+              <input type="time" value={availabilityEndTime} onChange={(e) => setAvailabilityEndTime(e.target.value)} />
+            </label>
+            <label>
+              Field key
+              <input value={availabilityFieldKey} onChange={(e) => setAvailabilityFieldKey(e.target.value)} placeholder="park/field" />
+            </label>
+          </div>
+
+          {availabilityCheck ? (
+            <div className={`callout ${availabilityCheck.available ? "callout--ok" : "callout--info"}`}>
+              <div className="font-bold mb-1">{availabilityCheck.available ? "Exact window available" : "Exact window unavailable"}</div>
+              <div className="subtle">
+                {availabilityCheck.date} {availabilityCheck.startTime}-{availabilityCheck.endTime} returned {availabilityCheck.matchingOptionCount} matching option{availabilityCheck.matchingOptionCount === 1 ? "" : "s"} for {availabilityCheck.division}.
+              </div>
+            </div>
+          ) : null}
+
+          <div className="overflow-x-auto">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Time</th>
+                  <th>Field</th>
+                  <th>Policy</th>
+                  <th>Availability</th>
+                  <th>Sharing</th>
+                  <th>Pending</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(availabilityOptions?.options || []).map((option) => (
+                  <tr key={option.practiceSlotKey}>
+                    <td>{option.date}</td>
+                    <td>{option.startTime}-{option.endTime}</td>
+                    <td>
+                      <div>{option.fieldName}</div>
+                      <div className="subtle">{option.fieldKey}</div>
+                    </td>
+                    <td>{option.bookingPolicyLabel}</td>
+                    <td>{option.isAvailable ? "Available" : "Unavailable"}</td>
+                    <td>
+                      <div>{option.shareable ? `Shareable ${option.reservedTeamIds.length}/${option.maxTeamsPerBooking}` : "Exclusive"}</div>
+                      <div className="subtle">{option.reservedTeamIds.join(", ") || "No reserved teams"}</div>
+                    </td>
+                    <td>
+                      <div>{option.pendingTeamIds.join(", ") || "No pending teams"}</div>
+                      <div className="subtle">{option.pendingShareTeamIds.join(", ") || "No pending share partners"}</div>
+                    </td>
+                  </tr>
+                ))}
+                {(availabilityOptions?.options || []).length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="muted">No canonical availability results loaded yet.</td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card__header">
           <div className="h2">Request Queue</div>
           <div className="subtle">Pending requests and move requests stay here until approved or rejected.</div>
         </div>
@@ -533,6 +694,7 @@ export default function PracticeSpaceManager({ leagueId }) {
                   <th>Team</th>
                   <th>Status</th>
                   <th>Policy</th>
+                  <th>Booking</th>
                   <th>Notes</th>
                   <th>Actions</th>
                 </tr>
@@ -550,6 +712,10 @@ export default function PracticeSpaceManager({ leagueId }) {
                       </div>
                     </td>
                     <td>{request.bookingPolicyLabel}</td>
+                    <td>
+                      <div>{describeRequestSharing(request)}</div>
+                      <div className="subtle">{request.reservedTeamIds?.join(", ") || request.teamId}</div>
+                    </td>
                     <td>
                       <div>{request.notes || request.reviewReason || "-"}</div>
                       {request.isMove && request.moveFromDate ? (
@@ -576,7 +742,7 @@ export default function PracticeSpaceManager({ leagueId }) {
                 ))}
                 {visibleRequests.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="muted">No practice-space requests in this filter.</td>
+                    <td colSpan={8} className="muted">No practice-space requests in this filter.</td>
                   </tr>
                 ) : null}
               </tbody>
@@ -643,7 +809,6 @@ export default function PracticeSpaceManager({ leagueId }) {
                   <th>Imported assignment</th>
                   <th>Canonical mapping</th>
                   <th>Policy</th>
-                  <th>Capacity</th>
                   <th>Issues</th>
                 </tr>
               </thead>
@@ -717,10 +882,6 @@ export default function PracticeSpaceManager({ leagueId }) {
                         <div className="subtle">{row.bookingPolicyReason}</div>
                       </td>
                       <td>
-                        <div>{row.requestableBlockCount} blocks</div>
-                        <div className="subtle">Approved {row.approvedTeamCount} / Pending {row.pendingTeamCount}</div>
-                      </td>
-                      <td>
                         {(row.mappingIssues || []).length ? (
                           <div className="row row--wrap gap-2">
                             {row.mappingIssues.map((issue) => (
@@ -736,7 +897,7 @@ export default function PracticeSpaceManager({ leagueId }) {
                 })}
                 {filteredRows.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="muted">No imported inventory rows match this filter.</td>
+                    <td colSpan={6} className="muted">No imported inventory rows match this filter.</td>
                   </tr>
                 ) : null}
               </tbody>

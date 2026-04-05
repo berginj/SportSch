@@ -65,7 +65,9 @@ public class PracticeRequestService : IPracticeRequestService
         string userId,
         string sourceRequestId,
         string targetSlotId,
-        string? reason)
+        string? reason,
+        bool openToShareField = false,
+        string? shareWithTeamId = null)
     {
         var sourceId = (sourceRequestId ?? "").Trim();
         var targetId = (targetSlotId ?? "").Trim();
@@ -115,8 +117,8 @@ public class PracticeRequestService : IPracticeRequestService
             teamId,
             targetId,
             reason,
-            openToShareField: false,
-            shareWithTeamId: null,
+            openToShareField,
+            shareWithTeamId,
             priority: sourceRequest.GetInt32("Priority"),
             excludedActiveRequestId: sourceId,
             extraProperties: extraProperties);
@@ -1217,6 +1219,11 @@ public class PracticeRequestService : IPracticeRequestService
         slot["PracticeBookingMode"] = "RecurringApproved";
         slot["OpenToShareField"] = openToShareField;
         slot["ShareWithTeamId"] = openToShareField ? shareWithTeamId : "";
+        slot["PracticeShareable"] = true;
+        slot["PracticeMaxTeamsPerBooking"] = 2;
+        slot["PracticeReservedTeamIds"] = openToShareField && !string.IsNullOrWhiteSpace(shareWithTeamId)
+            ? $"{teamId},{shareWithTeamId}"
+            : teamId;
         slot["UpdatedUtc"] = nowUtc;
     }
 
@@ -1238,6 +1245,7 @@ public class PracticeRequestService : IPracticeRequestService
         slot["PracticeBookingMode"] = "";
         slot["OpenToShareField"] = false;
         slot["ShareWithTeamId"] = "";
+        slot["PracticeReservedTeamIds"] = "";
         slot["UpdatedUtc"] = nowUtc;
     }
 

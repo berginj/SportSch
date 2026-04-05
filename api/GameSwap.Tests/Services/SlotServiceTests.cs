@@ -97,8 +97,10 @@ public class SlotServiceTests : IDisposable
             .ReturnsAsync(false);
 
         // Mock slot creation
+        TableEntity? createdSlot = null;
         _mockSlotRepo
             .Setup(x => x.CreateSlotAsync(It.IsAny<TableEntity>()))
+            .Callback<TableEntity>(entity => createdSlot = entity)
             .Returns(Task.CompletedTask);
 
         // Act
@@ -106,6 +108,9 @@ public class SlotServiceTests : IDisposable
 
         // Assert
         Assert.NotNull(result);
+        Assert.NotNull(createdSlot);
+        Assert.Equal(600, createdSlot!.GetInt32("StartMin"));
+        Assert.Equal(720, createdSlot.GetInt32("EndMin"));
         _mockSlotRepo.Verify(x => x.CreateSlotAsync(It.IsAny<TableEntity>()), Times.Once);
     }
 

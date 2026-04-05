@@ -27,6 +27,8 @@ public static class EntityMappers
             gameDate = ReadString(e, "GameDate"),
             startTime = ReadString(e, "StartTime"),
             endTime = ReadString(e, "EndTime"),
+            startMin = ReadNullableInt(e, "StartMin"),
+            endMin = ReadNullableInt(e, "EndMin"),
             parkName = ReadString(e, "ParkName"),
             fieldName = ReadString(e, "FieldName"),
             displayName = ReadString(e, "DisplayName"),
@@ -34,6 +36,10 @@ public static class EntityMappers
             gameType = ReadString(e, "GameType"),
             allocationSlotType = ReadString(e, "AllocationSlotType"),
             allocationPriorityRank = allocationPriority,
+            practiceShareable = ReadBool(e, "PracticeShareable", false),
+            practiceMaxTeamsPerBooking = ReadNullableInt(e, "PracticeMaxTeamsPerBooking"),
+            openToShareField = ReadBool(e, "OpenToShareField", false),
+            shareWithTeamId = ReadString(e, "ShareWithTeamId"),
             status = ReadString(e, "Status", Constants.Status.SlotOpen),
             notes = ReadString(e, "Notes"),
             createdUtc = ReadDateTimeOffset(e, "CreatedUtc"),
@@ -188,6 +194,20 @@ public static class EntityMappers
 
         if (!parsed.HasValue || parsed.Value <= 0) return null;
         return parsed.Value;
+    }
+
+    private static int? ReadNullableInt(TableEntity entity, string key)
+    {
+        var value = ReadValue(entity, key);
+        if (value is null) return null;
+
+        return value switch
+        {
+            int i => i,
+            long l when l <= int.MaxValue => (int)l,
+            double d => (int)Math.Round(d),
+            _ => int.TryParse(value.ToString(), out var parsed) ? parsed : null
+        };
     }
 
     private static DateTimeOffset? ReadDateTimeOffset(TableEntity entity, string key)

@@ -105,8 +105,8 @@ public class SlotRepository : ISlotRepository
                 continue;
 
             // Check time overlap
-            var slotStartMin = slot.GetInt32("StartMin") ?? 0;
-            var slotEndMin = slot.GetInt32("EndMin") ?? 0;
+            if (!SlotEntityUtil.TryReadTimeRange(slot, out var slotStartMin, out var slotEndMin))
+                continue;
 
             // Times conflict if they overlap
             var hasOverlap = startMin < slotEndMin && endMin > slotStartMin;

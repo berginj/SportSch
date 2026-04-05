@@ -63,7 +63,6 @@ public static class Constants
         public const string FieldInventoryDivisionAliases = "GameSwapFieldInventoryDivisionAliases";
         public const string FieldInventoryTeamAliases = "GameSwapFieldInventoryTeamAliases";
         public const string FieldInventoryGroupPolicies = "GameSwapFieldInventoryGroupPolicies";
-        public const string FieldInventoryPracticeRequests = "GameSwapFieldInventoryPracticeRequests";
     }
 
     public static class Pk
@@ -129,8 +128,6 @@ public static class Constants
         public static string FieldInventoryDivisionAliases(string leagueId) => $"FINVDIVALIAS|{leagueId}";
         public static string FieldInventoryTeamAliases(string leagueId) => $"FINVTEAMALIAS|{leagueId}";
         public static string FieldInventoryGroupPolicies(string leagueId) => $"FINVGROUPPOLICY|{leagueId}";
-        public static string FieldInventoryPracticeRequests(string leagueId, string seasonLabel)
-            => $"FINVPRACTICEREQ|{leagueId}|{Slug.Make(seasonLabel)}";
     }
 
     public static class FieldAvailabilityColumns

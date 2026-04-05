@@ -198,8 +198,6 @@ public class ImportAvailabilitySlots
                     ["OfferingEmail"] = "",
 
                     ["GameDate"] = gameDate,
-                    ["StartTime"] = startTime,
-                    ["EndTime"] = endTime,
 
                     ["ParkName"] = fieldMeta.ParkName,
                     ["FieldName"] = fieldMeta.FieldName,
@@ -213,6 +211,7 @@ public class ImportAvailabilitySlots
                     ["UpdatedUtc"] = now,
                     ["LastUpdatedUtc"] = now
                 };
+                SlotEntityUtil.ApplyTimeRange(entity, startTime, endTime);
 
                 if (!byPk.TryGetValue(pk, out var actions))
                 {

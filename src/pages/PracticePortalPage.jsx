@@ -3,31 +3,46 @@ import { apiFetch } from "../lib/api";
 import StatusCard from "../components/StatusCard";
 import Toast from "../components/Toast";
 
-const DAY_OPTIONS = [
-  { value: "", label: "All days" },
-  { value: "Monday", label: "Monday" },
-  { value: "Tuesday", label: "Tuesday" },
-  { value: "Wednesday", label: "Wednesday" },
-  { value: "Thursday", label: "Thursday" },
-  { value: "Friday", label: "Friday" },
-  { value: "Saturday", label: "Saturday" },
-  { value: "Sunday", label: "Sunday" },
-];
+function getTodayDate() {
+  return new Date().toISOString().slice(0, 10);
+}
 
-function filterSlots(slots, search, day, policy, showOnlyOpenSeats) {
+function getInitialAvailabilityDate(portalData) {
+  const datedSlots = [...(portalData?.slots || [])]
+    .map((slot) => String(slot?.date || "").trim())
+    .filter(Boolean)
+    .sort((left, right) => left.localeCompare(right));
+  return datedSlots[0] || getTodayDate();
+}
+
+function buildAvailabilityQuery({ seasonLabel, date, startTime, endTime, fieldKey }) {
+  const params = new URLSearchParams();
+  if (seasonLabel) params.set("seasonLabel", seasonLabel);
+  if (date) params.set("date", date);
+  if (startTime && endTime) {
+    params.set("startTime", startTime);
+    params.set("endTime", endTime);
+  }
+  if (fieldKey) params.set("fieldKey", fieldKey);
+  return params.toString();
+}
+
+function filterSlots(slots, search, policy, showOnlyOpenSeats) {
   const needle = String(search || "").trim().toLowerCase();
   return (slots || [])
-    .filter((slot) => (day ? slot.dayOfWeek === day : true))
     .filter((slot) => (policy ? slot.bookingPolicy === policy : true))
-    .filter((slot) => (showOnlyOpenSeats ? slot.remainingCapacity > 0 : true))
+    .filter((slot) => (showOnlyOpenSeats ? slot.isAvailable : true))
     .filter((slot) => {
       if (!needle) return true;
       const haystack = [
         slot.fieldName,
-        slot.assignedGroup,
-        slot.assignedDivision,
-        slot.assignedTeamOrEvent,
+        slot.fieldKey,
         slot.date,
+        slot.startTime,
+        slot.endTime,
+        ...(slot.reservedTeamIds || []),
+        ...(slot.pendingTeamIds || []),
+        ...(slot.pendingShareTeamIds || []),
       ]
         .map((value) => String(value || "").toLowerCase())
         .join(" ");
@@ -49,21 +64,51 @@ function describeRequest(request) {
   return `${request.date || ""} ${request.startTime || ""}-${request.endTime || ""} ${request.fieldName || ""}`.trim();
 }
 
+function describeSharing(requestOrSlot) {
+  const reservedTeamIds = requestOrSlot?.reservedTeamIds || [];
+  if (requestOrSlot?.openToShareField && requestOrSlot?.shareWithTeamId) {
+    return `Sharing with ${requestOrSlot.shareWithTeamId}`;
+  }
+  if (reservedTeamIds.length > 1) {
+    return `Sharing with ${reservedTeamIds.slice(1).join(", ")}`;
+  }
+  return "Exclusive booking";
+}
+
+function getSharePartnerName(teamOptions, teamId) {
+  return teamOptions.find((team) => team.teamId === teamId)?.name || teamId;
+}
+
 export default function PracticePortalPage({ me, leagueId }) {
   const [data, setData] = useState(null);
+  const [teamOptions, setTeamOptions] = useState([]);
+  const [availabilityData, setAvailabilityData] = useState(null);
+  const [availabilityCheck, setAvailabilityCheck] = useState(null);
   const [seasonLabel, setSeasonLabel] = useState("");
+  const [availabilityDate, setAvailabilityDate] = useState("");
+  const [availabilityStartTime, setAvailabilityStartTime] = useState("");
+  const [availabilityEndTime, setAvailabilityEndTime] = useState("");
   const [loading, setLoading] = useState(true);
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [availabilityRefreshKey, setAvailabilityRefreshKey] = useState(0);
   const [requestingKey, setRequestingKey] = useState("");
   const [movingRequestId, setMovingRequestId] = useState("");
   const [actingRequestId, setActingRequestId] = useState("");
   const [error, setError] = useState("");
+  const [availabilityError, setAvailabilityError] = useState("");
   const [toast, setToast] = useState(null);
   const [search, setSearch] = useState("");
-  const [dayFilter, setDayFilter] = useState("");
   const [policyFilter, setPolicyFilter] = useState("");
   const [showOnlyOpenSeats, setShowOnlyOpenSeats] = useState(true);
+  const [openToShareField, setOpenToShareField] = useState(false);
+  const [shareWithTeamId, setShareWithTeamId] = useState("");
 
   const coachName = me?.name || me?.userDetails || "Coach";
+  const sharePartnerOptions = useMemo(
+    () => (teamOptions || []).filter((team) => team.teamId !== data?.teamId),
+    [teamOptions, data]
+  );
+  const exactWindowRequested = !!availabilityStartTime && !!availabilityEndTime;
 
   async function load(nextSeasonLabel = seasonLabel) {
     if (!leagueId) return;
@@ -72,8 +117,16 @@ export default function PracticePortalPage({ me, leagueId }) {
     try {
       const query = nextSeasonLabel ? `?seasonLabel=${encodeURIComponent(nextSeasonLabel)}` : "";
       const result = await apiFetch(`/api/field-inventory/practice/coach${query}`);
+      const resolvedSeasonLabel = result?.seasonLabel || nextSeasonLabel || "";
       setData(result);
-      setSeasonLabel(result?.seasonLabel || nextSeasonLabel || "");
+      setSeasonLabel(resolvedSeasonLabel);
+      setAvailabilityDate((current) =>
+        current && resolvedSeasonLabel === seasonLabel ? current : getInitialAvailabilityDate(result)
+      );
+      const teamList = result?.division
+        ? await apiFetch(`/api/teams?division=${encodeURIComponent(result.division)}`).catch(() => [])
+        : [];
+      setTeamOptions(Array.isArray(teamList) ? teamList : []);
     } catch (e) {
       setError(e.message || "Failed to load practice space.");
     } finally {
@@ -86,9 +139,60 @@ export default function PracticePortalPage({ me, leagueId }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leagueId]);
 
+  useEffect(() => {
+    if (!leagueId || !availabilityDate || !seasonLabel) return;
+
+    let cancelled = false;
+
+    async function loadAvailability() {
+      setAvailabilityLoading(true);
+      setAvailabilityError("");
+      try {
+        const query = buildAvailabilityQuery({
+          seasonLabel,
+          date: availabilityDate,
+          startTime: availabilityStartTime,
+          endTime: availabilityEndTime,
+          fieldKey: "",
+        });
+
+        const [optionsResult, checkResult] = await Promise.all([
+          apiFetch(`/api/field-inventory/practice/availability/options?${query}`),
+          exactWindowRequested
+            ? apiFetch(`/api/field-inventory/practice/availability/check?${query}`)
+            : Promise.resolve(null),
+        ]);
+
+        if (cancelled) return;
+        setAvailabilityData(optionsResult);
+        setAvailabilityCheck(checkResult);
+      } catch (e) {
+        if (cancelled) return;
+        setAvailabilityError(e.message || "Failed to load availability.");
+        setAvailabilityData(null);
+        setAvailabilityCheck(null);
+      } finally {
+        if (!cancelled) {
+          setAvailabilityLoading(false);
+        }
+      }
+    }
+
+    loadAvailability();
+    return () => {
+      cancelled = true;
+    };
+  }, [leagueId, seasonLabel, availabilityDate, availabilityStartTime, availabilityEndTime, exactWindowRequested, availabilityRefreshKey]);
+
+  useEffect(() => {
+    if (!openToShareField) {
+      setShareWithTeamId("");
+    }
+  }, [openToShareField]);
+
   const visibleSlots = useMemo(
-    () => filterSlots(data?.slots || [], search, dayFilter, policyFilter, showOnlyOpenSeats),
-    [data, search, dayFilter, policyFilter, showOnlyOpenSeats]
+    () => filterSlots(availabilityData?.options || [], search, policyFilter, showOnlyOpenSeats),
+    [availabilityData, search, policyFilter, showOnlyOpenSeats]
   );
 
   const myRequests = useMemo(
@@ -104,6 +208,8 @@ export default function PracticePortalPage({ me, leagueId }) {
     [myRequests, movingRequestId]
   );
 
+  const selectedSharePartnerName = shareWithTeamId ? getSharePartnerName(sharePartnerOptions, shareWithTeamId) : "";
+
   async function requestSlot(slot) {
     setRequestingKey(slot.practiceSlotKey);
     setError("");
@@ -113,9 +219,12 @@ export default function PracticePortalPage({ me, leagueId }) {
         body: JSON.stringify({
           seasonLabel,
           practiceSlotKey: slot.practiceSlotKey,
+          openToShareField,
+          shareWithTeamId: openToShareField ? shareWithTeamId : null,
         }),
       });
       setData(result);
+      setAvailabilityRefreshKey((current) => current + 1);
       setToast({
         tone: "success",
         message:
@@ -140,9 +249,12 @@ export default function PracticePortalPage({ me, leagueId }) {
           seasonLabel,
           practiceSlotKey: slot.practiceSlotKey,
           notes: `Move requested from ${describeRequest(request)}`,
+          openToShareField,
+          shareWithTeamId: openToShareField ? shareWithTeamId : null,
         }),
       });
       setData(result);
+      setAvailabilityRefreshKey((current) => current + 1);
       setMovingRequestId("");
       setToast({
         tone: "success",
@@ -166,6 +278,7 @@ export default function PracticePortalPage({ me, leagueId }) {
         method: "PATCH",
       });
       setData(result);
+      setAvailabilityRefreshKey((current) => current + 1);
       if (movingRequestId === request.requestId) {
         setMovingRequestId("");
       }
@@ -189,12 +302,16 @@ export default function PracticePortalPage({ me, leagueId }) {
     <div className="stack gap-4">
       {toast ? <Toast tone={toast.tone} message={toast.message} onClose={() => setToast(null)} /> : null}
       {error ? <div className="callout callout--error">{error}</div> : null}
+      {availabilityError ? <div className="callout callout--error">{availabilityError}</div> : null}
 
       {movingRequest ? (
         <div className="callout callout--info">
           <div className="font-bold mb-2">Move in progress</div>
           <div className="subtle">
             Choose a replacement block for {describeRequest(movingRequest)}. Your current slot stays active until the move is approved or auto-approved.
+          </div>
+          <div className="mt-2 subtle">
+            Share setting for this move: {openToShareField && selectedSharePartnerName ? `share with ${selectedSharePartnerName}` : "exclusive booking"}
           </div>
           <div className="mt-3">
             <button className="btn" type="button" onClick={() => setMovingRequestId("")}>
@@ -207,13 +324,13 @@ export default function PracticePortalPage({ me, leagueId }) {
       <div className="callout">
         <div className="font-bold mb-2">Practice space for {coachName}</div>
         <div className="subtle">
-          Request unused imported field space in 90-minute blocks. Ponytail-assigned space can auto-approve; unassigned available space goes to commissioner review. Approved or pending requests can now be moved directly from this page.
+          Query canonical availability for a specific date and optional time window, then book or move a practice request from the returned options. Shared bookings can reserve a named partner team when the slot is marked shareable.
         </div>
         <div className="row row--wrap gap-3 mt-3">
           <a href="#practice-space-filters" className="link">Jump to filters</a>
           <a href="#practice-space-available" className="link">Jump to available space</a>
           <a href="#practice-space-requests" className="link">Jump to my requests</a>
-          <a href="#practice-space-help" className="link">How approvals and moves work</a>
+          <a href="#practice-space-help" className="link">How approvals and sharing work</a>
         </div>
       </div>
 
@@ -253,45 +370,95 @@ export default function PracticePortalPage({ me, leagueId }) {
 
       <div id="practice-space-filters" className="card">
         <div className="card__header">
-          <div className="h2">Filters</div>
-          <div className="subtle">Use filters to focus on the most useful practice space first.</div>
+          <div className="h2">Availability Query</div>
+          <div className="subtle">Search by date first, then narrow to an exact window if you need a yes/no availability check.</div>
         </div>
-        <div className="card__body">
+        <div className="card__body stack gap-3">
           <div className="row row--wrap gap-3">
-            <label title="Search by field name, assigned group, or imported notes.">
-              <span className="row gap-1 items-center">Field search <span className="hint" title="Search imported field space by canonical field, assigned group, or imported division/team text.">?</span></span>
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Field, group, division..." />
+            <label title="Query one day of canonical availability at a time.">
+              Date
+              <input type="date" value={availabilityDate} onChange={(e) => setAvailabilityDate(e.target.value)} />
             </label>
-            <label title="Focus on one day of the week at a time.">
-              <span className="row gap-1 items-center">Day <span className="hint" title="Use this to find your regular practice day quickly.">?</span></span>
-              <select value={dayFilter} onChange={(e) => setDayFilter(e.target.value)}>
-                {DAY_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+            <label title="Optional. Fill both start and end to check an exact window.">
+              Start
+              <input type="time" value={availabilityStartTime} onChange={(e) => setAvailabilityStartTime(e.target.value)} />
+            </label>
+            <label title="Optional. Fill both start and end to check an exact window.">
+              End
+              <input type="time" value={availabilityEndTime} onChange={(e) => setAvailabilityEndTime(e.target.value)} />
+            </label>
+            <label title="Search by field name or team IDs already attached to a slot.">
+              Search
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Field, team, date..." />
             </label>
             <label title="Separate immediately bookable space from commissioner-reviewed space.">
-              <span className="row gap-1 items-center">Approval path <span className="hint" title="Auto-approve means your team is confirmed immediately. Commissioner review means a league admin must approve the request first.">?</span></span>
+              Approval path
               <select value={policyFilter} onChange={(e) => setPolicyFilter(e.target.value)}>
                 <option value="">All</option>
                 <option value="auto_approve">Auto-approve</option>
                 <option value="commissioner_review">Commissioner review</option>
               </select>
             </label>
-            <label className="inlineCheck" title="Hide reserved blocks and only show space with open capacity remaining.">
+            <label className="inlineCheck" title="Hide windows that are already full or blocked by an active request.">
               <input type="checkbox" checked={showOnlyOpenSeats} onChange={(e) => setShowOnlyOpenSeats(e.target.checked)} />
               Open slots only
             </label>
           </div>
+
+          <div className="row row--wrap gap-3 items-end">
+            <label className="inlineCheck" title="Reserve the slot for your team plus one named partner team.">
+              <input
+                type="checkbox"
+                checked={openToShareField}
+                onChange={(e) => setOpenToShareField(e.target.checked)}
+                disabled={sharePartnerOptions.length === 0}
+              />
+              Book as shared practice
+            </label>
+            <label title="Choose the partner team that will share this reservation.">
+              Share with
+              <select
+                value={shareWithTeamId}
+                onChange={(e) => setShareWithTeamId(e.target.value)}
+                disabled={!openToShareField || sharePartnerOptions.length === 0}
+              >
+                <option value="">Select team</option>
+                {sharePartnerOptions.map((team) => (
+                  <option key={team.teamId} value={team.teamId}>
+                    {team.name} ({team.teamId})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="subtle">
+              {openToShareField
+                ? selectedSharePartnerName
+                  ? `Requests and moves will reserve this slot for ${data?.teamName || data?.teamId} and ${selectedSharePartnerName}.`
+                  : "Choose a partner team before booking a shared practice."
+                : "Requests and moves will reserve the slot only for your team."}
+            </div>
+          </div>
+
+          {exactWindowRequested && availabilityCheck ? (
+            <div className={`callout ${availabilityCheck.available ? "callout--ok" : "callout--info"}`}>
+              <div className="font-bold mb-1">
+                {availabilityCheck.available ? "Exact window available" : "Exact window unavailable"}
+              </div>
+              <div className="subtle">
+                {availabilityCheck.date} {availabilityCheck.startTime}-{availabilityCheck.endTime} returned {availabilityCheck.matchingOptionCount} matching option{availabilityCheck.matchingOptionCount === 1 ? "" : "s"}.
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
 
       <div id="practice-space-available" className="card">
         <div className="card__header">
-          <div className="h2">Available Practice Space</div>
-          <div className="subtle">Each block is 90 minutes and backed by a canonical SportsCH availability slot.</div>
+          <div>
+            <div className="h2">Available Practice Space</div>
+            <div className="subtle">Options below are returned from the canonical practice availability query for the selected day and time window.</div>
+          </div>
+          <div className="subtle">{availabilityLoading ? "Refreshing availability..." : `${visibleSlots.length} option${visibleSlots.length === 1 ? "" : "s"}`}</div>
         </div>
         <div className="card__body">
           <div className="stack gap-3">
@@ -302,7 +469,8 @@ export default function PracticePortalPage({ me, leagueId }) {
               const alreadyRequested = !!activeRequestForSlot;
               const moveTargetIsCurrent = movingRequest && movingRequest.slotId === slot.slotId;
               const slotReservedByAnotherRequest = activeRequestForSlot && activeRequestForSlot.requestId !== movingRequestId;
-              const disableForStandardRequest = alreadyRequested || slot.remainingCapacity <= 0;
+              const shareSelectionInvalid = openToShareField && !shareWithTeamId;
+              const disableForStandardRequest = alreadyRequested || !slot.isAvailable || shareSelectionInvalid;
 
               return (
                 <div key={slot.practiceSlotKey} className="card">
@@ -314,34 +482,42 @@ export default function PracticePortalPage({ me, leagueId }) {
                       </div>
                     </div>
                     <div className="row gap-2 items-center">
-                      <span className="pill" title={slot.bookingPolicyReason}>{slot.bookingPolicyLabel}</span>
-                      <span className="pill" title="A canonical practice block currently supports one active team reservation.">
-                        Open {slot.remainingCapacity}/{slot.capacity}
+                      <span className="pill">{slot.bookingPolicyLabel}</span>
+                      <span className="pill" title={slot.shareable ? "This slot supports up to two teams on a shared booking." : "This slot can only be booked exclusively."}>
+                        {slot.shareable ? `Shareable ${slot.reservedTeamIds.length}/${slot.maxTeamsPerBooking}` : "Exclusive"}
+                      </span>
+                      <span className="pill" title={slot.isAvailable ? "Bookable right now." : "Blocked by an active reservation or pending request."}>
+                        {slot.isAvailable ? "Available" : "Unavailable"}
                       </span>
                     </div>
                   </div>
                   <div className="card__body">
                     <div className="row row--wrap gap-3">
-                      <div title="Imported assignment context from the source workbook.">
-                        <div className="subtle">Assigned group</div>
-                        <div>{slot.assignedGroup || "-"}</div>
+                      <div>
+                        <div className="subtle">Field key</div>
+                        <div>{slot.fieldKey || "-"}</div>
                       </div>
-                      <div title="Imported division context from the source workbook.">
-                        <div className="subtle">Assigned division</div>
-                        <div>{slot.assignedDivision || "-"}</div>
+                      <div>
+                        <div className="subtle">Reserved teams</div>
+                        <div>{slot.reservedTeamIds.join(", ") || "None"}</div>
                       </div>
-                      <div title="Imported team or event text from the source workbook.">
-                        <div className="subtle">Assigned team/event</div>
-                        <div>{slot.assignedTeamOrEvent || "-"}</div>
+                      <div>
+                        <div className="subtle">Pending teams</div>
+                        <div>{slot.pendingTeamIds.join(", ") || "None"}</div>
+                      </div>
+                      <div>
+                        <div className="subtle">Pending share partners</div>
+                        <div>{slot.pendingShareTeamIds.join(", ") || "None"}</div>
                       </div>
                     </div>
-                    <div className="subtle mt-3">{slot.bookingPolicyReason}</div>
+                    <div className="subtle mt-3">{slot.bookingPolicy === "auto_approve" ? "This option confirms immediately when booked." : "This option requires commissioner approval before it is confirmed."}</div>
+                    <div className="subtle mt-2">{describeSharing(slot)}</div>
                     <div className="row gap-2 mt-3 items-center">
                       {movingRequest ? (
                         <button
                           className="btn btn--primary"
                           type="button"
-                          disabled={moveTargetIsCurrent || !!slotReservedByAnotherRequest || slot.remainingCapacity <= 0 || !!actingRequestId}
+                          disabled={moveTargetIsCurrent || !!slotReservedByAnotherRequest || !slot.isAvailable || !!actingRequestId || shareSelectionInvalid}
                           onClick={() => moveRequest(movingRequest, slot)}
                         >
                           {actingRequestId === movingRequest.requestId
@@ -355,7 +531,13 @@ export default function PracticePortalPage({ me, leagueId }) {
                           className="btn btn--primary"
                           type="button"
                           disabled={disableForStandardRequest || !!requestingKey}
-                          title={alreadyRequested ? "Your team already has an active request for this block." : "Request this 90-minute practice block for your team."}
+                          title={
+                            alreadyRequested
+                              ? "Your team already has an active request for this block."
+                              : shareSelectionInvalid
+                                ? "Choose a partner team before sending a shared booking request."
+                                : "Request this practice block for your team."
+                          }
                           onClick={() => requestSlot(slot)}
                         >
                           {requestingKey === slot.practiceSlotKey
@@ -368,14 +550,16 @@ export default function PracticePortalPage({ me, leagueId }) {
                         </button>
                       )}
                       <span className="subtle">
-                        Approved teams: {slot.approvedTeamIds.join(", ") || "None"} | Pending teams: {slot.pendingTeamIds.join(", ") || "None"}
+                        {openToShareField && selectedSharePartnerName
+                          ? `This request will share the field with ${selectedSharePartnerName}.`
+                          : "This request will reserve the field only for your team."}
                       </span>
                     </div>
                   </div>
                 </div>
               );
             })}
-            {visibleSlots.length === 0 ? <div className="muted">No practice space matches the current filter.</div> : null}
+            {!availabilityLoading && visibleSlots.length === 0 ? <div className="muted">No practice space matches the current query.</div> : null}
           </div>
         </div>
       </div>
@@ -383,7 +567,7 @@ export default function PracticePortalPage({ me, leagueId }) {
       <div id="practice-space-requests" className="card">
         <div className="card__header">
           <div className="h2">My Practice Requests</div>
-          <div className="subtle">Track pending approvals, approved space, moves, and cancellations.</div>
+          <div className="subtle">Track pending approvals, approved space, moves, sharing, and cancellations.</div>
         </div>
         <div className="card__body overflow-x-auto">
           <table className="table">
@@ -393,6 +577,7 @@ export default function PracticePortalPage({ me, leagueId }) {
                 <th>Field</th>
                 <th>Status</th>
                 <th>Policy</th>
+                <th>Booking</th>
                 <th>Notes</th>
                 <th>Action</th>
               </tr>
@@ -409,6 +594,10 @@ export default function PracticePortalPage({ me, leagueId }) {
                   </td>
                   <td><span className="pill">{request.status}</span></td>
                   <td title={request.bookingPolicy === "auto_approve" ? "This space was confirmed immediately." : "This space requires commissioner approval."}>{request.bookingPolicyLabel}</td>
+                  <td>
+                    <div>{describeSharing(request)}</div>
+                    <div className="subtle">{request.reservedTeamIds?.join(", ") || request.teamId}</div>
+                  </td>
                   <td>{request.notes || request.reviewReason || "-"}</td>
                   <td>
                     {isActiveRequest(request) ? (
@@ -433,7 +622,7 @@ export default function PracticePortalPage({ me, leagueId }) {
               ))}
               {myRequests.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="muted">No practice requests yet.</td>
+                  <td colSpan={7} className="muted">No practice requests yet.</td>
                 </tr>
               ) : null}
             </tbody>
@@ -448,8 +637,16 @@ export default function PracticePortalPage({ me, leagueId }) {
         </div>
         <div className="card__body stack gap-3">
           <div>
+            <div className="font-bold">Exact availability check</div>
+            <div className="subtle">Enter a date plus start and end time to get a yes/no answer for that exact window, along with the matching canonical options.</div>
+          </div>
+          <div>
+            <div className="font-bold">Shared booking</div>
+            <div className="subtle">Use Book as shared practice to reserve the slot for your team plus one named partner team when the slot is shareable.</div>
+          </div>
+          <div>
             <div className="font-bold">Auto-approve</div>
-            <div className="subtle">Ponytail-assigned space can confirm immediately when capacity remains. Your team does not need commissioner review for those blocks.</div>
+            <div className="subtle">Ponytail-assigned space can confirm immediately while the block is still available. Your team does not need commissioner review for those blocks.</div>
           </div>
           <div>
             <div className="font-bold">Commissioner review</div>
@@ -457,11 +654,7 @@ export default function PracticePortalPage({ me, leagueId }) {
           </div>
           <div>
             <div className="font-bold">Move request</div>
-            <div className="subtle">Use Move on an approved or pending request, then choose a replacement block above. The original slot is only released after the move is approved or auto-approved.</div>
-          </div>
-          <div>
-            <div className="font-bold">When to cancel</div>
-            <div className="subtle">Cancel a pending or approved request as soon as you no longer need the space so another team can use it.</div>
+            <div className="subtle">Use Move on an approved or pending request, then query a replacement date above. The original slot is only released after the move is approved or auto-approved.</div>
           </div>
         </div>
       </div>

@@ -18,6 +18,17 @@ function getDateInDays(days) {
   return date.toISOString().split("T")[0];
 }
 
+function describePracticeSharing(request) {
+  if (request?.openToShareField && request?.shareWithTeamId) {
+    return `Sharing with ${request.shareWithTeamId}`;
+  }
+  const reservedTeamIds = Array.isArray(request?.reservedTeamIds) ? request.reservedTeamIds.filter(Boolean) : [];
+  if (reservedTeamIds.length > 1) {
+    return `Sharing with ${reservedTeamIds.slice(1).join(", ")}`;
+  }
+  return "Exclusive booking";
+}
+
 export default function CoachOnboardingPage({ me, leagueId, setTab }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -453,6 +464,7 @@ export default function CoachOnboardingPage({ me, leagueId, setTab }) {
                     </div>
                     <div className="subtle truncate">{request.fieldName || "-"}</div>
                     <div className="subtle mt-1">{request.bookingPolicyLabel || "-"}</div>
+                    <div className="subtle mt-1">{describePracticeSharing(request)}</div>
                     {request.isMove && request.moveFromDate ? (
                       <div className="subtle mt-1">
                         Move from {request.moveFromDate} {request.moveFromStartTime || "-"}-{request.moveFromEndTime || "-"} {request.moveFromFieldName || ""}

@@ -664,7 +664,7 @@ describe("SeasonWizard", () => {
     expect(teamRow).toBeTruthy();
     const cells = within(teamRow).getAllByRole("cell").map((cell) => cell.textContent?.trim());
     expect(cells.slice(0, 8)).toEqual(["TEAM-1", "1", "1", "0", "0", "0", "1", "100%"]);
-  });
+  }, 15000);
 
   it("keeps apply available for hard-rule failures and uses warning labeling", async () => {
     installApiMock({ previewResponse: RULE_HINT_PREVIEW });

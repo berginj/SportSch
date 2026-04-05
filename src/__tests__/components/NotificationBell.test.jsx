@@ -76,6 +76,7 @@ describe("useNotifications", () => {
       expect(listCalls.length).toBeGreaterThanOrEqual(2);
     });
 
-    await waitFor(() => expect(screen.getByTestId("notification-items")).toHaveTextContent("note-2"));
+    await waitFor(() => expect(screen.getByTestId("unread-count")).toHaveTextContent("2"));
+    await waitFor(() => expect(screen.getByTestId("notification-items")).not.toHaveTextContent("note-1"));
   });
 });

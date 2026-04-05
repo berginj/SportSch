@@ -131,8 +131,6 @@ public class SlotService : ISlotService
             ["IsAvailability"] = false,
             ["OfferingEmail"] = request.OfferingEmail ?? context.UserEmail ?? "",
             ["GameDate"] = request.GameDate,
-            ["StartTime"] = request.StartTime,
-            ["EndTime"] = request.EndTime,
             ["ParkName"] = normalizedParkName,
             ["FieldName"] = normalizedFieldName,
             ["DisplayName"] = displayName,
@@ -143,6 +141,8 @@ public class SlotService : ISlotService
             ["CreatedUtc"] = now,
             ["UpdatedUtc"] = now
         };
+
+        SlotEntityUtil.ApplyTimeRange(entity, request.StartTime, request.EndTime);
 
         await _slotRepo.CreateSlotAsync(entity);
 

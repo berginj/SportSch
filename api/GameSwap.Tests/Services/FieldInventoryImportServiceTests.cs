@@ -650,7 +650,6 @@ public class FieldInventoryImportServiceTests
         private readonly Dictionary<string, List<FieldInventoryDivisionAliasEntity>> _divisionAliases = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, List<FieldInventoryTeamAliasEntity>> _teamAliases = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, List<FieldInventoryGroupPolicyEntity>> _groupPolicies = new(StringComparer.OrdinalIgnoreCase);
-        private readonly Dictionary<string, List<FieldInventoryPracticeRequestEntity>> _practiceRequests = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, FieldInventoryWorkbookUploadEntity> _uploads = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, byte[]> _uploadBytes = new(StringComparer.OrdinalIgnoreCase);
 
@@ -831,27 +830,6 @@ public class FieldInventoryImportServiceTests
             return Task.CompletedTask;
         }
 
-        public Task<List<FieldInventoryPracticeRequestEntity>> GetPracticeRequestsAsync(string leagueId, string seasonLabel)
-            => Task.FromResult(_practiceRequests.TryGetValue($"{leagueId}|{seasonLabel}", out var list) ? list.ToList() : new List<FieldInventoryPracticeRequestEntity>());
-
-        public Task<FieldInventoryPracticeRequestEntity?> GetPracticeRequestAsync(string leagueId, string seasonLabel, string requestId)
-        {
-            _practiceRequests.TryGetValue($"{leagueId}|{seasonLabel}", out var list);
-            return Task.FromResult(list?.FirstOrDefault(x => x.Id == requestId));
-        }
-
-        public Task UpsertPracticeRequestAsync(FieldInventoryPracticeRequestEntity request)
-        {
-            var key = $"{request.LeagueId}|{request.SeasonLabel}";
-            if (!_practiceRequests.ContainsKey(key))
-            {
-                _practiceRequests[key] = new List<FieldInventoryPracticeRequestEntity>();
-            }
-
-            _practiceRequests[key].RemoveAll(x => x.Id == request.Id);
-            _practiceRequests[key].Add(request);
-            return Task.CompletedTask;
-        }
     }
 
     private sealed class InMemoryFieldRepository : IFieldRepository

@@ -19,6 +19,7 @@ This document describes the normalized practice-space workflow now used by the a
   - inspect normalization state at the 90-minute block level
   - save mapping and booking-policy decisions
   - normalize missing canonical availability
+  - query canonical availability by date, division, and exact time window
   - approve or reject pending practice requests, including moves
 - `Practice`
   - browse normalized practice blocks for the signed-in coach's team
@@ -53,14 +54,14 @@ Normalization writes deterministic slot ids by using `SlotKeyUtil.BuildAvailabil
 
 - `auto_approve`
   - imported group policy allows immediate confirmation
-  - requests are approved immediately when capacity remains
+  - requests are approved immediately while the block is still available
 - `commissioner_review`
   - block is requestable but requires commissioner approval
   - request remains pending until approved or rejected
 - `not_requestable`
   - used, unavailable, or missing enough mapping/policy information to expose safely
 
-Each normalized practice block currently supports one active team reservation.
+Each normalized practice block can be booked exclusively or shared with one named partner team.
 
 ## Admin Workflow
 
@@ -115,12 +116,12 @@ Result:
 
 Result:
 
-- capacity reopens on the normalized block
+- the normalized block becomes available again if no other active request still holds it
 - admin and coach views stay aligned
 
 ## Operational Notes
 
 - The admin normalization calendar is the source of truth for imported-vs-canonical drift.
 - Conflicts are highlighted, not silently overwritten.
-- Requestable coach inventory only comes from normalized or ready practice blocks with remaining capacity.
+- Requestable coach inventory only comes from normalized or ready practice blocks that are currently available.
 - Legacy `/api/practice-requests`, `practice-portal/settings`, and direct slot-claim flows have been removed from the product path.

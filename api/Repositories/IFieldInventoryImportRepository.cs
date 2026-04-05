@@ -44,8 +44,4 @@ public interface IFieldInventoryImportRepository
 
     Task<List<FieldInventoryGroupPolicyEntity>> GetGroupPoliciesAsync(string leagueId);
     Task UpsertGroupPolicyAsync(FieldInventoryGroupPolicyEntity policy);
-
-    Task<List<FieldInventoryPracticeRequestEntity>> GetPracticeRequestsAsync(string leagueId, string seasonLabel);
-    Task<FieldInventoryPracticeRequestEntity?> GetPracticeRequestAsync(string leagueId, string seasonLabel, string requestId);
-    Task UpsertPracticeRequestAsync(FieldInventoryPracticeRequestEntity request);
 }

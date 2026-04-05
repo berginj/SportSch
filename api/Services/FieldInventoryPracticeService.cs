@@ -265,8 +265,8 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
             teamId,
             canonicalSlot.RowKey,
             request.Notes,
-            openToShareField: false,
-            shareWithTeamId: null);
+            request.OpenToShareField,
+            request.ShareWithTeamId);
 
         if (string.Equals(slot.BookingPolicy, FieldInventoryPracticeBookingPolicies.AutoApprove, StringComparison.OrdinalIgnoreCase))
         {
@@ -336,7 +336,9 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
             userId,
             sourceRequest.RowKey,
             canonicalSlot.RowKey,
-            request.Notes);
+            request.Notes,
+            request.OpenToShareField,
+            request.ShareWithTeamId);
 
         if (string.Equals(slot.BookingPolicy, FieldInventoryPracticeBookingPolicies.AutoApprove, StringComparison.OrdinalIgnoreCase))
         {
@@ -831,34 +833,40 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
             var key = $"{block.CanonicalDivisionCode}|{block.EffectiveSlotId}";
             if (string.IsNullOrWhiteSpace(block.CanonicalDivisionCode) || string.IsNullOrWhiteSpace(block.EffectiveSlotId) || !requestsBySlot.TryGetValue(key, out var slotRequests))
             {
-                block.Capacity = 1;
-                block.RemainingCapacity =
+                block.IsAvailable =
                     string.Equals(block.NormalizationState, "ready", StringComparison.OrdinalIgnoreCase) ||
                     (string.Equals(block.NormalizationState, "normalized", StringComparison.OrdinalIgnoreCase) &&
                      block.ExactSlot is not null &&
                      string.Equals((block.ExactSlot.GetString("Status") ?? Constants.Status.SlotOpen).Trim(), Constants.Status.SlotOpen, StringComparison.OrdinalIgnoreCase))
-                        ? 1
-                        : 0;
+                        ? true
+                        : false;
+                block.PendingTeamIds = [];
+                block.ReservedTeamIds = [];
+                block.PendingShareTeamIds = [];
                 continue;
             }
 
-            var approvedTeamIds = slotRequests
-                .Where(request => string.Equals(request.Status, FieldInventoryPracticeRequestStatuses.Approved, StringComparison.OrdinalIgnoreCase))
-                .Select(request => request.TeamId)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
             var pendingTeamIds = slotRequests
                 .Where(request => string.Equals(request.Status, FieldInventoryPracticeRequestStatuses.Pending, StringComparison.OrdinalIgnoreCase))
                 .Select(request => request.TeamId)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
+            var pendingShareTeamIds = slotRequests
+                .Where(request => string.Equals(request.Status, FieldInventoryPracticeRequestStatuses.Pending, StringComparison.OrdinalIgnoreCase))
+                .Select(request => request.ShareWithTeamId ?? "")
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var reservedTeamIds = slotRequests
+                .SelectMany(request => request.ReservedTeamIds ?? [])
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
 
-            block.Capacity = 1;
-            block.ApprovedTeamIds = approvedTeamIds;
+            block.IsAvailable = false;
             block.PendingTeamIds = pendingTeamIds;
-            block.ApprovedCount = approvedTeamIds.Count;
-            block.PendingCount = pendingTeamIds.Count;
-            block.RemainingCapacity = Math.Max(0, 1 - approvedTeamIds.Count - pendingTeamIds.Count);
+            block.PendingShareTeamIds = pendingShareTeamIds;
+            block.ReservedTeamIds = reservedTeamIds;
         }
     }
 
@@ -900,6 +908,8 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
             var teamId = (request.GetString("TeamId") ?? "").Trim();
             var requestKind = (request.GetString("RequestKind") ?? "").Trim();
             var moveFromRequestId = (request.GetString("MoveFromRequestId") ?? "").Trim();
+            var openToShareField = request.GetBoolean("OpenToShareField") ?? false;
+            var shareWithTeamId = (request.GetString("ShareWithTeamId") ?? "").Trim();
             requestLookup.TryGetValue(moveFromRequestId, out var sourceRequest);
             var sourceDate = sourceRequest?.GetString("GameDate") ?? "";
             var sourceStart = sourceRequest?.GetString("StartTime") ?? "";
@@ -907,6 +917,16 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
             var sourceFieldName = FirstNonBlank(
                 sourceRequest?.GetString("DisplayName"),
                 sourceRequest?.GetString("FieldName"));
+            var reservedTeamIds = new List<string>();
+            if (!string.IsNullOrWhiteSpace(teamId))
+            {
+                reservedTeamIds.Add(teamId);
+            }
+
+            if (openToShareField && !string.IsNullOrWhiteSpace(shareWithTeamId))
+            {
+                reservedTeamIds.Add(shareWithTeamId);
+            }
 
             return new FieldInventoryPracticeRequestDto(
                 request.RowKey,
@@ -937,7 +957,10 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
                 request.GetDateTimeOffset("RequestedUtc") ?? DateTimeOffset.MinValue,
                 (request.GetString("ReviewedBy") ?? "").Trim(),
                 request.GetDateTimeOffset("ReviewedUtc"),
-                (request.GetString("ReviewReason") ?? "").Trim());
+                (request.GetString("ReviewReason") ?? "").Trim(),
+                openToShareField,
+                string.IsNullOrWhiteSpace(shareWithTeamId) ? null : shareWithTeamId,
+                reservedTeamIds);
         }).ToList();
     }
 
@@ -978,9 +1001,6 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
                 aligned.Team.TeamName,
                 aligned.Policy.BookingPolicy,
                 aligned.Policy.Reason,
-                recordBlocks.Count(block => block.BaseRequestable),
-                recordBlocks.Sum(block => block.ApprovedCount),
-                recordBlocks.Sum(block => block.PendingCount),
                 aligned.MappingIssues);
         }).ToList();
     }
@@ -990,7 +1010,7 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
         return new FieldInventoryPracticeAdminResponse(
             bundle.SeasonLabel,
             bundle.SeasonOptions,
-            BuildSummary(bundle.AdminRows, bundle.Requests),
+            BuildSummary(bundle.Blocks, bundle.AdminRows, bundle.Requests),
             BuildNormalizationSummary(bundle.Blocks),
             bundle.AdminRows,
             bundle.Blocks.Select(MapSlot).ToList(),
@@ -1018,7 +1038,7 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
             .Where(block =>
                 string.Equals(block.NormalizationState, "ready", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(block.NormalizationState, "normalized", StringComparison.OrdinalIgnoreCase))
-            .Where(block => block.RemainingCapacity > 0 || activeSlotIds.Contains($"{block.CanonicalDivisionCode}|{block.EffectiveSlotId}"))
+            .Where(block => block.IsAvailable || activeSlotIds.Contains($"{block.CanonicalDivisionCode}|{block.EffectiveSlotId}"))
             .OrderBy(block => block.Date)
             .ThenBy(block => block.StartTime)
             .ThenBy(block => block.FieldName, StringComparer.OrdinalIgnoreCase)
@@ -1031,7 +1051,7 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
             division,
             teamId,
             teamName,
-            BuildSummary(bundle.AdminRows, bundle.Requests),
+            BuildSummary(bundle.Blocks, bundle.AdminRows, bundle.Requests),
             slots,
             requests);
     }
@@ -1059,25 +1079,32 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
             block.AssignedGroup,
             block.AssignedDivision,
             block.AssignedTeamOrEvent,
-            block.Capacity,
-            block.ApprovedCount,
-            block.PendingCount,
-            block.RemainingCapacity,
-            block.ApprovedTeamIds,
-            block.PendingTeamIds);
+            block.IsAvailable,
+            block.PendingTeamIds,
+            block.Shareable,
+            block.MaxTeamsPerBooking,
+            block.ReservedTeamIds,
+            block.PendingShareTeamIds);
     }
 
     private static FieldInventoryPracticeSummaryDto BuildSummary(
+        IReadOnlyCollection<PracticeBlockCandidate> blocks,
         IReadOnlyCollection<FieldInventoryPracticeAdminRowDto> rows,
         IReadOnlyCollection<FieldInventoryPracticeRequestDto> requests)
     {
+        var requestableBlocks = blocks.Count(block => block.BaseRequestable);
+        var autoApproveBlocks = blocks.Count(block =>
+            block.BaseRequestable &&
+            string.Equals(block.BookingPolicy, FieldInventoryPracticeBookingPolicies.AutoApprove, StringComparison.OrdinalIgnoreCase));
+        var commissionerReviewBlocks = blocks.Count(block =>
+            block.BaseRequestable &&
+            string.Equals(block.BookingPolicy, FieldInventoryPracticeBookingPolicies.CommissionerReview, StringComparison.OrdinalIgnoreCase));
+
         return new FieldInventoryPracticeSummaryDto(
             rows.Count,
-            rows.Sum(row => row.RequestableBlockCount),
-            rows.Where(row => string.Equals(row.BookingPolicy, FieldInventoryPracticeBookingPolicies.AutoApprove, StringComparison.OrdinalIgnoreCase))
-                .Sum(row => row.RequestableBlockCount),
-            rows.Where(row => string.Equals(row.BookingPolicy, FieldInventoryPracticeBookingPolicies.CommissionerReview, StringComparison.OrdinalIgnoreCase))
-                .Sum(row => row.RequestableBlockCount),
+            requestableBlocks,
+            autoApproveBlocks,
+            commissionerReviewBlocks,
             requests.Count(request => string.Equals(request.Status, FieldInventoryPracticeRequestStatuses.Pending, StringComparison.OrdinalIgnoreCase)),
             requests.Count(request => string.Equals(request.Status, FieldInventoryPracticeRequestStatuses.Approved, StringComparison.OrdinalIgnoreCase)),
             rows.Count(row => row.MappingIssues.Contains("division_unmapped", StringComparer.OrdinalIgnoreCase)),
@@ -1159,8 +1186,7 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
         entity["SlotId"] = entity.RowKey;
         entity["Division"] = block.CanonicalDivisionCode;
         entity["GameDate"] = block.Date;
-        entity["StartTime"] = block.StartTime;
-        entity["EndTime"] = block.EndTime;
+        SlotEntityUtil.ApplyTimeRange(entity, block.StartTime, block.EndTime);
         entity["FieldKey"] = normalizedFieldKey;
         entity["ParkName"] = parkName;
         entity["FieldName"] = fieldName;
@@ -1176,6 +1202,8 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
         entity["PracticeAssignedGroup"] = block.AssignedGroup ?? "";
         entity["PracticeAssignedDivision"] = block.AssignedDivision ?? "";
         entity["PracticeAssignedTeamOrEvent"] = block.AssignedTeamOrEvent ?? "";
+        entity["PracticeShareable"] = true;
+        entity["PracticeMaxTeamsPerBooking"] = 2;
         entity["PracticeNormalizedBy"] = userId;
         entity["PracticeNormalizedUtc"] = now;
         entity["UpdatedUtc"] = now;
@@ -1510,11 +1538,11 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
         public bool NeedsSlotMetadataSync { get; set; }
         public TableEntity? ExactSlot { get; set; }
         public List<TableEntity> OverlapSlots { get; set; } = [];
-        public int Capacity { get; set; } = 1;
-        public int ApprovedCount { get; set; }
-        public int PendingCount { get; set; }
-        public int RemainingCapacity { get; set; }
-        public List<string> ApprovedTeamIds { get; set; } = [];
+        public bool IsAvailable { get; set; }
         public List<string> PendingTeamIds { get; set; } = [];
+        public bool Shareable { get; set; } = true;
+        public int MaxTeamsPerBooking { get; set; } = 2;
+        public List<string> ReservedTeamIds { get; set; } = [];
+        public List<string> PendingShareTeamIds { get; set; } = [];
     }
 }

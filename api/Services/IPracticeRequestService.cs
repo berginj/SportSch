@@ -53,5 +53,7 @@ public interface IPracticeRequestService
         string userId,
         string sourceRequestId,
         string targetSlotId,
-        string? reason);
+        string? reason,
+        bool openToShareField = false,
+        string? shareWithTeamId = null);
 }

@@ -88,8 +88,7 @@ public class FieldInventoryPracticeServiceTests
         Assert.Contains(admin.Rows, row =>
             string.Equals(row.RecordId, syntheticRecord.Id, StringComparison.OrdinalIgnoreCase) &&
             string.Equals(row.CanonicalDivisionCode, "TESTDIV", StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(row.BookingPolicy, FieldInventoryPracticeBookingPolicies.CommissionerReview, StringComparison.OrdinalIgnoreCase) &&
-            row.RequestableBlockCount > 0);
+            string.Equals(row.BookingPolicy, FieldInventoryPracticeBookingPolicies.CommissionerReview, StringComparison.OrdinalIgnoreCase));
 
         _membershipRepository.UpsertMembership(new TableEntity("coach-1", "league-1")
         {
@@ -336,7 +335,6 @@ public class FieldInventoryPracticeServiceTests
         private readonly Dictionary<string, List<FieldInventoryDivisionAliasEntity>> _divisionAliases = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, List<FieldInventoryTeamAliasEntity>> _teamAliases = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, List<FieldInventoryGroupPolicyEntity>> _groupPolicies = new(StringComparer.OrdinalIgnoreCase);
-        private readonly Dictionary<string, List<FieldInventoryPracticeRequestEntity>> _practiceRequests = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, FieldInventoryWorkbookUploadEntity> _uploads = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, byte[]> _uploadBytes = new(StringComparer.OrdinalIgnoreCase);
 
@@ -518,27 +516,6 @@ public class FieldInventoryPracticeServiceTests
             return Task.CompletedTask;
         }
 
-        public Task<List<FieldInventoryPracticeRequestEntity>> GetPracticeRequestsAsync(string leagueId, string seasonLabel)
-            => Task.FromResult(_practiceRequests.TryGetValue($"{leagueId}|{seasonLabel}", out var list) ? list.ToList() : new List<FieldInventoryPracticeRequestEntity>());
-
-        public Task<FieldInventoryPracticeRequestEntity?> GetPracticeRequestAsync(string leagueId, string seasonLabel, string requestId)
-        {
-            _practiceRequests.TryGetValue($"{leagueId}|{seasonLabel}", out var list);
-            return Task.FromResult(list?.FirstOrDefault(x => x.Id == requestId));
-        }
-
-        public Task UpsertPracticeRequestAsync(FieldInventoryPracticeRequestEntity request)
-        {
-            var key = $"{request.LeagueId}|{request.SeasonLabel}";
-            if (!_practiceRequests.ContainsKey(key))
-            {
-                _practiceRequests[key] = new List<FieldInventoryPracticeRequestEntity>();
-            }
-
-            _practiceRequests[key].RemoveAll(x => x.Id == request.Id);
-            _practiceRequests[key].Add(request);
-            return Task.CompletedTask;
-        }
     }
 
     private sealed class InMemoryFieldRepository : IFieldRepository

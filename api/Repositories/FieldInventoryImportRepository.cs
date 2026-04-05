@@ -339,38 +339,6 @@ public class FieldInventoryImportRepository : IFieldInventoryImportRepository
         await table.UpsertEntityAsync(MapGroupPolicy(policy), TableUpdateMode.Replace);
     }
 
-    public async Task<List<FieldInventoryPracticeRequestEntity>> GetPracticeRequestsAsync(string leagueId, string seasonLabel)
-    {
-        var table = await TableClients.GetTableAsync(_tableService, Constants.Tables.FieldInventoryPracticeRequests);
-        var filter = ODataFilterBuilder.PartitionKeyExact(Constants.Pk.FieldInventoryPracticeRequests(leagueId, seasonLabel));
-        var list = new List<FieldInventoryPracticeRequestEntity>();
-        await foreach (var entity in table.QueryAsync<TableEntity>(filter: filter))
-        {
-            list.Add(MapPracticeRequest(entity));
-        }
-        return list.OrderByDescending(x => x.CreatedAt).ToList();
-    }
-
-    public async Task<FieldInventoryPracticeRequestEntity?> GetPracticeRequestAsync(string leagueId, string seasonLabel, string requestId)
-    {
-        var table = await TableClients.GetTableAsync(_tableService, Constants.Tables.FieldInventoryPracticeRequests);
-        try
-        {
-            var entity = (await table.GetEntityAsync<TableEntity>(Constants.Pk.FieldInventoryPracticeRequests(leagueId, seasonLabel), requestId)).Value;
-            return MapPracticeRequest(entity);
-        }
-        catch (RequestFailedException ex) when (ex.Status == 404)
-        {
-            return null;
-        }
-    }
-
-    public async Task UpsertPracticeRequestAsync(FieldInventoryPracticeRequestEntity request)
-    {
-        var table = await TableClients.GetTableAsync(_tableService, Constants.Tables.FieldInventoryPracticeRequests);
-        await table.UpsertEntityAsync(MapPracticeRequest(request), TableUpdateMode.Replace);
-    }
-
     private async Task ReplacePartitionAsync(string tableName, string partitionKey, IEnumerable<TableEntity> newEntities)
     {
         var table = await TableClients.GetTableAsync(_tableService, tableName);
@@ -866,68 +834,4 @@ public class FieldInventoryImportRepository : IFieldInventoryImportRepository
             CreatedBy = entity.GetString("CreatedBy") ?? "",
         };
 
-    private static TableEntity MapPracticeRequest(FieldInventoryPracticeRequestEntity request)
-    {
-        return new TableEntity(Constants.Pk.FieldInventoryPracticeRequests(request.LeagueId, request.SeasonLabel), request.Id)
-        {
-            ["PracticeSlotKey"] = request.PracticeSlotKey,
-            ["LiveRecordId"] = request.LiveRecordId,
-            ["Date"] = request.Date,
-            ["DayOfWeek"] = request.DayOfWeek,
-            ["StartTime"] = request.StartTime,
-            ["EndTime"] = request.EndTime,
-            ["FieldId"] = request.FieldId,
-            ["FieldName"] = request.FieldName,
-            ["TeamId"] = request.TeamId,
-            ["TeamName"] = request.TeamName ?? "",
-            ["BookingPolicy"] = request.BookingPolicy,
-            ["Status"] = request.Status,
-            ["Notes"] = request.Notes ?? "",
-            ["CreatedBy"] = request.CreatedBy,
-            ["CreatedAt"] = request.CreatedAt,
-            ["ReviewedBy"] = request.ReviewedBy ?? "",
-            ["ReviewedAt"] = request.ReviewedAt,
-            ["ReviewReason"] = request.ReviewReason ?? "",
-            ["UpdatedAt"] = request.UpdatedAt,
-        };
-    }
-
-    private static FieldInventoryPracticeRequestEntity MapPracticeRequest(TableEntity entity)
-        => new()
-        {
-            Id = entity.RowKey,
-            LeagueId = ExtractLeagueIdFromPracticeRequestPartition(entity.PartitionKey),
-            SeasonLabel = ExtractSeasonFromPracticeRequestPartition(entity.PartitionKey),
-            PracticeSlotKey = entity.GetString("PracticeSlotKey") ?? "",
-            LiveRecordId = entity.GetString("LiveRecordId") ?? "",
-            Date = entity.GetString("Date") ?? "",
-            DayOfWeek = entity.GetString("DayOfWeek") ?? "",
-            StartTime = entity.GetString("StartTime") ?? "",
-            EndTime = entity.GetString("EndTime") ?? "",
-            FieldId = entity.GetString("FieldId") ?? "",
-            FieldName = entity.GetString("FieldName") ?? "",
-            TeamId = entity.GetString("TeamId") ?? "",
-            TeamName = EmptyAsNull(entity.GetString("TeamName")),
-            BookingPolicy = entity.GetString("BookingPolicy") ?? FieldInventoryPracticeBookingPolicies.CommissionerReview,
-            Status = entity.GetString("Status") ?? FieldInventoryPracticeRequestStatuses.Pending,
-            Notes = EmptyAsNull(entity.GetString("Notes")),
-            CreatedBy = entity.GetString("CreatedBy") ?? "",
-            CreatedAt = entity.GetDateTimeOffset("CreatedAt") ?? DateTimeOffset.MinValue,
-            ReviewedBy = EmptyAsNull(entity.GetString("ReviewedBy")),
-            ReviewedAt = entity.GetDateTimeOffset("ReviewedAt"),
-            ReviewReason = EmptyAsNull(entity.GetString("ReviewReason")),
-            UpdatedAt = entity.GetDateTimeOffset("UpdatedAt") ?? DateTimeOffset.MinValue,
-        };
-
-    private static string ExtractLeagueIdFromPracticeRequestPartition(string partitionKey)
-    {
-        var parts = partitionKey.Split('|', StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length >= 3 ? parts[1] : "";
-    }
-
-    private static string ExtractSeasonFromPracticeRequestPartition(string partitionKey)
-    {
-        var parts = partitionKey.Split('|', StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length >= 3 ? parts[2] : "";
-    }
 }

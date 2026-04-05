@@ -49,6 +49,7 @@ var host = new HostBuilder()
         services.AddScoped<IApiKeyService, ApiKeyService>();
         services.AddScoped<IFieldInventoryImportService, FieldInventoryImportService>();
         services.AddScoped<IFieldInventoryPracticeService, FieldInventoryPracticeService>();
+        services.AddScoped<IPracticeAvailabilityService, PracticeAvailabilityService>();
 
         // Table creation on startup (if configured)
         if (context.Configuration.GetValue<bool>("GAMESWAP_CREATE_TABLES"))

@@ -52,8 +52,7 @@ public sealed class TableStartup : IHostedService
             Constants.Tables.FieldInventoryCommitRuns,
             Constants.Tables.FieldInventoryDivisionAliases,
             Constants.Tables.FieldInventoryTeamAliases,
-            Constants.Tables.FieldInventoryGroupPolicies,
-            Constants.Tables.FieldInventoryPracticeRequests
+            Constants.Tables.FieldInventoryGroupPolicies
         };
 
         foreach (var tableName in tableNames)

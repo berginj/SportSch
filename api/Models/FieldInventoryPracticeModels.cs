@@ -33,12 +33,16 @@ public record FieldInventoryPracticeRequestCreateRequest(
     string? SeasonLabel,
     string? PracticeSlotKey,
     string? TeamId,
-    string? Notes);
+    string? Notes,
+    bool OpenToShareField = false,
+    string? ShareWithTeamId = null);
 
 public record FieldInventoryPracticeRequestMoveRequest(
     string? SeasonLabel,
     string? PracticeSlotKey,
-    string? Notes);
+    string? Notes,
+    bool OpenToShareField = false,
+    string? ShareWithTeamId = null);
 
 public record FieldInventoryPracticeRequestDecisionRequest(string? Reason);
 
@@ -86,9 +90,6 @@ public record FieldInventoryPracticeAdminRowDto(
     string? CanonicalTeamName,
     string BookingPolicy,
     string BookingPolicyReason,
-    int RequestableBlockCount,
-    int ApprovedTeamCount,
-    int PendingTeamCount,
     List<string> MappingIssues);
 
 public record FieldInventoryPracticeSlotDto(
@@ -112,12 +113,12 @@ public record FieldInventoryPracticeSlotDto(
     string? AssignedGroup,
     string? AssignedDivision,
     string? AssignedTeamOrEvent,
-    int Capacity,
-    int ApprovedCount,
-    int PendingCount,
-    int RemainingCapacity,
-    List<string> ApprovedTeamIds,
-    List<string> PendingTeamIds);
+    bool IsAvailable,
+    List<string> PendingTeamIds,
+    bool Shareable,
+    int MaxTeamsPerBooking,
+    List<string> ReservedTeamIds,
+    List<string> PendingShareTeamIds);
 
 public record FieldInventoryPracticeRequestDto(
     string RequestId,
@@ -148,7 +149,10 @@ public record FieldInventoryPracticeRequestDto(
     DateTimeOffset CreatedAt,
     string? ReviewedBy,
     DateTimeOffset? ReviewedAt,
-    string? ReviewReason);
+    string? ReviewReason,
+    bool OpenToShareField,
+    string? ShareWithTeamId,
+    List<string> ReservedTeamIds);
 
 public record FieldInventoryPracticeNormalizationSummaryDto(
     int CandidateBlocks,
@@ -234,28 +238,3 @@ public class FieldInventoryGroupPolicyEntity
     public string CreatedBy { get; set; } = "";
 }
 
-public class FieldInventoryPracticeRequestEntity
-{
-    public string Id { get; set; } = "";
-    public string LeagueId { get; set; } = "";
-    public string SeasonLabel { get; set; } = "";
-    public string PracticeSlotKey { get; set; } = "";
-    public string LiveRecordId { get; set; } = "";
-    public string Date { get; set; } = "";
-    public string DayOfWeek { get; set; } = "";
-    public string StartTime { get; set; } = "";
-    public string EndTime { get; set; } = "";
-    public string FieldId { get; set; } = "";
-    public string FieldName { get; set; } = "";
-    public string TeamId { get; set; } = "";
-    public string? TeamName { get; set; }
-    public string BookingPolicy { get; set; } = FieldInventoryPracticeBookingPolicies.CommissionerReview;
-    public string Status { get; set; } = FieldInventoryPracticeRequestStatuses.Pending;
-    public string? Notes { get; set; }
-    public string CreatedBy { get; set; } = "";
-    public DateTimeOffset CreatedAt { get; set; }
-    public string? ReviewedBy { get; set; }
-    public DateTimeOffset? ReviewedAt { get; set; }
-    public string? ReviewReason { get; set; }
-    public DateTimeOffset UpdatedAt { get; set; }
-}

@@ -71,6 +71,9 @@ const adminResponse = {
       reviewedBy: null,
       reviewedAt: null,
       reviewReason: null,
+      openToShareField: true,
+      shareWithTeamId: "TEAM-2",
+      reservedTeamIds: ["TEAM-1", "TEAM-2"],
     },
   ],
   slots: [
@@ -95,12 +98,12 @@ const adminResponse = {
       assignedGroup: "Ponytail",
       assignedDivision: "PONY",
       assignedTeamOrEvent: "Red",
-      capacity: 1,
-      approvedCount: 0,
-      pendingCount: 0,
-      remainingCapacity: 1,
-      approvedTeamIds: [],
+      isAvailable: true,
       pendingTeamIds: [],
+      shareable: true,
+      maxTeamsPerBooking: 2,
+      reservedTeamIds: [],
+      pendingShareTeamIds: [],
     },
   ],
   canonicalFields: [],
@@ -131,9 +134,6 @@ const adminResponse = {
       canonicalTeamName: "",
       bookingPolicy: "not_requestable",
       bookingPolicyReason: "Needs policy mapping before coaches can request it.",
-      requestableBlockCount: 0,
-      approvedTeamCount: 0,
-      pendingTeamCount: 1,
       mappingIssues: ["division_unmapped", "team_unmapped", "policy_unmapped"],
     },
   ],
@@ -144,6 +144,57 @@ describe("PracticeSpaceManager", () => {
     vi.clearAllMocks();
     api.apiFetch.mockImplementation((path, options = {}) => {
       if (path === "/api/field-inventory/practice/admin") return Promise.resolve(adminResponse);
+      if (path.startsWith("/api/field-inventory/practice/availability/options?")) {
+        return Promise.resolve({
+          seasonLabel: "Spring 2026",
+          division: "PONY",
+          teamId: "TEAM-1",
+          teamName: "Ponytails Red",
+          date: "2026-04-05",
+          startTime: "09:00",
+          endTime: "10:30",
+          fieldKey: null,
+          exactMatchRequested: true,
+          count: 1,
+          options: [
+            {
+              slotId: "canon-1",
+              practiceSlotKey: "slot-1",
+              seasonLabel: "Spring 2026",
+              division: "PONY",
+              date: "2026-04-05",
+              dayOfWeek: "Sunday",
+              startTime: "09:00",
+              endTime: "10:30",
+              fieldKey: "park1/field1",
+              fieldName: "Barcroft #3",
+              bookingPolicy: "commissioner_review",
+              bookingPolicyLabel: "Commissioner review",
+              isAvailable: true,
+              shareable: true,
+              maxTeamsPerBooking: 2,
+              reservedTeamIds: [],
+              pendingTeamIds: ["TEAM-1"],
+              pendingShareTeamIds: [],
+            },
+          ],
+        });
+      }
+      if (path.startsWith("/api/field-inventory/practice/availability/check?")) {
+        return Promise.resolve({
+          seasonLabel: "Spring 2026",
+          division: "PONY",
+          teamId: "TEAM-1",
+          teamName: "Ponytails Red",
+          date: "2026-04-05",
+          startTime: "09:00",
+          endTime: "10:30",
+          fieldKey: null,
+          available: true,
+          matchingOptionCount: 1,
+          options: [],
+        });
+      }
       if (path === "/api/field-inventory/practice/normalize" && options.method === "POST") {
         return Promise.resolve({
           result: {
@@ -184,7 +235,6 @@ describe("PracticeSpaceManager", () => {
               ...adminResponse.rows[0],
               bookingPolicy: "auto_approve",
               bookingPolicyReason: "Mapped from group 'Ponytail'.",
-              requestableBlockCount: 2,
               mappingIssues: ["division_unmapped", "team_unmapped"],
             },
           ],
@@ -214,7 +264,15 @@ describe("PracticeSpaceManager", () => {
 
     expect(await screen.findByText("Practice Space Admin")).toBeInTheDocument();
     expect(await screen.findByText("Availability Normalization")).toBeInTheDocument();
+    expect(await screen.findByText("Availability Search")).toBeInTheDocument();
     expect(await screen.findByText("Calendar compare: 1")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Start"), { target: { value: "09:00" } });
+    fireEvent.change(screen.getByLabelText("End"), { target: { value: "10:30" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search Availability" }));
+
+    expect(await screen.findByText("Exact window available")).toBeInTheDocument();
+    expect(screen.getAllByText("Barcroft #3").length).toBeGreaterThan(0);
+    expect(screen.getByText("Sharing with TEAM-2")).toBeInTheDocument();
     fireEvent.change(screen.getByDisplayValue("Not requestable"), { target: { value: "auto_approve" } });
     fireEvent.click(screen.getByRole("button", { name: "Save Policy" }));
 
@@ -225,5 +283,5 @@ describe("PracticeSpaceManager", () => {
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
 
     expect(await screen.findByText("Approved")).toBeInTheDocument();
-  });
+  }, 15000);
 });

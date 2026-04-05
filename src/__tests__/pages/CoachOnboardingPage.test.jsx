@@ -79,6 +79,9 @@ describe("CoachOnboardingPage", () => {
               reviewedBy: null,
               reviewedAt: null,
               reviewReason: null,
+              openToShareField: true,
+              shareWithTeamId: "TEAM-2",
+              reservedTeamIds: ["TEAM-1", "TEAM-2"],
             },
           ],
         });
@@ -128,6 +131,7 @@ describe("CoachOnboardingPage", () => {
 
     expect(screen.getByText("Current practice requests")).toBeInTheDocument();
     expect(screen.getByText(/Move from 2026-04-03/)).toBeInTheDocument();
+    expect(screen.getByText("Sharing with TEAM-2")).toBeInTheDocument();
     expect(screen.queryByText("Recurring practice choices")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /request p1/i })).not.toBeInTheDocument();
 

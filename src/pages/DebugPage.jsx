@@ -88,7 +88,7 @@ function buildDebugPracticePreview(adminView, division, teamId) {
       .filter((slot) => normalizeText(slot?.bookingPolicy).toLowerCase() !== "not_requestable")
       .filter((slot) => {
         const key = `${normalizeText(slot?.division)}|${normalizeText(slot?.slotId)}`;
-        return Number(slot?.remainingCapacity || 0) > 0 || activeSlotIds.has(key);
+        return !!slot?.isAvailable || activeSlotIds.has(key);
       })
   );
 
@@ -1318,7 +1318,7 @@ export default function DebugPage({ leagueId, me }) {
               <div className="card__header">
                 <div className="h2">Requestable normalized practice blocks</div>
                 <div className="subtle">
-                  These are the blocks the selected coach would see after division scoping, requestability, normalization, and capacity checks.
+                  These are the blocks the selected coach would see after division scoping, requestability, normalization, and availability checks.
                 </div>
               </div>
 
@@ -1354,7 +1354,7 @@ export default function DebugPage({ leagueId, me }) {
                         <th>Time</th>
                         <th>Location</th>
                         <th>Policy</th>
-                        <th>Capacity</th>
+                        <th>Availability</th>
                         <th>State</th>
                       </tr>
                     </thead>
@@ -1371,7 +1371,15 @@ export default function DebugPage({ leagueId, me }) {
                             <td>{formatSlotLocation(slot)}</td>
                             <td>{slot.bookingPolicyLabel || "-"}</td>
                             <td>
-                              {Number(slot.remainingCapacity || 0)}/{Number(slot.capacity || 0)}
+                              <div>{slot.isAvailable ? "Available" : "Unavailable"}</div>
+                              <div className="muted text-xs">
+                                {slot.shareable
+                                  ? `Shareable ${Number(slot.reservedTeamIds?.length || 0)}/${Number(slot.maxTeamsPerBooking || 0)}`
+                                  : "Exclusive"}
+                              </div>
+                              {slot.reservedTeamIds?.length ? (
+                                <div className="muted text-xs">Reserved: {slot.reservedTeamIds.join(", ")}</div>
+                              ) : null}
                               {alreadyRequested ? <div className="muted text-xs">Already requested by this team</div> : null}
                             </td>
                             <td>{slot.normalizationState || "-"}</td>

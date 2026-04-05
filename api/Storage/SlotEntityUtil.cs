@@ -9,6 +9,39 @@ namespace GameSwap.Functions.Storage;
 /// </summary>
 public static class SlotEntityUtil
 {
+    public static void ApplyTimeRange(TableEntity entity, string startTime, string endTime)
+    {
+        entity["StartTime"] = startTime;
+        entity["EndTime"] = endTime;
+
+        if (TimeUtil.TryParseMinutes(startTime, out var startMin))
+            entity["StartMin"] = startMin;
+        else
+            entity.Remove("StartMin");
+
+        if (TimeUtil.TryParseMinutes(endTime, out var endMin))
+            entity["EndMin"] = endMin;
+        else
+            entity.Remove("EndMin");
+    }
+
+    public static bool TryReadTimeRange(TableEntity entity, out int startMin, out int endMin)
+    {
+        startMin = 0;
+        endMin = 0;
+
+        if (entity.GetInt32("StartMin") is int storedStart && entity.GetInt32("EndMin") is int storedEnd)
+        {
+            startMin = storedStart;
+            endMin = storedEnd;
+            return storedEnd > storedStart;
+        }
+
+        var startTime = ReadString(entity, "StartTime");
+        var endTime = ReadString(entity, "EndTime");
+        return TimeUtil.IsValidRange(startTime, endTime, out startMin, out endMin, out _);
+    }
+
     public static string ReadString(TableEntity entity, string key, string defaultValue = "")
     {
         if (!entity.TryGetValue(key, out var value) || value is null) return defaultValue;

@@ -14,11 +14,16 @@ namespace GameSwap.Functions.Functions;
 public class FieldInventoryPracticeFunctions
 {
     private readonly IFieldInventoryPracticeService _service;
+    private readonly IPracticeAvailabilityService _availabilityService;
     private readonly TableServiceClient _tableService;
 
-    public FieldInventoryPracticeFunctions(IFieldInventoryPracticeService service, TableServiceClient tableService)
+    public FieldInventoryPracticeFunctions(
+        IFieldInventoryPracticeService service,
+        IPracticeAvailabilityService availabilityService,
+        TableServiceClient tableService)
     {
         _service = service;
+        _availabilityService = availabilityService;
         _tableService = tableService;
     }
 
@@ -49,6 +54,46 @@ public class FieldInventoryPracticeFunctions
             var seasonLabel = ApiGuards.GetQueryParam(req, "seasonLabel");
             var context = CorrelationContext.FromRequest(req, leagueId);
             return ApiResponses.Ok(req, await _service.GetCoachViewAsync(seasonLabel, me.UserId, context));
+        });
+
+    [Function("ListPracticeAvailabilityOptions")]
+    [OpenApiOperation(operationId: "ListPracticeAvailabilityOptions", tags: new[] { "Field Inventory Practice" }, Summary = "List practice availability options", Description = "Returns canonical practice booking options for a specific day, optionally narrowed to an exact time and field. Coaches are scoped to their own division; admins must pass a division.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    public async Task<HttpResponseData> ListAvailabilityOptions(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "field-inventory/practice/availability/options")] HttpRequestData req)
+        => await ExecuteAsync(req, async () =>
+        {
+            var leagueId = ApiGuards.RequireLeagueId(req);
+            var me = IdentityUtil.GetMe(req);
+            var body = new PracticeAvailabilityQueryRequest(
+                ApiGuards.GetQueryParam(req, "seasonLabel"),
+                ApiGuards.GetQueryParam(req, "date"),
+                ApiGuards.GetQueryParam(req, "startTime"),
+                ApiGuards.GetQueryParam(req, "endTime"),
+                ApiGuards.GetQueryParam(req, "division"),
+                ApiGuards.GetQueryParam(req, "fieldKey"));
+            var context = CorrelationContext.FromRequest(req, leagueId);
+            return ApiResponses.Ok(req, await _availabilityService.GetCoachAvailabilityOptionsAsync(body, me.UserId, context));
+        });
+
+    [Function("CheckPracticeAvailability")]
+    [OpenApiOperation(operationId: "CheckPracticeAvailability", tags: new[] { "Field Inventory Practice" }, Summary = "Check practice availability", Description = "Returns whether an exact practice day/time window is available and includes matching options. Coaches are scoped to their own division; admins must pass a division.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    public async Task<HttpResponseData> CheckAvailability(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "field-inventory/practice/availability/check")] HttpRequestData req)
+        => await ExecuteAsync(req, async () =>
+        {
+            var leagueId = ApiGuards.RequireLeagueId(req);
+            var me = IdentityUtil.GetMe(req);
+            var body = new PracticeAvailabilityQueryRequest(
+                ApiGuards.GetQueryParam(req, "seasonLabel"),
+                ApiGuards.GetQueryParam(req, "date"),
+                ApiGuards.GetQueryParam(req, "startTime"),
+                ApiGuards.GetQueryParam(req, "endTime"),
+                ApiGuards.GetQueryParam(req, "division"),
+                ApiGuards.GetQueryParam(req, "fieldKey"));
+            var context = CorrelationContext.FromRequest(req, leagueId);
+            return ApiResponses.Ok(req, await _availabilityService.CheckCoachAvailabilityAsync(body, me.UserId, context));
         });
 
     [Function("SaveFieldInventoryDivisionAlias")]
@@ -186,7 +231,7 @@ public class FieldInventoryPracticeFunctions
         });
 
     [Function("CancelFieldInventoryPracticeRequest")]
-    [OpenApiOperation(operationId: "CancelFieldInventoryPracticeRequest", tags: new[] { "Field Inventory Practice" }, Summary = "Cancel a practice-space request", Description = "Cancels a coach team's practice-space request and reopens capacity.")]
+    [OpenApiOperation(operationId: "CancelFieldInventoryPracticeRequest", tags: new[] { "Field Inventory Practice" }, Summary = "Cancel a practice-space request", Description = "Cancels a coach team's practice-space request and releases its reservation on the canonical availability block.")]
     [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
     public async Task<HttpResponseData> CancelPracticeRequest(
         [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "field-inventory/practice/requests/{requestId}/cancel")] HttpRequestData req,

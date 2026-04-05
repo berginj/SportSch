@@ -55,15 +55,15 @@ Each practice block must resolve to one of:
 
 Meaning:
 
-- `auto_approve`: coach request is confirmed immediately if capacity remains
+- `auto_approve`: coach request is confirmed immediately while the target block is available
 - `commissioner_review`: request is created pending commissioner action
 - `not_requestable`: block is hidden from coach request flow
 
-## 5. Capacity Model
+## 5. Availability and Sharing Model
 
-- Each normalized practice block currently supports one active team reservation.
-- Remaining capacity must be recalculated from approved and pending requests.
-- A coach cannot request or move into a block with no remaining capacity unless that block is already tied to that same active request.
+- Each normalized practice block is either available or unavailable.
+- Shared booking is expressed on the request and may reserve the primary team plus one named partner team.
+- A coach cannot request or move into an unavailable block unless that block is already tied to that same active request.
 
 ## 6. Request Status Model
 
@@ -118,16 +118,16 @@ Division alias, team alias, and booking-policy writes must return a refreshed ad
 - require an active source request
 - create a replacement request against another normalized or ready block
 - preserve the source request until the replacement request is approved or auto-approved
-- reject moves into the same slot or a full slot
+- reject moves into the same slot or an unavailable slot
 
 ### 8.4 Cancel request
 
-`PATCH /api/field-inventory/practice/requests/{requestId}/cancel` must release the reserved or confirmed capacity associated with that request.
+`PATCH /api/field-inventory/practice/requests/{requestId}/cancel` must release the reservation associated with that request.
 
 ## 9. Commissioner Review
 
 - `approve` confirms pending commissioner-reviewed requests
-- `reject` rejects pending commissioner-reviewed requests and reopens capacity
+- `reject` rejects pending commissioner-reviewed requests and restores availability when no other active request still holds the block
 - approving a move must finalize the replacement request before the source request is released
 
 ## 10. League Scoping and Auth
