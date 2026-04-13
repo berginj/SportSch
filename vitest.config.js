@@ -11,6 +11,7 @@ export default defineConfig({
       '**/node_modules/**',
       '**/dist/**',
       '**/e2e/**',
+      '**/_cleanup_backup/**',
       '**/.{idea,git,cache,output,temp}/**',
     ],
     coverage: {
@@ -23,6 +24,7 @@ export default defineConfig({
         'dist/',
         'api/',
         'e2e/',
+        '_cleanup_backup/',
       ],
     },
   },
