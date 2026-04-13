@@ -201,7 +201,7 @@ public class GameReminderFunction
     {
         var division = (slot.GetString("Division") ?? "").Trim();
         var homeTeamId = (slot.GetString("HomeTeamId") ?? "").Trim();
-        var awayTeamId = (slot.GetString("AwayTeamId") ?? "").Trim();
+        var awayTeamId = ResolveOpponentTeamId(slot);
         var gameDate = (slot.GetString("GameDate") ?? "").Trim();
         var startTime = (slot.GetString("StartTime") ?? "").Trim();
         var fieldDisplay = (slot.GetString("DisplayName") ?? slot.GetString("FieldKey") ?? "TBD").Trim();
@@ -257,6 +257,15 @@ public class GameReminderFunction
         }
 
         return sent;
+    }
+
+    private static string ResolveOpponentTeamId(TableEntity slot)
+    {
+        var awayTeamId = (slot.GetString("AwayTeamId") ?? "").Trim();
+        if (!string.IsNullOrWhiteSpace(awayTeamId))
+            return awayTeamId;
+
+        return (slot.GetString("ConfirmedTeamId") ?? "").Trim();
     }
 
     private static string TeamKey(string division, string teamId)

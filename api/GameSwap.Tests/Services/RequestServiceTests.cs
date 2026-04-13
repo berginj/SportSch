@@ -65,6 +65,7 @@ public class RequestServiceTests
             SlotId = slotId,
             Notes = "Looks good"
         };
+        TableEntity? updatedSlot = null;
         var notifications = new List<(string userId, string type, string message)>();
         var requestApprovedEmails = new List<string>();
         var requestReceivedEmails = new List<string>();
@@ -123,6 +124,7 @@ public class RequestServiceTests
             .ReturnsAsync(slot);
         _mockSlotRepo
             .Setup(x => x.UpdateSlotAsync(It.IsAny<TableEntity>(), It.IsAny<ETag>()))
+            .Callback<TableEntity, ETag>((entity, _) => updatedSlot = entity)
             .Returns(Task.CompletedTask);
         _mockSlotRepo
             .Setup(x => x.QuerySlotsAsync(It.IsAny<SlotQueryFilter>(), null))
@@ -180,6 +182,9 @@ public class RequestServiceTests
 
         // Assert
         Assert.NotNull(result);
+        Assert.NotNull(updatedSlot);
+        Assert.Equal("TEAM-B", updatedSlot!.GetString("ConfirmedTeamId"));
+        Assert.Equal("", updatedSlot.GetString("AwayTeamId"));
 
         Assert.Contains(notifications, item =>
             item.userId == "requesting-coach" &&

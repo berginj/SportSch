@@ -155,7 +155,7 @@ public class SlotStatusFunctions
         try
         {
             var homeTeamId = (slot.GetString("HomeTeamId") ?? "").Trim();
-            var awayTeamId = (slot.GetString("AwayTeamId") ?? "").Trim();
+            var awayTeamId = ResolveOpponentTeamId(slot);
             var gameDate = (slot.GetString("GameDate") ?? "").Trim();
             var startTime = (slot.GetString("StartTime") ?? "").Trim();
             var field = (slot.GetString("DisplayName") ?? slot.GetString("FieldKey") ?? "TBD").Trim();
@@ -221,5 +221,14 @@ public class SlotStatusFunctions
             _log.LogError(ex, "Failed to send cancellation notifications for slot");
             // Don't fail the request if email fails
         }
+    }
+
+    private static string ResolveOpponentTeamId(TableEntity slot)
+    {
+        var awayTeamId = (slot.GetString("AwayTeamId") ?? "").Trim();
+        if (!string.IsNullOrWhiteSpace(awayTeamId))
+            return awayTeamId;
+
+        return (slot.GetString("ConfirmedTeamId") ?? "").Trim();
     }
 }
