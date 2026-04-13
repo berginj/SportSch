@@ -21,6 +21,7 @@ public static class EntityMappers
             offeringTeamId = ReadString(e, "OfferingTeamId"),
             homeTeamId = ReadString(e, "HomeTeamId"),
             awayTeamId = ReadString(e, "AwayTeamId"),
+            confirmedTeamId = ReadString(e, "ConfirmedTeamId"),
             isExternalOffer = ReadBool(e, "IsExternalOffer", false),
             isAvailability = ReadBool(e, "IsAvailability", false),
             offeringEmail = ReadString(e, "OfferingEmail"),

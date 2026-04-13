@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Azure;
 using Azure.Data.Tables;
@@ -438,6 +439,7 @@ public class SlotServiceTests : IDisposable
             { "LeagueId", "league-1" },
             { "Division", "AAA" },
             { "Status", Constants.Status.SlotConfirmed },
+            { "ConfirmedTeamId", "TEAM-2" },
             { "GameDate", "2026-03-20" },
             { "StartTime", "18:00" },
             { "DisplayName", "Field 1" }
@@ -480,6 +482,8 @@ public class SlotServiceTests : IDisposable
         Assert.Equal("2026-03-14", capturedFilter.FromDate);
         Assert.Equal("2026-06-10", capturedFilter.ToDate);
         Assert.Single(result.Items);
+        using var slotJson = JsonDocument.Parse(JsonSerializer.Serialize(result.Items.Single()));
+        Assert.Equal("TEAM-2", slotJson.RootElement.GetProperty("confirmedTeamId").GetString());
         Assert.Null(result.ContinuationToken);
         Assert.Equal(50, result.PageSize);
     }
