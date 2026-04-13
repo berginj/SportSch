@@ -3,6 +3,7 @@ import { apiFetch } from '../lib/api';
 import StatusCard from '../components/StatusCard';
 import { SLOT_STATUS } from "../lib/constants";
 import { navigateToCalendarTab, navigateToOffersTab } from "../lib/navigation";
+import { getSlotPerspective } from "../lib/slotTeams";
 
 /**
  * Coach Dashboard - Personalized home page for coaches
@@ -362,10 +363,8 @@ function QuickActionsPanel({ hasTeam, onOfferGameSlot, onBrowseAvailableSlots, o
 }
 
 function GameCard({ game, teamId }) {
-  const isHome = game.homeTeamId === teamId;
-  const isAway = game.awayTeamId === teamId;
-  const opponent = isHome ? game.awayTeamId : game.homeTeamId;
-  const vsText = opponent ? (isHome ? `vs ${opponent}` : `@ ${opponent}`) : 'TBD';
+  const { isHome, isAway, opponentTeamId } = getSlotPerspective(game, teamId);
+  const vsText = opponentTeamId ? (isHome ? `vs ${opponentTeamId}` : `@ ${opponentTeamId}`) : 'TBD';
 
   return (
     <div className="layoutPanel row row--between row--wrap">

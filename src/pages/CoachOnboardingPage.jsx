@@ -7,6 +7,7 @@ import { ConfirmDialog } from "../components/Dialogs";
 import { useConfirmDialog } from "../lib/useDialogs";
 import { SLOT_STATUS } from "../lib/constants";
 import { navigateToCalendarTab } from "../lib/navigation";
+import { getSlotOpponentTeamId, getSlotPerspective } from "../lib/slotTeams";
 
 function getTodayDate() {
   return new Date().toISOString().split("T")[0];
@@ -107,9 +108,8 @@ export default function CoachOnboardingPage({ me, leagueId, setTab }) {
       const teamGames = (Array.isArray(gamesResp) ? gamesResp : []).filter(
         (game) =>
           game.offeringTeamId === teamId ||
-          game.confirmedTeamId === teamId ||
           game.homeTeamId === teamId ||
-          game.awayTeamId === teamId
+          getSlotOpponentTeamId(game) === teamId
       );
       setUpcomingGames(teamGames);
     } catch (err) {
@@ -532,9 +532,8 @@ export default function CoachOnboardingPage({ me, leagueId, setTab }) {
         ) : (
           <div className="grid gap-3 max-h-96 overflow-y-auto">
             {upcomingGames.slice(0, 15).map((game) => {
-              const isHome = game.homeTeamId === teamId;
-              const opponent = isHome ? game.awayTeamId : game.homeTeamId;
-              const vsText = opponent ? (isHome ? `vs ${opponent}` : `@ ${opponent}`) : "TBD";
+              const { isHome, opponentTeamId } = getSlotPerspective(game, teamId);
+              const vsText = opponentTeamId ? (isHome ? `vs ${opponentTeamId}` : `@ ${opponentTeamId}`) : "TBD";
 
               return (
                 <div key={game.slotId} className="layoutPanel row row--between row--wrap">

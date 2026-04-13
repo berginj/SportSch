@@ -3,6 +3,7 @@ import { apiFetch } from "../lib/api";
 import { fetchAllPagedItems } from "../lib/pagedResults";
 import { getDefaultRangeFallback, getSeasonRange } from "../lib/season";
 import { SLOT_STATUS } from "../lib/constants";
+import { getSlotMatchupLabel, getSlotOpponentTeamId } from "../lib/slotTeams";
 import LeaguePicker from "../components/LeaguePicker";
 import StatusCard from "../components/StatusCard";
 import Toast from "../components/Toast";
@@ -81,7 +82,7 @@ function isUnscheduledOpenCapacity(slot) {
   if (slot.isAvailability) return true;
   if (slot.isExternalOffer) return false;
 
-  const away = (slot.awayTeamId || "").trim();
+  const away = getSlotOpponentTeamId(slot);
   if (away) return false;
 
   const homeOrOffering = (slot.homeTeamId || slot.offeringTeamId || "").trim();
@@ -91,7 +92,7 @@ function isUnscheduledOpenCapacity(slot) {
 function canAcceptSlot(slot) {
   if (!slot || (slot.status || "") !== "Open") return false;
   if (slot.isAvailability) return false;
-  if ((slot.awayTeamId || "").trim() && !slot.isExternalOffer) return false;
+  if (getSlotOpponentTeamId(slot) && !slot.isExternalOffer) return false;
   return true;
 }
 
@@ -103,19 +104,6 @@ function parseMinutes(hhmm) {
   if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
   if (h < 0 || h > 23 || m < 0 || m > 59) return null;
   return h * 60 + m;
-}
-
-function slotMatchupLabel(slot) {
-  if (isPracticeSlot(slot)) {
-    const team = (slot?.confirmedTeamId || slot?.offeringTeamId || "").trim();
-    return team ? `Practice: ${team}` : "Practice";
-  }
-  const home = (slot?.homeTeamId || slot?.offeringTeamId || "").trim();
-  const away = (slot?.awayTeamId || "").trim();
-  if (away) return `${home} vs ${away}`;
-  if (home && slot?.isExternalOffer) return `${home} vs TBD (external)`;
-  if (home) return `${home} vs TBD`;
-  return "";
 }
 
 function buildServerFilters({ division, dateFrom, dateTo, showSlots, showEvents, slotStatusFilter }) {
@@ -514,7 +502,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     }
 
     for (const s of visibleSlots) {
-      const matchup = slotMatchupLabel(s);
+      const matchup = getSlotMatchupLabel(s);
       const label = `${matchup || s.offeringTeamId || ""} @ ${s.displayName || `${s.parkName || ""} ${s.fieldName || ""}`}`.trim();
       items.push({
         kind: "slot",
@@ -1264,7 +1252,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
                     {editConflicts.slice(0, 10).map((conflict, idx) => (
                       <div key={`${conflict.slotId || idx}-${idx}`} className="subtle">
                         {(conflict.startTime || "")}-{(conflict.endTime || "")} {conflict.division ? `(${conflict.division})` : ""}{" "}
-                        {conflict.homeTeamId || conflict.offeringTeamId || "TBD"}{conflict.awayTeamId ? ` vs ${conflict.awayTeamId}` : ""}{" "}
+                        {getSlotMatchupLabel(conflict) || conflict.homeTeamId || conflict.offeringTeamId || "TBD"}{" "}
                         [{conflict.status || "Open"}]
                       </div>
                     ))}
@@ -1459,7 +1447,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
               if (it.kind === "slot") {
                 const slot = it.raw;
                 const fieldName = slot?.displayName || `${slot?.parkName || ""} ${slot?.fieldName || ""}`.trim();
-                const matchup = slotMatchupLabel(slot);
+                const matchup = getSlotMatchupLabel(slot);
                 const division = slot?.division;
 
                 return (

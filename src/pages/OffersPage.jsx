@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { readLocationSearchParams, updateLocationSearch } from "../lib/locationState";
 import { fetchAllPagedItems } from "../lib/pagedResults";
+import { getSlotMatchupLabel, getSlotOpponentTeamId } from "../lib/slotTeams";
 import LeaguePicker from "../components/LeaguePicker";
 import StatusCard from "../components/StatusCard";
 import Toast from "../components/Toast";
@@ -74,15 +75,12 @@ function isPracticeSlot(slot) {
 function canAcceptSlot(slot) {
   if (!slot || (slot.status || "") !== "Open") return false;
   if (slot.isAvailability) return false;
-  if ((slot.awayTeamId || "").trim() && !slot.isExternalOffer) return false;
+  if (getSlotOpponentTeamId(slot) && !slot.isExternalOffer) return false;
   return true;
 }
 
 function formatTeams(slot) {
-  const home = (slot?.homeTeamId || slot?.offeringTeamId || "").trim();
-  const away = (slot?.awayTeamId || "").trim();
-  if (away) return `${home} vs ${away}`;
-  return home ? `${home} vs TBD` : "";
+  return getSlotMatchupLabel(slot);
 }
 
 function resolvePreferredDivision(selectedDivision, divisions, coachDivision, canPickTeam) {

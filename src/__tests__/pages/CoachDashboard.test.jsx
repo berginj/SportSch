@@ -29,7 +29,8 @@ describe("CoachDashboard", () => {
               fieldKey: "FIELD-1",
               displayName: "Main Field",
               homeTeamId: "TEAM-1",
-              awayTeamId: "TEAM-2",
+              awayTeamId: "",
+              confirmedTeamId: "TEAM-2",
             },
           ],
           openOffersInDivision: 1,
@@ -60,6 +61,7 @@ describe("CoachDashboard", () => {
     expect(upcomingGames).toHaveTextContent("1");
 
     expect(screen.getByText("1 New Offer")).toBeInTheDocument();
+    expect(screen.getByText("vs TEAM-2 - Main Field")).toBeInTheDocument();
   });
 
   it("renders dashboard failures with an error tone", async () => {

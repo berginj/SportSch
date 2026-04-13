@@ -95,7 +95,8 @@ describe("CoachOnboardingPage", () => {
               startTime: "18:00",
               displayName: "Gunston > Turf",
               homeTeamId: "TEAM-1",
-              awayTeamId: "TEAM-2",
+              awayTeamId: "",
+              confirmedTeamId: "TEAM-2",
             },
           ],
           continuationToken: "",
@@ -130,6 +131,7 @@ describe("CoachOnboardingPage", () => {
     await waitFor(() => expect(screen.getByText("Coach Onboarding")).toBeInTheDocument());
 
     expect(screen.getByText("Current practice requests")).toBeInTheDocument();
+    expect(screen.getByText("vs TEAM-2 - Gunston > Turf")).toBeInTheDocument();
     expect(screen.getByText(/Move from 2026-04-03/)).toBeInTheDocument();
     expect(screen.getByText("Sharing with TEAM-2")).toBeInTheDocument();
     expect(screen.queryByText("Recurring practice choices")).not.toBeInTheDocument();
@@ -181,7 +183,8 @@ describe("CoachOnboardingPage", () => {
               startTime: "17:30",
               displayName: "Diamond 2",
               homeTeamId: "TEAM-3",
-              awayTeamId: "TEAM-1",
+              awayTeamId: "",
+              confirmedTeamId: "TEAM-1",
             },
           ],
           continuationToken: "",
@@ -197,7 +200,8 @@ describe("CoachOnboardingPage", () => {
               startTime: "18:00",
               displayName: "Gunston > Turf",
               homeTeamId: "TEAM-1",
-              awayTeamId: "TEAM-2",
+              awayTeamId: "",
+              confirmedTeamId: "TEAM-2",
             },
           ],
           continuationToken: "page-2",
@@ -228,6 +232,7 @@ describe("CoachOnboardingPage", () => {
     const upcomingGamesStat = screen.getByText("Upcoming games (90 days)").closest(".layoutStat");
     expect(upcomingGamesStat).toHaveTextContent("2");
     expect(screen.getByText("2026-04-19 - 17:30")).toBeInTheDocument();
+    expect(screen.getByText("@ TEAM-3 - Diamond 2")).toBeInTheDocument();
     expect(api.apiFetch).toHaveBeenCalledWith(expect.stringContaining("continuationToken=page-2"));
   });
 });

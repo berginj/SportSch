@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { DayPilotMonth, DayPilotScheduler } from "@daypilot/daypilot-lite-react";
+import { getSlotMatchupLabel } from "../lib/slotTeams";
 import "./CalendarView.css";
 
 export default function CalendarView({
@@ -204,7 +205,7 @@ function SelectionPanel({ item, renderSlotActions, renderEventActions }) {
       <div className="calendar-selection card">
         <div className="calendar-selection__header">
           <div>
-            <div className="cardTitle m-0">{getMatchupLabel(slot) || "Slot"}</div>
+            <div className="cardTitle m-0">{getSlotMatchupLabel(slot) || "Slot"}</div>
             <div className="subtle">
               {slot.gameDate} | {formatTimeRange(slot.startTime, slot.endTime)} | {getFieldLabel(slot) || "Field TBD"}
             </div>
@@ -294,12 +295,12 @@ function buildItem(kind, raw, fallbackKey) {
     endTime: raw?.endTime || "",
     resourceId,
     resourceName,
-    text: kind === "slot" ? (getMatchupLabel(raw) || "Slot") : getEventTitle(raw),
+    text: kind === "slot" ? (getSlotMatchupLabel(raw) || "Slot") : getEventTitle(raw),
     subtitle: kind === "slot"
       ? [raw?.division, getSlotStatusLabel(raw)].filter(Boolean).join(" | ")
       : getEventSubtitle(raw),
     toolTip: kind === "slot"
-      ? `${getMatchupLabel(raw) || "Slot"}\n${date} ${formatTimeRange(raw?.startTime, raw?.endTime)}\n${resourceName}`
+      ? `${getSlotMatchupLabel(raw) || "Slot"}\n${date} ${formatTimeRange(raw?.startTime, raw?.endTime)}\n${resourceName}`
       : `${getEventTitle(raw)}\n${date} ${formatOptionalTimeRange(raw?.startTime, raw?.endTime)}`.trim(),
     colors: getItemColors(tone),
   };
@@ -519,20 +520,6 @@ function formatLocalIsoDate(date) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
-}
-
-function getMatchupLabel(slot) {
-  if (slot.gameType === "practice" || slot.gameType === "Practice") {
-    const team = slot.confirmedTeamId || slot.offeringTeamId || "";
-    return team ? `Practice: ${team}` : "Practice";
-  }
-  const home = slot.homeTeamId || slot.offeringTeamId || "";
-  const away = slot.awayTeamId || "";
-  if (away) return `${home} vs ${away}`;
-  if (home && slot.isExternalOffer) return `${home} vs TBD (external)`;
-  if (home) return `${home} vs TBD`;
-  if (slot.status === "Open") return "Open Slot";
-  return "";
 }
 
 function getSlotToneKey(slot) {
