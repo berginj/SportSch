@@ -277,7 +277,16 @@ export default function PracticePortalPage({ me, leagueId }) {
     setActingRequestId(request.requestId);
     setError("");
     try {
-      const notesText = moveNotes.trim() || `Move requested from ${describeRequest(request)}`;
+      let notesText = moveNotes.trim() || `Move requested from ${describeRequest(request)}`;
+
+      // Add conflict information to notes if moving despite conflicts
+      if (conflicts && conflicts.length > 0) {
+        const conflictSummary = conflicts.map(c =>
+          `${c.type === "game" ? "Game" : "Practice"} on ${c.date} ${c.startTime}-${c.endTime}${c.opponent ? ` vs ${c.opponent}` : ""}`
+        ).join("; ");
+        notesText += `. ⚠️ Moved despite ${conflicts.length} conflict(s): ${conflictSummary}`;
+      }
+
       const result = await apiFetch(`/api/field-inventory/practice/requests/${encodeURIComponent(request.requestId)}/move`, {
         method: "PATCH",
         body: JSON.stringify({
@@ -386,30 +395,50 @@ export default function PracticePortalPage({ me, leagueId }) {
             Moving to {describeRequest(pendingMoveSlot)} will conflict with {conflicts.length} existing commitment{conflicts.length === 1 ? "" : "s"}:
           </div>
           <div className="stack gap-2 mb-3">
-            {conflicts.map((conflict, index) => (
-              <div key={index} className="card">
-                <div className="card__body">
-                  <div className="row gap-2 items-center">
-                    <span className="pill pill--{conflict.type === 'game' ? 'error' : 'warning'}">
-                      {conflict.type === "game" ? "Game" : "Practice"}
-                    </span>
-                    <span className="pill">{conflict.status}</span>
-                  </div>
-                  <div className="mt-2">
-                    <div className="font-bold">{conflict.date} {conflict.startTime}-{conflict.endTime}</div>
-                    <div className="subtle">{conflict.location}</div>
-                    {conflict.opponent ? (
-                      <div className="mt-1">vs. {conflict.opponent}</div>
-                    ) : null}
+            {conflicts.map((conflict, index) => {
+              const isGame = conflict.type === "game";
+              return (
+                <div key={index} className={`card ${isGame ? "card--error" : ""}`}>
+                  <div className="card__body">
+                    <div className="row gap-2 items-center">
+                      <span className={`pill ${isGame ? "pill--error" : "pill--warning"}`}>
+                        {isGame ? "⚽ Game" : "🏃 Practice"}
+                      </span>
+                      <span className="pill">{conflict.status}</span>
+                      {isGame ? (
+                        <span className="pill pill--error">High Priority</span>
+                      ) : null}
+                    </div>
+                    <div className="mt-2">
+                      <div className="font-bold">{conflict.date} {conflict.startTime}-{conflict.endTime}</div>
+                      <div className="subtle">{conflict.location}</div>
+                      {conflict.opponent ? (
+                        <div className="mt-1 font-bold">vs. {conflict.opponent}</div>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
+          </div>
+          <div className="callout callout--info mb-3">
+            <div className="font-bold mb-1">💡 Suggestion</div>
+            <div className="subtle">
+              To avoid conflicts, try selecting a different time slot on the same day or choose a different day entirely.
+              You can also proceed with this move if you plan to reschedule the conflicting {conflicts.some(c => c.type === "game") ? "game(s)" : "commitment(s)"}.
+            </div>
           </div>
           <div className="subtle mb-3">
             Are you sure you want to proceed with this move? You may need to reschedule the conflicting commitment(s).
           </div>
           <div className="row gap-2">
+            <button
+              className="btn"
+              type="button"
+              onClick={cancelConflictWarning}
+            >
+              Choose Different Time
+            </button>
             <button
               className="btn btn--primary"
               type="button"
@@ -417,13 +446,6 @@ export default function PracticePortalPage({ me, leagueId }) {
               onClick={() => executeMove(movingRequest, pendingMoveSlot)}
             >
               {actingRequestId ? "Moving..." : "Proceed Anyway"}
-            </button>
-            <button
-              className="btn"
-              type="button"
-              onClick={cancelConflictWarning}
-            >
-              Cancel
             </button>
           </div>
         </div>
