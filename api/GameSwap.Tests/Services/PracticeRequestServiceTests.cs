@@ -282,6 +282,261 @@ public class PracticeRequestServiceTests
         Assert.Equal(ErrorCodes.REQUEST_NOT_PENDING, ex.Code);
     }
 
+    [Fact]
+    public async Task CreateMoveRequestAsync_ApprovedRequest_CreatesNewMoveRequest()
+    {
+        // Arrange
+        var membership = BuildMembership(Constants.Roles.Coach, "10U", "Panthers");
+        var sourceRequest = new TableEntity("PRACTICEREQ|league-1", "req-1")
+        {
+            ["Status"] = "Approved",
+            ["Division"] = "10U",
+            ["TeamId"] = "Panthers",
+            ["SlotId"] = "slot-1",
+            ["Priority"] = 1
+        };
+        sourceRequest.ETag = new ETag("req-etag-1");
+
+        var targetSlot = new TableEntity("SLOT|league-1|10U", "slot-2")
+        {
+            ["Status"] = Constants.Status.SlotOpen,
+            ["IsAvailability"] = true,
+            ["AllocationSlotType"] = "Practice",
+            ["FieldKey"] = "park1/field2",
+            ["DisplayName"] = "Field 2"
+        };
+        targetSlot.ETag = new ETag("slot-etag-2");
+
+        _mockMembershipRepo
+            .Setup(x => x.GetMembershipAsync("coach-1", "league-1"))
+            .ReturnsAsync(membership);
+        _mockMembershipRepo
+            .Setup(x => x.IsGlobalAdminAsync("coach-1"))
+            .ReturnsAsync(false);
+        _mockPracticeRequestRepo
+            .Setup(x => x.GetRequestAsync("league-1", "req-1"))
+            .ReturnsAsync(sourceRequest);
+        _mockTeamRepo
+            .Setup(x => x.GetTeamAsync("league-1", "10U", "Panthers"))
+            .ReturnsAsync(new TableEntity("TEAM|league-1|10U", "Panthers"));
+        _mockSlotRepo
+            .Setup(x => x.GetSlotAsync("league-1", "10U", "slot-2"))
+            .ReturnsAsync(targetSlot);
+        _mockPracticeRequestRepo
+            .Setup(x => x.QueryRequestsAsync("league-1", null, "10U", "Panthers", null))
+            .ReturnsAsync(new List<TableEntity> { sourceRequest });
+        _mockPracticeRequestRepo
+            .Setup(x => x.QuerySlotRequestsAsync("league-1", "10U", "slot-2", It.IsAny<IReadOnlyCollection<string>>()))
+            .ReturnsAsync(new List<TableEntity>());
+        _mockSlotRepo
+            .Setup(x => x.UpdateSlotAsync(It.IsAny<TableEntity>(), It.IsAny<ETag>()))
+            .Returns(Task.CompletedTask);
+        _mockPracticeRequestRepo
+            .Setup(x => x.CreateRequestAsync(It.IsAny<TableEntity>()))
+            .Returns(Task.CompletedTask);
+
+        // Act
+        var result = await _service.CreateMoveRequestAsync(
+            leagueId: "league-1",
+            userId: "coach-1",
+            sourceRequestId: "req-1",
+            targetSlotId: "slot-2",
+            reason: "Moving to better time",
+            openToShareField: false,
+            shareWithTeamId: null);
+
+        // Assert
+        Assert.Equal("Pending", result.GetString("Status"));
+        Assert.Equal("Panthers", result.GetString("TeamId"));
+        Assert.Equal("slot-2", result.GetString("SlotId"));
+        Assert.Equal("Move", result.GetString("RequestKind"));
+        Assert.Equal("req-1", result.GetString("MoveFromRequestId"));
+        Assert.Equal("slot-1", result.GetString("MoveFromSlotId"));
+        Assert.Equal("Approved", result.GetString("MoveFromStatus"));
+        _mockPracticeRequestRepo.Verify(x => x.CreateRequestAsync(It.IsAny<TableEntity>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateMoveRequestAsync_PendingRequest_CreatesNewMoveRequest()
+    {
+        // Arrange
+        var membership = BuildMembership(Constants.Roles.Coach, "10U", "Panthers");
+        var sourceRequest = new TableEntity("PRACTICEREQ|league-1", "req-1")
+        {
+            ["Status"] = "Pending",
+            ["Division"] = "10U",
+            ["TeamId"] = "Panthers",
+            ["SlotId"] = "slot-1",
+            ["Priority"] = 1
+        };
+        sourceRequest.ETag = new ETag("req-etag-1");
+
+        var targetSlot = new TableEntity("SLOT|league-1|10U", "slot-2")
+        {
+            ["Status"] = Constants.Status.SlotOpen,
+            ["IsAvailability"] = true,
+            ["AllocationSlotType"] = "Practice"
+        };
+        targetSlot.ETag = new ETag("slot-etag-2");
+
+        _mockMembershipRepo
+            .Setup(x => x.GetMembershipAsync("coach-1", "league-1"))
+            .ReturnsAsync(membership);
+        _mockMembershipRepo
+            .Setup(x => x.IsGlobalAdminAsync("coach-1"))
+            .ReturnsAsync(false);
+        _mockPracticeRequestRepo
+            .Setup(x => x.GetRequestAsync("league-1", "req-1"))
+            .ReturnsAsync(sourceRequest);
+        _mockTeamRepo
+            .Setup(x => x.GetTeamAsync("league-1", "10U", "Panthers"))
+            .ReturnsAsync(new TableEntity("TEAM|league-1|10U", "Panthers"));
+        _mockSlotRepo
+            .Setup(x => x.GetSlotAsync("league-1", "10U", "slot-2"))
+            .ReturnsAsync(targetSlot);
+        _mockPracticeRequestRepo
+            .Setup(x => x.QueryRequestsAsync("league-1", null, "10U", "Panthers", null))
+            .ReturnsAsync(new List<TableEntity> { sourceRequest });
+        _mockPracticeRequestRepo
+            .Setup(x => x.QuerySlotRequestsAsync("league-1", "10U", "slot-2", It.IsAny<IReadOnlyCollection<string>>()))
+            .ReturnsAsync(new List<TableEntity>());
+        _mockSlotRepo
+            .Setup(x => x.UpdateSlotAsync(It.IsAny<TableEntity>(), It.IsAny<ETag>()))
+            .Returns(Task.CompletedTask);
+        _mockPracticeRequestRepo
+            .Setup(x => x.CreateRequestAsync(It.IsAny<TableEntity>()))
+            .Returns(Task.CompletedTask);
+
+        // Act
+        var result = await _service.CreateMoveRequestAsync(
+            leagueId: "league-1",
+            userId: "coach-1",
+            sourceRequestId: "req-1",
+            targetSlotId: "slot-2",
+            reason: "Moving to better time",
+            openToShareField: false,
+            shareWithTeamId: null);
+
+        // Assert
+        Assert.Equal("Pending", result.GetString("Status"));
+        Assert.Equal("Move", result.GetString("RequestKind"));
+        Assert.Equal("req-1", result.GetString("MoveFromRequestId"));
+        _mockPracticeRequestRepo.Verify(x => x.CreateRequestAsync(It.IsAny<TableEntity>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateMoveRequestAsync_CancelledRequest_ThrowsConflict()
+    {
+        // Arrange
+        var membership = BuildMembership(Constants.Roles.Coach, "10U", "Panthers");
+        var sourceRequest = new TableEntity("PRACTICEREQ|league-1", "req-1")
+        {
+            ["Status"] = "Cancelled",
+            ["Division"] = "10U",
+            ["TeamId"] = "Panthers",
+            ["SlotId"] = "slot-1"
+        };
+
+        _mockMembershipRepo
+            .Setup(x => x.GetMembershipAsync("coach-1", "league-1"))
+            .ReturnsAsync(membership);
+        _mockMembershipRepo
+            .Setup(x => x.IsGlobalAdminAsync("coach-1"))
+            .ReturnsAsync(false);
+        _mockPracticeRequestRepo
+            .Setup(x => x.GetRequestAsync("league-1", "req-1"))
+            .ReturnsAsync(sourceRequest);
+
+        // Act + Assert
+        var ex = await Assert.ThrowsAsync<ApiGuards.HttpError>(() =>
+            _service.CreateMoveRequestAsync("league-1", "coach-1", "req-1", "slot-2", "reason", false, null));
+
+        Assert.Equal(409, ex.Status);
+        Assert.Equal(ErrorCodes.PRACTICE_MOVE_NOT_ALLOWED, ex.Code);
+        _mockPracticeRequestRepo.Verify(x => x.CreateRequestAsync(It.IsAny<TableEntity>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateMoveRequestAsync_MoveToSameSlot_ThrowsConflict()
+    {
+        // Arrange
+        var membership = BuildMembership(Constants.Roles.Coach, "10U", "Panthers");
+        var sourceRequest = new TableEntity("PRACTICEREQ|league-1", "req-1")
+        {
+            ["Status"] = "Approved",
+            ["Division"] = "10U",
+            ["TeamId"] = "Panthers",
+            ["SlotId"] = "slot-1"
+        };
+
+        _mockMembershipRepo
+            .Setup(x => x.GetMembershipAsync("coach-1", "league-1"))
+            .ReturnsAsync(membership);
+        _mockMembershipRepo
+            .Setup(x => x.IsGlobalAdminAsync("coach-1"))
+            .ReturnsAsync(false);
+        _mockPracticeRequestRepo
+            .Setup(x => x.GetRequestAsync("league-1", "req-1"))
+            .ReturnsAsync(sourceRequest);
+
+        // Act + Assert
+        var ex = await Assert.ThrowsAsync<ApiGuards.HttpError>(() =>
+            _service.CreateMoveRequestAsync("league-1", "coach-1", "req-1", "slot-1", "reason", false, null));
+
+        Assert.Equal(409, ex.Status);
+        Assert.Equal(ErrorCodes.PRACTICE_MOVE_NOT_ALLOWED, ex.Code);
+        Assert.Contains("different practice slot", ex.Message);
+        _mockPracticeRequestRepo.Verify(x => x.CreateRequestAsync(It.IsAny<TableEntity>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateMoveRequestAsync_CoachMovingOtherTeamRequest_ThrowsForbidden()
+    {
+        // Arrange
+        var membership = BuildMembership(Constants.Roles.Coach, "10U", "Panthers");
+        var sourceRequest = new TableEntity("PRACTICEREQ|league-1", "req-1")
+        {
+            ["Status"] = "Approved",
+            ["Division"] = "10U",
+            ["TeamId"] = "Tigers",
+            ["SlotId"] = "slot-1"
+        };
+
+        _mockMembershipRepo
+            .Setup(x => x.GetMembershipAsync("coach-1", "league-1"))
+            .ReturnsAsync(membership);
+        _mockMembershipRepo
+            .Setup(x => x.IsGlobalAdminAsync("coach-1"))
+            .ReturnsAsync(false);
+        _mockPracticeRequestRepo
+            .Setup(x => x.GetRequestAsync("league-1", "req-1"))
+            .ReturnsAsync(sourceRequest);
+
+        // Act + Assert
+        var ex = await Assert.ThrowsAsync<ApiGuards.HttpError>(() =>
+            _service.CreateMoveRequestAsync("league-1", "coach-1", "req-1", "slot-2", "reason", false, null));
+
+        Assert.Equal(403, ex.Status);
+        Assert.Equal(ErrorCodes.FORBIDDEN, ex.Code);
+        _mockPracticeRequestRepo.Verify(x => x.CreateRequestAsync(It.IsAny<TableEntity>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateMoveRequestAsync_NonExistentSourceRequest_ThrowsNotFound()
+    {
+        // Arrange
+        _mockPracticeRequestRepo
+            .Setup(x => x.GetRequestAsync("league-1", "req-1"))
+            .ReturnsAsync((TableEntity?)null);
+
+        // Act + Assert
+        var ex = await Assert.ThrowsAsync<ApiGuards.HttpError>(() =>
+            _service.CreateMoveRequestAsync("league-1", "coach-1", "req-1", "slot-2", "reason", false, null));
+
+        Assert.Equal(404, ex.Status);
+        Assert.Equal(ErrorCodes.REQUEST_NOT_FOUND, ex.Code);
+    }
+
     private static TableEntity BuildMembership(string role, string division, string teamId)
     {
         return new TableEntity("user-1", "league-1")

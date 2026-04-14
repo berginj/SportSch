@@ -43,14 +43,14 @@ public class UpdateSlot
     );
 
     [Function("UpdateSlot")]
-    [OpenApiOperation(operationId: "UpdateSlot", tags: new[] { "Slots" }, Summary = "Update slot schedule details", Description = "Updates game date/time/field for an existing slot, including availability slots, with conflict checks. LeagueAdmin or GlobalAdmin only.")]
+    [OpenApiOperation(operationId: "UpdateSlot", tags: new[] { "Slots" }, Summary = "Update slot schedule details", Description = "Updates game date/time/field for an existing slot, including availability slots, with conflict checks. LeagueAdmin/GlobalAdmin can edit any slot. Coaches can only edit their own team's Open slots.")]
     [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
     [OpenApiParameter(name: "division", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Division code")]
     [OpenApiParameter(name: "slotId", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Slot identifier")]
     [OpenApiRequestBody(contentType: "application/json", bodyType: typeof(UpdateSlotReq), Required = true, Description = "Updated schedule fields")]
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(object), Description = "Slot updated")]
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.Conflict, contentType: "application/json", bodyType: typeof(object), Description = "Field/time conflict detected")]
-    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "Only league admins can edit slots")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "User not authorized to edit this slot (coaches can only edit their own Open slots)")]
     public async Task<HttpResponseData> Run(
         [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "slots/{division}/{slotId}")] HttpRequestData req,
         string division,
@@ -66,11 +66,6 @@ public class UpdateSlot
             ApiGuards.EnsureValidTableKeyPart("division", division);
             ApiGuards.EnsureValidTableKeyPart("slotId", slotId);
 
-            if (!await IsLeagueAdminAsync(me.UserId, leagueId))
-            {
-                return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN, "Only league admins can edit slots.");
-            }
-
             var body = await HttpUtil.ReadJsonAsync<UpdateSlotReq>(req);
             if (body is null)
             {
@@ -81,6 +76,34 @@ public class UpdateSlot
             if (slot is null)
             {
                 return ApiResponses.Error(req, HttpStatusCode.NotFound, ErrorCodes.SLOT_NOT_FOUND, "Slot not found.");
+            }
+
+            // Authorization: Admin can edit any slot, Coach can only edit their own Open slots
+            var isAdmin = await IsLeagueAdminAsync(me.UserId, leagueId);
+            if (!isAdmin)
+            {
+                var membership = await _membershipRepo.GetMembershipAsync(me.UserId, leagueId);
+                var role = (membership?.GetString("Role") ?? "").Trim();
+                var isCoach = string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase);
+
+                if (!isCoach)
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN, "Only league admins and coaches can edit slots.");
+                }
+
+                var coachTeamId = (membership?.GetString("TeamId") ?? membership?.GetString("CoachTeamId") ?? "").Trim();
+                var offeringTeamId = (slot.GetString("OfferingTeamId") ?? "").Trim();
+                var slotStatus = (slot.GetString("Status") ?? Constants.Status.SlotOpen).Trim();
+
+                if (string.IsNullOrWhiteSpace(coachTeamId) || !string.Equals(coachTeamId, offeringTeamId, StringComparison.OrdinalIgnoreCase))
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN, "Coaches can only edit slots offered by their own team.");
+                }
+
+                if (!string.Equals(slotStatus, Constants.Status.SlotOpen, StringComparison.OrdinalIgnoreCase))
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN, "Coaches can only edit Open slots. Confirmed or Cancelled slots require admin approval or a reschedule request.");
+                }
             }
 
             var currentStatus = (slot.GetString("Status") ?? Constants.Status.SlotOpen).Trim();

@@ -830,7 +830,22 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     if (!slot) return false;
     if (slot.isAvailability) return false;
     if ((slot.status || "") === SLOT_STATUS.CANCELLED) return false;
-    return isGlobalAdmin || role === "LeagueAdmin";
+
+    // Admins can edit any slot
+    if (isGlobalAdmin || role === "LeagueAdmin") return true;
+
+    // Coaches can only edit their own team's Open slots
+    if (role === "Coach") {
+      const my = (myCoachTeamId || "").trim();
+      if (!my) return false;
+      const offering = (slot.offeringTeamId || "").trim();
+      const slotStatus = (slot.status || "").trim();
+
+      // Only allow editing Open slots that belong to the coach's team
+      return slotStatus === "Open" && offering === my;
+    }
+
+    return false;
   }
 
   function openEditSlot(slot) {

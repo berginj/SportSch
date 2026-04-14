@@ -93,6 +93,7 @@ export default function PracticePortalPage({ me, leagueId }) {
   const [availabilityRefreshKey, setAvailabilityRefreshKey] = useState(0);
   const [requestingKey, setRequestingKey] = useState("");
   const [movingRequestId, setMovingRequestId] = useState("");
+  const [moveNotes, setMoveNotes] = useState("");
   const [actingRequestId, setActingRequestId] = useState("");
   const [error, setError] = useState("");
   const [availabilityError, setAvailabilityError] = useState("");
@@ -243,12 +244,13 @@ export default function PracticePortalPage({ me, leagueId }) {
     setActingRequestId(request.requestId);
     setError("");
     try {
+      const notesText = moveNotes.trim() || `Move requested from ${describeRequest(request)}`;
       const result = await apiFetch(`/api/field-inventory/practice/requests/${encodeURIComponent(request.requestId)}/move`, {
         method: "PATCH",
         body: JSON.stringify({
           seasonLabel,
           practiceSlotKey: slot.practiceSlotKey,
-          notes: `Move requested from ${describeRequest(request)}`,
+          notes: notesText,
           openToShareField,
           shareWithTeamId: openToShareField ? shareWithTeamId : null,
         }),
@@ -256,6 +258,7 @@ export default function PracticePortalPage({ me, leagueId }) {
       setData(result);
       setAvailabilityRefreshKey((current) => current + 1);
       setMovingRequestId("");
+      setMoveNotes("");
       setToast({
         tone: "success",
         message:
@@ -314,7 +317,22 @@ export default function PracticePortalPage({ me, leagueId }) {
             Share setting for this move: {openToShareField && selectedSharePartnerName ? `share with ${selectedSharePartnerName}` : "exclusive booking"}
           </div>
           <div className="mt-3">
-            <button className="btn" type="button" onClick={() => setMovingRequestId("")}>
+            <label className="block mb-1 font-bold">
+              Reason for move (optional)
+            </label>
+            <input
+              type="text"
+              className="input"
+              placeholder="e.g., Facility closed, conflict with game, weather makeup"
+              value={moveNotes}
+              onChange={(e) => setMoveNotes(e.target.value)}
+            />
+            <div className="subtle mt-1">
+              Explain why you're moving this practice. If left blank, a default message will be used.
+            </div>
+          </div>
+          <div className="mt-3">
+            <button className="btn" type="button" onClick={() => { setMovingRequestId(""); setMoveNotes(""); }}>
               Cancel Move
             </button>
           </div>
@@ -592,7 +610,17 @@ export default function PracticePortalPage({ me, leagueId }) {
                       <div className="subtle">Move from {request.moveFromDate} {request.moveFromStartTime}-{request.moveFromEndTime} {request.moveFromFieldName || ""}</div>
                     ) : null}
                   </td>
-                  <td><span className="pill">{request.status}</span></td>
+                  <td>
+                    <div className="stack gap-1">
+                      <span className="pill">{request.status}</span>
+                      {request.isMove ? (
+                        <span className="pill pill--info" title="This request is a move from another practice slot">Move Request</span>
+                      ) : null}
+                      {movingRequestId === request.requestId ? (
+                        <span className="pill pill--warning" title="You are currently selecting a new slot for this request">Moving...</span>
+                      ) : null}
+                    </div>
+                  </td>
                   <td title={request.bookingPolicy === "auto_approve" ? "This space was confirmed immediately." : "This space requires commissioner approval."}>{request.bookingPolicyLabel}</td>
                   <td>
                     <div>{describeSharing(request)}</div>
