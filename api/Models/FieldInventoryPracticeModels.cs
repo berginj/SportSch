@@ -238,3 +238,20 @@ public class FieldInventoryGroupPolicyEntity
     public string CreatedBy { get; set; } = "";
 }
 
+public record PracticeConflictCheckRequest(
+    string SeasonLabel,
+    string PracticeSlotKey);
+
+public record PracticeConflictCheckResponse(
+    bool HasConflicts,
+    List<PracticeConflictDto> Conflicts);
+
+public record PracticeConflictDto(
+    string Type,
+    string Date,
+    string StartTime,
+    string EndTime,
+    string Location,
+    string? Opponent,
+    string Status);
+

@@ -388,6 +388,143 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
         return await GetCoachViewAsync(entity.GetString("PracticeSeasonLabel"), userId, context);
     }
 
+    public async Task<PracticeConflictCheckResponse> CheckMoveConflictsAsync(string seasonLabel, string practiceSlotKey, string userId, CorrelationContext context)
+    {
+        var membership = await RequireCoachMembershipAsync(context.LeagueId, userId);
+        var bundle = await LoadBundleAsync(context.LeagueId, seasonLabel);
+
+        // Find the practice slot the coach wants to move to
+        var targetSlot = bundle.Blocks.FirstOrDefault(block =>
+            string.Equals(block.PracticeSlotKey, practiceSlotKey, StringComparison.OrdinalIgnoreCase));
+
+        if (targetSlot is null)
+        {
+            throw new ApiGuards.HttpError(404, ErrorCodes.PRACTICE_SPACE_NOT_FOUND, "Practice space not found.");
+        }
+
+        var conflicts = new List<PracticeConflictDto>();
+        var targetDate = (targetSlot.Date ?? "").Trim();
+        var targetStart = (targetSlot.StartTime ?? "").Trim();
+        var targetEnd = (targetSlot.EndTime ?? "").Trim();
+
+        if (!TimeUtil.TryParseMinutes(targetStart, out var targetStartMin) ||
+            !TimeUtil.TryParseMinutes(targetEnd, out var targetEndMin))
+        {
+            return new PracticeConflictCheckResponse(false, conflicts);
+        }
+
+        // Query all slots for the team on the same date
+        var slotsOnDate = await _slotRepository.QuerySlotsAsync(new SlotQueryFilter
+        {
+            LeagueId = context.LeagueId,
+            Division = membership.TeamDivision,
+            FromDate = targetDate,
+            ToDate = targetDate,
+            ExcludeCancelled = true,
+            ExcludeAvailability = true,
+            PageSize = 100
+        });
+
+        // Check each slot for time overlap
+        foreach (var slot in slotsOnDate.Items)
+        {
+            var slotStatus = (slot.GetString("Status") ?? "").Trim();
+            if (string.Equals(slotStatus, Constants.Status.SlotCancelled, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            // Check if this slot involves the coach's team
+            var offeringTeamId = (slot.GetString("OfferingTeamId") ?? "").Trim();
+            var confirmedTeamId = (slot.GetString("ConfirmedTeamId") ?? "").Trim();
+            var homeTeamId = (slot.GetString("HomeTeamId") ?? "").Trim();
+            var awayTeamId = (slot.GetString("AwayTeamId") ?? "").Trim();
+
+            var teamInvolvement =
+                string.Equals(offeringTeamId, membership.TeamId, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(confirmedTeamId, membership.TeamId, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(homeTeamId, membership.TeamId, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(awayTeamId, membership.TeamId, StringComparison.OrdinalIgnoreCase);
+
+            if (!teamInvolvement)
+                continue;
+
+            // Parse slot times
+            var slotStart = (slot.GetString("StartTime") ?? "").Trim();
+            var slotEnd = (slot.GetString("EndTime") ?? "").Trim();
+
+            if (!TimeUtil.TryParseMinutes(slotStart, out var slotStartMin) ||
+                !TimeUtil.TryParseMinutes(slotEnd, out var slotEndMin))
+                continue;
+
+            // Check for time overlap
+            if (!TimeUtil.Overlaps(targetStartMin, targetEndMin, slotStartMin, slotEndMin))
+                continue;
+
+            // Found a conflict - determine type and opponent
+            var isAvailability = slot.GetBoolean("IsAvailability") ?? false;
+            var isGame = !isAvailability &&
+                        !string.Equals(slot.GetString("GameType"), "practice", StringComparison.OrdinalIgnoreCase);
+
+            var opponent = "";
+            if (isGame)
+            {
+                if (string.Equals(homeTeamId, membership.TeamId, StringComparison.OrdinalIgnoreCase))
+                    opponent = awayTeamId;
+                else if (string.Equals(awayTeamId, membership.TeamId, StringComparison.OrdinalIgnoreCase))
+                    opponent = homeTeamId;
+            }
+
+            var location = (slot.GetString("DisplayName") ?? slot.GetString("FieldName") ?? "Unknown").Trim();
+
+            conflicts.Add(new PracticeConflictDto(
+                Type: isGame ? "game" : "practice",
+                Date: targetDate,
+                StartTime: slotStart,
+                EndTime: slotEnd,
+                Location: location,
+                Opponent: string.IsNullOrWhiteSpace(opponent) ? null : opponent,
+                Status: slotStatus));
+        }
+
+        // Also check for existing approved practice requests on the same date/time
+        var practiceRequests = await _practiceRequestRepository.QueryRequestsAsync(
+            context.LeagueId, null, membership.TeamDivision, membership.TeamId, null);
+
+        foreach (var request in practiceRequests ?? Enumerable.Empty<TableEntity>())
+        {
+            var requestStatus = (request.GetString("Status") ?? "").Trim();
+            if (!string.Equals(requestStatus, FieldInventoryPracticeRequestStatuses.Approved, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(requestStatus, FieldInventoryPracticeRequestStatuses.Pending, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var requestDate = (request.GetString("Date") ?? "").Trim();
+            if (!string.Equals(requestDate, targetDate, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var requestStart = (request.GetString("StartTime") ?? "").Trim();
+            var requestEnd = (request.GetString("EndTime") ?? "").Trim();
+
+            if (!TimeUtil.TryParseMinutes(requestStart, out var requestStartMin) ||
+                !TimeUtil.TryParseMinutes(requestEnd, out var requestEndMin))
+                continue;
+
+            if (!TimeUtil.Overlaps(targetStartMin, targetEndMin, requestStartMin, requestEndMin))
+                continue;
+
+            var requestLocation = (request.GetString("DisplayName") ?? request.GetString("FieldName") ?? "Unknown").Trim();
+
+            conflicts.Add(new PracticeConflictDto(
+                Type: "practice",
+                Date: requestDate,
+                StartTime: requestStart,
+                EndTime: requestEnd,
+                Location: requestLocation,
+                Opponent: null,
+                Status: requestStatus));
+        }
+
+        return new PracticeConflictCheckResponse(conflicts.Count > 0, conflicts);
+    }
+
     private async Task<Bundle> LoadBundleAsync(string leagueId, string? seasonLabel)
     {
         var commitRuns = await _inventoryRepository.GetCommitRunsAsync(leagueId);

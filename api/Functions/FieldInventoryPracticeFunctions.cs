@@ -244,6 +244,29 @@ public class FieldInventoryPracticeFunctions
             return ApiResponses.Ok(req, await _service.CancelPracticeRequestAsync(requestId, me.UserId, context));
         });
 
+    [Function("CheckPracticeMoveConflicts")]
+    [OpenApiOperation(operationId: "CheckPracticeMoveConflicts", tags: new[] { "Field Inventory Practice" }, Summary = "Check for schedule conflicts", Description = "Checks if moving to a practice slot would conflict with the coach's team's existing games or practice commitments.")]
+    [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
+    [OpenApiParameter(name: "seasonLabel", In = ParameterLocation.Query, Required = true, Type = typeof(string), Description = "Season label")]
+    [OpenApiParameter(name: "practiceSlotKey", In = ParameterLocation.Query, Required = true, Type = typeof(string), Description = "Practice slot key to check")]
+    public async Task<HttpResponseData> CheckMoveConflicts(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "field-inventory/practice/check-conflicts")] HttpRequestData req)
+        => await ExecuteAsync(req, async () =>
+        {
+            var leagueId = ApiGuards.RequireLeagueId(req);
+            var me = IdentityUtil.GetMe(req);
+            var seasonLabel = ApiGuards.GetQueryParam(req, "seasonLabel");
+            var practiceSlotKey = ApiGuards.GetQueryParam(req, "practiceSlotKey");
+
+            if (string.IsNullOrWhiteSpace(seasonLabel))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST, "seasonLabel query parameter is required");
+            if (string.IsNullOrWhiteSpace(practiceSlotKey))
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST, "practiceSlotKey query parameter is required");
+
+            var context = CorrelationContext.FromRequest(req, leagueId);
+            return ApiResponses.Ok(req, await _service.CheckMoveConflictsAsync(seasonLabel, practiceSlotKey, me.UserId, context));
+        });
+
     private static async Task<HttpResponseData> ExecuteAsync(HttpRequestData req, Func<Task<HttpResponseData>> action)
     {
         try

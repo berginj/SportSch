@@ -103,6 +103,9 @@ export default function PracticePortalPage({ me, leagueId }) {
   const [showOnlyOpenSeats, setShowOnlyOpenSeats] = useState(true);
   const [openToShareField, setOpenToShareField] = useState(false);
   const [shareWithTeamId, setShareWithTeamId] = useState("");
+  const [conflicts, setConflicts] = useState(null);
+  const [pendingMoveSlot, setPendingMoveSlot] = useState(null);
+  const [checkingConflicts, setCheckingConflicts] = useState(false);
 
   const coachName = me?.name || me?.userDetails || "Coach";
   const sharePartnerOptions = useMemo(
@@ -240,7 +243,37 @@ export default function PracticePortalPage({ me, leagueId }) {
     }
   }
 
-  async function moveRequest(request, slot) {
+  async function checkConflicts(slot) {
+    setCheckingConflicts(true);
+    setError("");
+    try {
+      const params = new URLSearchParams();
+      params.set("seasonLabel", seasonLabel);
+      params.set("practiceSlotKey", slot.practiceSlotKey);
+      const response = await apiFetch(`/api/field-inventory/practice/check-conflicts?${params.toString()}`);
+      return response;
+    } catch (e) {
+      setError(e.message || "Failed to check for conflicts.");
+      return null;
+    } finally {
+      setCheckingConflicts(false);
+    }
+  }
+
+  async function initiateMove(request, slot) {
+    // Check for conflicts first
+    const conflictData = await checkConflicts(slot);
+    if (conflictData && conflictData.hasConflicts) {
+      // Show conflicts and ask for confirmation
+      setConflicts(conflictData.conflicts);
+      setPendingMoveSlot(slot);
+    } else {
+      // No conflicts, proceed directly
+      await executeMove(request, slot);
+    }
+  }
+
+  async function executeMove(request, slot) {
     setActingRequestId(request.requestId);
     setError("");
     try {
@@ -259,6 +292,8 @@ export default function PracticePortalPage({ me, leagueId }) {
       setAvailabilityRefreshKey((current) => current + 1);
       setMovingRequestId("");
       setMoveNotes("");
+      setConflicts(null);
+      setPendingMoveSlot(null);
       setToast({
         tone: "success",
         message:
@@ -271,6 +306,11 @@ export default function PracticePortalPage({ me, leagueId }) {
     } finally {
       setActingRequestId("");
     }
+  }
+
+  function cancelConflictWarning() {
+    setConflicts(null);
+    setPendingMoveSlot(null);
   }
 
   async function cancelRequest(request) {
@@ -334,6 +374,56 @@ export default function PracticePortalPage({ me, leagueId }) {
           <div className="mt-3">
             <button className="btn" type="button" onClick={() => { setMovingRequestId(""); setMoveNotes(""); }}>
               Cancel Move
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {conflicts && conflicts.length > 0 && pendingMoveSlot ? (
+        <div className="callout callout--warning">
+          <div className="font-bold mb-2">⚠️ Schedule Conflict Warning</div>
+          <div className="mb-3">
+            Moving to {describeRequest(pendingMoveSlot)} will conflict with {conflicts.length} existing commitment{conflicts.length === 1 ? "" : "s"}:
+          </div>
+          <div className="stack gap-2 mb-3">
+            {conflicts.map((conflict, index) => (
+              <div key={index} className="card">
+                <div className="card__body">
+                  <div className="row gap-2 items-center">
+                    <span className="pill pill--{conflict.type === 'game' ? 'error' : 'warning'}">
+                      {conflict.type === "game" ? "Game" : "Practice"}
+                    </span>
+                    <span className="pill">{conflict.status}</span>
+                  </div>
+                  <div className="mt-2">
+                    <div className="font-bold">{conflict.date} {conflict.startTime}-{conflict.endTime}</div>
+                    <div className="subtle">{conflict.location}</div>
+                    {conflict.opponent ? (
+                      <div className="mt-1">vs. {conflict.opponent}</div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="subtle mb-3">
+            Are you sure you want to proceed with this move? You may need to reschedule the conflicting commitment(s).
+          </div>
+          <div className="row gap-2">
+            <button
+              className="btn btn--primary"
+              type="button"
+              disabled={!!actingRequestId}
+              onClick={() => executeMove(movingRequest, pendingMoveSlot)}
+            >
+              {actingRequestId ? "Moving..." : "Proceed Anyway"}
+            </button>
+            <button
+              className="btn"
+              type="button"
+              onClick={cancelConflictWarning}
+            >
+              Cancel
             </button>
           </div>
         </div>
@@ -535,14 +625,16 @@ export default function PracticePortalPage({ me, leagueId }) {
                         <button
                           className="btn btn--primary"
                           type="button"
-                          disabled={moveTargetIsCurrent || !!slotReservedByAnotherRequest || !slot.isAvailable || !!actingRequestId || shareSelectionInvalid}
-                          onClick={() => moveRequest(movingRequest, slot)}
+                          disabled={moveTargetIsCurrent || !!slotReservedByAnotherRequest || !slot.isAvailable || !!actingRequestId || shareSelectionInvalid || checkingConflicts}
+                          onClick={() => initiateMove(movingRequest, slot)}
                         >
-                          {actingRequestId === movingRequest.requestId
-                            ? "Moving..."
-                            : moveTargetIsCurrent
-                              ? "Current Slot"
-                              : "Move Here"}
+                          {checkingConflicts
+                            ? "Checking..."
+                            : actingRequestId === movingRequest.requestId
+                              ? "Moving..."
+                              : moveTargetIsCurrent
+                                ? "Current Slot"
+                                : "Move Here"}
                         </button>
                       ) : (
                         <button

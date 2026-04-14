@@ -16,4 +16,5 @@ public interface IFieldInventoryPracticeService
     Task<FieldInventoryPracticeAdminResponse> ApprovePracticeRequestAsync(string requestId, FieldInventoryPracticeRequestDecisionRequest request, string userId, CorrelationContext context);
     Task<FieldInventoryPracticeAdminResponse> RejectPracticeRequestAsync(string requestId, FieldInventoryPracticeRequestDecisionRequest request, string userId, CorrelationContext context);
     Task<FieldInventoryPracticeCoachResponse> CancelPracticeRequestAsync(string requestId, string userId, CorrelationContext context);
+    Task<PracticeConflictCheckResponse> CheckMoveConflictsAsync(string seasonLabel, string practiceSlotKey, string userId, CorrelationContext context);
 }
