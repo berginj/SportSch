@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using Azure;
 using Azure.Data.Tables;
@@ -100,6 +101,32 @@ public class PracticeRequestService : IPracticeRequestService
         {
             throw new ApiGuards.HttpError((int)HttpStatusCode.Conflict, ErrorCodes.PRACTICE_MOVE_NOT_ALLOWED,
                 "Choose a different practice slot when moving a request.");
+        }
+
+        // Lead time validation - ensure move is not within 48 hours of the original practice
+        var sourceSlot = await _slotRepo.GetSlotAsync(leagueId, division, sourceSlotId);
+        if (sourceSlot is not null)
+        {
+            var practiceDate = (sourceSlot.GetString("GameDate") ?? "").Trim();
+            var practiceStartTime = (sourceSlot.GetString("StartTime") ?? "").Trim();
+
+            if (!string.IsNullOrWhiteSpace(practiceDate) && !string.IsNullOrWhiteSpace(practiceStartTime))
+            {
+                if (DateTime.TryParseExact(practiceDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedDate) &&
+                    TimeUtil.TryParseMinutes(practiceStartTime, out var startMin))
+                {
+                    var practiceDateTime = parsedDate.AddMinutes(startMin);
+                    var hoursUntilPractice = (practiceDateTime - DateTime.UtcNow).TotalHours;
+
+                    const int minimumLeadTimeHours = 48;
+                    if (hoursUntilPractice < minimumLeadTimeHours && hoursUntilPractice > 0)
+                    {
+                        var deadline = DateTime.UtcNow.AddHours(hoursUntilPractice);
+                        throw new ApiGuards.HttpError((int)HttpStatusCode.Conflict, ErrorCodes.PRACTICE_MOVE_NOT_ALLOWED,
+                            $"Practice cannot be moved within {minimumLeadTimeHours} hours of the scheduled time. This practice is in {Math.Round(hoursUntilPractice, 1)} hours.");
+                    }
+                }
+            }
         }
 
         var extraProperties = new Dictionary<string, object?>

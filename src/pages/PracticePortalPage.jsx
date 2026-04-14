@@ -79,6 +79,38 @@ function getSharePartnerName(teamOptions, teamId) {
   return teamOptions.find((team) => team.teamId === teamId)?.name || teamId;
 }
 
+function isWithinLeadTime(request) {
+  if (!request) return { withinLeadTime: false };
+
+  const MINIMUM_LEAD_TIME_HOURS = 48;
+  const dateStr = request.date;
+  const timeStr = request.startTime;
+
+  if (!dateStr || !timeStr) return { withinLeadTime: false };
+
+  try {
+    const [hours, minutes] = timeStr.split(":").map(Number);
+    const practiceDate = new Date(dateStr);
+    practiceDate.setHours(hours, minutes, 0, 0);
+
+    const now = new Date();
+    const hoursUntil = (practiceDate - now) / (1000 * 60 * 60);
+
+    if (hoursUntil > 0 && hoursUntil < MINIMUM_LEAD_TIME_HOURS) {
+      return {
+        withinLeadTime: true,
+        hoursUntil: Math.round(hoursUntil * 10) / 10,
+        minimumHours: MINIMUM_LEAD_TIME_HOURS,
+      };
+    }
+  } catch (e) {
+    // Invalid date/time, allow move
+    return { withinLeadTime: false };
+  }
+
+  return { withinLeadTime: false };
+}
+
 export default function PracticePortalPage({ me, leagueId }) {
   const [data, setData] = useState(null);
   const [teamOptions, setTeamOptions] = useState([]);
@@ -733,6 +765,17 @@ export default function PracticePortalPage({ me, leagueId }) {
                       {movingRequestId === request.requestId ? (
                         <span className="pill pill--warning" title="You are currently selecting a new slot for this request">Moving...</span>
                       ) : null}
+                      {(() => {
+                        const leadTimeCheck = isWithinLeadTime(request);
+                        if (leadTimeCheck.withinLeadTime) {
+                          return (
+                            <span className="pill pill--warning" title={`Too close to practice time. Cannot move within ${leadTimeCheck.minimumHours} hours (${leadTimeCheck.hoursUntil}h remaining)`}>
+                              🕒 {leadTimeCheck.hoursUntil}h until practice
+                            </span>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
                   </td>
                   <td title={request.bookingPolicy === "auto_approve" ? "This space was confirmed immediately." : "This space requires commissioner approval."}>{request.bookingPolicyLabel}</td>
@@ -744,14 +787,24 @@ export default function PracticePortalPage({ me, leagueId }) {
                   <td>
                     {isActiveRequest(request) ? (
                       <div className="row gap-2">
-                        <button
-                          className="btn"
-                          type="button"
-                          disabled={!!actingRequestId}
-                          onClick={() => setMovingRequestId((current) => (current === request.requestId ? "" : request.requestId))}
-                        >
-                          {movingRequestId === request.requestId ? "Selecting Target..." : "Move"}
-                        </button>
+                        {(() => {
+                          const leadTimeCheck = isWithinLeadTime(request);
+                          return (
+                            <button
+                              className="btn"
+                              type="button"
+                              disabled={!!actingRequestId || leadTimeCheck.withinLeadTime}
+                              title={
+                                leadTimeCheck.withinLeadTime
+                                  ? `Cannot move within ${leadTimeCheck.minimumHours} hours of practice time. This practice is in ${leadTimeCheck.hoursUntil} hours.`
+                                  : ""
+                              }
+                              onClick={() => setMovingRequestId((current) => (current === request.requestId ? "" : request.requestId))}
+                            >
+                              {movingRequestId === request.requestId ? "Selecting Target..." : "Move"}
+                            </button>
+                          );
+                        })()}
                         <button className="btn" type="button" disabled={!!actingRequestId} onClick={() => cancelRequest(request)}>
                           {actingRequestId === request.requestId ? "Working..." : "Cancel"}
                         </button>
