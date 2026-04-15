@@ -29,6 +29,7 @@ public static class Constants
         public const string Slots = "GameSwapSlots";
         public const string SlotRequests = "GameSwapSlotRequests";
         public const string PracticeRequests = "GameSwapPracticeRequests";
+        public const string GameRescheduleRequests = "GameSwapGameRescheduleRequests";
         public const string ScheduleRuns = "GameSwapScheduleRuns";
         public const string FieldAvailabilityRules = "GameSwapFieldAvailabilityRules";
         public const string FieldAvailabilityExceptions = "GameSwapFieldAvailabilityExceptions";

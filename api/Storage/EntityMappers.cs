@@ -1,4 +1,5 @@
 using Azure.Data.Tables;
+using GameSwap.Functions.Models;
 
 namespace GameSwap.Functions.Storage;
 
@@ -220,4 +221,42 @@ public static class EntityMappers
         if (DateTimeOffset.TryParse(value.ToString(), out var parsed)) return parsed;
         return null;
     }
+
+    /// <summary>
+    /// Maps a game reschedule request TableEntity to a response object.
+    /// </summary>
+    public static GameRescheduleRequestResponse MapGameRescheduleRequest(TableEntity e)
+    {
+        return new GameRescheduleRequestResponse(
+            RequestId: ReadString(e, "RowKey") ?? e.RowKey,
+            LeagueId: ReadString(e, "LeagueId") ?? "",
+            Division: ReadString(e, "Division") ?? "",
+            Status: ReadString(e, "Status") ?? "",
+            RequestingTeamId: ReadString(e, "RequestingTeamId") ?? "",
+            OpponentTeamId: ReadString(e, "OpponentTeamId") ?? "",
+            OriginalSlotId: ReadString(e, "OriginalSlotId") ?? "",
+            ProposedSlotId: ReadString(e, "ProposedSlotId") ?? "",
+            Reason: ReadString(e, "Reason") ?? "",
+            OriginalGameDate: ReadString(e, "OriginalGameDate") ?? "",
+            OriginalStartTime: ReadString(e, "OriginalStartTime") ?? "",
+            OriginalEndTime: ReadString(e, "OriginalEndTime") ?? "",
+            OriginalFieldKey: ReadString(e, "OriginalFieldKey") ?? "",
+            OriginalFieldName: ReadString(e, "OriginalFieldName") ?? "",
+            ProposedGameDate: ReadString(e, "ProposedGameDate") ?? "",
+            ProposedStartTime: ReadString(e, "ProposedStartTime") ?? "",
+            ProposedEndTime: ReadString(e, "ProposedEndTime") ?? "",
+            ProposedFieldKey: ReadString(e, "ProposedFieldKey") ?? "",
+            ProposedFieldName: ReadString(e, "ProposedFieldName") ?? "",
+            RequestingCoachUserId: ReadString(e, "RequestingCoachUserId") ?? "",
+            RequestedUtc: ReadDateTimeOffset(e, "RequestedUtc") ?? DateTimeOffset.MinValue,
+            OpponentApprovedUtc: ReadDateTimeOffset(e, "OpponentApprovedUtc"),
+            OpponentApprovedBy: ReadString(e, "OpponentApprovedBy"),
+            OpponentResponse: ReadString(e, "OpponentResponse"),
+            AdminReviewedUtc: ReadDateTimeOffset(e, "AdminReviewedUtc"),
+            AdminReviewedBy: ReadString(e, "AdminReviewedBy"),
+            AdminReviewReason: ReadString(e, "AdminReviewReason"),
+            FinalizedUtc: ReadDateTimeOffset(e, "FinalizedUtc"),
+            UpdatedUtc: ReadDateTimeOffset(e, "UpdatedUtc") ?? DateTimeOffset.MinValue);
+    }
 }
+

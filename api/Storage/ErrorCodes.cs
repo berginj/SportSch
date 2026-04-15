@@ -44,6 +44,12 @@ public static class ErrorCodes
     public const string PRACTICE_POLICY_REQUIRED = "PRACTICE_POLICY_REQUIRED";
     public const string PRACTICE_NORMALIZATION_CONFLICT = "PRACTICE_NORMALIZATION_CONFLICT";
     public const string PRACTICE_MOVE_NOT_ALLOWED = "PRACTICE_MOVE_NOT_ALLOWED";
+    public const string GAME_RESCHEDULE_NOT_FOUND = "GAME_RESCHEDULE_NOT_FOUND";
+    public const string GAME_NOT_CONFIRMED = "GAME_NOT_CONFIRMED";
+    public const string LEAD_TIME_VIOLATION = "LEAD_TIME_VIOLATION";
+    public const string NOT_GAME_PARTICIPANT = "NOT_GAME_PARTICIPANT";
+    public const string RESCHEDULE_CONFLICT_DETECTED = "RESCHEDULE_CONFLICT_DETECTED";
+    public const string FINALIZATION_FAILED = "FINALIZATION_FAILED";
 
     // Business Logic Errors
     public const string SLOT_CONFLICT = "SLOT_CONFLICT";

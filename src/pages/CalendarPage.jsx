@@ -274,6 +274,13 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
   const [editConflicts, setEditConflicts] = useState([]);
   const [editCheckingConflicts, setEditCheckingConflicts] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [reschedulingSlot, setReschedulingSlot] = useState(null);
+  const [rescheduleProposedDate, setRescheduleProposedDate] = useState("");
+  const [rescheduleProposedTime, setRescheduleProposedTime] = useState("");
+  const [rescheduleProposedField, setRescheduleProposedField] = useState("");
+  const [rescheduleReason, setRescheduleReason] = useState("");
+  const [rescheduleRequests, setRescheduleRequests] = useState([]);
+  const [submittingReschedule, setSubmittingReschedule] = useState(false);
   const [useNewCalendarView, setUseNewCalendarView] = useState(() => {
     try {
       return localStorage.getItem("calendar-use-new-view") === "true";
@@ -414,6 +421,11 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leagueId]);
+
+  useEffect(() => {
+    loadRescheduleRequests();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leagueId, myCoachTeamId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -963,6 +975,121 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     }
   }
 
+  function canRequestReschedule(slot) {
+    if (!slot || slot.status !== "Confirmed") return false;
+    if (!slot.homeTeamId || !slot.awayTeamId) return false;
+    if (role !== "Coach") return false;
+    const my = (myCoachTeamId || "").trim();
+    return my === slot.homeTeamId || my === slot.awayTeamId;
+  }
+
+  function openRescheduleModal(slot) {
+    setReschedulingSlot(slot);
+    setRescheduleProposedDate("");
+    setRescheduleProposedTime("");
+    setRescheduleProposedField("");
+    setRescheduleReason("");
+    setErr("");
+  }
+
+  function closeRescheduleModal() {
+    setReschedulingSlot(null);
+    setRescheduleProposedDate("");
+    setRescheduleProposedTime("");
+    setRescheduleProposedField("");
+    setRescheduleReason("");
+  }
+
+  async function submitRescheduleRequest() {
+    if (!reschedulingSlot) return;
+    if (!rescheduleReason.trim()) {
+      setErr("Please provide a reason for rescheduling.");
+      return;
+    }
+
+    // Find the proposed slot ID based on selected date/time/field
+    const proposedSlot = slots.find(
+      (s) =>
+        s.status === "Open" &&
+        s.gameDate === rescheduleProposedDate &&
+        s.startTime === rescheduleProposedTime &&
+        s.fieldKey === rescheduleProposedField
+    );
+
+    if (!proposedSlot) {
+      setErr("Could not find the selected slot. Please refresh and try again.");
+      return;
+    }
+
+    setSubmittingReschedule(true);
+    setErr("");
+    try {
+      await apiFetch("/api/game-reschedule/requests", {
+        method: "POST",
+        body: JSON.stringify({
+          division: reschedulingSlot.division,
+          originalSlotId: reschedulingSlot.slotId,
+          proposedSlotId: proposedSlot.slotId,
+          reason: rescheduleReason.trim(),
+        }),
+      });
+
+      setToast({
+        tone: "success",
+        message: "Reschedule request sent to opponent team for approval.",
+      });
+
+      closeRescheduleModal();
+      await loadData();
+    } catch (e) {
+      setErr(e?.message || "Failed to create reschedule request.");
+    } finally {
+      setSubmittingReschedule(false);
+    }
+  }
+
+  async function approveReschedule(requestId) {
+    setErr("");
+    try {
+      await apiFetch(`/api/game-reschedule/requests/${encodeURIComponent(requestId)}/approve`, {
+        method: "PATCH",
+        body: JSON.stringify({ response: "Approved" }),
+      });
+
+      setToast({ tone: "success", message: "Reschedule request approved. Game has been moved." });
+      await loadData();
+      await loadRescheduleRequests();
+    } catch (e) {
+      setErr(e?.message || "Failed to approve reschedule request.");
+    }
+  }
+
+  async function rejectReschedule(requestId) {
+    const response = prompt("Reason for rejecting (optional):");
+    setErr("");
+    try {
+      await apiFetch(`/api/game-reschedule/requests/${encodeURIComponent(requestId)}/reject`, {
+        method: "PATCH",
+        body: JSON.stringify({ response }),
+      });
+
+      setToast({ tone: "success", message: "Reschedule request rejected." });
+      await loadRescheduleRequests();
+    } catch (e) {
+      setErr(e?.message || "Failed to reject reschedule request.");
+    }
+  }
+
+  async function loadRescheduleRequests() {
+    if (!leagueId) return;
+    try {
+      const requests = await apiFetch("/api/game-reschedule/requests");
+      setRescheduleRequests(requests || []);
+    } catch (e) {
+      console.error("Failed to load reschedule requests", e);
+    }
+  }
+
   function toggleSlotStatus(status) {
     setSlotStatusFilter((prev) => ({ ...prev, [status]: !prev[status] }));
   }
@@ -1017,9 +1144,10 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     const canCoachAccept =
       !canPickTeam && role !== "Viewer" && canAcceptSlot(slot) && (slot?.offeringTeamId || "") !== myCoachTeamId;
     const canEdit = canEditSlot(slot);
+    const canReschedule = canRequestReschedule(slot);
     const canCancel = canCancelSlot(slot) && (slot?.status || "") !== "Cancelled";
 
-    if (!canAdminAccept && !canCoachAccept && !canEdit && !canCancel) {
+    if (!canAdminAccept && !canCoachAccept && !canEdit && !canReschedule && !canCancel) {
       return null;
     }
 
@@ -1072,6 +1200,16 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
             title="Edit date, time, or field for this game."
           >
             Edit
+          </button>
+        ) : null}
+        {canReschedule ? (
+          <button
+            className="btn"
+            type="button"
+            onClick={() => openRescheduleModal(slot)}
+            title="Request to reschedule this game to a different date/time/field."
+          >
+            Request Reschedule
           </button>
         ) : null}
         {canCancel ? (
@@ -1288,7 +1426,143 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
         </div>
       ) : null}
 
+      {reschedulingSlot ? (
+        <div className="modalOverlay" role="presentation" onClick={closeRescheduleModal}>
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Request game reschedule"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal__header">Request Game Reschedule</div>
+            <div className="modal__body">
+              <div className="callout">
+                <div className="font-bold mb-1">Current Game</div>
+                <div>{reschedulingSlot.homeTeamId || "TBD"} vs {reschedulingSlot.awayTeamId || "TBD"}</div>
+                <div className="subtle">
+                  {reschedulingSlot.gameDate} {reschedulingSlot.startTime} at {reschedulingSlot.fieldName || reschedulingSlot.fieldKey}
+                </div>
+              </div>
+              <div className="mt-3">
+                <div className="font-bold mb-1">Proposed New Time</div>
+                <div className="grid2">
+                  <label>
+                    Date
+                    <input
+                      type="date"
+                      value={rescheduleProposedDate}
+                      onChange={(e) => setRescheduleProposedDate(e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Field
+                    <select value={rescheduleProposedField} onChange={(e) => setRescheduleProposedField(e.target.value)}>
+                      <option value="">Select field</option>
+                      {fields.map((f) => (
+                        <option key={f.fieldKey} value={f.fieldKey}>
+                          {f.displayName || f.fieldKey}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Start Time
+                    <input
+                      type="time"
+                      value={rescheduleProposedTime}
+                      onChange={(e) => setRescheduleProposedTime(e.target.value)}
+                    />
+                  </label>
+                </div>
+              </div>
+              <div className="mt-3">
+                <label className="block">
+                  <div className="font-bold mb-1">Reason (Required)</div>
+                  <textarea
+                    value={rescheduleReason}
+                    onChange={(e) => setRescheduleReason(e.target.value)}
+                    placeholder="Explain why this game needs to be rescheduled (e.g., field closure, weather, conflict)"
+                    rows={3}
+                  />
+                </label>
+              </div>
+              <div className="callout callout--info mt-3">
+                <div className="subtle">
+                  Your opponent team will receive a notification and must approve the reschedule. The game will be moved once both teams agree.
+                </div>
+              </div>
+            </div>
+            <div className="modal__actions">
+              <button
+                className="btn btn--ghost"
+                type="button"
+                onClick={closeRescheduleModal}
+                disabled={submittingReschedule}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn--primary"
+                type="button"
+                onClick={submitRescheduleRequest}
+                disabled={submittingReschedule || !rescheduleReason.trim() || !rescheduleProposedDate || !rescheduleProposedTime || !rescheduleProposedField}
+              >
+                {submittingReschedule ? "Sending..." : "Send Request to Opponent"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="calendarSplit">
+        {rescheduleRequests.filter((r) => r.status === "PendingOpponent" && r.opponentTeamId === myCoachTeamId).length > 0 ? (
+          <div className="card card--warning">
+            <div className="cardTitle">⚠️ Reschedule Requests Needing Your Approval</div>
+            <div className="stack gap-3 mt-2">
+              {rescheduleRequests
+                .filter((r) => r.status === "PendingOpponent" && r.opponentTeamId === myCoachTeamId)
+                .map((request) => (
+                  <div key={request.requestId} className="card">
+                    <div className="card__body">
+                      <div className="mb-2">
+                        <strong>{request.requestingTeamId}</strong> wants to reschedule your game:
+                      </div>
+                      <div className="mt-2">
+                        <div className="font-bold">From:</div>
+                        <div className="subtle">
+                          {request.originalGameDate} {request.originalStartTime} at {request.originalFieldName}
+                        </div>
+                      </div>
+                      <div className="mt-2">
+                        <div className="font-bold">To:</div>
+                        <div className="subtle">
+                          {request.proposedGameDate} {request.proposedStartTime} at {request.proposedFieldName}
+                        </div>
+                      </div>
+                      <div className="mt-2">
+                        <div className="font-bold">Reason:</div>
+                        <div>{request.reason}</div>
+                      </div>
+                      <div className="row gap-2 mt-3">
+                        <button
+                          className="btn btn--primary"
+                          type="button"
+                          onClick={() => approveReschedule(request.requestId)}
+                        >
+                          Approve Reschedule
+                        </button>
+                        <button className="btn" type="button" onClick={() => rejectReschedule(request.requestId)}>
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </div>
+        ) : null}
+
         <div className="card">
         <div className="cardTitle">
           Calendar filters

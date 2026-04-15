@@ -27,6 +27,7 @@ var host = new HostBuilder()
         services.AddScoped<IMembershipRepository, MembershipRepository>();
         services.AddScoped<IRequestRepository, RequestRepository>();
         services.AddScoped<IPracticeRequestRepository, PracticeRequestRepository>();
+        services.AddScoped<IGameRescheduleRequestRepository, GameRescheduleRequestRepository>();
         services.AddScoped<IDivisionRepository, DivisionRepository>();
         services.AddScoped<ITeamRepository, TeamRepository>();
         services.AddScoped<IAccessRequestRepository, AccessRequestRepository>();
@@ -40,6 +41,7 @@ var host = new HostBuilder()
         services.AddScoped<ISlotService, SlotService>();
         services.AddScoped<IRequestService, RequestService>();
         services.AddScoped<IPracticeRequestService, PracticeRequestService>();
+        services.AddScoped<IGameRescheduleRequestService, GameRescheduleRequestService>();
         services.AddScoped<IAvailabilityService, AvailabilityService>();
         services.AddScoped<IAuthorizationService, AuthorizationService>();
         services.AddScoped<INotificationService, NotificationService>();
