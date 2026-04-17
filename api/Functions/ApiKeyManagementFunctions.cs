@@ -63,12 +63,14 @@ public class ApiKeyManagementFunctions
 
             return ApiResponses.Ok(req, new
             {
-                primaryKey = keys.PrimaryKey,
-                secondaryKey = keys.SecondaryKey,
+                message = "API keys are stored securely as hashes. Plaintext keys are only shown once during generation/rotation.",
+                primaryKeyHash = keys.PrimaryKey.Substring(0, Math.Min(16, keys.PrimaryKey.Length)) + "...",
+                secondaryKeyHash = keys.SecondaryKey.Substring(0, Math.Min(16, keys.SecondaryKey.Length)) + "...",
                 primaryKeyCreatedUtc = keys.PrimaryKeyCreatedUtc,
                 secondaryKeyCreatedUtc = keys.SecondaryKeyCreatedUtc,
                 lastRotatedBy = keys.LastRotatedBy,
-                lastRotatedUtc = keys.LastRotatedUtc
+                lastRotatedUtc = keys.LastRotatedUtc,
+                note = "If you need to view keys, you must rotate or regenerate them."
             });
         }
         catch (Exception ex)

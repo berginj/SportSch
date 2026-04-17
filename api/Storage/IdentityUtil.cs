@@ -105,21 +105,30 @@ public static class IdentityUtil
 
     private static bool AllowsDevIdentityHeaders(HttpRequestData req)
     {
+        // SECURITY: Dev headers require BOTH conditions to prevent production bypass
+        // 1. Must be in Development environment
+        // 2. Must be accessing from localhost
+
         var environment = Environment.GetEnvironmentVariable("AZURE_FUNCTIONS_ENVIRONMENT")
             ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
             ?? "";
-        if (string.Equals(environment, "Development", StringComparison.OrdinalIgnoreCase))
+
+        var isDevelopment = string.Equals(environment, "Development", StringComparison.OrdinalIgnoreCase);
+        if (!isDevelopment)
         {
-            return true;
+            return false; // Not in development environment
         }
 
+        // Development environment confirmed, now check if localhost
         try
         {
             var host = req.Url.Host;
-            return string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase)
+            var isLocalhost = string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(host, "127.0.0.1", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(host, "::1", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(host, "[::1]", StringComparison.OrdinalIgnoreCase);
+
+            return isLocalhost; // Both conditions must be true
         }
         catch
         {

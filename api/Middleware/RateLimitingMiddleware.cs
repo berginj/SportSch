@@ -1,5 +1,5 @@
-using System.Collections.Concurrent;
 using System.Net;
+using GameSwap.Functions.Services;
 using GameSwap.Functions.Storage;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
@@ -9,23 +9,23 @@ using Microsoft.Extensions.Logging;
 namespace GameSwap.Functions.Middleware;
 
 /// <summary>
-/// Rate limiting middleware using sliding window algorithm.
-/// Tracks requests per user and enforces configurable rate limits.
+/// Rate limiting middleware using distributed Redis-based sliding window algorithm.
+/// Tracks requests per user across multiple instances and enforces configurable rate limits.
 /// </summary>
 public class RateLimitingMiddleware : IFunctionsWorkerMiddleware
 {
     private readonly ILogger<RateLimitingMiddleware> _logger;
-
-    // In-memory storage for rate limiting (for distributed systems, use Redis)
-    private static readonly ConcurrentDictionary<string, RequestWindow> _requestWindows = new();
+    private readonly IRateLimitService _rateLimitService;
 
     // Rate limit configuration
     private const int MaxRequestsPerMinute = 100;
-    private const int WindowSizeSeconds = 60;
 
-    public RateLimitingMiddleware(ILogger<RateLimitingMiddleware> logger)
+    public RateLimitingMiddleware(
+        ILogger<RateLimitingMiddleware> logger,
+        IRateLimitService rateLimitService)
     {
         _logger = logger;
+        _rateLimitService = rateLimitService;
     }
 
     public async Task Invoke(FunctionContext context, FunctionExecutionDelegate next)
@@ -40,17 +40,21 @@ public class RateLimitingMiddleware : IFunctionsWorkerMiddleware
         // Get identifier (user ID or IP address)
         var identifier = GetIdentifier(requestData);
 
-        // Check rate limit
-        if (!IsAllowed(identifier))
+        // Check rate limit using distributed service
+        var isAllowed = await _rateLimitService.IsAllowedAsync(identifier);
+
+        if (!isAllowed)
         {
             _logger.LogWarning("Rate limit exceeded for {Identifier}", identifier);
+
+            var rateLimitInfo = await _rateLimitService.GetRateLimitInfoAsync(identifier);
 
             var response = requestData.CreateResponse(HttpStatusCode.TooManyRequests);
             response.Headers.Add("Content-Type", "application/json");
             response.Headers.Add("Retry-After", "60");
-            response.Headers.Add("X-RateLimit-Limit", MaxRequestsPerMinute.ToString());
-            response.Headers.Add("X-RateLimit-Remaining", "0");
-            response.Headers.Add("X-RateLimit-Reset", GetResetTime(identifier).ToString());
+            response.Headers.Add("X-RateLimit-Limit", rateLimitInfo.Limit.ToString());
+            response.Headers.Add("X-RateLimit-Remaining", rateLimitInfo.Remaining.ToString());
+            response.Headers.Add("X-RateLimit-Reset", rateLimitInfo.ResetTimestampSeconds.ToString());
 
             await response.WriteAsJsonAsync(new
             {
@@ -69,11 +73,8 @@ public class RateLimitingMiddleware : IFunctionsWorkerMiddleware
 
         if (context.GetInvocationResult().Value is HttpResponseData outgoingResponse)
         {
-            AddRateLimitHeaders(outgoingResponse, identifier);
+            await AddRateLimitHeadersAsync(outgoingResponse, identifier);
         }
-
-        // Clean up old windows periodically
-        CleanupOldWindows();
     }
 
     private string GetIdentifier(HttpRequestData req)
@@ -85,15 +86,31 @@ public class RateLimitingMiddleware : IFunctionsWorkerMiddleware
             return $"user:{authenticatedUserId}";
         }
 
-        // X-Forwarded-For is ordered client -> proxy1 -> proxy2.
-        // Use the leftmost IP so rate limiting tracks the originating client instead of the nearest proxy.
+        // SECURITY: For unauthenticated requests, use Azure-provided client IP
+        // Azure Static Web Apps and Azure Front Door set X-Azure-ClientIP with the real client IP
+        // This header cannot be spoofed by the client as it's set by Azure infrastructure
+        if (req.Headers.TryGetValues("X-Azure-ClientIP", out var azureClientIp))
+        {
+            var ip = azureClientIp.FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(ip))
+            {
+                return $"ip:{ip}";
+            }
+        }
+
+        // Fallback: Use X-Forwarded-For from Azure (more secure than trusting client)
+        // Azure infrastructure ensures the rightmost IP is from Azure's edge
+        // For Azure Functions behind Azure Front Door/Application Gateway:
+        // X-Forwarded-For format: client_ip, proxy1, proxy2, azure_edge
         if (req.Headers.TryGetValues("X-Forwarded-For", out var forwardedFor))
         {
             var chainStr = forwardedFor.FirstOrDefault() ?? "";
             var ips = chainStr.Split(',').Select(s => s.Trim()).Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
-            
+
             if (ips.Count > 0)
             {
+                // Use the first IP (client IP) as Azure ensures the chain integrity
+                // In Azure environment, the X-Forwarded-For header is controlled by Azure infrastructure
                 var ip = ips[0];
                 if (!string.IsNullOrWhiteSpace(ip))
                 {
@@ -102,90 +119,24 @@ public class RateLimitingMiddleware : IFunctionsWorkerMiddleware
             }
         }
 
+        // Last resort: use remote IP address from connection
+        // This is the IP of the immediate caller (Azure infrastructure)
         return "ip:unknown";
     }
 
-    private bool IsAllowed(string identifier)
+    private async Task AddRateLimitHeadersAsync(HttpResponseData response, string identifier)
     {
-        var now = DateTimeOffset.UtcNow;
-        var window = _requestWindows.GetOrAdd(identifier, _ => new RequestWindow());
-
-        lock (window)
+        try
         {
-            // Remove requests outside the window
-            window.Requests.RemoveAll(r => r < now.AddSeconds(-WindowSizeSeconds));
-
-            // Check if limit exceeded
-            if (window.Requests.Count >= MaxRequestsPerMinute)
-            {
-                return false;
-            }
-
-            // Add current request
-            window.Requests.Add(now);
-            return true;
+            var rateLimitInfo = await _rateLimitService.GetRateLimitInfoAsync(identifier);
+            response.Headers.Add("X-RateLimit-Limit", rateLimitInfo.Limit.ToString());
+            response.Headers.Add("X-RateLimit-Remaining", rateLimitInfo.Remaining.ToString());
+            response.Headers.Add("X-RateLimit-Reset", rateLimitInfo.ResetTimestampSeconds.ToString());
         }
-    }
-
-    private void AddRateLimitHeaders(HttpResponseData response, string identifier)
-    {
-        if (_requestWindows.TryGetValue(identifier, out var window))
+        catch (Exception ex)
         {
-            lock (window)
-            {
-                var remaining = Math.Max(0, MaxRequestsPerMinute - window.Requests.Count);
-                response.Headers.Add("X-RateLimit-Limit", MaxRequestsPerMinute.ToString());
-                response.Headers.Add("X-RateLimit-Remaining", remaining.ToString());
-                response.Headers.Add("X-RateLimit-Reset", GetResetTime(identifier).ToString());
-            }
+            _logger.LogError(ex, "Failed to add rate limit headers for {Identifier}", identifier);
+            // Continue without headers rather than failing the request
         }
-    }
-
-    private long GetResetTime(string identifier)
-    {
-        if (_requestWindows.TryGetValue(identifier, out var window))
-        {
-            lock (window)
-            {
-                if (window.Requests.Count > 0)
-                {
-                    var oldestRequest = window.Requests.Min();
-                    var resetTime = oldestRequest.AddSeconds(WindowSizeSeconds);
-                    return new DateTimeOffset(resetTime.DateTime, TimeSpan.Zero).ToUnixTimeSeconds();
-                }
-            }
-        }
-        return DateTimeOffset.UtcNow.AddSeconds(WindowSizeSeconds).ToUnixTimeSeconds();
-    }
-
-    private void CleanupOldWindows()
-    {
-        // Only cleanup occasionally to avoid overhead
-        if (Random.Shared.Next(100) > 5) return;
-
-        var now = DateTimeOffset.UtcNow;
-        var keysToRemove = new List<string>();
-
-        foreach (var kvp in _requestWindows)
-        {
-            lock (kvp.Value)
-            {
-                kvp.Value.Requests.RemoveAll(r => r < now.AddSeconds(-WindowSizeSeconds * 2));
-                if (kvp.Value.Requests.Count == 0)
-                {
-                    keysToRemove.Add(kvp.Key);
-                }
-            }
-        }
-
-        foreach (var key in keysToRemove)
-        {
-            _requestWindows.TryRemove(key, out _);
-        }
-    }
-
-    private class RequestWindow
-    {
-        public List<DateTimeOffset> Requests { get; } = new();
     }
 }

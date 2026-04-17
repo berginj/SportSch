@@ -12,6 +12,7 @@
     "extensions": {
         "http": {
             "routePrefix": "api",
+            "maxRequestBodySize": 10485760,
             "cors": {
                 "allowedOrigins": [
                     "https://softball.sports.fifthseasonadvisors.com",

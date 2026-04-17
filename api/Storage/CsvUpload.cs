@@ -8,26 +8,92 @@ public static class CsvUpload
 {
     public static async Task<string> ReadCsvTextAsync(HttpRequestData req, string preferredFormFieldName = "file")
     {
+        // Security: Limit CSV file size to prevent DoS attacks
+        const int MAX_CSV_SIZE = 5 * 1024 * 1024; // 5MB
+
         using var ms = new MemoryStream();
         await req.Body.CopyToAsync(ms);
         var bodyBytes = ms.ToArray();
+
         if (bodyBytes.Length == 0) return "";
 
+        if (bodyBytes.Length > MAX_CSV_SIZE)
+        {
+            throw new ApiGuards.HttpError(413, ErrorCodes.BAD_REQUEST,
+                $"CSV file too large. Maximum size is {MAX_CSV_SIZE / 1024 / 1024}MB.");
+        }
+
         var contentType = GetHeader(req, "Content-Type");
+
+        // Security: Validate content type for non-multipart requests
+        if (!string.IsNullOrWhiteSpace(contentType) &&
+            !contentType.Contains("multipart/form-data", StringComparison.OrdinalIgnoreCase))
+        {
+            var isValidCsvContentType =
+                contentType.Contains("text/csv", StringComparison.OrdinalIgnoreCase) ||
+                contentType.Contains("text/plain", StringComparison.OrdinalIgnoreCase) ||
+                contentType.Contains("application/csv", StringComparison.OrdinalIgnoreCase) ||
+                contentType.Contains("application/vnd.ms-excel", StringComparison.OrdinalIgnoreCase);
+
+            if (!isValidCsvContentType)
+            {
+                throw new ApiGuards.HttpError(400, ErrorCodes.BAD_REQUEST,
+                    "Invalid content type. Expected CSV file (text/csv, text/plain, or multipart/form-data).");
+            }
+        }
 
         var looksMultipart =
             (!string.IsNullOrWhiteSpace(contentType) &&
              contentType.StartsWith("multipart/form-data", StringComparison.OrdinalIgnoreCase)) ||
             BodyLooksMultipart(bodyBytes);
 
+        string csv;
+
         if (looksMultipart)
         {
             var bytes = await MultipartFormData.ReadFirstFileBytesAsync(bodyBytes, contentType, preferredFormFieldName);
-            var csv = Encoding.UTF8.GetString(bytes ?? Array.Empty<byte>());
-            return NormalizeNewlines(StripBom(csv));
+            csv = Encoding.UTF8.GetString(bytes ?? Array.Empty<byte>());
+        }
+        else
+        {
+            csv = Encoding.UTF8.GetString(bodyBytes);
         }
 
-        return NormalizeNewlines(StripBom(Encoding.UTF8.GetString(bodyBytes)));
+        csv = NormalizeNewlines(StripBom(csv));
+
+        // Security: Validate CSV format
+        ValidateCsvFormat(csv);
+
+        return csv;
+    }
+
+    private static void ValidateCsvFormat(string csv)
+    {
+        if (string.IsNullOrWhiteSpace(csv))
+        {
+            throw new ApiGuards.HttpError(400, ErrorCodes.BAD_REQUEST,
+                "CSV file is empty.");
+        }
+
+        var lines = csv.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+        if (lines.Length < 2)
+        {
+            throw new ApiGuards.HttpError(400, ErrorCodes.BAD_REQUEST,
+                "Invalid CSV format. File must contain at least a header row and one data row.");
+        }
+
+        // Check for suspicious content that might indicate a non-CSV file
+        var firstLine = lines[0];
+        if (firstLine.StartsWith("<!DOCTYPE", StringComparison.OrdinalIgnoreCase) ||
+            firstLine.StartsWith("<html", StringComparison.OrdinalIgnoreCase) ||
+            firstLine.StartsWith("<?xml", StringComparison.OrdinalIgnoreCase) ||
+            firstLine.StartsWith("{", StringComparison.OrdinalIgnoreCase) ||
+            firstLine.StartsWith("[", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ApiGuards.HttpError(400, ErrorCodes.BAD_REQUEST,
+                "File does not appear to be a CSV. Detected HTML, XML, or JSON content.");
+        }
     }
 
     private static bool BodyLooksMultipart(byte[] body)

@@ -17,23 +17,27 @@ public interface IApiKeyService
 
     /// <summary>
     /// Gets the current active API keys (primary and secondary).
+    /// Note: Keys are stored as hashes. This returns the hashes for internal validation.
+    /// Plaintext keys are only returned during rotation/regeneration operations.
     /// </summary>
-    /// <returns>API key information</returns>
+    /// <returns>API key information with hashed keys</returns>
     Task<ApiKeyInfo> GetActiveKeysAsync();
 
     /// <summary>
     /// Rotates the API keys. Moves secondary to primary, generates new secondary.
+    /// WARNING: The new secondary key is returned in plaintext ONLY ONCE. Save it immediately.
     /// </summary>
     /// <param name="performedBy">User ID performing the rotation</param>
-    /// <returns>New API key information</returns>
+    /// <returns>API key information with new secondary key in plaintext (shown only once)</returns>
     Task<ApiKeyInfo> RotateKeysAsync(string performedBy);
 
     /// <summary>
     /// Regenerates the secondary key without rotating.
     /// Useful for emergency revocation.
+    /// WARNING: The new secondary key is returned in plaintext ONLY ONCE. Save it immediately.
     /// </summary>
     /// <param name="performedBy">User ID performing the regeneration</param>
-    /// <returns>New API key information</returns>
+    /// <returns>API key information with new secondary key in plaintext (shown only once)</returns>
     Task<ApiKeyInfo> RegenerateSecondaryKeyAsync(string performedBy);
 
     /// <summary>

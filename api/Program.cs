@@ -21,6 +21,9 @@ var host = new HostBuilder()
         var tableServiceClient = GameSwap.Functions.Storage.TableClients.CreateServiceClient(context.Configuration);
         services.AddSingleton(tableServiceClient);
 
+        // Rate Limiting Service (singleton for distributed rate limiting)
+        services.AddSingleton<IRateLimitService, RedisRateLimitService>();
+
         // Register Repositories (scoped for per-request lifetime)
         services.AddScoped<ISlotRepository, SlotRepository>();
         services.AddScoped<IFieldRepository, FieldRepository>();
