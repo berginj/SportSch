@@ -19,6 +19,9 @@ public class SimplePracticeRequestFunctions
     private readonly IMembershipRepository _membershipRepo;
     private readonly IAuthorizationService _authService;
     private readonly INotificationService _notificationService;
+    private readonly IEmailService _emailService;
+    private readonly ITeamRepository _teamRepo;
+    private readonly IFieldRepository _fieldRepo;
     private readonly ILogger<SimplePracticeRequestFunctions> _logger;
 
     public SimplePracticeRequestFunctions(
@@ -27,6 +30,9 @@ public class SimplePracticeRequestFunctions
         IMembershipRepository membershipRepo,
         IAuthorizationService authService,
         INotificationService notificationService,
+        IEmailService emailService,
+        ITeamRepository teamRepo,
+        IFieldRepository fieldRepo,
         ILogger<SimplePracticeRequestFunctions> logger)
     {
         _practiceService = practiceService;
@@ -34,6 +40,9 @@ public class SimplePracticeRequestFunctions
         _membershipRepo = membershipRepo;
         _authService = authService;
         _notificationService = notificationService;
+        _emailService = emailService;
+        _teamRepo = teamRepo;
+        _fieldRepo = fieldRepo;
         _logger = logger;
     }
 
@@ -62,7 +71,7 @@ public class SimplePracticeRequestFunctions
             var membership = await _membershipRepo.GetMembershipAsync(me.UserId, leagueId);
             var teamId = membership?.GetString("TeamId") ?? "";
 
-            // Check conflicts
+            // Check conflicts (with team name resolution)
             var conflicts = await SimplePracticeRequestExtensions.CheckSimplePracticeConflictsAsync(
                 body.FieldKey ?? "",
                 body.Date ?? "",
@@ -72,6 +81,7 @@ public class SimplePracticeRequestFunctions
                 leagueId,
                 teamId, // Exclude same team
                 _practiceRepo,
+                _teamRepo,
                 _logger
             );
 
@@ -144,6 +154,7 @@ public class SimplePracticeRequestFunctions
                 teamId,
                 _membershipRepo,
                 _practiceRepo,
+                _teamRepo,
                 _logger
             );
 
@@ -151,25 +162,37 @@ public class SimplePracticeRequestFunctions
             if (result.AutoApproved)
             {
                 await _notificationService.NotifyPracticeAutoApprovedAsync(
+                    _emailService,
+                    _membershipRepo,
+                    _teamRepo,
+                    _fieldRepo,
                     leagueId,
                     teamId,
                     result.RequestId,
                     result.Date,
                     result.StartTime,
-                    result.FieldKey
+                    result.EndTime,
+                    result.FieldKey,
+                    _logger
                 );
             }
             else
             {
                 // Notify admins of pending request
                 await _notificationService.NotifyAdminsOfPendingPracticeAsync(
+                    _emailService,
+                    _membershipRepo,
+                    _teamRepo,
+                    _fieldRepo,
                     leagueId,
                     teamId,
                     result.RequestId,
                     result.Date,
                     result.StartTime,
+                    result.EndTime,
                     result.FieldKey,
-                    result.Conflicts.Count
+                    result.Conflicts.Count,
+                    _logger
                 );
             }
 

@@ -15,6 +15,7 @@ public class SimplePracticeRequestTests
 {
     private readonly Mock<IPracticeRequestRepository> _mockPracticeRepo;
     private readonly Mock<IMembershipRepository> _mockMembershipRepo;
+    private readonly Mock<ITeamRepository> _mockTeamRepo;
     private readonly Mock<IPracticeRequestService> _mockPracticeService;
     private readonly ILogger<object> _logger;
 
@@ -22,8 +23,14 @@ public class SimplePracticeRequestTests
     {
         _mockPracticeRepo = new Mock<IPracticeRequestRepository>();
         _mockMembershipRepo = new Mock<IMembershipRepository>();
+        _mockTeamRepo = new Mock<ITeamRepository>();
         _mockPracticeService = new Mock<IPracticeRequestService>();
         _logger = NullLogger<object>.Instance;
+
+        // Setup default team repository behavior
+        _mockTeamRepo
+            .Setup(x => x.QueryAllTeamsAsync(It.IsAny<string>()))
+            .ReturnsAsync(new List<TableEntity>());
     }
 
     [Fact]
@@ -47,6 +54,7 @@ public class SimplePracticeRequestTests
             "league1",
             "team1",
             _mockPracticeRepo.Object,
+            _mockTeamRepo.Object,
             _logger
         );
 
@@ -233,6 +241,7 @@ public class SimplePracticeRequestTests
             "team1",
             _mockMembershipRepo.Object,
             _mockPracticeRepo.Object,
+            _mockTeamRepo.Object,
             _logger
         );
 
@@ -295,6 +304,7 @@ public class SimplePracticeRequestTests
             "team1",
             _mockMembershipRepo.Object,
             _mockPracticeRepo.Object,
+            _mockTeamRepo.Object,
             _logger
         );
 
@@ -344,6 +354,7 @@ public class SimplePracticeRequestTests
             "team1",
             _mockMembershipRepo.Object,
             _mockPracticeRepo.Object,
+            _mockTeamRepo.Object,
             _logger
         );
 
@@ -393,6 +404,7 @@ public class SimplePracticeRequestTests
             "team1",
             _mockMembershipRepo.Object,
             _mockPracticeRepo.Object,
+            _mockTeamRepo.Object,
             _logger
         );
 
@@ -540,6 +552,7 @@ public class SimplePracticeRequestTests
             "team1",
             _mockMembershipRepo.Object,
             _mockPracticeRepo.Object,
+            _mockTeamRepo.Object,
             _logger
         );
 
@@ -547,5 +560,56 @@ public class SimplePracticeRequestTests
         Assert.Equal("Approved", result.Status);
         Assert.True(result.AutoApproved);
         Assert.Equal(2, result.Conflicts.Count); // Shows conflicts but still auto-approved
+    }
+
+    [Fact]
+    public async Task CheckConflicts_ResolvesTeamNames()
+    {
+        // Arrange
+        var existingRequest = new TableEntity
+        {
+            PartitionKey = "PRACTICE|league1",
+            RowKey = "req1",
+            ["TeamId"] = "TEAM_002",
+            ["StartTime"] = "18:00",
+            ["EndTime"] = "19:30",
+            ["Policy"] = "shared",
+            ["Status"] = "Approved"
+        };
+
+        var teamEntity = new TableEntity
+        {
+            PartitionKey = "TEAM|league1",
+            RowKey = "TEAM_002",
+            ["TeamId"] = "TEAM_002",
+            ["Name"] = "Thunder" // Team name to be resolved
+        };
+
+        _mockPracticeRepo
+            .Setup(x => x.GetRequestsByFieldAndDateAsync("league1", "field1", "2026-05-01"))
+            .ReturnsAsync(new List<TableEntity> { existingRequest });
+
+        _mockTeamRepo
+            .Setup(x => x.QueryAllTeamsAsync("league1"))
+            .ReturnsAsync(new List<TableEntity> { teamEntity });
+
+        // Act
+        var conflicts = await SimplePracticeRequestExtensions.CheckSimplePracticeConflictsAsync(
+            "field1",
+            "2026-05-01",
+            "18:00",
+            "19:30",
+            "shared",
+            "league1",
+            "team1",
+            _mockPracticeRepo.Object,
+            _mockTeamRepo.Object,
+            _logger
+        );
+
+        // Assert
+        Assert.Single(conflicts);
+        Assert.Equal("Thunder", conflicts[0].TeamName); // Should show team name, not ID
+        Assert.Equal("TEAM_002", conflicts[0].TeamId);
     }
 }

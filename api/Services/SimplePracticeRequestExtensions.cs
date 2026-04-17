@@ -25,6 +25,7 @@ public static class SimplePracticeRequestExtensions
         string teamId,
         IMembershipRepository membershipRepo,
         IPracticeRequestRepository practiceRequestRepo,
+        ITeamRepository teamRepo,
         ILogger logger)
     {
         // Validate inputs
@@ -37,7 +38,7 @@ public static class SimplePracticeRequestExtensions
         if (string.IsNullOrWhiteSpace(request.EndTime))
             throw new ApiGuards.HttpError(400, ErrorCodes.BAD_REQUEST, "End time is required");
 
-        // Check for conflicts
+        // Check for conflicts (with team name resolution)
         var conflicts = await CheckSimplePracticeConflictsAsync(
             request.FieldKey,
             request.Date,
@@ -47,6 +48,7 @@ public static class SimplePracticeRequestExtensions
             leagueId,
             teamId,
             practiceRequestRepo,
+            teamRepo,
             logger
         );
 
@@ -101,6 +103,7 @@ public static class SimplePracticeRequestExtensions
 
     /// <summary>
     /// Checks for conflicts with existing practice requests.
+    /// Resolves team names for better UX in conflict messages.
     /// </summary>
     public static async Task<List<PracticeConflict>> CheckSimplePracticeConflictsAsync(
         string fieldKey,
@@ -111,6 +114,7 @@ public static class SimplePracticeRequestExtensions
         string leagueId,
         string? excludeTeamId,
         IPracticeRequestRepository practiceRequestRepo,
+        ITeamRepository teamRepo,
         ILogger logger)
     {
         var conflicts = new List<PracticeConflict>();
@@ -132,6 +136,14 @@ public static class SimplePracticeRequestExtensions
                 leagueId,
                 fieldKey,
                 date
+            );
+
+            // Get all teams once for name lookup (optimization)
+            var allTeams = await teamRepo.QueryAllTeamsAsync(leagueId);
+            var teamLookup = allTeams.ToDictionary(
+                t => t.GetString("TeamId") ?? "",
+                t => t.GetString("Name") ?? t.GetString("TeamId") ?? "",
+                StringComparer.OrdinalIgnoreCase
             );
 
             foreach (var existing in existingRequests)
@@ -156,11 +168,16 @@ public static class SimplePracticeRequestExtensions
 
                 if (hasOverlap)
                 {
+                    // Resolve team name from lookup
+                    var teamName = teamLookup.TryGetValue(existingTeamId, out var name)
+                        ? name
+                        : existingTeamId;
+
                     conflicts.Add(new PracticeConflict
                     {
                         RequestId = existing.RowKey,
                         TeamId = existingTeamId,
-                        TeamName = existingTeamId, // TODO: Look up team name
+                        TeamName = teamName, // Now shows actual team name!
                         StartTime = existing.GetString("StartTime") ?? "",
                         EndTime = existing.GetString("EndTime") ?? "",
                         Policy = existing.GetString("Policy") ?? "shared",
