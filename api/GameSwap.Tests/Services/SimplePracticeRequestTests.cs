@@ -1,7 +1,12 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using Azure.Data.Tables;
 using GameSwap.Functions.Repositories;
 using GameSwap.Functions.Services;
 using GameSwap.Functions.Storage;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
@@ -91,6 +96,7 @@ public class SimplePracticeRequestTests
             "league1",
             "team1",
             _mockPracticeRepo.Object,
+            _mockTeamRepo.Object,
             _logger
         );
 
@@ -132,6 +138,7 @@ public class SimplePracticeRequestTests
             "league1",
             "team1",
             _mockPracticeRepo.Object,
+            _mockTeamRepo.Object,
             _logger
         );
 
@@ -168,6 +175,7 @@ public class SimplePracticeRequestTests
             "league1",
             "team1", // Same team - should be excluded
             _mockPracticeRepo.Object,
+            _mockTeamRepo.Object,
             _logger
         );
 
@@ -204,6 +212,7 @@ public class SimplePracticeRequestTests
             "league1",
             "team1",
             _mockPracticeRepo.Object,
+            _mockTeamRepo.Object,
             _logger
         );
 
@@ -455,6 +464,7 @@ public class SimplePracticeRequestTests
             "league1",
             "team1",
             _mockPracticeRepo.Object,
+            _mockTeamRepo.Object,
             _logger
         );
 
@@ -494,6 +504,7 @@ public class SimplePracticeRequestTests
                 "team1",
                 _mockMembershipRepo.Object,
                 _mockPracticeRepo.Object,
+                _mockTeamRepo.Object,
                 _logger
             )
         );

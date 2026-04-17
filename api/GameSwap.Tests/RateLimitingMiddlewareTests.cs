@@ -3,7 +3,9 @@ using System;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Threading.Tasks;
 using GameSwap.Functions.Middleware;
+using GameSwap.Functions.Services;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
@@ -18,6 +20,7 @@ public class RateLimitingMiddlewareTests
     public void GetIdentifier_UsesAuthenticatedClientPrincipalBeforeForwardedIp()
     {
         var logger = new Mock<ILogger<RateLimitingMiddleware>>();
+        var rateLimitService = new Mock<IRateLimitService>();
         var functionContext = new Mock<FunctionContext>();
         var request = new Mock<HttpRequestData>(functionContext.Object);
         var headers = new HttpHeadersCollection
@@ -28,7 +31,7 @@ public class RateLimitingMiddlewareTests
         };
         request.SetupGet(r => r.Headers).Returns(headers);
 
-        var middleware = new RateLimitingMiddleware(logger.Object);
+        var middleware = new RateLimitingMiddleware(logger.Object, rateLimitService.Object);
         var method = typeof(RateLimitingMiddleware).GetMethod("GetIdentifier", BindingFlags.NonPublic | BindingFlags.Instance)
             ?? throw new InvalidOperationException("GetIdentifier method not found.");
 
@@ -41,6 +44,7 @@ public class RateLimitingMiddlewareTests
     public void GetIdentifier_IgnoresSpoofableUserHeaderAndUsesLeftmostForwardedIp()
     {
         var logger = new Mock<ILogger<RateLimitingMiddleware>>();
+        var rateLimitService = new Mock<IRateLimitService>();
         var functionContext = new Mock<FunctionContext>();
         var request = new Mock<HttpRequestData>(functionContext.Object);
         var headers = new HttpHeadersCollection
@@ -50,7 +54,7 @@ public class RateLimitingMiddlewareTests
         };
         request.SetupGet(r => r.Headers).Returns(headers);
 
-        var middleware = new RateLimitingMiddleware(logger.Object);
+        var middleware = new RateLimitingMiddleware(logger.Object, rateLimitService.Object);
         var method = typeof(RateLimitingMiddleware).GetMethod("GetIdentifier", BindingFlags.NonPublic | BindingFlags.Instance)
             ?? throw new InvalidOperationException("GetIdentifier method not found.");
 
@@ -63,12 +67,13 @@ public class RateLimitingMiddlewareTests
     public void AddRateLimitHeaders_WritesHeadersToResponse()
     {
         var logger = new Mock<ILogger<RateLimitingMiddleware>>();
+        var rateLimitService = new Mock<IRateLimitService>();
         var functionContext = new Mock<FunctionContext>();
         var responseHeaders = new HttpHeadersCollection();
         var response = new Mock<HttpResponseData>(functionContext.Object);
         response.SetupGet(r => r.Headers).Returns(responseHeaders);
 
-        var middleware = new RateLimitingMiddleware(logger.Object);
+        var middleware = new RateLimitingMiddleware(logger.Object, rateLimitService.Object);
         var isAllowed = typeof(RateLimitingMiddleware).GetMethod("IsAllowed", BindingFlags.NonPublic | BindingFlags.Instance)
             ?? throw new InvalidOperationException("IsAllowed method not found.");
         var addRateLimitHeaders = typeof(RateLimitingMiddleware).GetMethod("AddRateLimitHeaders", BindingFlags.NonPublic | BindingFlags.Instance)

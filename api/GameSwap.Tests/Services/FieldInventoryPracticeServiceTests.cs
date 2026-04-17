@@ -861,6 +861,15 @@ public class FieldInventoryPracticeServiceTests
         public Task<List<TableEntity>> QuerySlotRequestsAsync(string leagueId, string division, string slotId, IReadOnlyCollection<string>? statuses = null)
             => Task.FromResult(QueryFiltered(leagueId, division, null, slotId, statuses).Select(Clone).ToList()!);
 
+        public Task<List<TableEntity>> GetRequestsByFieldAndDateAsync(string leagueId, string fieldKey, string date)
+            => Task.FromResult(
+                _requests.Values
+                    .Where(request => string.Equals(request.GetString("LeagueId"), leagueId, StringComparison.OrdinalIgnoreCase))
+                    .Where(request => string.Equals(request.GetString("FieldKey"), fieldKey, StringComparison.OrdinalIgnoreCase))
+                    .Where(request => string.Equals(request.GetString("Date"), date, StringComparison.OrdinalIgnoreCase))
+                    .Select(Clone)
+                    .ToList()!);
+
         private List<TableEntity> QueryFiltered(string leagueId, string division, string? teamId, string? slotId, IReadOnlyCollection<string>? statuses)
         {
             return _requests.Values
