@@ -60,4 +60,13 @@ public interface IPracticeRequestRepository
         string division,
         string slotId,
         IReadOnlyCollection<string>? statuses = null);
+
+    /// <summary>
+    /// Gets practice requests for a specific field on a specific date.
+    /// Used for conflict detection in calendar-integrated practice requests.
+    /// </summary>
+    Task<List<TableEntity>> GetRequestsByFieldAndDateAsync(
+        string leagueId,
+        string fieldKey,
+        string date);
 }

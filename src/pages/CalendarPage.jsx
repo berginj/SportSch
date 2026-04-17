@@ -8,6 +8,7 @@ import LeaguePicker from "../components/LeaguePicker";
 import StatusCard from "../components/StatusCard";
 import Toast from "../components/Toast";
 import CalendarView from "../components/CalendarView";
+import PracticeRequestModal from "../components/PracticeRequestModal";
 import { ConfirmDialog, PromptDialog } from "../components/Dialogs";
 import { useConfirmDialog, usePromptDialog } from "../lib/useDialogs";
 import { trackEvent } from "../lib/telemetry";
@@ -299,6 +300,34 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
       }
       return next;
     });
+  };
+
+  // Practice request modal state
+  const [showPracticeModal, setShowPracticeModal] = useState(false);
+  const [practiceModalData, setPracticeModalData] = useState({});
+
+  const openPracticeRequest = (initialData = {}) => {
+    setPracticeModalData({
+      date: initialData.date || new Date().toISOString().split('T')[0],
+      startTime: initialData.startTime || "18:00",
+      endTime: initialData.endTime || "19:30",
+      field: initialData.field || (fields.length > 0 ? fields[0].fieldKey : ""),
+      ...initialData
+    });
+    setShowPracticeModal(true);
+  };
+
+  const handlePracticeRequestSuccess = async (result) => {
+    setToast({
+      message: result.autoApproved
+        ? "Practice space confirmed! No conflicts detected."
+        : `Practice request submitted. ${result.conflicts?.length || 0} conflict(s) require admin approval.`,
+      type: result.autoApproved ? "success" : "info"
+    });
+
+    // Reload data to show new practice request
+    await loadData();
+    trackEvent("practice_request_created", { autoApproved: result.autoApproved });
   };
 
   const canPickTeam = isGlobalAdmin || role === "LeagueAdmin";
@@ -1358,6 +1387,14 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
         onConfirm={handleConfirm}
         onCancel={handleCancel}
       />
+      <PracticeRequestModal
+        isOpen={showPracticeModal}
+        onClose={() => setShowPracticeModal(false)}
+        initialData={practiceModalData}
+        fields={fields}
+        me={me}
+        onSuccess={handlePracticeRequestSuccess}
+      />
       {editingSlot ? (
         <div className="modalOverlay" role="presentation" onClick={closeEditSlot}>
           <div
@@ -1815,6 +1852,30 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
           )}
         </div>
       </div>
+
+      {(role === "Coach" || role === "LeagueAdmin") ? (
+        <div className="card">
+          <div className="row row--between mb-3">
+            <h3 className="font-bold">Quick Actions</h3>
+          </div>
+          <div className="row gap-2">
+            <button
+              className="btn btn--primary"
+              onClick={() => openPracticeRequest()}
+            >
+              🏃 Request Practice Space
+            </button>
+            {role === "LeagueAdmin" && (
+              <button
+                className="btn"
+                onClick={() => {/* Could add quick game creation here */}}
+              >
+                ⚽ Create Game Slot
+              </button>
+            )}
+          </div>
+        </div>
+      ) : null}
 
       {canCreateEvents ? (
         <div className="card">

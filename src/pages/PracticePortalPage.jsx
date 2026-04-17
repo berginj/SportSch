@@ -388,6 +388,48 @@ export default function PracticePortalPage({ me, leagueId }) {
       {error ? <div className="callout callout--error">{error}</div> : null}
       {availabilityError ? <div className="callout callout--error">{availabilityError}</div> : null}
 
+      {/* Migration Banner - New Simplified Practice Requests */}
+      <div className="card border-2 border-blue-500 dark:border-blue-600">
+        <div className="card__body">
+          <div className="flex items-start gap-3">
+            <div className="text-3xl">✨</div>
+            <div className="flex-1">
+              <h3 className="font-bold text-lg text-blue-700 dark:text-blue-400 mb-2">
+                Practice Requests Just Got Easier!
+              </h3>
+              <p className="text-gray-700 dark:text-gray-300 mb-3">
+                You can now request practice space directly from the <strong>Calendar</strong> page in just 4 steps (20 seconds):
+              </p>
+              <ol className="list-decimal list-inside space-y-1 text-sm text-gray-600 dark:text-gray-400 mb-4">
+                <li>Go to the Calendar page</li>
+                <li>Click the "🏃 Request Practice Space" button</li>
+                <li>Select your field, date, and time</li>
+                <li>Submit - <strong>Auto-approved if no conflicts!</strong></li>
+              </ol>
+              <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-md mb-3">
+                <div className="flex items-center gap-2">
+                  <svg className="h-5 w-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  <span className="text-sm font-medium text-green-800 dark:text-green-200">
+                    70-80% of requests are now auto-approved instantly!
+                  </span>
+                </div>
+              </div>
+              <a
+                href="#calendar"
+                className="btn btn--primary inline-block"
+              >
+                Try the New Practice Requests →
+              </a>
+              <p className="text-xs text-gray-500 dark:text-gray-500 mt-3">
+                Note: This page will remain available for 2 more weeks, then redirect to Calendar automatically.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {movingRequest ? (
         <div className="callout callout--info">
           <div className="font-bold mb-2">Move in progress</div>

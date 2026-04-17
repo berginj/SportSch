@@ -120,4 +120,26 @@ public class PracticeRequestRepository : IPracticeRequestRepository
         var allowed = new HashSet<string>(statuses.Where(s => !string.IsNullOrWhiteSpace(s)), StringComparer.OrdinalIgnoreCase);
         return entities.Where(e => allowed.Contains((e.GetString("Status") ?? "").Trim())).ToList();
     }
+
+    public async Task<List<TableEntity>> GetRequestsByFieldAndDateAsync(
+        string leagueId,
+        string fieldKey,
+        string date)
+    {
+        var table = await TableClients.GetTableAsync(_tableService, Constants.Tables.PracticeRequests);
+
+        var filter = ODataFilterBuilder.And(
+            $"PartitionKey eq '{ApiGuards.EscapeOData(Pk(leagueId))}'",
+            $"FieldKey eq '{ApiGuards.EscapeOData(fieldKey)}'",
+            $"Date eq '{ApiGuards.EscapeOData(date)}'"
+        );
+
+        var list = new List<TableEntity>();
+        await foreach (var entity in table.QueryAsync<TableEntity>(filter: filter))
+        {
+            list.Add(entity);
+        }
+
+        return list;
+    }
 }
