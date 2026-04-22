@@ -162,6 +162,33 @@ public class UpdateSlot
                     });
             }
 
+            // Check for team double-booking (if slot has assigned teams)
+            var homeTeamId = (slot.GetString("HomeTeamId") ?? "").Trim();
+            var awayTeamId = (slot.GetString("AwayTeamId") ?? "").Trim();
+            var confirmedTeamId = (slot.GetString("ConfirmedTeamId") ?? "").Trim();
+
+            var teamConflicts = await FindTeamConflictsAsync(
+                leagueId,
+                new[] { homeTeamId, awayTeamId, confirmedTeamId },
+                targetGameDate,
+                startMin,
+                endMin,
+                slotId);
+
+            if (teamConflicts.Count > 0)
+            {
+                return ApiResponses.Error(
+                    req,
+                    HttpStatusCode.Conflict,
+                    ErrorCodes.DOUBLE_BOOKING,
+                    $"Moving this game would create {teamConflicts.Count} team double-booking(s).",
+                    new
+                    {
+                        conflictCount = teamConflicts.Count,
+                        teamConflicts
+                    });
+            }
+
             slot["GameDate"] = targetGameDate;
             slot["StartTime"] = targetStartTime;
             slot["EndTime"] = targetEndTime;
@@ -244,6 +271,95 @@ public class UpdateSlot
                 awayTeamId = (slot.GetString("AwayTeamId") ?? "").Trim(),
                 isAvailability = slot.GetBoolean("IsAvailability") ?? false
             });
+        }
+
+        return conflicts;
+    }
+
+    private async Task<List<object>> FindTeamConflictsAsync(
+        string leagueId,
+        IEnumerable<string> teamIds,
+        string gameDate,
+        int startMin,
+        int endMin,
+        string slotIdToExclude)
+    {
+        var conflicts = new List<object>();
+        var teamsToCheck = teamIds
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (teamsToCheck.Count == 0) return conflicts;
+
+        // Query confirmed and open slots on this date across all divisions
+        var filter = new SlotQueryFilter
+        {
+            LeagueId = leagueId,
+            Division = null,
+            Statuses = new List<string> { Constants.Status.SlotConfirmed, Constants.Status.SlotOpen },
+            FromDate = gameDate,
+            ToDate = gameDate,
+            PageSize = 100
+        };
+
+        var result = await _slotRepo.QuerySlotsAsync(filter, null);
+
+        foreach (var teamId in teamsToCheck)
+        {
+            foreach (var otherSlot in result.Items)
+            {
+                if (string.Equals(otherSlot.RowKey, slotIdToExclude, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var otherStatus = (otherSlot.GetString("Status") ?? "").Trim();
+                if (string.Equals(otherStatus, Constants.Status.SlotCancelled, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var otherHome = (otherSlot.GetString("HomeTeamId") ?? "").Trim();
+                var otherAway = (otherSlot.GetString("AwayTeamId") ?? "").Trim();
+                var otherConfirmed = (otherSlot.GetString("ConfirmedTeamId") ?? "").Trim();
+                var otherOffering = (otherSlot.GetString("OfferingTeamId") ?? "").Trim();
+
+                var teamInvolved =
+                    string.Equals(otherHome, teamId, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(otherAway, teamId, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(otherConfirmed, teamId, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(otherOffering, teamId, StringComparison.OrdinalIgnoreCase);
+
+                if (!teamInvolved) continue;
+
+                var otherStart = otherSlot.GetInt32("StartMin");
+                var otherEnd = otherSlot.GetInt32("EndMin");
+
+                if (!otherStart.HasValue || !otherEnd.HasValue)
+                {
+                    if (TimeUtil.TryParseMinutes(otherSlot.GetString("StartTime") ?? "", out var s) &&
+                        TimeUtil.TryParseMinutes(otherSlot.GetString("EndTime") ?? "", out var e))
+                    {
+                        otherStart = s;
+                        otherEnd = e;
+                    }
+                    else
+                    {
+                        continue;
+                    }
+                }
+
+                if (!TimeUtil.Overlaps(startMin, endMin, otherStart.Value, otherEnd.Value))
+                    continue;
+
+                conflicts.Add(new
+                {
+                    teamId,
+                    conflictSlotId = otherSlot.RowKey,
+                    conflictDivision = (otherSlot.GetString("Division") ?? "").Trim(),
+                    conflictGameDate = (otherSlot.GetString("GameDate") ?? "").Trim(),
+                    conflictStartTime = (otherSlot.GetString("StartTime") ?? "").Trim(),
+                    conflictEndTime = (otherSlot.GetString("EndTime") ?? "").Trim(),
+                    conflictStatus = otherStatus
+                });
+            }
         }
 
         return conflicts;

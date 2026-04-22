@@ -309,8 +309,7 @@ public class AvailabilityAllocationsFunctions
                 req,
                 HttpStatusCode.InternalServerError,
                 "INTERNAL",
-                "Internal Server Error",
-                new { exception = ex.GetType().Name, message = ex.Message });
+                "Internal Server Error");
         }
     }
 

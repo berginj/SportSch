@@ -8,12 +8,20 @@ public static class ErrorCodes
 {
     // Authentication & Authorization
     public const string UNAUTHENTICATED = "UNAUTHENTICATED";
+
+    /// <summary>
+    /// DEPRECATED: Use FORBIDDEN instead for 403 errors (insufficient permissions).
+    /// This constant is kept for backward compatibility only.
+    /// </summary>
+    [Obsolete("Use FORBIDDEN instead. UNAUTHORIZED is semantically incorrect for HTTP 403 errors.")]
     public const string UNAUTHORIZED = "UNAUTHORIZED";
+
     public const string FORBIDDEN = "FORBIDDEN";
 
     // Resource Not Found
     public const string NOT_FOUND = "NOT_FOUND";
     public const string FIELD_NOT_FOUND = "FIELD_NOT_FOUND";
+    public const string FIELD_INACTIVE = "FIELD_INACTIVE";
     public const string SLOT_NOT_FOUND = "SLOT_NOT_FOUND";
     public const string TEAM_NOT_FOUND = "TEAM_NOT_FOUND";
     public const string DIVISION_NOT_FOUND = "DIVISION_NOT_FOUND";

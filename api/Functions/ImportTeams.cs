@@ -161,7 +161,7 @@ public class ImportTeams
                 HttpStatusCode.InternalServerError,
                 "INTERNAL",
                 "Internal Server Error",
-                new { exception = ex.GetType().Name, message = ex.Message });
+                null);
         }
     }
 }

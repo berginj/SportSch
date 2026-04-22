@@ -69,7 +69,7 @@ public class ScheduleWizardFunctions
                 HttpStatusCode.InternalServerError,
                 ErrorCodes.INTERNAL_ERROR,
                 "An unexpected error occurred",
-                new { requestId, exception = ex.GetType().Name, detail = ex.Message });
+                null);
         }
     }
 
@@ -316,7 +316,7 @@ public class ScheduleWizardFunctions
                 HttpStatusCode.InternalServerError,
                 ErrorCodes.INTERNAL_ERROR,
                 "An error occurred while analyzing feasibility.",
-                new { requestId, exception = ex.GetType().Name, detail = ex.Message });
+                null);
         }
     }
 
@@ -409,7 +409,7 @@ public class ScheduleWizardFunctions
                 HttpStatusCode.InternalServerError,
                 ErrorCodes.INTERNAL_ERROR,
                 "An unexpected error occurred",
-                new { requestId, exception = ex.GetType().Name, detail = ex.Message });
+                null);
         }
     }
 
@@ -779,7 +779,7 @@ public class ScheduleWizardFunctions
                 HttpStatusCode.InternalServerError,
                 ErrorCodes.INTERNAL_ERROR,
                 "An unexpected error occurred",
-                new { requestId, exception = ex.GetType().Name, detail = ex.Message });
+                null);
         }
     }
 

@@ -316,9 +316,7 @@ public class AvailabilityAllocationSlotsFunctions
         catch (Exception ex)
         {
             _log.LogError(ex, "Generate allocation slots failed");
-            var requestId = req.FunctionContext.InvocationId.ToString();
-            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, ErrorCodes.INTERNAL_ERROR, "Internal Server Error",
-                new { requestId, stage, exception = ex.GetType().Name, message = ex.Message });
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, ErrorCodes.INTERNAL_ERROR, "Internal Server Error");
         }
     }
 

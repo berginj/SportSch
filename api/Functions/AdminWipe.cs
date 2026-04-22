@@ -67,12 +67,13 @@ public class AdminWipe
                 }
                 catch (InvalidOperationException ex)
                 {
-                    results.Add(new { table = key, deleted = 0, skipped = true, error = ex.Message });
+                    _log.LogError(ex, "Admin wipe failed for {table}", key);
+                    results.Add(new { table = key, deleted = 0, skipped = true, error = "Unsupported table or operation failed" });
                 }
                 catch (RequestFailedException ex)
                 {
                     _log.LogError(ex, "Admin wipe failed for {table}", key);
-                    results.Add(new { table = key, deleted = 0, skipped = true, error = ex.Message });
+                    results.Add(new { table = key, deleted = 0, skipped = true, error = "Storage operation failed" });
                 }
             }
 

@@ -304,7 +304,7 @@ public class AvailabilityService : IAvailabilityService
         }
         catch (RequestFailedException ex) when (ex.Status == 409)
         {
-            throw new ApiGuards.HttpError(409, ErrorCodes.ALREADY_EXISTS, "Exception already exists");
+            throw new ApiGuards.HttpError(409, ErrorCodes.ALREADY_EXISTS, "Availability exception rule already exists");
         }
 
         _logger.LogInformation("Availability exception created: {ExceptionId}", exceptionId);
@@ -355,7 +355,7 @@ public class AvailabilityService : IAvailabilityService
         var existing = await TryGetExceptionAsync(exTable, pk, request.ExceptionId);
         if (existing is null)
         {
-            throw new ApiGuards.HttpError(404, ErrorCodes.NOT_FOUND, "Exception not found");
+            throw new ApiGuards.HttpError(404, ErrorCodes.NOT_FOUND, "Availability exception rule not found");
         }
 
         // Update entity
@@ -405,7 +405,7 @@ public class AvailabilityService : IAvailabilityService
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {
-            throw new ApiGuards.HttpError(404, ErrorCodes.NOT_FOUND, "Exception not found");
+            throw new ApiGuards.HttpError(404, ErrorCodes.NOT_FOUND, "Availability exception rule not found");
         }
     }
 

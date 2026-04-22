@@ -119,6 +119,11 @@ Division alias, team alias, and booking-policy writes must return a refreshed ad
 - create a replacement request against another normalized or ready block
 - preserve the source request until the replacement request is approved or auto-approved
 - reject moves into the same slot or an unavailable slot
+- **enforce 72-hour minimum lead time (updated 2026-04-22)**:
+  - Cannot move a practice within 72 hours of its scheduled time
+  - Returns `LEAD_TIME_VIOLATION` error code if violated
+  - Standardized with game reschedule policy (was 48h, now 72h for consistency)
+  - Applies to the ORIGINAL practice time, not the new time
 
 ### 8.4 Cancel request
 

@@ -285,7 +285,7 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
           </label>
 
           <div className="row">
-            <button className="btn" onClick={() => submitRequest()} disabled={busy}>
+            <button className="btn" onClick={() => submitRequest()} disabled={busy} aria-busy={busy}>
               {busy ? "Submitting..." : "Submit request"}
             </button>
           </div>

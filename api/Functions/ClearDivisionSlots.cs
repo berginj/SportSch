@@ -149,16 +149,12 @@ public class ClearDivisionSlots
         catch (RequestFailedException ex)
         {
             _log.LogError(ex, "ClearDivisionSlots storage request failed at stage {Stage}", stage);
-            var requestId = req.FunctionContext.InvocationId.ToString();
-            return ApiResponses.Error(req, HttpStatusCode.BadGateway, "STORAGE_ERROR", "Storage request failed",
-                new { requestId, stage, status = ex.Status, code = ex.ErrorCode, detail = ex.Message });
+            return ApiResponses.Error(req, HttpStatusCode.BadGateway, "STORAGE_ERROR", "Storage request failed");
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "ClearDivisionSlots failed");
-            var requestId = req.FunctionContext.InvocationId.ToString();
-            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, ErrorCodes.INTERNAL_ERROR, "Internal Server Error",
-                new { requestId, stage, exception = ex.GetType().Name, detail = ex.Message });
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, ErrorCodes.INTERNAL_ERROR, "Internal Server Error");
         }
     }
 

@@ -165,9 +165,29 @@ public class RequestService : IRequestService
 
         var now = DateTimeOffset.UtcNow;
         var requestId = Guid.NewGuid().ToString("N");
-        var pk = Constants.Pk.SlotRequests(request.LeagueId, request.Division, request.SlotId);
 
-        // Create request (approved immediately)
+        // CRITICAL: Update slot FIRST to ensure atomicity
+        // If slot update fails (race condition), we don't create orphaned request
+        try
+        {
+            slot["Status"] = Constants.Status.SlotConfirmed;
+            slot["ConfirmedTeamId"] = myTeamId;
+            slot["ConfirmedRequestId"] = requestId;
+            slot["ConfirmedBy"] = context.UserEmail ?? "";
+            slot["ConfirmedUtc"] = now;
+            slot["UpdatedUtc"] = now;
+
+            await _slotRepo.UpdateSlotAsync(slot, slot.ETag);
+        }
+        catch (RequestFailedException ex) when (ex.Status is 409 or 412)
+        {
+            // Slot update failed - another team won the race
+            // No rollback needed since we haven't created the request yet
+            throw new ApiGuards.HttpError(409, ErrorCodes.CONFLICT, "Slot was confirmed by another team.");
+        }
+
+        // Slot confirmed successfully - now create the approved request
+        var pk = Constants.Pk.SlotRequests(request.LeagueId, request.Division, request.SlotId);
         var reqEntity = new TableEntity(pk, requestId)
         {
             ["LeagueId"] = request.LeagueId,
@@ -186,29 +206,6 @@ public class RequestService : IRequestService
         };
 
         await _requestRepo.CreateRequestAsync(reqEntity);
-
-        // Immediately confirm the slot for the requesting team
-        try
-        {
-            slot["Status"] = Constants.Status.SlotConfirmed;
-            slot["ConfirmedTeamId"] = myTeamId;
-            slot["ConfirmedRequestId"] = requestId;
-            slot["ConfirmedBy"] = context.UserEmail ?? "";
-            slot["ConfirmedUtc"] = now;
-            slot["UpdatedUtc"] = now;
-
-            await _slotRepo.UpdateSlotAsync(slot, slot.ETag);
-        }
-        catch (RequestFailedException ex) when (ex.Status is 409 or 412)
-        {
-            // Best-effort: mark request denied
-            reqEntity["Status"] = Constants.Status.SlotRequestDenied;
-            reqEntity["RejectedUtc"] = now;
-            reqEntity["UpdatedUtc"] = now;
-            try { await _requestRepo.UpdateRequestAsync(reqEntity, ETag.All); } catch { }
-
-            throw new ApiGuards.HttpError(409, ErrorCodes.CONFLICT, "Slot was confirmed by another team.");
-        }
 
         // Best-effort: reject other pending requests for this slot
         var pendingRequests = await _requestRepo.GetPendingRequestsForSlotAsync(request.LeagueId, request.Division, request.SlotId);
@@ -362,12 +359,13 @@ public class RequestService : IRequestService
         int endMin,
         string? excludeSlotId)
     {
-        // Query all divisions for this league on the same date with confirmed status
+        // Query all divisions for this league on the same date
+        // Check BOTH Confirmed and Open slots to prevent rapid double-booking
         var filter = new SlotQueryFilter
         {
             LeagueId = leagueId,
             Division = null, // All divisions
-            Status = Constants.Status.SlotConfirmed,
+            Statuses = new List<string> { Constants.Status.SlotConfirmed, Constants.Status.SlotOpen },
             FromDate = gameDate,
             ToDate = gameDate,
             PageSize = 100
@@ -384,10 +382,15 @@ public class RequestService : IRequestService
 
             var offeringTeamId = (e.GetString("OfferingTeamId") ?? "").Trim();
             var confirmedTeamId = (e.GetString("ConfirmedTeamId") ?? "").Trim();
+            var homeTeamId = (e.GetString("HomeTeamId") ?? "").Trim();
+            var awayTeamId = (e.GetString("AwayTeamId") ?? "").Trim();
 
+            // Check if team is involved in this slot
             var involvesTeam =
                 string.Equals(offeringTeamId, teamId, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(confirmedTeamId, teamId, StringComparison.OrdinalIgnoreCase);
+                string.Equals(confirmedTeamId, teamId, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(homeTeamId, teamId, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(awayTeamId, teamId, StringComparison.OrdinalIgnoreCase);
 
             if (!involvesTeam) continue;
 

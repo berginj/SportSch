@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { apiFetch } from "../lib/api";
+import { logError } from "../lib/errorLogger";
 
 function getNotificationTypeBadgeClass(type) {
   const value = String(type || "").trim();
@@ -72,7 +73,7 @@ export default function NotificationCenterPage({ leagueId }) {
         )
       );
     } catch (err) {
-      console.error("Failed to mark notification as read:", err);
+      logError("Failed to mark notification as read", err, { notificationId, operation: 'markAsRead' });
     }
   };
 
@@ -241,6 +242,7 @@ export default function NotificationCenterPage({ leagueId }) {
                 className="btn btn--ghost"
                 onClick={() => loadNotifications(false)}
                 disabled={loading}
+                aria-busy={loading}
                 title="Refresh notifications"
               >
                 Refresh
@@ -306,7 +308,7 @@ export default function NotificationCenterPage({ leagueId }) {
 
             {hasMore ? (
               <div className="row row--end mt-3">
-                <button className="btn" onClick={handleLoadMore} disabled={loading}>
+                <button className="btn" onClick={handleLoadMore} disabled={loading} aria-busy={loading}>
                   {loading ? "Loading..." : "Load More"}
                 </button>
               </div>

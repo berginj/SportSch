@@ -54,7 +54,7 @@ public class PracticeRequestServiceTests
             _service.CreateRequestAsync("league-1", "coach-1", "10U", "Tigers", "slot-1", "reason", false, null));
 
         Assert.Equal(403, ex.Status);
-        Assert.Equal(ErrorCodes.UNAUTHORIZED, ex.Code);
+        Assert.Equal(ErrorCodes.FORBIDDEN, ex.Code);
         _mockPracticeRequestRepo.Verify(x => x.CreateRequestAsync(It.IsAny<TableEntity>()), Times.Never);
     }
 
@@ -583,8 +583,8 @@ public class PracticeRequestServiceTests
             _service.CreateMoveRequestAsync("league-1", "coach-1", "req-1", "slot-2", "reason", false, null));
 
         Assert.Equal(409, ex.Status);
-        Assert.Equal(ErrorCodes.PRACTICE_MOVE_NOT_ALLOWED, ex.Code);
-        Assert.Contains("48 hours", ex.Message);
+        Assert.Equal(ErrorCodes.LEAD_TIME_VIOLATION, ex.Code);
+        Assert.Contains("72 hours", ex.Message);
         Assert.Contains("24", ex.Message); // Hours until practice
         _mockPracticeRequestRepo.Verify(x => x.CreateRequestAsync(It.IsAny<TableEntity>()), Times.Never);
     }
@@ -595,8 +595,8 @@ public class PracticeRequestServiceTests
         // Arrange
         var membership = BuildMembership(Constants.Roles.Coach, "10U", "Panthers");
 
-        // Practice happening in 72 hours (outside 48-hour lead time)
-        var futureDate = DateTime.UtcNow.AddHours(72);
+        // Practice happening in 96 hours (outside 72-hour lead time)
+        var futureDate = DateTime.UtcNow.AddHours(96);
         var practiceDate = futureDate.ToString("yyyy-MM-dd");
         var practiceTime = futureDate.ToString("HH:mm");
 

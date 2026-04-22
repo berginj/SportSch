@@ -242,7 +242,7 @@ public class ImportSlots
                     catch (RequestFailedException ex)
                     {
                         _log.LogError(ex, "ImportSlots transaction failed for PK {pk}", pk);
-                        errors.Add(new { partitionKey = pk, error = ex.Message });
+                        errors.Add(new { partitionKey = pk, error = "Import failed for this partition" });
                     }
                 }
             }
@@ -292,7 +292,7 @@ public class ImportSlots
                 HttpStatusCode.InternalServerError,
                 "INTERNAL",
                 "Internal Server Error",
-                new { exception = ex.GetType().Name, message = ex.Message });
+                null);
         }
     }
 

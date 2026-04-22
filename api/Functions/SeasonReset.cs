@@ -110,8 +110,7 @@ public class SeasonReset
                 req,
                 HttpStatusCode.InternalServerError,
                 "INTERNAL",
-                "Season reset failed.",
-                new { requestId, exception = ex.GetType().Name, message = ex.Message });
+                "Season reset failed.");
         }
     }
 
@@ -124,13 +123,13 @@ public class SeasonReset
         catch (RequestFailedException ex)
         {
             _log.LogError(ex, "Season reset delete step failed: {category}", category);
-            errors.Add(new { category, error = ex.Message, status = ex.Status, code = ex.ErrorCode });
+            errors.Add(new { category, error = "Delete operation failed", status = ex.Status });
             return 0;
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Season reset delete step failed: {category}", category);
-            errors.Add(new { category, error = ex.Message });
+            errors.Add(new { category, error = "Delete operation failed" });
             return 0;
         }
     }

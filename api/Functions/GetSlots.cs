@@ -110,7 +110,7 @@ public class GetSlots
                 HttpStatusCode.InternalServerError,
                 ErrorCodes.INTERNAL_ERROR,
                 "An unexpected error occurred",
-                new { requestId, exception = ex.GetType().Name, message = ex.Message });
+                null);
         }
     }
 }

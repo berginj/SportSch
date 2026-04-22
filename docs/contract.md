@@ -56,12 +56,43 @@ Note: Paginated responses use Azure Table Storage continuation tokens. Include t
 - If agent capacity is exhausted, close finished agents before spawning new ones.
 
 ### Error codes (recommended)
-- BAD_REQUEST (400)
-- UNAUTHENTICATED (401)
-- FORBIDDEN (403)
-- NOT_FOUND (404)
-- CONFLICT (409)
-- INTERNAL (500)
+
+**Authentication & Authorization:**
+- `UNAUTHENTICATED` (401) - User not signed in
+- `FORBIDDEN` (403) - Signed in but insufficient permissions
+- ~~`UNAUTHORIZED`~~ (deprecated 2026-04-22 - use FORBIDDEN for 403 errors)
+
+**Resource Errors:**
+- `NOT_FOUND` (404) - Generic resource not found
+- `FIELD_NOT_FOUND` (404) - Specific field not found
+- `FIELD_INACTIVE` (400) - Field exists but is inactive (added 2026-04-22)
+- `SLOT_NOT_FOUND` (404) - Specific slot not found
+- `TEAM_NOT_FOUND` (404) - Specific team not found
+- `DIVISION_NOT_FOUND` (404) - Specific division not found
+- `LEAGUE_NOT_FOUND` (404) - Specific league not found
+
+**Conflict Errors:**
+- `CONFLICT` (409) - General conflict
+- `SLOT_CONFLICT` (409) - Field/time overlap with another slot
+- `DOUBLE_BOOKING` (409) - Team has overlapping game at different location
+- `LEAD_TIME_VIOLATION` (409) - Reschedule/move too close to game time (added 2026-04-22)
+- `RESCHEDULE_CONFLICT_DETECTED` (409) - Proposed reschedule creates conflicts
+- `CONCURRENT_MODIFICATION` (409) - Resource modified by another user
+
+**Validation Errors:**
+- `BAD_REQUEST` (400) - Invalid request
+- `MISSING_REQUIRED_FIELD` (400) - Required field missing
+- `INVALID_DATE` (400) - Invalid date format
+- `INVALID_TIME_RANGE` (400) - Invalid time range
+- `INVALID_FIELD_KEY` (400) - Invalid field identifier
+- `COACH_TEAM_REQUIRED` (400) - Coach action requires team assignment
+- `COACH_DIVISION_MISMATCH` (400) - Coach not authorized for this division
+
+**Server Errors:**
+- `INTERNAL_ERROR` (500) - Internal server error
+
+**Note:** Error messages in 500-level responses are sanitized (no internal exception details exposed).
+Complete list: `api/Storage/ErrorCodes.cs` (backend) and `src/lib/constants.js` (frontend).
 
 
 ### Time conventions (locked)
@@ -69,6 +100,18 @@ All schedule times are interpreted as **US/Eastern (America/New_York)**. The API
 - `gameDate` / `eventDate` as `YYYY-MM-DD`
 - `startTime` / `endTime` as `HH:MM` (24-hour)
 The API does **not** convert between time zones.
+- Games must start and end within the same calendar day (no midnight crossing).
+
+### Lead time policies (locked)
+All game reschedule and practice move operations enforce a minimum **72-hour lead time**:
+
+- Game reschedule requests: 72 hours minimum before original game time
+- Practice move requests: 72 hours minimum before original practice time
+- Error code returned: `LEAD_TIME_VIOLATION` (409 Conflict)
+- Rationale: Provides adequate coordination time for both teams and officials
+- Updated 2026-04-22: Standardized from mixed 48h/72h policies
+
+This policy is consistently enforced across all reschedule/move operations.
 
 ---
 

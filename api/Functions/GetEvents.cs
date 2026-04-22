@@ -125,7 +125,7 @@ public class GetEvents
                 HttpStatusCode.InternalServerError,
                 ErrorCodes.INTERNAL_ERROR,
                 "An unexpected error occurred",
-                new { requestId, exception = ex.GetType().Name, detail = ex.Message });
+                null);
         }
     }
 

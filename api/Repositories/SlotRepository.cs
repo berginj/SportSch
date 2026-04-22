@@ -84,7 +84,7 @@ public class SlotRepository : ISlotRepository
             filters.Add("IsAvailability ne true");
 
         if (filter.IsExternalOffer.HasValue)
-            filters.Add($"IsExternalOffer eq {filter.IsExternalOffer.Value.ToString().ToLower()}");
+            filters.Add(ODataFilterBuilder.PropertyEqualsBool("IsExternalOffer", filter.IsExternalOffer.Value));
 
         return ODataFilterBuilder.And(filters.ToArray());
     }

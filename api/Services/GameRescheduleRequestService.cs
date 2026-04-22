@@ -21,17 +21,20 @@ public class GameRescheduleRequestService : IGameRescheduleRequestService
     private readonly IGameRescheduleRequestRepository _requestRepo;
     private readonly ISlotRepository _slotRepo;
     private readonly IMembershipRepository _membershipRepo;
+    private readonly INotificationService _notificationService;
     private readonly ILogger<GameRescheduleRequestService> _logger;
 
     public GameRescheduleRequestService(
         IGameRescheduleRequestRepository requestRepo,
         ISlotRepository slotRepo,
         IMembershipRepository membershipRepo,
+        INotificationService notificationService,
         ILogger<GameRescheduleRequestService> logger)
     {
         _requestRepo = requestRepo;
         _slotRepo = slotRepo;
         _membershipRepo = membershipRepo;
+        _notificationService = notificationService;
         _logger = logger;
     }
 
@@ -193,9 +196,56 @@ public class GameRescheduleRequestService : IGameRescheduleRequestService
 
         await _requestRepo.CreateRequestAsync(request);
 
-        // TODO: Trigger opponent notification
         _logger.LogInformation("Game reschedule request created: {RequestId} for slot {OriginalSlotId} → {ProposedSlotId}",
             requestId, originalSlotId, proposedSlotId);
+
+        // Notify opponent team (fire and forget - don't block response)
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var proposedDate = proposedSlot.GetString("GameDate") ?? "";
+                var proposedTime = proposedSlot.GetString("StartTime") ?? "";
+                var proposedField = proposedSlot.GetString("DisplayName") ?? proposedSlot.GetString("FieldName") ?? "";
+                var originalDate = originalSlot.GetString("GameDate") ?? "";
+                var originalTime = originalSlot.GetString("StartTime") ?? "";
+
+                // Get opponent team coaches
+                var opponentMemberships = await _membershipRepo.GetLeagueMembershipsAsync(leagueId);
+                var opponentCoaches = opponentMemberships
+                    .Where(m =>
+                    {
+                        var role = (m.GetString("Role") ?? "").Trim();
+                        var coachTeamId = (m.GetString("TeamId") ?? m.GetString("CoachTeamId") ?? "").Trim();
+                        return string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase) &&
+                               string.Equals(coachTeamId, opponentTeamId, StringComparison.OrdinalIgnoreCase);
+                    })
+                    .Select(m => m.PartitionKey)
+                    .Distinct()
+                    .ToList();
+
+                var notificationTasks = new List<Task>();
+                foreach (var opponentUserId in opponentCoaches)
+                {
+                    var message = $"{requestingTeamId} requested to reschedule your game from {originalDate} at {originalTime} to {proposedDate} at {proposedTime} at {proposedField}. Please review.";
+                    notificationTasks.Add(_notificationService.CreateNotificationAsync(
+                        opponentUserId,
+                        leagueId,
+                        "RescheduleRequested",
+                        message,
+                        "#notifications",
+                        requestId,
+                        "GameReschedule"));
+                }
+
+                await Task.WhenAll(notificationTasks);
+                _logger.LogInformation("Sent {Count} reschedule notifications for request {RequestId}", notificationTasks.Count, requestId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to send reschedule notification for request {RequestId}", requestId);
+            }
+        });
 
         return request;
     }

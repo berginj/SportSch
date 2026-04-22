@@ -75,7 +75,7 @@ public class SlotService : ISlotService
         // Authorization check
         if (!await _authService.CanCreateSlotAsync(context.UserId, context.LeagueId, request.Division, request.OfferingTeamId))
         {
-            throw new ApiGuards.HttpError(403, ErrorCodes.UNAUTHORIZED,
+            throw new ApiGuards.HttpError(403, ErrorCodes.FORBIDDEN,
                 "Not authorized to create slot for this division/team");
         }
 
@@ -97,8 +97,8 @@ public class SlotService : ISlotService
         var isActive = field.GetBoolean("IsActive") ?? true;
         if (!isActive)
         {
-            throw new ApiGuards.HttpError(409, ErrorCodes.FIELD_NOT_FOUND,
-                "Field exists but is inactive");
+            throw new ApiGuards.HttpError(400, ErrorCodes.FIELD_INACTIVE,
+                "Field is not active and cannot be used for new slots");
         }
 
         // Check for slot conflicts
@@ -145,6 +145,35 @@ public class SlotService : ISlotService
         SlotEntityUtil.ApplyTimeRange(entity, request.StartTime, request.EndTime);
 
         await _slotRepo.CreateSlotAsync(entity);
+
+        // RACE CONDITION MITIGATION: Verify no conflicts after creation
+        // This catches cases where concurrent requests both passed the pre-check
+        var postCreateConflict = await _slotRepo.HasConflictAsync(
+            context.LeagueId,
+            normalizedFieldKey,
+            request.GameDate,
+            startMin,
+            endMin,
+            excludeSlotId: slotId); // Exclude the slot we just created
+
+        if (postCreateConflict)
+        {
+            // Conflict detected - another request created a conflicting slot concurrently
+            // Delete our slot and throw conflict error
+            try
+            {
+                await _slotRepo.DeleteSlotAsync(context.LeagueId, request.Division, slotId);
+                _logger.LogWarning("Deleted slot {SlotId} due to concurrent conflict on {FieldKey} at {GameDate} {StartMin}-{EndMin}",
+                    slotId, normalizedFieldKey, request.GameDate, startMin, endMin);
+            }
+            catch (Exception deleteEx)
+            {
+                _logger.LogError(deleteEx, "Failed to delete conflicting slot {SlotId} during race condition cleanup", slotId);
+            }
+
+            throw new ApiGuards.HttpError(409, ErrorCodes.SLOT_CONFLICT,
+                "Field already has a slot at the requested time");
+        }
 
         _logger.LogInformation("Slot created successfully: {SlotId}", slotId);
 
@@ -296,7 +325,7 @@ public class SlotService : ISlotService
         // Authorization check with team ownership
         if (!await _authService.CanCancelSlotAsync(userId, leagueId, offeringTeamId, confirmedTeamId))
         {
-            throw new ApiGuards.HttpError(403, ErrorCodes.UNAUTHORIZED,
+            throw new ApiGuards.HttpError(403, ErrorCodes.FORBIDDEN,
                 "Not authorized to cancel this slot");
         }
 

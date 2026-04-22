@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiFetch } from '../api';
+import { logError } from '../errorLogger';
 
 /**
  * Hook for managing in-app notifications
@@ -26,7 +27,7 @@ export function useNotifications(leagueId, pollInterval = 30000) {
       const count = result?.data?.count ?? result?.count ?? 0;
       setUnreadCount(count);
     } catch (err) {
-      console.error('Failed to fetch unread count:', err);
+      logError('Failed to fetch unread count', err, { leagueId, operation: 'fetchUnreadCount' });
       // Don't set error for background polling failures
     }
   }, [leagueId]);
@@ -69,7 +70,7 @@ export function useNotifications(leagueId, pollInterval = 30000) {
       // Decrement unread count
       setUnreadCount(prev => Math.max(0, prev - 1));
     } catch (err) {
-      console.error('Failed to mark notification as read:', err);
+      logError('Failed to mark notification as read', err, { notificationId, operation: 'markAsRead' });
     }
   }, []);
 
@@ -85,7 +86,7 @@ export function useNotifications(leagueId, pollInterval = 30000) {
 
       setUnreadCount(0);
     } catch (err) {
-      console.error('Failed to mark all as read:', err);
+      logError('Failed to mark all as read', err, { operation: 'markAllAsRead' });
     }
   }, []);
 

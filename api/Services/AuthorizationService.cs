@@ -111,7 +111,7 @@ public class AuthorizationService : IAuthorizationService
             var membership = await _membershipRepo.GetMembershipAsync(userId, leagueId);
             if (membership == null)
             {
-                throw new ApiGuards.HttpError(403, ErrorCodes.UNAUTHORIZED,
+                throw new ApiGuards.HttpError(403, ErrorCodes.FORBIDDEN,
                     "No membership found");
             }
 
@@ -126,7 +126,7 @@ public class AuthorizationService : IAuthorizationService
 
             if (coachTeamId != teamId)
             {
-                throw new ApiGuards.HttpError(403, ErrorCodes.UNAUTHORIZED,
+                throw new ApiGuards.HttpError(403, ErrorCodes.FORBIDDEN,
                     $"Coach is assigned to team '{coachTeamId}', not '{teamId}'");
             }
         }

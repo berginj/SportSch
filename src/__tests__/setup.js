@@ -41,6 +41,14 @@ Object.defineProperty(window, 'matchMedia', {
   })),
 });
 
+// Mock telemetry module
+vi.mock('../lib/telemetry', () => ({
+  trackPageView: vi.fn(),
+  trackEvent: vi.fn(),
+  trackException: vi.fn(),
+  initTelemetry: vi.fn(),
+}));
+
 // Reset mocks before each test
 beforeEach(() => {
   vi.clearAllMocks();

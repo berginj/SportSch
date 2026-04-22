@@ -235,7 +235,7 @@ public class ImportAvailabilitySlots
                     catch (RequestFailedException ex)
                     {
                         _log.LogError(ex, "ImportAvailabilitySlots transaction failed for PK {pk}", pk);
-                        errors.Add(new { partitionKey = pk, error = ex.Message });
+                        errors.Add(new { partitionKey = pk, error = "Import failed for this partition" });
                     }
                 }
             }
@@ -285,7 +285,7 @@ public class ImportAvailabilitySlots
                 HttpStatusCode.InternalServerError,
                 "INTERNAL",
                 "Internal Server Error",
-                new { exception = ex.GetType().Name, message = ex.Message });
+                null);
         }
     }
 

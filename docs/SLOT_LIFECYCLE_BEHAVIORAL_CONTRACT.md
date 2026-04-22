@@ -84,10 +84,27 @@ Current endpoint policy:
 
 On success, current canonical behavior is immediate confirm:
 
-- create request row with status `Approved`,
+**ATOMICITY GUARANTEE (implemented 2026-04-22):**
+The slot confirmation and request creation are NOT transactional but are ordered to prevent orphaned data:
+
+1. **First**: Update slot to `Confirmed` status with ETag check (fails fast if concurrent acceptance)
+2. **Second**: Create request row with status `Approved` (only if slot update succeeded)
+3. **Result**: If slot update fails (race condition), NO request is created
+
+This ordering prevents orphaned approved requests when multiple teams accept the same slot simultaneously.
+
+Workflow details:
+- create request row with status `Approved` (only after slot confirmed)
 - set slot status to `Confirmed`,
 - set `ConfirmedTeamId` and `ConfirmedRequestId`,
 - best-effort deny other pending requests for the same slot.
+
+**Double-booking prevention (enhanced 2026-04-22):**
+The system prevents team double-booking by checking:
+- Both `Confirmed` AND `Open` slots (prevents rapid Open slot acceptance)
+- All team identifier fields: `HomeTeamId`, `AwayTeamId`, `OfferingTeamId`, `ConfirmedTeamId`
+- Across all divisions (team could play in multiple divisions)
+- Time overlap detection with exclusive boundaries
 
 ### 6.3 No Separate Approve Step
 
@@ -123,6 +140,11 @@ When status changes from `Confirmed` to `Cancelled`, cancellation notifications 
 - reject edits to `Cancelled` slots,
 - validate date/time/field values,
 - reject conflicts with non-cancelled overlapping slots on the same field,
+- **validate team availability (added 2026-04-22)**:
+  - Check if `HomeTeamId`, `AwayTeamId`, or `ConfirmedTeamId` have other games at new time
+  - Query both `Confirmed` and `Open` slots across all divisions
+  - Return `DOUBLE_BOOKING` error code if team conflict detected
+  - Prevents admin from accidentally creating team double-bookings when moving games
 - persist normalized field metadata (`ParkName`, `FieldName`, `DisplayName`).
 
 ## 7. Query and Filtering Semantics

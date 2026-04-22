@@ -12,6 +12,7 @@ import PracticeRequestModal from "../components/PracticeRequestModal";
 import { ConfirmDialog, PromptDialog } from "../components/Dialogs";
 import { useConfirmDialog, usePromptDialog } from "../lib/useDialogs";
 import { trackEvent } from "../lib/telemetry";
+import { logError } from "../lib/errorLogger";
 
 function createSlotStatusFilter({ open = true, confirmed = true, cancelled = false } = {}) {
   return {
@@ -1115,7 +1116,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
       const requests = await apiFetch("/api/game-reschedule/requests");
       setRescheduleRequests(requests || []);
     } catch (e) {
-      console.error("Failed to load reschedule requests", e);
+      logError("Failed to load reschedule requests", e, { leagueId });
     }
   }
 

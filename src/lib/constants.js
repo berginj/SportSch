@@ -44,12 +44,19 @@ export const FIELD_STATUS = {
 export const ErrorCodes = {
   // Authentication & Authorization
   UNAUTHENTICATED: "UNAUTHENTICATED",
+
+  /**
+   * @deprecated Use FORBIDDEN instead for 403 errors (insufficient permissions).
+   * Kept for backward compatibility only.
+   */
   UNAUTHORIZED: "UNAUTHORIZED",
+
   FORBIDDEN: "FORBIDDEN",
 
   // Resource Not Found
   NOT_FOUND: "NOT_FOUND",
   FIELD_NOT_FOUND: "FIELD_NOT_FOUND",
+  FIELD_INACTIVE: "FIELD_INACTIVE",
   SLOT_NOT_FOUND: "SLOT_NOT_FOUND",
   TEAM_NOT_FOUND: "TEAM_NOT_FOUND",
   DIVISION_NOT_FOUND: "DIVISION_NOT_FOUND",
@@ -80,6 +87,12 @@ export const ErrorCodes = {
   PRACTICE_POLICY_REQUIRED: "PRACTICE_POLICY_REQUIRED",
   PRACTICE_NORMALIZATION_CONFLICT: "PRACTICE_NORMALIZATION_CONFLICT",
   PRACTICE_MOVE_NOT_ALLOWED: "PRACTICE_MOVE_NOT_ALLOWED",
+  GAME_RESCHEDULE_NOT_FOUND: "GAME_RESCHEDULE_NOT_FOUND",
+  GAME_NOT_CONFIRMED: "GAME_NOT_CONFIRMED",
+  LEAD_TIME_VIOLATION: "LEAD_TIME_VIOLATION",
+  NOT_GAME_PARTICIPANT: "NOT_GAME_PARTICIPANT",
+  RESCHEDULE_CONFLICT_DETECTED: "RESCHEDULE_CONFLICT_DETECTED",
+  FINALIZATION_FAILED: "FINALIZATION_FAILED",
 
   // Business Logic Errors
   SLOT_CONFLICT: "SLOT_CONFLICT",
@@ -111,6 +124,7 @@ export const ErrorCodes = {
 // User-friendly error messages mapped from error codes
 export const ERROR_MESSAGES = {
   [ErrorCodes.FIELD_NOT_FOUND]: "The selected field could not be found.",
+  [ErrorCodes.FIELD_INACTIVE]: "The selected field is inactive and cannot be used.",
   [ErrorCodes.SLOT_CONFLICT]: "This slot conflicts with an existing booking.",
   [ErrorCodes.UNAUTHORIZED]: "You do not have permission to perform this action.",
   [ErrorCodes.COACH_TEAM_REQUIRED]: "Coach role requires an assigned team.",

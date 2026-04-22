@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { validateIsoDates } from "../lib/date";
 import { trackEvent } from "../lib/telemetry";
+import { logError } from "../lib/errorLogger";
 import CollapsibleSection from "../components/CollapsibleSection";
 import SeasonSummaryCalendar from "../components/SeasonSummaryCalendar";
 import Toast from "../components/Toast";
@@ -2369,7 +2370,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       });
       setFeasibility(data || null);
     } catch (e) {
-      console.error("Feasibility check failed:", e);
+      logError("Feasibility check failed", e, { operation: 'feasibilityCheck', leagueId });
       setFeasibility(null);
     } finally {
       setFeasibilityLoading(false);
@@ -2502,7 +2503,11 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
           metrics
         });
       } catch (e) {
-        console.error("Generate option", i + 1, "failed:", e);
+        logError(`Schedule option ${i + 1} generation failed`, e, {
+          operation: 'generateScheduleOption',
+          optionIndex: i + 1,
+          leagueId
+        });
         options.push({
           id: i + 1,
           error: e?.message || "Generation failed",
@@ -2594,7 +2599,12 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
       });
     } catch (e) {
       // Silent failure - don't block user workflow
-      console.error("Failed to submit feedback:", e);
+      logError("Failed to submit schedule feedback", e, {
+        operation: 'submitScheduleFeedback',
+        leagueId,
+        division,
+        selectedOption
+      });
     }
   }
 

@@ -426,7 +426,7 @@ export default function CoachOnboardingPage({ me, leagueId, setTab }) {
             )}
           </div>
 
-          <button className="btn btn--primary" onClick={saveTeamInfo} disabled={savingTeam}>
+          <button className="btn btn--primary" onClick={saveTeamInfo} disabled={savingTeam} aria-busy={savingTeam}>
             {savingTeam ? "Saving..." : "Save Team Information"}
           </button>
         </div>

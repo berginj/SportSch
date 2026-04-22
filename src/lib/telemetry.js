@@ -56,3 +56,8 @@ export function trackEvent(name, properties = {}, measurements = undefined) {
   if (!name) return;
   enqueueOrRun((ai) => ai.trackEvent({ name }, properties, measurements));
 }
+
+export function trackException(error, properties = {}) {
+  if (!error) return;
+  enqueueOrRun((ai) => ai.trackException({ exception: error, properties }));
+}

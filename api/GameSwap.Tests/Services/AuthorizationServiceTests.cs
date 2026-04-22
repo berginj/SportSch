@@ -229,7 +229,7 @@ public class AuthorizationServiceTests : IDisposable
         );
 
         Assert.Equal(403, ex.Status);
-        Assert.Equal(ErrorCodes.UNAUTHORIZED, ex.Code);
+        Assert.Equal(ErrorCodes.FORBIDDEN, ex.Code);
     }
 
     [Fact]

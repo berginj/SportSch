@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../lib/api";
+import { logError } from "../lib/errorLogger";
 
 /**
  * Modal for requesting practice space directly from the calendar
@@ -53,7 +54,11 @@ export default function PracticeRequestModal({
         });
         setConflicts(result.conflicts || []);
       } catch (err) {
-        console.error("Conflict check failed:", err);
+        logError("Practice request conflict check failed", err, {
+          operation: 'conflictCheck',
+          field: formData.field,
+          date: formData.date
+        });
         setConflicts([]);
       } finally {
         setChecking(false);

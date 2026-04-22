@@ -257,14 +257,7 @@ public class FieldInventoryImportFunctions
                 req.Method,
                 req.Url.AbsolutePath);
             return ApiResponses.Error(req, HttpStatusCode.InternalServerError, ErrorCodes.INTERNAL_ERROR,
-                "Field inventory import failed.",
-                new
-                {
-                    exception = ex.GetType().Name,
-                    message = ex.Message,
-                    method = req.Method,
-                    path = req.Url.AbsolutePath,
-                });
+                "Field inventory import failed.");
         }
     }
 }

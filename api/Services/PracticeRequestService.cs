@@ -118,11 +118,11 @@ public class PracticeRequestService : IPracticeRequestService
                     var practiceDateTime = parsedDate.AddMinutes(startMin);
                     var hoursUntilPractice = (practiceDateTime - DateTime.UtcNow).TotalHours;
 
-                    const int minimumLeadTimeHours = 48;
+                    const int minimumLeadTimeHours = 72; // Standardized with game reschedule policy
                     if (hoursUntilPractice < minimumLeadTimeHours && hoursUntilPractice > 0)
                     {
                         var deadline = DateTime.UtcNow.AddHours(hoursUntilPractice);
-                        throw new ApiGuards.HttpError((int)HttpStatusCode.Conflict, ErrorCodes.PRACTICE_MOVE_NOT_ALLOWED,
+                        throw new ApiGuards.HttpError((int)HttpStatusCode.Conflict, ErrorCodes.LEAD_TIME_VIOLATION,
                             $"Practice cannot be moved within {minimumLeadTimeHours} hours of the scheduled time. This practice is in {Math.Round(hoursUntilPractice, 1)} hours.");
                     }
                 }
@@ -228,7 +228,7 @@ public class PracticeRequestService : IPracticeRequestService
             if (!string.Equals(coachDivision, division, StringComparison.OrdinalIgnoreCase) ||
                 !string.Equals(coachTeamId, teamId, StringComparison.OrdinalIgnoreCase))
             {
-                throw new ApiGuards.HttpError((int)HttpStatusCode.Forbidden, ErrorCodes.UNAUTHORIZED,
+                throw new ApiGuards.HttpError((int)HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
                     "Coaches can only request practice slots for their assigned team and division.");
             }
         }

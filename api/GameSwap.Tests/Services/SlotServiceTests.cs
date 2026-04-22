@@ -248,7 +248,7 @@ public class SlotServiceTests : IDisposable
         );
 
         Assert.Equal(403, ex.Status);
-        Assert.Equal(ErrorCodes.UNAUTHORIZED, ex.Code);
+        Assert.Equal(ErrorCodes.FORBIDDEN, ex.Code);
 
         // Verify slot was NOT created
         _mockSlotRepo.Verify(x => x.CreateSlotAsync(It.IsAny<TableEntity>()), Times.Never);

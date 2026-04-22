@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import LeaguePicker from "../../components/LeaguePicker";
+import { logError } from "../../lib/errorLogger";
 
 const ROLE_OPTIONS = ["LeagueAdmin", "Coach", "Viewer"];
 
@@ -79,7 +80,10 @@ export default function AccessRequestsSection({
           try {
             await approve(item, bulkRole, true); // Skip reload after each
           } catch (err) {
-            console.error('Failed to approve:', requestSelectionKey(item), err);
+            logError('Failed to approve access request', err, {
+              requestKey: requestSelectionKey(item),
+              operation: 'bulkApprove'
+            });
           }
         }
       }
@@ -108,7 +112,10 @@ export default function AccessRequestsSection({
           try {
             await deny(item, true); // Skip reload after each
           } catch (err) {
-            console.error('Failed to deny:', requestSelectionKey(item), err);
+            logError('Failed to deny access request', err, {
+              requestKey: requestSelectionKey(item),
+              operation: 'bulkDeny'
+            });
           }
         }
       }
@@ -166,10 +173,10 @@ export default function AccessRequestsSection({
       </div>
 
       <div className="row gap-3 row--wrap">
-        <button className="btn" onClick={load} disabled={loading} title="Refresh access requests.">
+        <button className="btn" onClick={load} disabled={loading} aria-busy={loading} title="Refresh access requests.">
           Refresh
         </button>
-        <button className="btn" onClick={loadMembershipsAndTeams} disabled={memLoading} title="Refresh memberships and teams.">
+        <button className="btn" onClick={loadMembershipsAndTeams} disabled={memLoading} aria-busy={memLoading} title="Refresh memberships and teams.">
           Refresh members/teams
         </button>
       </div>

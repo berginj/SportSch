@@ -48,6 +48,14 @@ public static class ODataFilterBuilder
     }
 
     /// <summary>
+    /// Creates an equality filter for a boolean property.
+    /// </summary>
+    public static string PropertyEqualsBool(string propertyName, bool value)
+    {
+        return $"{propertyName} eq {value.ToString().ToLower()}";
+    }
+
+    /// <summary>
     /// Creates a date range filter (inclusive).
     /// </summary>
     public static string DateRange(string dateField, string? fromDate, string? toDate)
