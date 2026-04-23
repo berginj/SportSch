@@ -64,6 +64,10 @@ Current endpoint policy:
 
 - validate required fields (`division`, `offeringTeamId`, `gameDate`, `startTime`, `endTime`, `fieldKey`),
 - validate date/time and field existence/active state,
+- **enforce same-day constraint**: `startTime` and `endTime` must result in `startMin < endMin`
+  - Games cannot cross midnight (e.g., 11:00pm-1:00am next day is invalid)
+  - Validation enforced by `TimeUtil.IsValidRange()` which rejects `endMin <= startMin`
+  - Returns `INVALID_TIME_RANGE` error if violated
 - reject field-time overlap conflicts,
 - create slot in `Open` with:
   - `HomeTeamId = OfferingTeamId`,
@@ -98,6 +102,14 @@ Workflow details:
 - set slot status to `Confirmed`,
 - set `ConfirmedTeamId` and `ConfirmedRequestId`,
 - best-effort deny other pending requests for the same slot.
+
+**Best-effort denial semantics:**
+- After successful slot confirmation, system attempts to mark other pending requests as Denied
+- Uses ETag for optimistic concurrency (may fail if request was modified concurrently)
+- Failures are logged but do NOT block the slot confirmation
+- Orphaned pending requests are acceptable (slot status is source of truth)
+- UI and business logic MUST use slot status, not request status, as authoritative
+- Optional: Cleanup job can periodically find and deny orphaned pending requests
 
 **Double-booking prevention (enhanced 2026-04-22):**
 The system prevents team double-booking by checking:

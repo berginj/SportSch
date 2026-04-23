@@ -33,6 +33,7 @@ public class NotificationService : INotificationService
     {
         var notificationId = Guid.NewGuid().ToString();
 
+        var now = DateTime.UtcNow;
         var entity = new TableEntity(Constants.Pk.Notifications(userId), notificationId)
         {
             ["Type"] = type,
@@ -42,17 +43,47 @@ public class NotificationService : INotificationService
             ["RelatedEntityType"] = relatedEntityType ?? "",
             ["LeagueId"] = leagueId,
             ["IsRead"] = false,
-            ["CreatedUtc"] = DateTime.UtcNow,
-            ["ReadUtc"] = null
+            ["CreatedUtc"] = now,
+            ["ReadUtc"] = null,
+            // Delivery tracking (added 2026-04-22)
+            ["DeliveryStatus"] = "Sent",  // Optimistic: assume success for in-app notifications
+            ["DeliveredUtc"] = now,
+            ["DeliveryAttempts"] = 1,
+            ["FailureReason"] = null
         };
 
-        await _notificationRepo.CreateNotificationAsync(entity);
+        try
+        {
+            await _notificationRepo.CreateNotificationAsync(entity);
 
-        _logger.LogInformation(
-            "Created notification {NotificationId} for user {UserId} in league {LeagueId}, type {Type}",
-            notificationId, userId, leagueId, type);
+            _logger.LogInformation(
+                "Created notification {NotificationId} for user {UserId} in league {LeagueId}, type {Type}",
+                notificationId, userId, leagueId, type);
 
-        return notificationId;
+            return notificationId;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Failed to create notification {NotificationId} for user {UserId}",
+                notificationId, userId);
+
+            // Attempt to log delivery failure (best effort)
+            try
+            {
+                entity["DeliveryStatus"] = "Failed";
+                entity["DeliveredUtc"] = null;
+                entity["FailureReason"] = $"CreateNotificationAsync failed: {ex.Message}";
+                await _notificationRepo.CreateNotificationAsync(entity);
+            }
+            catch
+            {
+                // If this also fails, just log and continue
+                _logger.LogWarning("Could not log notification delivery failure for {NotificationId}", notificationId);
+            }
+
+            throw;
+        }
     }
 
     public async Task<(List<object> notifications, string? continuationToken)> GetUserNotificationsAsync(

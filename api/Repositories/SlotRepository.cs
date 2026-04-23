@@ -99,9 +99,14 @@ public class SlotRepository : ISlotRepository
             if (!string.IsNullOrEmpty(excludeSlotId) && slot.RowKey == excludeSlotId)
                 continue;
 
-            // Skip cancelled slots
+            // Skip cancelled, completed, and postponed slots (historical/non-active games)
             var status = slot.GetString("Status") ?? "";
-            if (status == Constants.Status.SlotCancelled)
+            var skipStatuses = new[] {
+                Constants.Status.SlotCancelled,
+                Constants.Status.SlotCompleted,
+                Constants.Status.SlotPostponed
+            };
+            if (skipStatuses.Contains(status, StringComparer.OrdinalIgnoreCase))
                 continue;
 
             // Check time overlap

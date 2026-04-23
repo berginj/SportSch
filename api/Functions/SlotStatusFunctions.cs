@@ -105,6 +105,25 @@ public class SlotStatusFunctions
 
             var oldStatus = (slot.GetString("Status") ?? Constants.Status.SlotOpen).Trim();
 
+            // Validate state transition
+            if (!IsValidStatusTransition(oldStatus, newStatus))
+            {
+                return ApiResponses.Error(req, HttpStatusCode.Conflict, ErrorCodes.INVALID_STATUS_TRANSITION,
+                    $"Invalid status transition from {oldStatus} to {newStatus}. " +
+                    $"Valid transitions from {oldStatus}: {string.Join(", ", GetValidTransitionsFrom(oldStatus))}");
+            }
+
+            // Validate Confirmed status requires ConfirmedTeamId
+            if (string.Equals(newStatus, Constants.Status.SlotConfirmed, StringComparison.OrdinalIgnoreCase))
+            {
+                var confirmedTeamId = (slot.GetString("ConfirmedTeamId") ?? "").Trim();
+                if (string.IsNullOrWhiteSpace(confirmedTeamId))
+                {
+                    return ApiResponses.Error(req, HttpStatusCode.BadRequest, ErrorCodes.MISSING_REQUIRED_FIELD,
+                        "Cannot set status to Confirmed without ConfirmedTeamId. Use the slot acceptance workflow to confirm slots.");
+                }
+            }
+
             // Update status
             slot["Status"] = newStatus;
             slot["StatusUpdatedUtc"] = DateTimeOffset.UtcNow;
@@ -144,6 +163,51 @@ public class SlotStatusFunctions
             _log.LogError(ex, "UpdateSlotStatus failed for {Division}/{SlotId}", division, slotId);
             return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
         }
+    }
+
+    private static bool IsValidStatusTransition(string fromStatus, string toStatus)
+    {
+        // Idempotent transitions always allowed
+        if (string.Equals(fromStatus, toStatus, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return (fromStatus.ToLower(), toStatus.ToLower()) switch
+        {
+            // From Open
+            ("open", "confirmed") => true,
+            ("open", "cancelled") => true,
+
+            // From Confirmed
+            ("confirmed", "cancelled") => true,
+            ("confirmed", "completed") => true,
+            ("confirmed", "postponed") => true,
+
+            // From Postponed
+            ("postponed", "confirmed") => true,  // Rescheduled
+            ("postponed", "cancelled") => true,
+
+            // From Completed - no transitions allowed (game is over)
+            ("completed", _) => false,
+
+            // From Cancelled - no transitions allowed (can't un-cancel)
+            ("cancelled", _) => false,
+
+            // Any other transition not explicitly allowed
+            _ => false
+        };
+    }
+
+    private static IEnumerable<string> GetValidTransitionsFrom(string fromStatus)
+    {
+        return fromStatus.ToLower() switch
+        {
+            "open" => new[] { "Confirmed", "Cancelled" },
+            "confirmed" => new[] { "Cancelled", "Completed", "Postponed" },
+            "postponed" => new[] { "Confirmed", "Cancelled" },
+            "completed" => Array.Empty<string>(),
+            "cancelled" => Array.Empty<string>(),
+            _ => new[] { "Open", "Confirmed", "Cancelled", "Completed", "Postponed" }
+        };
     }
 
     private async Task SendCancellationNotifications(

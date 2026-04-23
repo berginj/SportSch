@@ -60,4 +60,24 @@ public class Notification : ITableEntity
     /// When the notification was read (if applicable)
     /// </summary>
     public DateTime? ReadUtc { get; set; }
+
+    /// <summary>
+    /// Delivery status: Pending, Sent, Failed (added 2026-04-22 for tracking)
+    /// </summary>
+    public string DeliveryStatus { get; set; } = "Pending";
+
+    /// <summary>
+    /// When the notification was successfully delivered
+    /// </summary>
+    public DateTime? DeliveredUtc { get; set; }
+
+    /// <summary>
+    /// Failure reason if delivery failed
+    /// </summary>
+    public string? FailureReason { get; set; }
+
+    /// <summary>
+    /// Number of delivery attempts (for retry tracking)
+    /// </summary>
+    public int DeliveryAttempts { get; set; } = 0;
 }
