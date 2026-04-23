@@ -12,6 +12,8 @@ const AccessRequestsSection = lazy(() => import("./admin/AccessRequestsSection")
 const CoachAssignmentsSection = lazy(() => import("./admin/CoachAssignmentsSection"));
 const CsvImportSection = lazy(() => import("./admin/CsvImportSection"));
 const GlobalAdminSection = lazy(() => import("./admin/GlobalAdminSection"));
+const UmpireRosterSection = lazy(() => import("./admin/UmpireRosterSection"));
+const UmpireAssignmentsSection = lazy(() => import("./admin/UmpireAssignmentsSection"));
 
 const ROLE_OPTIONS = [
   "LeagueAdmin",
@@ -19,7 +21,7 @@ const ROLE_OPTIONS = [
   "Viewer",
 ];
 
-const BASE_ADMIN_SECTIONS = ["dashboard", "access-requests", "coaches", "import"];
+const BASE_ADMIN_SECTIONS = ["dashboard", "access-requests", "coaches", "umpires", "import"];
 const GLOBAL_ADMIN_SECTION = "global";
 const ADMIN_HASH = "#admin";
 
@@ -832,6 +834,12 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
             Coach Assignments
           </button>
           <button
+            className={`btn btn--ghost ${activeSection === 'umpires' ? 'is-active' : ''}`}
+            onClick={() => setActiveSection('umpires')}
+          >
+            Umpires
+          </button>
+          <button
             className={`btn btn--ghost ${activeSection === 'import' ? 'is-active' : ''}`}
             onClick={() => setActiveSection('import')}
           >
@@ -898,6 +906,16 @@ export default function AdminPage({ me, leagueId, setLeagueId }) {
             saveCoachAssignment={saveCoachAssignment}
             clearCoachAssignment={clearCoachAssignment}
           />
+        </Suspense>
+      )}
+
+      {/* Umpire Management Section */}
+      {activeSection === 'umpires' && (
+        <Suspense fallback={sectionFallback}>
+          <div>
+            <UmpireRosterSection leagueId={leagueId} />
+            <UmpireAssignmentsSection leagueId={leagueId} />
+          </div>
         </Suspense>
       )}
 
