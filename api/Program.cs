@@ -61,6 +61,10 @@ var host = new HostBuilder()
         services.AddScoped<IFieldInventoryPracticeService, FieldInventoryPracticeService>();
         services.AddScoped<IPracticeAvailabilityService, PracticeAvailabilityService>();
 
+        // Umpire Management Services
+        services.AddScoped<IUmpireService, UmpireService>();
+        services.AddScoped<IUmpireAssignmentService, UmpireAssignmentService>();
+
         // Table creation on startup (if configured)
         if (context.Configuration.GetValue<bool>("GAMESWAP_CREATE_TABLES"))
         {
