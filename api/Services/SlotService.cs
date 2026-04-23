@@ -20,6 +20,7 @@ public class SlotService : ISlotService
     private readonly IMembershipRepository _membershipRepo;
     private readonly INotificationPreferencesService _preferencesService;
     private readonly IEmailService _emailService;
+    private readonly IGameUmpireAssignmentRepository _umpireAssignmentRepo;
     private readonly ILogger<SlotService> _logger;
 
     public SlotService(
@@ -30,6 +31,7 @@ public class SlotService : ISlotService
         IMembershipRepository membershipRepo,
         INotificationPreferencesService preferencesService,
         IEmailService emailService,
+        IGameUmpireAssignmentRepository umpireAssignmentRepo,
         ILogger<SlotService> logger)
     {
         _slotRepo = slotRepo;
@@ -39,6 +41,7 @@ public class SlotService : ISlotService
         _membershipRepo = membershipRepo;
         _preferencesService = preferencesService;
         _emailService = emailService;
+        _umpireAssignmentRepo = umpireAssignmentRepo;
         _logger = logger;
     }
 
@@ -334,6 +337,19 @@ public class SlotService : ISlotService
         _logger.LogInformation("Slot cancelled: {LeagueId}/{Division}/{SlotId} by user {UserId}",
             leagueId, division, slotId, userId);
 
+        // Cancel umpire assignments (fire-and-forget)
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await PropagateGameCancellationToUmpireAssignmentsAsync(leagueId, division, slotId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to propagate game cancellation to umpire assignments for slot {SlotId}", slotId);
+            }
+        });
+
         // Send notification (fire and forget - don't block response)
         _ = Task.Run(async () =>
         {
@@ -509,5 +525,49 @@ public class SlotService : ISlotService
     private static string ReadMembershipTeamId(TableEntity? membership)
     {
         return (membership?.GetString("TeamId") ?? "").Trim();
+    }
+
+    /// <summary>
+    /// Propagates game cancellation to umpire assignments.
+    /// Called when a game is cancelled - cancels all umpire assignments and notifies umpires.
+    /// </summary>
+    private async Task PropagateGameCancellationToUmpireAssignmentsAsync(string leagueId, string division, string slotId)
+    {
+        try
+        {
+            var assignments = await _umpireAssignmentRepo.GetAssignmentsByGameAsync(leagueId, division, slotId);
+
+            foreach (var assignment in assignments)
+            {
+                var status = (assignment.GetString("Status") ?? "").Trim();
+                if (status == "Cancelled") continue;  // Already cancelled
+
+                var umpireUserId = assignment.GetString("UmpireUserId") ?? "";
+                var gameDesc = $"{assignment.GetString("HomeTeamId")} vs {assignment.GetString("AwayTeamId")} on {assignment.GetString("GameDate")} at {assignment.GetString("StartTime")}";
+
+                // Update assignment status to Cancelled
+                assignment["Status"] = "Cancelled";
+                assignment["DeclineReason"] = "Game cancelled by league";
+                assignment["UpdatedUtc"] = DateTime.UtcNow;
+
+                await _umpireAssignmentRepo.UpdateAssignmentAsync(assignment, assignment.ETag);
+
+                // Notify umpire
+                await _notificationService.CreateNotificationAsync(
+                    umpireUserId,
+                    leagueId,
+                    "GameCancelled",
+                    $"Game cancelled: {gameDesc}. Your assignment has been removed.",
+                    "#umpire",
+                    assignment.RowKey,
+                    "UmpireAssignment");
+
+                _logger.LogInformation("Cancelled umpire assignment {AssignmentId} due to game cancellation", assignment.RowKey);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to propagate game cancellation to umpire assignments for {SlotId}", slotId);
+        }
     }
 }
