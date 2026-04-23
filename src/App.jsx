@@ -26,8 +26,9 @@ const CoachOnboardingPage = lazy(() => import("./pages/CoachOnboardingPage"));
 const NotificationSettingsPage = lazy(() => import("./pages/NotificationSettingsPage"));
 const NotificationCenterPage = lazy(() => import("./pages/NotificationCenterPage"));
 const KeyboardShortcutsModal = lazy(() => import("./components/KeyboardShortcutsModal"));
+const UmpireDashboard = lazy(() => import("./pages/UmpireDashboard"));
 
-const VALID_TABS = new Set(["home", "calendar", "offers", "manage", "admin", "debug", "practice", "coach-setup", "settings", "notifications"]);
+const VALID_TABS = new Set(["home", "calendar", "offers", "manage", "admin", "debug", "practice", "coach-setup", "settings", "notifications", "umpire"]);
 
 function readInviteFromUrl() {
   if (typeof window === "undefined") return null;
@@ -270,6 +271,12 @@ export default function App() {
               leagueId={leagueId}
               setLeagueId={setLeagueId}
               tableView={tableView}
+            />
+          )}
+          {effectiveTab === "umpire" && (
+            <UmpireDashboard
+              me={me}
+              leagueId={leagueId}
             />
           )}
           {effectiveTab === "admin" && (

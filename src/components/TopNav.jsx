@@ -19,6 +19,7 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId, theme =
   }, [memberships, leagueId]);
   const activeRole = (activeMembership?.role || "").trim();
   const canManage = isGlobalAdmin || activeRole === "LeagueAdmin";
+  const isUmpire = activeRole === "Umpire";
 
   function pickLeague(id) {
     setLeagueId(id);
@@ -120,6 +121,17 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId, theme =
           >
             Offers
           </button>
+          {isUmpire && (
+          <button
+            className={tab === "umpire" ? "tab tab--active" : "tab"}
+            onClick={() => setTab("umpire")}
+            disabled={!hasLeagues}
+            title="Your umpire assignments"
+            aria-current={tab === "umpire" ? "page" : undefined}
+          >
+            Umpire
+          </button>
+          )}
           {canManage && (
           <button
             className={tab === "manage" ? "tab tab--active" : "tab"}
