@@ -13,6 +13,7 @@ public static class Constants
         public const string LeagueAdmin = "LeagueAdmin";
         public const string Coach = "Coach";
         public const string Viewer = "Viewer";
+        public const string Umpire = "Umpire";
     }
 
     public static class Tables
@@ -49,6 +50,11 @@ public static class Constants
         public const string ReminderDispatch = "GameSwapReminderDispatch";
         public const string EmailQueue = "GameSwapEmailQueue";
         public const string ScheduleFeedback = "GameSwapScheduleFeedback";
+
+        // Umpire Management
+        public const string UmpireProfiles = "GameSwapUmpireProfiles";
+        public const string UmpireAvailability = "GameSwapUmpireAvailability";
+        public const string GameUmpireAssignments = "GameSwapGameUmpireAssignments";
 
         // Field inventory import
         public const string FieldInventoryImportRuns = "GameSwapFieldInventoryImportRuns";

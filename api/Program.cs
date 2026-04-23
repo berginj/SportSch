@@ -40,6 +40,11 @@ var host = new HostBuilder()
         services.AddScoped<INotificationPreferencesRepository, NotificationPreferencesRepository>();
         services.AddScoped<IFieldInventoryImportRepository, FieldInventoryImportRepository>();
 
+        // Umpire Management Repositories
+        services.AddScoped<IUmpireProfileRepository, UmpireProfileRepository>();
+        services.AddScoped<IUmpireAvailabilityRepository, UmpireAvailabilityRepository>();
+        services.AddScoped<IGameUmpireAssignmentRepository, GameUmpireAssignmentRepository>();
+
         // Register Services (scoped for per-request lifetime)
         services.AddScoped<ISlotService, SlotService>();
         services.AddScoped<IRequestService, RequestService>();

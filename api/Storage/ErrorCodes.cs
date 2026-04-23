@@ -28,6 +28,9 @@ public static class ErrorCodes
     public const string LEAGUE_NOT_FOUND = "LEAGUE_NOT_FOUND";
     public const string REQUEST_NOT_FOUND = "REQUEST_NOT_FOUND";
     public const string RULE_NOT_FOUND = "RULE_NOT_FOUND";
+    public const string UMPIRE_NOT_FOUND = "UMPIRE_NOT_FOUND";
+    public const string UMPIRE_INACTIVE = "UMPIRE_INACTIVE";
+    public const string ASSIGNMENT_NOT_FOUND = "ASSIGNMENT_NOT_FOUND";
 
     // Validation Errors
     public const string BAD_REQUEST = "BAD_REQUEST";
@@ -67,6 +70,8 @@ public static class ErrorCodes
     public const string SLOT_CANCELLED = "SLOT_CANCELLED";
     public const string SLOT_NOT_AVAILABLE = "SLOT_NOT_AVAILABLE";
     public const string DOUBLE_BOOKING = "DOUBLE_BOOKING";
+    public const string UMPIRE_CONFLICT = "UMPIRE_CONFLICT";
+    public const string ALREADY_ASSIGNED = "ALREADY_ASSIGNED";
     public const string FIELD_IN_USE = "FIELD_IN_USE";
     public const string COACH_TEAM_REQUIRED = "COACH_TEAM_REQUIRED";
     public const string COACH_DIVISION_MISMATCH = "COACH_DIVISION_MISMATCH";

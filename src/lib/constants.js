@@ -33,6 +33,7 @@ export const ROLE = {
   LEAGUE_ADMIN: "LeagueAdmin",
   COACH: "Coach",
   VIEWER: "Viewer",
+  UMPIRE: "Umpire",
 };
 
 export const FIELD_STATUS = {
@@ -63,6 +64,9 @@ export const ErrorCodes = {
   LEAGUE_NOT_FOUND: "LEAGUE_NOT_FOUND",
   REQUEST_NOT_FOUND: "REQUEST_NOT_FOUND",
   RULE_NOT_FOUND: "RULE_NOT_FOUND",
+  UMPIRE_NOT_FOUND: "UMPIRE_NOT_FOUND",
+  UMPIRE_INACTIVE: "UMPIRE_INACTIVE",
+  ASSIGNMENT_NOT_FOUND: "ASSIGNMENT_NOT_FOUND",
 
   // Validation Errors
   BAD_REQUEST: "BAD_REQUEST",
@@ -102,6 +106,8 @@ export const ErrorCodes = {
   SLOT_CANCELLED: "SLOT_CANCELLED",
   FIELD_IN_USE: "FIELD_IN_USE",
   DOUBLE_BOOKING: "DOUBLE_BOOKING",
+  UMPIRE_CONFLICT: "UMPIRE_CONFLICT",
+  ALREADY_ASSIGNED: "ALREADY_ASSIGNED",
   COACH_TEAM_REQUIRED: "COACH_TEAM_REQUIRED",
   COACH_DIVISION_MISMATCH: "COACH_DIVISION_MISMATCH",
   ALREADY_EXISTS: "ALREADY_EXISTS",
@@ -170,6 +176,11 @@ export const ERROR_MESSAGES = {
   [ErrorCodes.SLOT_CANCELLED]: "This slot has been cancelled.",
   [ErrorCodes.SLOT_NOT_AVAILABLE]: "This slot is not available.",
   [ErrorCodes.DOUBLE_BOOKING]: "A team cannot be booked twice for the same time.",
+  [ErrorCodes.UMPIRE_CONFLICT]: "This umpire is already assigned to another game at this time.",
+  [ErrorCodes.ALREADY_ASSIGNED]: "An umpire is already assigned to this game.",
+  [ErrorCodes.UMPIRE_NOT_FOUND]: "The selected umpire could not be found.",
+  [ErrorCodes.UMPIRE_INACTIVE]: "This umpire is inactive and cannot be assigned to games.",
+  [ErrorCodes.ASSIGNMENT_NOT_FOUND]: "The umpire assignment could not be found.",
   [ErrorCodes.ALREADY_EXISTS]: "This resource already exists.",
   [ErrorCodes.INVALID_STATUS_TRANSITION]: "This status change is not allowed.",
   [ErrorCodes.REQUEST_ALREADY_APPROVED]: "This request has already been approved.",
