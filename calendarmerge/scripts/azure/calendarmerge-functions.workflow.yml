@@ -1,0 +1,52 @@
+name: Deploy Calendar Merge Functions
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "calendarmerge/**"
+      - ".github/workflows/calendarmerge-functions.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  test_and_deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: calendarmerge
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: calendarmerge/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build deployment package
+        shell: pwsh
+        run: ./scripts/azure/package-functions.ps1
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy Function App zip package
+        run: >
+          az functionapp deployment source config-zip
+          --resource-group "${{ vars.AZ_RESOURCE_GROUP }}"
+          --name "${{ vars.AZ_FUNCTIONAPP_NAME }}"
+          --src ".artifacts/calendarmerge-functions.zip"

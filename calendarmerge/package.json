@@ -1,0 +1,30 @@
+{
+  "name": "calendarmerge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Azure Functions ICS calendar aggregator that publishes merged output to Azure Blob Storage.",
+  "main": "dist/src/index.js",
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "npm run build && func start",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "package:functions": "powershell -ExecutionPolicy Bypass -File scripts/azure/package-functions.ps1"
+  },
+  "dependencies": {
+    "@azure/functions": "^4.7.3",
+    "@azure/identity": "^4.13.0",
+    "@azure/storage-blob": "^12.31.0",
+    "luxon": "^3.7.2"
+  },
+  "devDependencies": {
+    "@types/luxon": "^3.7.1",
+    "@types/node": "^24.10.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.17"
+  }
+}

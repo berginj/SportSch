@@ -1,0 +1,28 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "SOURCE_FEEDS_JSON": "[]",
+    "OUTPUT_STORAGE_ACCOUNT": "yourstorageaccount",
+    "OUTPUT_CONTAINER": "$web",
+    "OUTPUT_BLOB_PATH": "calendar.ics",
+    "PUBLIC_CALENDAR_BLOB_PATH": "calendar-public.ics",
+    "PUBLIC_GAMES_CALENDAR_BLOB_PATH": "calendar-games.ics",
+    "SCHEDULE_X_FULL_BLOB_PATH": "schedule-x-full.json",
+    "SCHEDULE_X_GAMES_BLOB_PATH": "schedule-x-games.json",
+    "STATUS_BLOB_PATH": "status.json",
+    "OPERATOR_STATUS_CONTAINER": "sources",
+    "OPERATOR_STATUS_BLOB_PATH": "_system/status-detail.json",
+    "UPLOADED_SOURCES_CONTAINER": "sources",
+    "UPLOADED_SOURCES_PREFIX": "uploads",
+    "REFRESH_LOCK_CONTAINER": "sources",
+    "REFRESH_LOCK_BLOB_PATH": "_system/refresh.lock",
+    "REFRESH_SCHEDULE": "0 */15 * * * *",
+    "FETCH_TIMEOUT_MS": "10000",
+    "FETCH_RETRY_COUNT": "2",
+    "FETCH_RETRY_DELAY_MS": "750",
+    "MAX_UPLOAD_BYTES": "5242880",
+    "MAX_FETCH_BYTES": "5242880"
+  }
+}

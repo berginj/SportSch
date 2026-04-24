@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.artifacts/
+.azure/
+coverage/
+local.settings.json
