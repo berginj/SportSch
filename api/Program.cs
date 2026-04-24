@@ -64,6 +64,7 @@ var host = new HostBuilder()
         // Umpire Management Services
         services.AddScoped<IUmpireService, UmpireService>();
         services.AddScoped<IUmpireAssignmentService, UmpireAssignmentService>();
+        services.AddScoped<UmpireNotificationService>();
 
         // Table creation on startup (if configured)
         if (context.Configuration.GetValue<bool>("GAMESWAP_CREATE_TABLES"))

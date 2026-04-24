@@ -1,6 +1,7 @@
 using System.Net;
 using Azure.Data.Tables;
 using GameSwap.Functions.Repositories;
+using GameSwap.Functions.Services;
 using GameSwap.Functions.Storage;
 using GameSwap.Functions.Telemetry;
 using Microsoft.Azure.Functions.Worker;
@@ -21,17 +22,29 @@ public class UpdateSlot
     private readonly ISlotRepository _slotRepo;
     private readonly IFieldRepository _fieldRepo;
     private readonly IMembershipRepository _membershipRepo;
+    private readonly IGameUmpireAssignmentRepository _umpireAssignmentRepo;
+    private readonly IUmpireAssignmentService _umpireAssignmentService;
+    private readonly UmpireNotificationService _umpireNotificationService;
+    private readonly INotificationService _notificationService;
     private readonly ILogger _log;
 
     public UpdateSlot(
         ISlotRepository slotRepo,
         IFieldRepository fieldRepo,
         IMembershipRepository membershipRepo,
+        IGameUmpireAssignmentRepository umpireAssignmentRepo,
+        IUmpireAssignmentService umpireAssignmentService,
+        UmpireNotificationService umpireNotificationService,
+        INotificationService notificationService,
         ILoggerFactory lf)
     {
         _slotRepo = slotRepo;
         _fieldRepo = fieldRepo;
         _membershipRepo = membershipRepo;
+        _umpireAssignmentRepo = umpireAssignmentRepo;
+        _umpireAssignmentService = umpireAssignmentService;
+        _umpireNotificationService = umpireNotificationService;
+        _notificationService = notificationService;
         _log = lf.CreateLogger<UpdateSlot>();
     }
 
@@ -77,6 +90,11 @@ public class UpdateSlot
             {
                 return ApiResponses.Error(req, HttpStatusCode.NotFound, ErrorCodes.SLOT_NOT_FOUND, "Slot not found.");
             }
+
+            // Capture original values for umpire assignment propagation
+            var originalGameDate = slot.GetString("GameDate") ?? "";
+            var originalStartTime = slot.GetString("StartTime") ?? "";
+            var originalFieldKey = slot.GetString("FieldKey") ?? "";
 
             // Authorization: Admin can edit any slot, Coach can only edit their own Open slots
             var isAdmin = await IsLeagueAdminAsync(me.UserId, leagueId);
@@ -202,6 +220,31 @@ public class UpdateSlot
             slot["UpdatedBy"] = me.UserId;
 
             await _slotRepo.UpdateSlotAsync(slot, slot.ETag);
+
+            // Propagate game changes to umpire assignments (fire-and-forget)
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await PropagateGameUpdateToUmpireAssignmentsAsync(
+                        leagueId,
+                        division,
+                        slotId,
+                        originalGameDate,
+                        originalStartTime,
+                        originalFieldKey,
+                        targetGameDate,
+                        targetStartTime,
+                        normalizedFieldKey,
+                        startMin,
+                        endMin,
+                        slot.GetString("DisplayName") ?? "");
+                }
+                catch (Exception ex)
+                {
+                    _log.LogWarning(ex, "Failed to propagate game update to umpire assignments for slot {SlotId}", slotId);
+                }
+            });
 
             UsageTelemetry.Track(_log, "api_slot_update", leagueId, me.UserId, new
             {
@@ -363,6 +406,123 @@ public class UpdateSlot
         }
 
         return conflicts;
+    }
+
+    /// <summary>
+    /// Propagates game date/time/field changes to umpire assignments.
+    /// Checks for conflicts at new time and handles reassignment if needed.
+    /// </summary>
+    private async Task PropagateGameUpdateToUmpireAssignmentsAsync(
+        string leagueId,
+        string division,
+        string slotId,
+        string oldDate,
+        string oldTime,
+        string oldField,
+        string newDate,
+        string newTime,
+        string newField,
+        int newStartMin,
+        int newEndMin,
+        string newFieldDisplayName)
+    {
+        // Check if game details actually changed
+        var dateChanged = !string.Equals(oldDate, newDate, StringComparison.Ordinal);
+        var timeChanged = !string.Equals(oldTime, newTime, StringComparison.Ordinal);
+        var fieldChanged = !string.Equals(oldField, newField, StringComparison.OrdinalIgnoreCase);
+
+        if (!dateChanged && !timeChanged && !fieldChanged)
+        {
+            // No changes affecting umpire assignments
+            return;
+        }
+
+        var assignments = await _umpireAssignmentRepo.GetAssignmentsByGameAsync(leagueId, division, slotId);
+
+        foreach (var assignment in assignments)
+        {
+            var status = (assignment.GetString("Status") ?? "").Trim();
+            if (status == "Cancelled" || status == "Declined")
+                continue;  // Skip inactive assignments
+
+            var umpireUserId = assignment.GetString("UmpireUserId") ?? "";
+
+            // If date or time changed, check for conflicts
+            if (dateChanged || timeChanged)
+            {
+                var conflicts = await _umpireAssignmentService.CheckUmpireConflictsAsync(
+                    leagueId,
+                    umpireUserId,
+                    newDate,
+                    newStartMin,
+                    newEndMin,
+                    slotId);
+
+                if (conflicts.Any())
+                {
+                    // Umpire has conflict at new time - must unassign
+                    assignment["Status"] = "Cancelled";
+                    assignment["DeclineReason"] = $"Game rescheduled to {newDate} at {newTime} when umpire has conflicting assignment";
+                    assignment["UpdatedUtc"] = DateTime.UtcNow;
+
+                    await _umpireAssignmentRepo.UpdateAssignmentAsync(assignment, assignment.ETag);
+
+                    // Notify umpire of unassignment due to conflict
+                    await _notificationService.CreateNotificationAsync(
+                        umpireUserId,
+                        leagueId,
+                        "AssignmentCancelledDueToConflict",
+                        $"You were unassigned from game due to reschedule conflict. Game moved to {newDate} at {newTime} when you have another assignment.",
+                        "#umpire",
+                        assignment.RowKey,
+                        "UmpireAssignment");
+
+                    _log.LogInformation(
+                        "Unassigned umpire {UmpireUserId} from slot {SlotId} due to reschedule conflict",
+                        umpireUserId, slotId);
+
+                    continue;
+                }
+            }
+
+            // No conflict - update assignment with new game details
+            if (dateChanged)
+                assignment["GameDate"] = newDate;
+
+            if (timeChanged)
+            {
+                assignment["StartTime"] = newTime;
+                assignment["StartMin"] = newStartMin;
+                assignment["EndTime"] = assignment.GetString("EndTime");  // Preserve original if not changed
+                assignment["EndMin"] = newEndMin;
+            }
+
+            if (fieldChanged)
+            {
+                assignment["FieldKey"] = newField;
+                assignment["FieldDisplayName"] = newFieldDisplayName;
+            }
+
+            assignment["UpdatedUtc"] = DateTime.UtcNow;
+
+            await _umpireAssignmentRepo.UpdateAssignmentAsync(assignment, assignment.ETag);
+
+            // Notify umpire of game changes
+            await _umpireNotificationService.SendGameChangedNotificationAsync(
+                umpireUserId,
+                leagueId,
+                assignment,
+                oldDate,
+                oldTime,
+                oldField,
+                newDate,
+                newTime,
+                newFieldDisplayName);
+
+            _log.LogInformation(
+                "Updated umpire assignment {AssignmentId} for rescheduled game {SlotId}",
+                assignment.RowKey, slotId);
+        }
     }
 
     private async Task<bool> IsLeagueAdminAsync(string userId, string leagueId)

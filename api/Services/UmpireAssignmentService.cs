@@ -17,6 +17,7 @@ public class UmpireAssignmentService : IUmpireAssignmentService
     private readonly ISlotRepository _slotRepo;
     private readonly IMembershipRepository _membershipRepo;
     private readonly INotificationService _notificationService;
+    private readonly UmpireNotificationService _umpireNotificationService;
     private readonly ILogger<UmpireAssignmentService> _logger;
 
     public UmpireAssignmentService(
@@ -25,6 +26,7 @@ public class UmpireAssignmentService : IUmpireAssignmentService
         ISlotRepository slotRepo,
         IMembershipRepository membershipRepo,
         INotificationService notificationService,
+        UmpireNotificationService umpireNotificationService,
         ILogger<UmpireAssignmentService> logger)
     {
         _assignmentRepo = assignmentRepo;
@@ -32,6 +34,7 @@ public class UmpireAssignmentService : IUmpireAssignmentService
         _slotRepo = slotRepo;
         _membershipRepo = membershipRepo;
         _notificationService = notificationService;
+        _umpireNotificationService = umpireNotificationService;
         _logger = logger;
     }
 
@@ -138,26 +141,19 @@ public class UmpireAssignmentService : IUmpireAssignmentService
 
         _logger.LogInformation("Assigned umpire {UmpireUserId} to game {SlotId}", request.UmpireUserId, request.SlotId);
 
-        // 7. Send notification (fire-and-forget)
+        // 7. Send notification (fire-and-forget with email)
         if (request.SendNotification)
         {
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    var umpireName = umpire.GetString("Name") ?? "Umpire";
-                    var gameDesc = $"{game.GetString("HomeTeamId")} vs {game.GetString("AwayTeamId")} on {gameDate} at {startTime}";
-
-                    await _notificationService.CreateNotificationAsync(
+                    await _umpireNotificationService.SendAssignmentNotificationAsync(
                         request.UmpireUserId,
                         request.LeagueId,
-                        "UmpireAssigned",
-                        $"You've been assigned to officiate {gameDesc}. Please respond.",
-                        "#umpire",
-                        assignmentId,
-                        "UmpireAssignment");
+                        assignment);
 
-                    _logger.LogInformation("Sent assignment notification to umpire {UmpireUserId} for assignment {AssignmentId}",
+                    _logger.LogInformation("Sent assignment notification (in-app + email) to umpire {UmpireUserId} for assignment {AssignmentId}",
                         request.UmpireUserId, assignmentId);
                 }
                 catch (Exception ex)
