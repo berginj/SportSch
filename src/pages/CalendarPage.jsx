@@ -13,6 +13,8 @@ import { ConfirmDialog, PromptDialog } from "../components/Dialogs";
 import { useConfirmDialog, usePromptDialog } from "../lib/useDialogs";
 import { trackEvent } from "../lib/telemetry";
 import { logError } from "../lib/errorLogger";
+import UmpireContactCard from "../components/UmpireContactCard";
+import UmpireAssignModal from "../components/UmpireAssignModal";
 
 function createSlotStatusFilter({ open = true, confirmed = true, cancelled = false } = {}) {
   return {
@@ -283,6 +285,8 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
   const [rescheduleReason, setRescheduleReason] = useState("");
   const [rescheduleRequests, setRescheduleRequests] = useState([]);
   const [submittingReschedule, setSubmittingReschedule] = useState(false);
+  const [umpireAssignments, setUmpireAssignments] = useState([]);
+  const [showUmpireAssignModal, setShowUmpireAssignModal] = useState(false);
   const [useNewCalendarView, setUseNewCalendarView] = useState(() => {
     try {
       return localStorage.getItem("calendar-use-new-view") === "true";
@@ -833,6 +837,23 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     }
   }
 
+  async function handleRemoveUmpireAssignment(assignmentId) {
+    if (!confirm('Remove this umpire assignment?')) return;
+
+    try {
+      await apiFetch(`/api/umpire-assignments/${assignmentId}`, {
+        method: 'DELETE'
+      });
+      setToast({ tone: "success", message: "Umpire assignment removed" });
+      if (editingSlot) {
+        await loadUmpireAssignmentsForGame(editingSlot.division, editingSlot.slotId);
+      }
+    } catch (err) {
+      logError("Failed to remove umpire assignment", err, { assignmentId });
+      setToast({ tone: "error", message: err.message || "Failed to remove assignment" });
+    }
+  }
+
   async function cancelSlot(slot) {
     if (!slot?.slotId || !slot?.division) return;
     const ok = await requestConfirm({
@@ -890,7 +911,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     return false;
   }
 
-  function openEditSlot(slot) {
+  async function openEditSlot(slot) {
     if (!slot || !canEditSlot(slot)) return;
     setErr("");
     setEditingSlot(slot);
@@ -899,6 +920,21 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     setEditEndTime(slot.endTime || "");
     setEditFieldKey(slot.fieldKey || "");
     setEditConflicts([]);
+
+    // Load umpire assignments for this game
+    await loadUmpireAssignmentsForGame(slot.division, slot.slotId);
+  }
+
+  async function loadUmpireAssignmentsForGame(division, slotId) {
+    if (!division || !slotId) return;
+
+    try {
+      const assignments = await apiFetch(`/api/games/${division}/${slotId}/umpire-assignments`);
+      setUmpireAssignments(assignments || []);
+    } catch (err) {
+      logError("Failed to load umpire assignments", err, { division, slotId });
+      setUmpireAssignments([]);
+    }
   }
 
   function closeEditSlot() {
@@ -909,6 +945,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     setEditEndTime("");
     setEditFieldKey("");
     setEditConflicts([]);
+    setUmpireAssignments([]);
   }
 
   async function checkEditConflicts(next) {
@@ -1452,6 +1489,39 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
                 </div>
               ) : null}
             </div>
+
+            {/* Umpire Assignment Section */}
+            {editingSlot && (
+              <div className="mt-3">
+                <div className="font-bold mb-2">Game Official</div>
+                {umpireAssignments.length > 0 ? (
+                  umpireAssignments.map((assignment, idx) => (
+                    <UmpireContactCard
+                      key={assignment.assignmentId || idx}
+                      assignment={assignment}
+                      umpire={assignment.umpire}
+                      showContact={true}
+                      showAdminActions={canManage}
+                      onReassign={() => setShowUmpireAssignModal(true)}
+                      onRemove={() => handleRemoveUmpireAssignment(assignment.assignmentId)}
+                    />
+                  ))
+                ) : (
+                  <div className="umpire-empty-state">
+                    <div className="muted">No umpire assigned</div>
+                    {canManage && (
+                      <button
+                        onClick={() => setShowUmpireAssignModal(true)}
+                        className="btn btn-sm btn-outline mt-2"
+                      >
+                        + Assign Umpire
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="modal__actions">
               <button className="btn btn--ghost" type="button" onClick={closeEditSlot} disabled={savingEdit}>
                 Cancel
@@ -1463,6 +1533,17 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
           </div>
         </div>
       ) : null}
+
+      {showUmpireAssignModal && editingSlot && (
+        <UmpireAssignModal
+          game={editingSlot}
+          onClose={() => setShowUmpireAssignModal(false)}
+          onAssigned={() => {
+            setShowUmpireAssignModal(false);
+            loadUmpireAssignmentsForGame(editingSlot.division, editingSlot.slotId);
+          }}
+        />
+      )}
 
       {reschedulingSlot ? (
         <div className="modalOverlay" role="presentation" onClick={closeRescheduleModal}>
