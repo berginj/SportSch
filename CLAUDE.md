@@ -308,6 +308,215 @@ Regenerate client with: `node scripts/generate-api-client.js`
 - **Email**: SendGrid
 - **Monitoring**: Application Insights
 
+## Umpire Management Module
+
+### Overview
+Complete umpire/official assignment system integrated into game scheduling. Includes roster management, conflict detection, self-service portal, and coach coordination.
+
+### Key Components
+
+**Umpire Role:**
+- New user role: `ROLE.UMPIRE`
+- Dedicated portal: `#umpire` tab
+- Self-service: View assignments, accept/decline, manage availability
+- Cannot manage games, teams, or other umpires
+
+**Data Model:**
+- `UmpireProfile` - Roster with contact, certification, experience
+- `UmpireAvailability` - Availability windows and blackouts (Phase 2 feature)
+- `GameUmpireAssignment` - Links umpires to games with status tracking
+
+**Tables:**
+- `GameSwapUmpireProfiles` (PK: `UMPIRE|{leagueId}`, RK: `{umpireUserId}`)
+- `GameSwapUmpireAvailability` (PK: `UMPAVAIL|{leagueId}|{umpireUserId}`, RK: `{ruleId}`)
+- `GameSwapGameUmpireAssignments` (PK: `UMPASSIGN|{leagueId}|{division}|{slotId}`, RK: `{assignmentId}`)
+
+### Critical Services
+
+**IUmpireService:**
+- Roster management (create, update, deactivate)
+- Authorization: LeagueAdmin for management, self for profile updates
+- Deactivation can auto-reassign future games
+
+**IUmpireAssignmentService (CRITICAL):**
+- AssignUmpireToGameAsync: Assign with conflict detection
+- CheckUmpireConflictsAsync: Prevent double-booking (reuses TimeUtil.Overlaps)
+- UpdateAssignmentStatusAsync: Umpire accept/decline or admin cancel
+- GetUnassignedGamesAsync: Find games needing coverage
+- Authorization: Umpire (self only) OR LeagueAdmin
+
+**UmpireNotificationService:**
+- Email templates for assignment, game changes, cancellations
+- Professional HTML emails with CTAs
+- Integrates with existing IEmailService (SendGrid)
+
+### Assignment Workflow
+
+**Admin Assigns:**
+1. Admin selects game from calendar or unassigned games list
+2. Opens assignment modal, selects umpire
+3. Real-time conflict check via `/api/umpires/check-conflicts`
+4. If conflict: Shows error with details, blocks assignment
+5. If clear: Creates assignment, sends email + in-app notification
+
+**Umpire Responds:**
+1. Umpire receives email notification
+2. Logs into portal (#umpire tab)
+3. Sees pending assignment card
+4. Clicks Accept or Decline (with optional reason)
+5. Admin receives notification
+
+**Coach Coordination:**
+1. Coach views own game in calendar
+2. Game detail modal shows umpire section
+3. If confirmed: See name, phone, email (one-tap call/email)
+4. If pending: "Waiting for confirmation" message
+5. If unfilled: "No umpire assigned yet"
+
+### Conflict Detection
+
+**Pattern (Same as Team Double-Booking):**
+```csharp
+// Query umpire's assignments for same date
+var assignments = await GetAssignmentsByUmpireAndDateAsync(leagueId, umpireUserId, gameDate);
+
+// Check time overlap using TimeUtil.Overlaps
+foreach (var assignment in assignments) {
+    if (assignment.Status == "Cancelled" || assignment.Status == "Declined") continue;
+    if (TimeUtil.Overlaps(newStartMin, newEndMin, assignment.StartMin, assignment.EndMin)) {
+        // CONFLICT!
+    }
+}
+```
+
+**Reuses:**
+- TimeUtil.Overlaps (same logic as team/field conflicts)
+- Exclusive boundaries (3pm-5pm and 5pm-7pm don't overlap)
+- Date-scoped queries (same day only)
+
+### Game Change Propagation
+
+**Game Cancelled:**
+- SlotService.CancelSlotAsync automatically cancels all umpire assignments
+- Sets assignment status to "Cancelled"
+- Notifies all assigned umpires via email + in-app
+- Fire-and-forget pattern (doesn't block game cancellation)
+
+**Game Rescheduled:**
+- UpdateSlot.cs propagates changes to umpire assignments
+- Checks for conflicts at new time
+- If conflict: Auto-unassigns, notifies umpire with reason
+- If no conflict: Updates denormalized fields, sends "game changed" email
+- Denormalized fields: GameDate, StartTime, FieldKey, teams (for fast umpire queries)
+
+### Assignment Status Flow
+
+**States:**
+- `Assigned` - Admin assigned, waiting for umpire response
+- `Accepted` - Umpire confirmed
+- `Declined` - Umpire can't make it (game returns to unassigned queue)
+- `Cancelled` - Assignment removed (game cancelled or admin unassigned)
+
+**Transitions:**
+- Assigned → Accepted (umpire accepts)
+- Assigned → Declined (umpire declines)
+- Assigned → Cancelled (admin removes or game cancelled)
+- Accepted → Cancelled (admin removes after confirmation)
+- Declined → Assigned (admin reassigns)
+
+### API Endpoints
+
+**Admin Roster:**
+- POST/GET/PATCH/DELETE `/api/umpires` - Roster management
+- GET `/api/umpires/unassigned-games` - Games needing umpires
+
+**Assignment Management:**
+- POST `/api/games/{division}/{slotId}/umpire-assignments` - Assign umpire
+- GET `/api/games/{division}/{slotId}/umpire-assignments` - Get game assignments
+- PATCH `/api/umpire-assignments/{assignmentId}/status` - Accept/decline
+- DELETE `/api/umpire-assignments/{assignmentId}` - Remove assignment
+- POST `/api/umpires/check-conflicts` - Real-time conflict detection
+- POST `/api/umpire-assignments/{assignmentId}/no-show` - Flag no-show
+
+**Umpire Self-Service:**
+- GET `/api/umpires/me/dashboard` - Dashboard summary
+- GET `/api/umpires/me/assignments` - Own assignments (filterable)
+
+### UI Components
+
+**Admin UI:**
+- `UmpireRosterSection.jsx` - Roster table with create/edit/deactivate
+- `UmpireAssignmentsSection.jsx` - Unassigned games list with quick-assign
+- `UmpireAssignModal.jsx` - Assignment modal with conflict detection UI
+- Admin tab in AdminPage ("Umpires")
+
+**Umpire Portal:**
+- `UmpireDashboard.jsx` - Stats + pending/upcoming/past assignments
+- `UmpireAssignmentCard.jsx` - Game card with accept/decline actions
+- Umpire tab in TopNav (role-based visibility)
+
+**Coach Integration:**
+- `UmpireContactCard.jsx` - Umpire info display with contact links
+- Game detail modal umpire section (in CalendarPage)
+
+### Design Patterns
+
+**Denormalization:**
+- GameUmpireAssignment stores game details (date, time, field, teams)
+- Enables fast umpire-scoped queries without joining to Slots table
+- Updated automatically when game changes
+
+**Authorization:**
+- Admin endpoints: LeagueAdmin required
+- Umpire endpoints: Self-scoped (can only see/update own data)
+- Coach endpoints: Team-scoped (see umpires for own games via game access)
+
+**Notifications:**
+- Fire-and-forget Task.Run pattern (consistent with existing code)
+- Email + in-app for all major events
+- Failures logged but don't block operations
+
+### MVP Scope vs Phase 2
+
+**MVP (Current):**
+- Single umpire per game
+- Email notifications (no SMS)
+- Date range availability (no time-specific)
+- Manual assignment (no auto-suggest)
+
+**Phase 2 (Future):**
+- Multi-umpire games (Home Plate, Field, Base positions)
+- SMS via Twilio
+- Time-specific availability (6pm-9pm)
+- Auto-suggest based on availability/proximity/certification
+- Bulk assignment, availability grid visualization
+
+### Testing
+
+**Backend Tests:**
+- `UmpireAssignmentServiceTests.cs` - Conflict detection, authorization, status transitions
+- Tests cover: double-booking prevention, inactive umpire blocking, declined skipping
+
+**Frontend Tests:**
+- `UmpireAssignmentCard.test.jsx` - Component rendering, accept/decline workflows
+
+### Common Issues
+
+**Conflict Detection:**
+- Ensure CheckUmpireConflictsAsync is called before AssignUmpireToGameAsync
+- Touching boundaries (3pm-5pm, 5pm-7pm) should NOT conflict
+- Declined and Cancelled assignments should be ignored in conflict checks
+
+**Game Propagation:**
+- Game cancellation handled in SlotService.CancelSlotAsync
+- Game reschedule handled in UpdateSlot.cs
+- Both use fire-and-forget to avoid blocking game operations
+
+**Authorization:**
+- Umpires can only accept/decline their own assignments
+- Only admins can assign, reassign, or cancel assignments
+- Coaches see umpire contact only for confirmed assignments on their games
+
 ## Git Workflow
 
 - Main branch: `main`
