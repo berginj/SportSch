@@ -15,15 +15,21 @@ public class UmpireAssignmentFunctions
 {
     private readonly IUmpireAssignmentService _assignmentService;
     private readonly Azure.Data.Tables.TableServiceClient _tableService;
+    private readonly IMembershipRepository _membershipRepo;
+    private readonly ISlotRepository _slotRepo;
     private readonly ILogger _log;
 
     public UmpireAssignmentFunctions(
         IUmpireAssignmentService assignmentService,
         Azure.Data.Tables.TableServiceClient tableService,
+        IMembershipRepository membershipRepo,
+        ISlotRepository slotRepo,
         ILoggerFactory loggerFactory)
     {
         _assignmentService = assignmentService;
         _tableService = tableService;
+        _membershipRepo = membershipRepo;
+        _slotRepo = slotRepo;
         _log = loggerFactory.CreateLogger<UmpireAssignmentFunctions>();
     }
 
@@ -84,8 +90,44 @@ public class UmpireAssignmentFunctions
             var leagueId = ApiGuards.RequireLeagueId(req);
             var me = IdentityUtil.GetMe(req);
 
-            // Authorization: Any authenticated league member (coaches see umpires for their games)
+            // Authorization: League member required
             await ApiGuards.RequireMemberAsync(_tableService, me.UserId, leagueId);
+
+            // Additional check for coaches: must be on one of the teams in this game
+            var isAdmin = await IsLeagueAdminAsync(me.UserId, leagueId);
+            if (!isAdmin)
+            {
+                var membership = await _membershipRepo.GetMembershipAsync(me.UserId, leagueId);
+                var role = (membership?.GetString("Role") ?? "").Trim();
+
+                if (string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Verify coach is on one of the teams in this game
+                    var game = await _slotRepo.GetSlotAsync(leagueId, division, slotId);
+                    if (game == null)
+                    {
+                        return ApiResponses.Error(req, HttpStatusCode.NotFound, ErrorCodes.SLOT_NOT_FOUND, "Game not found");
+                    }
+
+                    var coachTeam = (membership?.GetString("TeamId") ?? membership?.GetString("CoachTeamId") ?? "").Trim();
+                    var homeTeam = (game.GetString("HomeTeamId") ?? "").Trim();
+                    var awayTeam = (game.GetString("AwayTeamId") ?? "").Trim();
+                    var offeringTeam = (game.GetString("OfferingTeamId") ?? "").Trim();
+                    var confirmedTeam = (game.GetString("ConfirmedTeamId") ?? "").Trim();
+
+                    var isInvolvedTeam =
+                        string.Equals(coachTeam, homeTeam, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(coachTeam, awayTeam, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(coachTeam, offeringTeam, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(coachTeam, confirmedTeam, StringComparison.OrdinalIgnoreCase);
+
+                    if (!isInvolvedTeam)
+                    {
+                        return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                            "Coaches can only view umpire assignments for their own team's games");
+                    }
+                }
+            }
 
             var result = await _assignmentService.GetGameAssignmentsAsync(leagueId, division, slotId);
 
@@ -97,6 +139,16 @@ public class UmpireAssignmentFunctions
             _log.LogError(ex, "GetGameAssignments failed");
             return ApiResponses.Error(req, HttpStatusCode.InternalServerError, ErrorCodes.INTERNAL_ERROR, "Internal Server Error");
         }
+    }
+
+    private async Task<bool> IsLeagueAdminAsync(string userId, string leagueId)
+    {
+        if (await _membershipRepo.IsGlobalAdminAsync(userId))
+            return true;
+
+        var membership = await _membershipRepo.GetMembershipAsync(userId, leagueId);
+        var role = (membership?.GetString("Role") ?? "").Trim();
+        return string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase);
     }
 
     [Function("UpdateAssignmentStatus")]
