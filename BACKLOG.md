@@ -22,73 +22,64 @@ Consolidated from prior planning docs. Last updated: 2026-05-08.
 
 ## Code Quality & CI
 
-### CI Gates
-- Add GitHub Actions workflow for contract-sensitive backend tests on PR
-- Add default frontend test suite to CI pipeline
+### ~~CI Gates~~ ✅
+- ~~Add GitHub Actions workflow for contract-sensitive backend tests on PR~~
+- ~~Add default frontend test suite to CI pipeline~~
+- Done: `.github/workflows/pr-tests.yml` runs all backend tests + frontend lint + test:ci on PR/push to main
 
 ### Integration Test Failures
 - 7 pre-existing integration test failures (environment/mocking issues, not code bugs)
 - Investigate and fix or document as known
 
 ### OpenAPI Coverage
-- Scan all Functions for missing `[OpenApiOperation]` attributes
-- Ensure 100% Swagger UI coverage
+- ~48 Function files missing `[OpenApiOperation]` attributes
+- Mechanical task — add attributes for full Swagger UI coverage
 
-### State Transition Validation
-- `SlotStatusFunctions.UpdateSlotStatus` allows invalid transitions (e.g., Cancelled → Confirmed)
-- Add `IsValidTransition()` guard
+### ~~State Transition Validation~~ ✅
+- Already implemented: `IsValidStatusTransition()` in SlotStatusFunctions.cs
 
-### Skip Completed/Postponed Slots in Conflict Checks
-- Currently only Cancelled slots are skipped; Completed and Postponed should also be excluded
+### ~~Skip Completed/Postponed Slots in Conflict Checks~~ ✅
+- Already implemented: SlotRepository.cs skips Cancelled, Completed, and Postponed
 
-### Confirmed Slot Requires ConfirmedTeamId
-- Admin can set status=Confirmed without ConfirmedTeamId; add validation guard
-
----
-
-## Contract / Documentation Updates
-
-### Slot Lifecycle Contract
-- Add atomicity guarantee to section 6.2 (slot updated BEFORE request created)
-- Add team conflict validation to section 6.6 (UpdateSlot)
-
-### Practice Contract
-- Update lead-time policy from 48h to 72h
-- Document LEAD_TIME_VIOLATION error code
-
-### Main Contract (docs/contract.md)
-- Add "Lead time policies" section
-- Expand error codes list (FIELD_INACTIVE, LEAD_TIME_VIOLATION, deprecate UNAUTHORIZED)
-
-### Best-Effort Denial Documentation
-- Document that other pending requests are denied best-effort after slot confirmation
-- Orphaned pending requests are acceptable (slot status is source of truth)
-
-### Midnight Boundary
-- Document game start/end same-day constraint in contracts (partially done)
+### ~~Confirmed Slot Requires ConfirmedTeamId~~ ✅
+- Already implemented: SlotStatusFunctions.cs validates ConfirmedTeamId presence
 
 ---
 
 ## Security Hardening
 
+### ~~Timing attack fix~~ ✅
+- Done: ApiKeyService uses `CryptographicOperations.FixedTimeEquals`
+
+### ~~Input length validation~~ ✅
+- Done: `ApiGuards.InputLimits` + `EnsureMaxLength()` added, applied to slot creation and reschedule
+
 ### Medium Term (1-3 months)
 - **Key Vault migration** — move secrets from env vars to Azure Key Vault (2-3 days)
-- **Input length validation** — add max length constants and validation to all endpoints (1 day)
 - **Global admin privilege review** — granular permissions, audit logging (2-3 days)
 - **Session timeouts** — configure EasyAuth TTL + client-side session monitoring (1 day)
 
 ### Long Term (3-6 months)
 - **Production error verbosity** — sanitize error messages in production responses (1 day)
 - **CSRF tokens** — defense-in-depth beyond EasyAuth SameSite cookies (2 days)
-- **Timing attack fix** — constant-time comparison in ApiKeyService (1 hour)
 - **CSP hardening** — remove unsafe-inline, use nonces (1-2 days)
 - **Log sanitization** — prevent log injection, truncate long inputs (1 day)
 
 ---
 
+## Contract / Documentation Updates
+
+### ~~All contract updates~~ ✅
+- Slot lifecycle atomicity guarantee (section 6.2) — already documented
+- Team conflict validation (section 6.6) — already documented
+- Practice lead-time 72h — already documented
+- Error codes expansion — already documented in docs/contract.md
+
+---
+
 ## Polish & Low Priority
 
-- Remove deprecated `UNAUTHORIZED` constant (breaking change — plan for major version)
+- ~~Remove deprecated `UNAUTHORIZED` constant~~ ✅ Already deprecated with `[Obsolete]` and `@deprecated`
 - Add `aria-busy` to remaining loading buttons (admin/debug pages)
 - Guest slot counting verification test
 - Back-to-front scheduling order verification test
