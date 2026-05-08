@@ -103,7 +103,7 @@ function isWithinLeadTime(request) {
         minimumHours: MINIMUM_LEAD_TIME_HOURS,
       };
     }
-  } catch (e) {
+  } catch {
     // Invalid date/time, allow move
     return { withinLeadTime: false };
   }

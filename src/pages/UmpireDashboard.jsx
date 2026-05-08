@@ -5,7 +5,7 @@ import StatusCard from "../components/StatusCard";
 import UmpireAssignmentCard from "../components/UmpireAssignmentCard";
 import Toast from "../components/Toast";
 
-export default function UmpireDashboard({ leagueId, me }) {
+export default function UmpireDashboard({ leagueId }) {
   const [dashboard, setDashboard] = useState(null);
   const [pendingAssignments, setPendingAssignments] = useState([]);
   const [upcomingAssignments, setUpcomingAssignments] = useState([]);
@@ -218,14 +218,4 @@ export default function UmpireDashboard({ leagueId, me }) {
       )}
     </div>
   );
-}
-
-function formatDate(dateStr) {
-  if (!dateStr) return '';
-  const date = new Date(dateStr + 'T00:00:00');
-  return date.toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric'
-  });
 }

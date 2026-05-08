@@ -75,6 +75,7 @@ function parseStatusFilter(params) {
   };
 }
 
+// eslint-disable-next-line no-unused-vars
 export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
   const isMobile = useIsMobile();
   const memberships = useMemo(

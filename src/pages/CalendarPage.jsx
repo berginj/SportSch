@@ -71,9 +71,6 @@ function matchesSlotType(gameType, filter) {
   return normalized !== "request";
 }
 
-function isPracticeSlot(slot) {
-  return (slot?.gameType || "").trim().toLowerCase() === "practice";
-}
 
 function isPlaceholderTeamId(value) {
   const normalized = (value || "").trim().toUpperCase();
@@ -164,7 +161,7 @@ function hasExplicitCalendarFilters(params) {
   return CALENDAR_QUERY_FILTER_KEYS.some((key) => params.has(key));
 }
 
-function getRoleDefaultCalendarFilters({ defaults, role, isGlobalAdmin, myCoachTeamId }) {
+function getRoleDefaultCalendarFilters({ defaults, role, isGlobalAdmin }) {
   const seasonRange = defaults || getDefaultRangeFallback();
   const upcomingRange = getDefaultRangeFallback(new Date(), 30);
 
@@ -336,6 +333,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
   };
 
   const canPickTeam = isGlobalAdmin || role === "LeagueAdmin";
+  const canManage = isGlobalAdmin || role === "LeagueAdmin";
   if (typeof window !== "undefined") {
     locationSearchRef.current = window.location.search;
   }

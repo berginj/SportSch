@@ -59,17 +59,6 @@ function humanizeCompareState(value) {
   return state || "Unknown";
 }
 
-function summarizeNormalization(result) {
-  if (!result) return "";
-  return [
-    `${result.createdBlocks || 0} created`,
-    `${result.updatedBlocks || 0} updated`,
-    `${result.alreadyNormalizedBlocks || 0} already normalized`,
-    `${result.conflictBlocks || 0} conflicts`,
-    `${result.blockedBlocks || 0} blocked`,
-  ].join(" · ");
-}
-
 function summarizeNormalizationText(result) {
   if (!result) return "";
   return [

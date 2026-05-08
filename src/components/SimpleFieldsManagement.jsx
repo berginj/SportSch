@@ -12,7 +12,7 @@ export default function SimpleFieldsManagement({ leagueId }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
-  const [showCsvImport, setShowCsvImport] = useState(false);
+  const [_showCsvImport, _setShowCsvImport] = useState(false);
 
   useEffect(() => {
     loadFields();

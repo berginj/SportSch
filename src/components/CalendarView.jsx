@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { DayPilotMonth, DayPilotScheduler } from "@daypilot/daypilot-lite-react";
 import { getSlotMatchupLabel } from "../lib/slotTeams";
 import "./CalendarView.css";
@@ -31,33 +31,16 @@ export default function CalendarView({
   const visibleHours = useMemo(() => getVisibleHours(items), [items]);
   const [selectedItemKey, setSelectedItemKey] = useState("");
 
-  useEffect(() => {
-    if (!items.length) {
-      setSelectedItemKey("");
-      return;
-    }
-
-    if (!items.some((item) => item.key === selectedItemKey)) {
-      setSelectedItemKey(items[0].key);
-    }
+  const resolvedItemKey = useMemo(() => {
+    if (!items.length) return "";
+    if (items.some((item) => item.key === selectedItemKey)) return selectedItemKey;
+    return items[0].key;
   }, [items, selectedItemKey]);
 
   const selectedItem = useMemo(
-    () => items.find((item) => item.key === selectedItemKey) || null,
-    [items, selectedItemKey]
+    () => items.find((item) => item.key === resolvedItemKey) || null,
+    [items, resolvedItemKey]
   );
-
-  useEffect(() => {
-    if (!showViewToggle || !viewStorageKey) {
-      setViewMode(normalizeViewMode(defaultView));
-      return;
-    }
-    try {
-      setViewMode(normalizeViewMode(localStorage.getItem(viewStorageKey) || defaultView));
-    } catch {
-      setViewMode(normalizeViewMode(defaultView));
-    }
-  }, [defaultView, showViewToggle, viewStorageKey]);
 
   const handleItemSelect = useMemo(() => {
     return (itemKey) => {
@@ -458,10 +441,6 @@ function getItemColors(tone) {
   }
 }
 
-function stopItemClickPropagation(event) {
-  event.stopPropagation();
-}
-
 function getItemDate(item) {
   return item?.gameDate || item?.eventDate || item?.date || "";
 }
@@ -564,4 +543,4 @@ function normalizeViewMode(value) {
   return "timeline";
 }
 
-export { stopItemClickPropagation };
+
