@@ -47,6 +47,7 @@ public class SlotCreationConflictTests
             _mockMembershipRepo.Object,
             _mockPreferencesService.Object,
             _mockEmailService.Object,
+            new Mock<IGameUmpireAssignmentRepository>().Object,
             _mockLogger.Object);
     }
 
