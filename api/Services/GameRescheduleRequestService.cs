@@ -283,7 +283,29 @@ public class GameRescheduleRequestService : IGameRescheduleRequestService
 
         await _requestRepo.UpdateRequestAsync(request, request.ETag);
 
-        // TODO: Notify requesting team
+        // Notify requesting team of approval (fire and forget)
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var requestingTeamId = (request.GetString("RequestingTeamId") ?? "").Trim();
+                var coaches = await GetCoachesForTeamAsync(leagueId, requestingTeamId);
+                var proposedDate = request.GetString("ProposedGameDate") ?? "";
+                var proposedTime = request.GetString("ProposedStartTime") ?? "";
+                var proposedField = request.GetString("ProposedFieldName") ?? "";
+
+                var tasks = coaches.Select(coachUserId =>
+                    _notificationService.CreateNotificationAsync(
+                        coachUserId, leagueId, "RescheduleApproved",
+                        $"Your reschedule request was approved. Game will move to {proposedDate} at {proposedTime} at {proposedField}.",
+                        "#calendar", requestId, "GameReschedule"));
+                await Task.WhenAll(tasks);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to send reschedule approval notification for request {RequestId}", requestId);
+            }
+        });
 
         // Auto-finalize (could be made configurable per league)
         await FinalizeAsync(leagueId, userId, requestId);
@@ -324,7 +346,29 @@ public class GameRescheduleRequestService : IGameRescheduleRequestService
 
         await _requestRepo.UpdateRequestAsync(request, request.ETag);
 
-        // TODO: Notify requesting team of rejection
+        // Notify requesting team of rejection (fire and forget)
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var requestingTeamId = (request.GetString("RequestingTeamId") ?? "").Trim();
+                var coaches = await GetCoachesForTeamAsync(leagueId, requestingTeamId);
+                var originalDate = request.GetString("OriginalGameDate") ?? "";
+                var originalTime = request.GetString("OriginalStartTime") ?? "";
+                var opponentResponse = (response ?? "No reason given").Trim();
+
+                var tasks = coaches.Select(coachUserId =>
+                    _notificationService.CreateNotificationAsync(
+                        coachUserId, leagueId, "RescheduleRejected",
+                        $"Your reschedule request for {originalDate} at {originalTime} was declined. Reason: {opponentResponse}",
+                        "#calendar", requestId, "GameReschedule"));
+                await Task.WhenAll(tasks);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to send reschedule rejection notification for request {RequestId}", requestId);
+            }
+        });
 
         return request;
     }
@@ -413,7 +457,35 @@ public class GameRescheduleRequestService : IGameRescheduleRequestService
 
             await _requestRepo.UpdateRequestAsync(request, ETag.All);
 
-            // TODO: Notify both teams of finalization
+            // Notify both teams of finalization (fire and forget)
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var requestingTeamId = (request.GetString("RequestingTeamId") ?? "").Trim();
+                    var opponentTeamId = (request.GetString("OpponentTeamId") ?? "").Trim();
+                    var proposedDate = request.GetString("ProposedGameDate") ?? "";
+                    var proposedTime = request.GetString("ProposedStartTime") ?? "";
+                    var proposedField = request.GetString("ProposedFieldName") ?? "";
+
+                    var allCoaches = new List<(string userId, string team)>();
+                    foreach (var coachId in await GetCoachesForTeamAsync(leagueId, requestingTeamId))
+                        allCoaches.Add((coachId, requestingTeamId));
+                    foreach (var coachId in await GetCoachesForTeamAsync(leagueId, opponentTeamId))
+                        allCoaches.Add((coachId, opponentTeamId));
+
+                    var tasks = allCoaches.Select(c =>
+                        _notificationService.CreateNotificationAsync(
+                            c.userId, leagueId, "RescheduleFinalized",
+                            $"Game reschedule confirmed: {proposedDate} at {proposedTime} at {proposedField}.",
+                            "#calendar", requestId, "GameReschedule"));
+                    await Task.WhenAll(tasks);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to send reschedule finalization notifications for request {RequestId}", requestId);
+                }
+            });
 
             _logger.LogInformation("Game reschedule finalized: {RequestId}", requestId);
 
@@ -456,7 +528,28 @@ public class GameRescheduleRequestService : IGameRescheduleRequestService
 
         await _requestRepo.UpdateRequestAsync(request, request.ETag);
 
-        // TODO: Notify opponent team of cancellation
+        // Notify opponent team of cancellation (fire and forget)
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var opponentTeamId = (request.GetString("OpponentTeamId") ?? "").Trim();
+                var coaches = await GetCoachesForTeamAsync(leagueId, opponentTeamId);
+                var originalDate = request.GetString("OriginalGameDate") ?? "";
+                var originalTime = request.GetString("OriginalStartTime") ?? "";
+
+                var tasks = coaches.Select(coachUserId =>
+                    _notificationService.CreateNotificationAsync(
+                        coachUserId, leagueId, "RescheduleCancelled",
+                        $"Reschedule request for the game on {originalDate} at {originalTime} has been cancelled by the requesting team.",
+                        "#calendar", requestId, "GameReschedule"));
+                await Task.WhenAll(tasks);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to send reschedule cancellation notification for request {RequestId}", requestId);
+            }
+        });
 
         return request;
     }
@@ -671,5 +764,23 @@ public class GameRescheduleRequestService : IGameRescheduleRequestService
             throw new ApiGuards.HttpError((int)HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
                 "Only the requesting team coach can cancel this request.");
         }
+    }
+
+    private async Task<List<string>> GetCoachesForTeamAsync(string leagueId, string teamId)
+    {
+        if (string.IsNullOrWhiteSpace(teamId)) return new List<string>();
+
+        var memberships = await _membershipRepo.GetLeagueMembershipsAsync(leagueId);
+        return memberships
+            .Where(m =>
+            {
+                var role = (m.GetString("Role") ?? "").Trim();
+                var coachTeamId = (m.GetString("TeamId") ?? m.GetString("CoachTeamId") ?? "").Trim();
+                return string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase) &&
+                       string.Equals(coachTeamId, teamId, StringComparison.OrdinalIgnoreCase);
+            })
+            .Select(m => m.PartitionKey)
+            .Distinct()
+            .ToList();
     }
 }
