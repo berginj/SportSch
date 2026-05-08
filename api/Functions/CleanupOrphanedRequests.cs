@@ -1,4 +1,3 @@
-using System.Net;
 using Azure.Data.Tables;
 using GameSwap.Functions.Repositories;
 using GameSwap.Functions.Storage;
@@ -20,15 +19,18 @@ namespace GameSwap.Functions.Functions;
 /// </summary>
 public class CleanupOrphanedRequests
 {
+    private readonly TableServiceClient _tableService;
     private readonly ISlotRepository _slotRepo;
     private readonly IRequestRepository _requestRepo;
     private readonly ILogger _log;
 
     public CleanupOrphanedRequests(
+        TableServiceClient tableService,
         ISlotRepository slotRepo,
         IRequestRepository requestRepo,
         ILoggerFactory loggerFactory)
     {
+        _tableService = tableService;
         _slotRepo = slotRepo;
         _requestRepo = requestRepo;
         _log = loggerFactory.CreateLogger<CleanupOrphanedRequests>();
@@ -62,7 +64,7 @@ public class CleanupOrphanedRequests
 
             // For MVP: Query specific leagues (in production, iterate all leagues)
             // In future, could get league list from Leagues table
-            var leaguesToCheck = GetLeaguesToCheck();
+            var leaguesToCheck = await GetLeaguesToCheckAsync();
 
             foreach (var leagueId in leaguesToCheck)
             {
@@ -137,20 +139,19 @@ public class CleanupOrphanedRequests
         }
     }
 
-    private static IEnumerable<string> GetLeaguesToCheck()
+    private async Task<IEnumerable<string>> GetLeaguesToCheckAsync()
     {
-        // In production, this should query the Leagues table
-        // For now, return empty (can be configured via app settings)
-        // Or iterate all partition keys in Slots table
+        var leaguesTable = await TableClients.GetTableAsync(_tableService, Constants.Tables.Leagues);
 
-        var leaguesFromConfig = Environment.GetEnvironmentVariable("CLEANUP_JOB_LEAGUES");
-        if (!string.IsNullOrWhiteSpace(leaguesFromConfig))
+        var leagueIds = new List<string>();
+        await foreach (var league in leaguesTable.QueryAsync<TableEntity>(filter: ""))
         {
-            return leaguesFromConfig.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var leagueId = (league.RowKey ?? "").Trim();
+            if (!string.IsNullOrWhiteSpace(leagueId))
+                leagueIds.Add(leagueId);
         }
 
-        // Default: no leagues (job is a no-op until configured)
-        // This prevents unexpected behavior in environments where it's not needed
-        return Array.Empty<string>();
+        _log.LogInformation("Cleanup job found {Count} leagues to process", leagueIds.Count);
+        return leagueIds;
     }
 }
