@@ -8,6 +8,8 @@ using GameSwap.Functions.Scheduling;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
+using Microsoft.OpenApi.Models;
 
 namespace GameSwap.Functions.Functions;
 
@@ -43,6 +45,9 @@ public class SlotGenerationFunctions
 
     public record GenerateSlotsPreview(List<SlotCandidate> slots, List<SlotCandidate> conflicts);
 
+    [OpenApiOperation(operationId: "PreviewGeneratedSlots", tags: new[] { "Scheduling" },
+        Summary = "Preview generated slots",
+        Description = "Preview slot generation results including conflicts without persisting. Admin only.")]
     [Function("PreviewGeneratedSlots")]
     public async Task<HttpResponseData> Preview(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "schedule/slots/preview")] HttpRequestData req)
@@ -50,6 +55,9 @@ public class SlotGenerationFunctions
         return await Generate(req, applyMode: "");
     }
 
+    [OpenApiOperation(operationId: "ApplyGeneratedSlots", tags: new[] { "Scheduling" },
+        Summary = "Apply generated slots",
+        Description = "Generate and persist game slots based on field/date/time configuration. Admin only.")]
     [Function("ApplyGeneratedSlots")]
     public async Task<HttpResponseData> Apply(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "schedule/slots/apply")] HttpRequestData req)

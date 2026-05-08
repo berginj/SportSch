@@ -9,6 +9,8 @@ using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 using GameSwap.Functions.Storage;
 using GameSwap.Functions.Telemetry;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
+using Microsoft.OpenApi.Models;
 
 namespace GameSwap.Functions.Functions;
 
@@ -23,6 +25,9 @@ public class ImportFields
         _svc = tableServiceClient;
     }
 
+    [OpenApiOperation(operationId: "ImportFields", tags: new[] { "Fields" },
+        Summary = "Import fields from CSV",
+        Description = "Bulk import field definitions from a CSV payload. Admin only.")]
     [Function("ImportFields")]
     public async Task<HttpResponseData> Run(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "import/fields")] HttpRequestData req)

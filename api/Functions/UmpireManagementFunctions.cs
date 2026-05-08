@@ -5,6 +5,8 @@ using GameSwap.Functions.Storage;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
+using Microsoft.OpenApi.Models;
 
 namespace GameSwap.Functions.Functions;
 
@@ -27,6 +29,9 @@ public class UmpireManagementFunctions
         _log = loggerFactory.CreateLogger<UmpireManagementFunctions>();
     }
 
+    [OpenApiOperation(operationId: "CreateUmpire", tags: new[] { "Umpires" },
+        Summary = "Create umpire profile",
+        Description = "Register a new umpire in the league roster. Admin only.")]
     [Function("CreateUmpire")]
     public async Task<HttpResponseData> CreateUmpire(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "umpires")] HttpRequestData req)
@@ -60,6 +65,9 @@ public class UmpireManagementFunctions
         }
     }
 
+    [OpenApiOperation(operationId: "GetUmpires", tags: new[] { "Umpires" },
+        Summary = "List umpires",
+        Description = "List all umpires in the league with optional active/search filters. Admin only.")]
     [Function("GetUmpires")]
     public async Task<HttpResponseData> GetUmpires(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "umpires")] HttpRequestData req)
@@ -93,6 +101,9 @@ public class UmpireManagementFunctions
         }
     }
 
+    [OpenApiOperation(operationId: "GetUmpire", tags: new[] { "Umpires" },
+        Summary = "Get umpire profile",
+        Description = "Get a single umpire's profile by user ID. Admin or self.")]
     [Function("GetUmpire")]
     public async Task<HttpResponseData> GetUmpire(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "umpires/{umpireUserId}")] HttpRequestData req,
@@ -125,6 +136,9 @@ public class UmpireManagementFunctions
         }
     }
 
+    [OpenApiOperation(operationId: "UpdateUmpire", tags: new[] { "Umpires" },
+        Summary = "Update umpire profile",
+        Description = "Update an umpire's profile information (contact, certification, etc.). Admin or self.")]
     [Function("UpdateUmpire")]
     public async Task<HttpResponseData> UpdateUmpire(
         [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "umpires/{umpireUserId}")] HttpRequestData req,
@@ -156,6 +170,9 @@ public class UmpireManagementFunctions
         }
     }
 
+    [OpenApiOperation(operationId: "DeactivateUmpire", tags: new[] { "Umpires" },
+        Summary = "Deactivate umpire",
+        Description = "Deactivate an umpire profile and optionally reassign future games. Admin only.")]
     [Function("DeactivateUmpire")]
     public async Task<HttpResponseData> DeactivateUmpire(
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "umpires/{umpireUserId}")] HttpRequestData req,

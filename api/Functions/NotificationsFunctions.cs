@@ -5,6 +5,8 @@ using Microsoft.Extensions.Logging;
 using GameSwap.Functions.Storage;
 using GameSwap.Functions.Services;
 using GameSwap.Functions.Telemetry;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
+using Microsoft.OpenApi.Models;
 
 namespace GameSwap.Functions.Functions;
 
@@ -26,6 +28,9 @@ public class NotificationsFunctions
     /// GET /api/notifications - Get user notifications (paginated)
     /// Query params: pageSize (default 20), continuationToken, unreadOnly (default false)
     /// </summary>
+    [OpenApiOperation(operationId: "GetNotifications", tags: new[] { "Notifications" },
+        Summary = "Get user notifications",
+        Description = "Retrieve paginated notifications for the current user. Supports filtering by unread status.")]
     [Function("GetNotifications")]
     public async Task<HttpResponseData> GetNotifications(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "notifications")] HttpRequestData req)
@@ -74,6 +79,9 @@ public class NotificationsFunctions
     /// <summary>
     /// GET /api/notifications/unread-count - Get count of unread notifications
     /// </summary>
+    [OpenApiOperation(operationId: "GetUnreadNotificationsCount", tags: new[] { "Notifications" },
+        Summary = "Get unread notification count",
+        Description = "Returns the count of unread notifications for the current user.")]
     [Function("GetUnreadNotificationsCount")]
     public async Task<HttpResponseData> GetUnreadCount(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "notifications/unread-count")] HttpRequestData req)
@@ -105,6 +113,9 @@ public class NotificationsFunctions
     /// <summary>
     /// PATCH /api/notifications/{notificationId}/read - Mark a notification as read
     /// </summary>
+    [OpenApiOperation(operationId: "MarkNotificationRead", tags: new[] { "Notifications" },
+        Summary = "Mark notification as read",
+        Description = "Mark a single notification as read by its ID.")]
     [Function("MarkNotificationRead")]
     public async Task<HttpResponseData> MarkAsRead(
         [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "notifications/{notificationId}/read")] HttpRequestData req,
@@ -138,6 +149,9 @@ public class NotificationsFunctions
     /// <summary>
     /// POST /api/notifications/read-all - Mark all notifications as read
     /// </summary>
+    [OpenApiOperation(operationId: "MarkAllNotificationsRead", tags: new[] { "Notifications" },
+        Summary = "Mark all notifications as read",
+        Description = "Mark all notifications as read for the current user in the active league.")]
     [Function("MarkAllNotificationsRead")]
     public async Task<HttpResponseData> MarkAllAsRead(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "notifications/read-all")] HttpRequestData req)

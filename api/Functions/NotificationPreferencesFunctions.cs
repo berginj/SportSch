@@ -4,6 +4,8 @@ using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 using GameSwap.Functions.Storage;
 using GameSwap.Functions.Services;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
+using Microsoft.OpenApi.Models;
 
 namespace GameSwap.Functions.Functions;
 
@@ -26,6 +28,9 @@ public class NotificationPreferencesFunctions
     /// <summary>
     /// GET /api/notifications/preferences - Get user notification preferences
     /// </summary>
+    [OpenApiOperation(operationId: "GetNotificationPreferences", tags: new[] { "Notifications" },
+        Summary = "Get notification preferences",
+        Description = "Retrieve the current user's notification preferences (email toggles, digest settings).")]
     [Function("GetNotificationPreferences")]
     public async Task<HttpResponseData> GetPreferences(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "notifications/preferences")] HttpRequestData req)
@@ -66,6 +71,9 @@ public class NotificationPreferencesFunctions
     /// <summary>
     /// PATCH /api/notifications/preferences - Update user notification preferences
     /// </summary>
+    [OpenApiOperation(operationId: "UpdateNotificationPreferences", tags: new[] { "Notifications" },
+        Summary = "Update notification preferences",
+        Description = "Update the current user's notification preferences (email toggles, digest settings).")]
     [Function("UpdateNotificationPreferences")]
     public async Task<HttpResponseData> UpdatePreferences(
         [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "notifications/preferences")] HttpRequestData req)

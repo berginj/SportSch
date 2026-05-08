@@ -10,6 +10,8 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 using GameSwap.Functions.Telemetry;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
+using Microsoft.OpenApi.Models;
 
 namespace GameSwap.Functions.Functions;
 
@@ -24,6 +26,9 @@ public class ScheduleWizardFunctions
         _log = lf.CreateLogger<ScheduleWizardFunctions>();
     }
 
+    [OpenApiOperation(operationId: "ResetGeneratedScheduleWizardSlots", tags: new[] { "Scheduling" },
+        Summary = "Reset generated wizard slots",
+        Description = "Delete all wizard-generated slots for a division. Admin only.")]
     [Function("ResetGeneratedScheduleWizardSlots")]
     public async Task<HttpResponseData> ResetGenerated(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "schedule/wizard/reset-generated")] HttpRequestData req)
@@ -196,6 +201,9 @@ public class ScheduleWizardFunctions
         ScheduleRepairProposal? proposal
     );
 
+    [OpenApiOperation(operationId: "ScheduleWizardPreview", tags: new[] { "Scheduling" },
+        Summary = "Preview schedule wizard output",
+        Description = "Run the scheduling wizard in preview mode without persisting changes.")]
     [Function("ScheduleWizardPreview")]
     public async Task<HttpResponseData> Preview(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "schedule/wizard/preview")] HttpRequestData req)
@@ -203,6 +211,9 @@ public class ScheduleWizardFunctions
         return await RunWizard(req, apply: false);
     }
 
+    [OpenApiOperation(operationId: "ScheduleWizardApply", tags: new[] { "Scheduling" },
+        Summary = "Apply schedule wizard",
+        Description = "Run the scheduling wizard and persist generated slots. Admin only.")]
     [Function("ScheduleWizardApply")]
     public async Task<HttpResponseData> Apply(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "schedule/wizard/apply")] HttpRequestData req)
@@ -210,6 +221,9 @@ public class ScheduleWizardFunctions
         return await RunWizard(req, apply: true);
     }
 
+    [OpenApiOperation(operationId: "ScheduleWizardFeasibility", tags: new[] { "Scheduling" },
+        Summary = "Schedule wizard feasibility check",
+        Description = "Analyze whether the division has enough slots and teams for a viable schedule.")]
     [Function("ScheduleWizardFeasibility")]
     public async Task<HttpResponseData> Feasibility(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "schedule/wizard/feasibility")] HttpRequestData req)
@@ -320,6 +334,9 @@ public class ScheduleWizardFunctions
         }
     }
 
+    [OpenApiOperation(operationId: "ScheduleWizardApplyPreviewRepair", tags: new[] { "Scheduling" },
+        Summary = "Apply wizard repair preview",
+        Description = "Apply a schedule repair proposal generated during preview. Admin only.")]
     [Function("ScheduleWizardApplyPreviewRepair")]
     public async Task<HttpResponseData> ApplyPreviewRepair(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "schedule/wizard/repair/apply-preview")] HttpRequestData req)

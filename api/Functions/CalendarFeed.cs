@@ -6,6 +6,8 @@ using GameSwap.Functions.Storage;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
+using Microsoft.OpenApi.Models;
 
 namespace GameSwap.Functions.Functions;
 
@@ -36,6 +38,9 @@ public class CalendarFeed
         string location
     );
 
+    [OpenApiOperation(operationId: "CalendarFeed", tags: new[] { "Calendar" },
+        Summary = "Get ICS calendar feed",
+        Description = "Generate an ICS calendar feed of games and events for the authenticated user's league.")]
     [Function("CalendarFeed")]
     public async Task<HttpResponseData> Run(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "calendar/ics")] HttpRequestData req)

@@ -13,6 +13,8 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 using GameSwap.Functions.Telemetry;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
+using Microsoft.OpenApi.Models;
 
 namespace GameSwap.Functions.Functions;
 
@@ -52,6 +54,9 @@ public class ScheduleFunctions
         List<object> failures
     );
 
+    [OpenApiOperation(operationId: "ScheduleResetUsage", tags: new[] { "Scheduling" },
+        Summary = "Reset schedule usage counters",
+        Description = "Reset usage tracking counters for the scheduling engine. Admin only.")]
     [Function("ScheduleResetUsage")]
     public async Task<HttpResponseData> ResetUsage(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "schedule/reset-usage")] HttpRequestData req)

@@ -5,6 +5,8 @@ using GameSwap.Functions.Storage;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
+using Microsoft.OpenApi.Models;
 
 namespace GameSwap.Functions.Functions;
 
@@ -33,6 +35,9 @@ public class UmpireAssignmentFunctions
         _log = loggerFactory.CreateLogger<UmpireAssignmentFunctions>();
     }
 
+    [OpenApiOperation(operationId: "AssignUmpireToGame", tags: new[] { "Umpires" },
+        Summary = "Assign umpire to game",
+        Description = "Assign an umpire to a specific game slot with conflict detection. Admin only.")]
     [Function("AssignUmpireToGame")]
     public async Task<HttpResponseData> AssignUmpire(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "games/{division}/{slotId}/umpire-assignments")] HttpRequestData req,
@@ -79,6 +84,9 @@ public class UmpireAssignmentFunctions
         }
     }
 
+    [OpenApiOperation(operationId: "GetGameUmpireAssignments", tags: new[] { "Umpires" },
+        Summary = "Get game umpire assignments",
+        Description = "Get all umpire assignments for a specific game. Accessible to admins, umpires, and involved coaches.")]
     [Function("GetGameUmpireAssignments")]
     public async Task<HttpResponseData> GetGameAssignments(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "games/{division}/{slotId}/umpire-assignments")] HttpRequestData req,
@@ -151,6 +159,9 @@ public class UmpireAssignmentFunctions
         return string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase);
     }
 
+    [OpenApiOperation(operationId: "UpdateAssignmentStatus", tags: new[] { "Umpires" },
+        Summary = "Update assignment status",
+        Description = "Accept or decline an umpire assignment. Umpire (self) or admin.")]
     [Function("UpdateAssignmentStatus")]
     public async Task<HttpResponseData> UpdateStatus(
         [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "umpire-assignments/{assignmentId}/status")] HttpRequestData req,
@@ -187,6 +198,9 @@ public class UmpireAssignmentFunctions
         }
     }
 
+    [OpenApiOperation(operationId: "RemoveUmpireAssignment", tags: new[] { "Umpires" },
+        Summary = "Remove umpire assignment",
+        Description = "Remove an umpire assignment from a game. Admin only.")]
     [Function("RemoveUmpireAssignment")]
     public async Task<HttpResponseData> RemoveAssignment(
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "umpire-assignments/{assignmentId}")] HttpRequestData req,
@@ -220,6 +234,9 @@ public class UmpireAssignmentFunctions
         }
     }
 
+    [OpenApiOperation(operationId: "GetUnassignedGames", tags: new[] { "Umpires" },
+        Summary = "Get unassigned games",
+        Description = "List confirmed games that have no umpire assigned. Filterable by division and date range. Admin only.")]
     [Function("GetUnassignedGames")]
     public async Task<HttpResponseData> GetUnassignedGames(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "umpires/unassigned-games")] HttpRequestData req)
@@ -255,6 +272,9 @@ public class UmpireAssignmentFunctions
         }
     }
 
+    [OpenApiOperation(operationId: "CheckUmpireConflicts", tags: new[] { "Umpires" },
+        Summary = "Check umpire scheduling conflicts",
+        Description = "Check if an umpire has time conflicts for a proposed game assignment. Admin only.")]
     [Function("CheckUmpireConflicts")]
     public async Task<HttpResponseData> CheckConflicts(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "umpires/check-conflicts")] HttpRequestData req)
@@ -307,6 +327,9 @@ public class UmpireAssignmentFunctions
         }
     }
 
+    [OpenApiOperation(operationId: "FlagUmpireNoShow", tags: new[] { "Umpires" },
+        Summary = "Flag umpire no-show",
+        Description = "Flag an umpire assignment as a no-show for tracking purposes. Admin only.")]
     [Function("FlagUmpireNoShow")]
     public async Task<HttpResponseData> FlagNoShow(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "umpire-assignments/{assignmentId}/no-show")] HttpRequestData req,

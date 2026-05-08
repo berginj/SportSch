@@ -5,6 +5,8 @@ using GameSwap.Functions.Storage;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
+using Microsoft.OpenApi.Models;
 
 namespace GameSwap.Functions.Functions;
 
@@ -50,6 +52,9 @@ public class SimplePracticeRequestFunctions
     /// Checks for conflicts with a proposed practice time.
     /// Used for real-time feedback in the UI.
     /// </summary>
+    [OpenApiOperation(operationId: "CheckPracticeConflicts", tags: new[] { "Practice" },
+        Summary = "Check practice conflicts",
+        Description = "Check for scheduling conflicts with a proposed practice time. Used for real-time UI feedback.")]
     [Function("CheckPracticeConflicts")]
     public async Task<HttpResponseData> CheckConflicts(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "practice/check-conflicts")]
@@ -117,6 +122,9 @@ public class SimplePracticeRequestFunctions
     /// Creates a simplified practice request from calendar interaction.
     /// Auto-approves if no conflicts.
     /// </summary>
+    [OpenApiOperation(operationId: "CreateSimplePracticeRequest", tags: new[] { "Practice" },
+        Summary = "Create practice request",
+        Description = "Create a simplified practice request from calendar interaction. Auto-approves if no conflicts exist.")]
     [Function("CreateSimplePracticeRequest")]
     public async Task<HttpResponseData> CreateSimpleRequest(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "practice/requests")]

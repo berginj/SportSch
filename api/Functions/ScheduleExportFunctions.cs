@@ -5,6 +5,8 @@ using GameSwap.Functions.Storage;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
+using Microsoft.OpenApi.Models;
 
 namespace GameSwap.Functions.Functions;
 
@@ -19,6 +21,9 @@ public class ScheduleExportFunctions
         _log = lf.CreateLogger<ScheduleExportFunctions>();
     }
 
+    [OpenApiOperation(operationId: "ScheduleExportCsv", tags: new[] { "Scheduling" },
+        Summary = "Export schedule as CSV",
+        Description = "Export the league schedule as a downloadable CSV file. Admin only.")]
     [Function("ScheduleExportCsv")]
     public async Task<HttpResponseData> Export(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "schedule/export")] HttpRequestData req)

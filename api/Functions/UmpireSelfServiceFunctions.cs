@@ -5,6 +5,8 @@ using GameSwap.Functions.Storage;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
+using Microsoft.OpenApi.Models;
 
 namespace GameSwap.Functions.Functions;
 
@@ -28,6 +30,9 @@ public class UmpireSelfServiceFunctions
         _log = loggerFactory.CreateLogger<UmpireSelfServiceFunctions>();
     }
 
+    [OpenApiOperation(operationId: "GetMyUmpireAssignments", tags: new[] { "Umpires" },
+        Summary = "Get my umpire assignments",
+        Description = "Get the current umpire's assignments with optional status and date filters.")]
     [Function("GetMyUmpireAssignments")]
     public async Task<HttpResponseData> GetMyAssignments(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "umpires/me/assignments")] HttpRequestData req)
@@ -71,6 +76,9 @@ public class UmpireSelfServiceFunctions
         }
     }
 
+    [OpenApiOperation(operationId: "GetMyUmpireDashboard", tags: new[] { "Umpires" },
+        Summary = "Get umpire dashboard",
+        Description = "Get dashboard summary for the current umpire including stats and upcoming assignments.")]
     [Function("GetMyUmpireDashboard")]
     public async Task<HttpResponseData> GetMyDashboard(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "umpires/me/dashboard")] HttpRequestData req)
