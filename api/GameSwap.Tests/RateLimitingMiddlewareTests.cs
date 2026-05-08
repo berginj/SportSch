@@ -64,7 +64,7 @@ public class RateLimitingMiddlewareTests
     }
 
     [Fact]
-    public void AddRateLimitHeaders_WritesHeadersToResponse()
+    public async Task AddRateLimitHeaders_WritesHeadersToResponse()
     {
         var logger = new Mock<ILogger<RateLimitingMiddleware>>();
         var rateLimitService = new Mock<IRateLimitService>();
@@ -73,15 +73,16 @@ public class RateLimitingMiddlewareTests
         var response = new Mock<HttpResponseData>(functionContext.Object);
         response.SetupGet(r => r.Headers).Returns(responseHeaders);
 
-        var middleware = new RateLimitingMiddleware(logger.Object, rateLimitService.Object);
-        var isAllowed = typeof(RateLimitingMiddleware).GetMethod("IsAllowed", BindingFlags.NonPublic | BindingFlags.Instance)
-            ?? throw new InvalidOperationException("IsAllowed method not found.");
-        var addRateLimitHeaders = typeof(RateLimitingMiddleware).GetMethod("AddRateLimitHeaders", BindingFlags.NonPublic | BindingFlags.Instance)
-            ?? throw new InvalidOperationException("AddRateLimitHeaders method not found.");
-
         var identifier = $"ip:198.51.100.{Random.Shared.Next(200, 255)}";
-        _ = isAllowed.Invoke(middleware, new object[] { identifier });
-        addRateLimitHeaders.Invoke(middleware, new object[] { response.Object, identifier });
+        rateLimitService
+            .Setup(x => x.GetRateLimitInfoAsync(identifier))
+            .ReturnsAsync(new RateLimitInfo(100, 99, DateTimeOffset.UtcNow.AddMinutes(1).ToUnixTimeSeconds()));
+
+        var middleware = new RateLimitingMiddleware(logger.Object, rateLimitService.Object);
+        var method = typeof(RateLimitingMiddleware).GetMethod("AddRateLimitHeadersAsync", BindingFlags.NonPublic | BindingFlags.Instance)
+            ?? throw new InvalidOperationException("AddRateLimitHeadersAsync method not found.");
+
+        await (Task)method.Invoke(middleware, new object[] { response.Object, identifier })!;
 
         Assert.Equal("100", GetHeader(responseHeaders, "X-RateLimit-Limit"));
         Assert.Equal("99", GetHeader(responseHeaders, "X-RateLimit-Remaining"));

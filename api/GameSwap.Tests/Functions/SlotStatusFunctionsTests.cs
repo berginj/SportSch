@@ -126,12 +126,13 @@ public class SlotStatusFunctionsTests
         var context = new Mock<FunctionContext>();
         context.SetupGet(x => x.InvocationId).Returns(Guid.NewGuid().ToString());
 
+        var principal = BuildClientPrincipal(userId);
         var request = new TestHttpRequestData(
             context.Object,
             new Uri(url),
             new HttpHeadersCollection
             {
-                { "x-user-id", userId },
+                { "x-ms-client-principal", principal },
                 { Constants.LEAGUE_HEADER_NAME, leagueId },
             },
             "PATCH");
@@ -153,6 +154,14 @@ public class SlotStatusFunctionsTests
 
     private static ILoggerFactory CreateLoggerFactory()
         => LoggerFactory.Create(_ => { });
+
+    private static string BuildClientPrincipal(string userId)
+    {
+        var json = $$"""
+        {"userId":"{{userId}}","userDetails":"{{userId}}@example.com","claims":[]}
+        """;
+        return Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
+    }
 
     private sealed class TestHttpRequestData : HttpRequestData
     {

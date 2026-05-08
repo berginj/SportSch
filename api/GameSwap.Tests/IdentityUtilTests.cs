@@ -41,7 +41,7 @@ public class IdentityUtilTests
     public void GetMe_AllowsDevHeadersForLocalhostRequests()
     {
         var previous = Environment.GetEnvironmentVariable("AZURE_FUNCTIONS_ENVIRONMENT");
-        Environment.SetEnvironmentVariable("AZURE_FUNCTIONS_ENVIRONMENT", null);
+        Environment.SetEnvironmentVariable("AZURE_FUNCTIONS_ENVIRONMENT", "Development");
         try
         {
             var request = CreateRequest(

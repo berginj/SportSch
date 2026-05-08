@@ -389,20 +389,21 @@ public class UmpireAssignmentServiceTests
         _mockAssignmentRepo.Setup(x => x.GetAssignmentsByUmpireAndDateAsync("league-1", "umpire-1", "2026-06-15"))
             .ReturnsAsync(new List<TableEntity> { assignment1, assignment2 });
 
-        // Act: Check for conflict with 4:00-6:30pm (overlaps with first game)
+        // Act: Check for conflict with 4:00-5:30pm (overlaps with first game only)
         var conflicts = await _service.CheckUmpireConflictsAsync(
             "league-1",
             "umpire-1",
             "2026-06-15",
             960,   // 4:00pm
-            1110,  // 6:30pm
+            1050,  // 5:30pm
             null);
 
         // Assert: Should detect conflict with first game only
         Assert.Single(conflicts);
-        var conflict = conflicts[0] as dynamic;
-        Assert.Equal("15:00", conflict.startTime);
-        Assert.Equal("Field 1", conflict.field);
+        var json = System.Text.Json.JsonSerializer.Serialize(conflicts[0]);
+        var conflict = System.Text.Json.JsonDocument.Parse(json).RootElement;
+        Assert.Equal("15:00", conflict.GetProperty("startTime").GetString());
+        Assert.Equal("Field 1", conflict.GetProperty("field").GetString());
     }
 
     [Fact]

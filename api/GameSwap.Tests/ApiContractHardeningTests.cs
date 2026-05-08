@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Security.Claims;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -372,7 +373,7 @@ public class ApiContractHardeningTests
             new Uri(url),
             new HttpHeadersCollection
             {
-                { "x-user-id", userId },
+                { "x-ms-client-principal", BuildClientPrincipal(userId) },
             });
     }
 
@@ -386,9 +387,17 @@ public class ApiContractHardeningTests
             new Uri(url),
             new HttpHeadersCollection
             {
-                { "x-user-id", userId },
+                { "x-ms-client-principal", BuildClientPrincipal(userId) },
                 { Constants.LEAGUE_HEADER_NAME, leagueId },
             });
+    }
+
+    private static string BuildClientPrincipal(string userId)
+    {
+        var json = $$"""
+        {"userId":"{{userId}}","userDetails":"{{userId}}@example.com","claims":[]}
+        """;
+        return Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
     }
 
     private sealed class TestHttpRequestData : HttpRequestData
