@@ -36,10 +36,16 @@ public class ApiKeyService : IApiKeyService
         {
             var keys = await GetActiveKeysAsync();
 
-            // Hash the provided key and compare with stored hashes (keys are already hashed in DB)
+            // Hash the provided key and compare with stored hashes using constant-time comparison
             var providedKeyHash = HashApiKey(apiKey);
+            var providedBytes = Encoding.UTF8.GetBytes(providedKeyHash);
 
-            return providedKeyHash == keys.PrimaryKey || providedKeyHash == keys.SecondaryKey;
+            var primaryMatch = keys.PrimaryKey != null &&
+                CryptographicOperations.FixedTimeEquals(providedBytes, Encoding.UTF8.GetBytes(keys.PrimaryKey));
+            var secondaryMatch = keys.SecondaryKey != null &&
+                CryptographicOperations.FixedTimeEquals(providedBytes, Encoding.UTF8.GetBytes(keys.SecondaryKey));
+
+            return primaryMatch || secondaryMatch;
         }
         catch (Exception ex)
         {

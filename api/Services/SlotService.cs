@@ -69,6 +69,12 @@ public class SlotService : ISlotService
                 "gameDate must be in YYYY-MM-DD format");
         }
 
+        // Validate input lengths
+        ApiGuards.EnsureMaxLength("division", request.Division, ApiGuards.InputLimits.DivisionCode);
+        ApiGuards.EnsureMaxLength("offeringTeamId", request.OfferingTeamId, ApiGuards.InputLimits.GenericShort);
+        ApiGuards.EnsureMaxLength("fieldKey", request.FieldKey, ApiGuards.InputLimits.GenericShort);
+        ApiGuards.EnsureMaxLength("notes", request.Notes, ApiGuards.InputLimits.Notes);
+
         // Validate time range
         if (!TimeUtil.IsValidRange(request.StartTime, request.EndTime, out var startMin, out var endMin, out var timeErr))
         {

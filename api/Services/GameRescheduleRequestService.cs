@@ -61,6 +61,7 @@ public class GameRescheduleRequestService : IGameRescheduleRequestService
         ApiGuards.EnsureValidTableKeyPart("division", division);
         ApiGuards.EnsureValidTableKeyPart("originalSlotId", originalSlotId);
         ApiGuards.EnsureValidTableKeyPart("proposedSlotId", proposedSlotId);
+        ApiGuards.EnsureMaxLength("reason", reason, ApiGuards.InputLimits.Reason);
 
         if (string.Equals(originalSlotId, proposedSlotId, StringComparison.OrdinalIgnoreCase))
         {

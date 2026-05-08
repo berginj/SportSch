@@ -213,4 +213,28 @@ public static class ApiGuards
     }
 
     public static string EscapeOData(string s) => (s ?? "").Replace("'", "''");
+
+    // Input length limits (Azure Table Storage properties max 64KB, but practical limits are much lower)
+    public static class InputLimits
+    {
+        public const int TeamName = 100;
+        public const int DivisionCode = 20;
+        public const int DivisionName = 100;
+        public const int FieldName = 100;
+        public const int ParkCode = 50;
+        public const int FieldCode = 50;
+        public const int LeagueName = 200;
+        public const int Notes = 2000;
+        public const int Reason = 1000;
+        public const int GenericShort = 200;
+        public const int GenericLong = 2000;
+    }
+
+    public static void EnsureMaxLength(string name, string? value, int maxLength)
+    {
+        if (value != null && value.Length > maxLength)
+            throw new HttpError((int)HttpStatusCode.BadRequest,
+                ErrorCodes.BAD_REQUEST,
+                $"{name} exceeds maximum length of {maxLength} characters.");
+    }
 }
