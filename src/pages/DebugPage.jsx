@@ -1623,7 +1623,7 @@ export default function DebugPage({ leagueId, me }) {
         </div>
 
         <div className="row gap-3 row--wrap mb-2">
-          <button className="btn" onClick={loadMemberships} disabled={loading}>
+          <button className="btn" onClick={loadMemberships} disabled={loading} aria-busy={loading}>
             Refresh
           </button>
         </div>

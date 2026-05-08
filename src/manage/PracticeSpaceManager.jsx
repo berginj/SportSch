@@ -405,7 +405,7 @@ export default function PracticeSpaceManager({ leagueId }) {
                 ))}
               </select>
             </label>
-            <button className="btn" type="button" onClick={() => load(seasonLabel)} disabled={loading}>
+            <button className="btn" type="button" onClick={() => load(seasonLabel)} disabled={loading} aria-busy={loading}>
               {loading ? "Refreshing..." : "Refresh"}
             </button>
           </div>

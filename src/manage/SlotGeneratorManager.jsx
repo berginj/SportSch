@@ -1425,16 +1425,16 @@ export default function SlotGeneratorManager({ leagueId }) {
           </div>
         </div>
         <div className="card__body row gap-2">
-          <button className="btn" onClick={previewSlotGeneration} disabled={loading || !slotGenDivision || selectedSlotGenFieldKeys.length === 0}>
+          <button className="btn" onClick={previewSlotGeneration} disabled={loading || !slotGenDivision || selectedSlotGenFieldKeys.length === 0} aria-busy={loading}>
             Preview slots
           </button>
-          <button className="btn btn--primary" onClick={() => applySlotGeneration("skip")} disabled={loading || !slotGenDivision || selectedSlotGenFieldKeys.length === 0}>
+          <button className="btn btn--primary" onClick={() => applySlotGeneration("skip")} disabled={loading || !slotGenDivision || selectedSlotGenFieldKeys.length === 0} aria-busy={loading}>
             Generate (skip conflicts)
           </button>
-          <button className="btn" onClick={() => applySlotGeneration("overwrite")} disabled={loading || !slotGenDivision || selectedSlotGenFieldKeys.length === 0}>
+          <button className="btn" onClick={() => applySlotGeneration("overwrite")} disabled={loading || !slotGenDivision || selectedSlotGenFieldKeys.length === 0} aria-busy={loading}>
             Generate (overwrite availability)
           </button>
-          <button className="btn" onClick={() => applySlotGeneration("regenerate")} disabled={loading || !slotGenDivision || selectedSlotGenFieldKeys.length === 0}>
+          <button className="btn" onClick={() => applySlotGeneration("regenerate")} disabled={loading || !slotGenDivision || selectedSlotGenFieldKeys.length === 0} aria-busy={loading}>
             Regenerate
           </button>
         </div>

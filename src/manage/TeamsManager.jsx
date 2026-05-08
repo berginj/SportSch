@@ -387,7 +387,7 @@ export default function TeamsManager({ leagueId, tableView = "A" }) {
           >
             Download CSV template
           </button>
-          <button className="btn btn--ghost" onClick={load} disabled={loading} title="Refresh teams and coaches.">
+          <button className="btn btn--ghost" onClick={load} disabled={loading} aria-busy={loading} title="Refresh teams and coaches.">
             Refresh
           </button>
         </div>
