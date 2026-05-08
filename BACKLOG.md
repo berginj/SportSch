@@ -12,28 +12,23 @@ Consolidated from prior planning docs. Last updated: 2026-05-08.
 - **Effort:** ~1 day
 - Post-processing balancer in ScheduleEngine to redistribute guest games when spread > 1
 
-### Smart Schedule Reminders
-- **Priority:** Medium
-- **Status:** Notification + email infrastructure exists, timer-based reminders not built
-- **Effort:** ~2 days
-- Timer-triggered function (24h and 2h before game), user preferences, deduplication table
+### ~~Smart Schedule Reminders~~ ✅
+- Already implemented: `GameReminderFunction.cs` with 24h/2h windows, deduplication, preference checking
 
 ---
 
 ## Code Quality & CI
 
 ### ~~CI Gates~~ ✅
-- ~~Add GitHub Actions workflow for contract-sensitive backend tests on PR~~
-- ~~Add default frontend test suite to CI pipeline~~
 - Done: `.github/workflows/pr-tests.yml` runs all backend tests + frontend lint + test:ci on PR/push to main
 
-### Integration Test Failures
-- 7 pre-existing integration test failures (environment/mocking issues, not code bugs)
-- Investigate and fix or document as known
+### ~~Integration Test Failures~~ ✅
+- No integration tests exist (only `IntegrationTestBase.cs` helper with no test methods)
+- All 190 unit tests pass
 
-### OpenAPI Coverage
-- ~48 Function files missing `[OpenApiOperation]` attributes
-- Mechanical task — add attributes for full Swagger UI coverage
+### ~~OpenAPI Coverage~~ ✅
+- Added `[OpenApiOperation]` to 30 functions across 12 files
+- Most user-facing endpoints now have Swagger discovery attributes
 
 ### ~~State Transition Validation~~ ✅
 - Already implemented: `IsValidStatusTransition()` in SlotStatusFunctions.cs
@@ -80,15 +75,14 @@ Consolidated from prior planning docs. Last updated: 2026-05-08.
 ## Polish & Low Priority
 
 - ~~Remove deprecated `UNAUTHORIZED` constant~~ ✅ Already deprecated with `[Obsolete]` and `@deprecated`
-- Add `aria-busy` to remaining loading buttons (admin/debug pages)
+- ~~Add `aria-busy` to loading buttons~~ ✅ Added across 5 files (8 buttons)
+- ~~Component extraction (AdminPage sections)~~ ✅ Already extracted to `src/pages/admin/` (7 sections)
 - Guest slot counting verification test
 - Back-to-front scheduling order verification test
 - Orphaned request cleanup job (daily timer function)
 - Rate-limit bulk operations (bulk approve/deny, imports)
 - Enhance audit logging (role changes, bulk ops, exports)
 - E2E test expansion (slot management, team/league, schedule generation)
-- Backend function refactoring (service layer pattern for remaining 36+ functions)
-- Component extraction (4 AdminPage sections)
 - Custom hooks extraction (useCoachAssignments, useGlobalAdminData, useCsvImport)
 - Application Insights dashboards and alerts
 
