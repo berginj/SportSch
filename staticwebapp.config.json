@@ -1,21 +1,4 @@
 {
-  "auth": {
-    "identityProviders": {
-      "azureActiveDirectory": {
-        "registration": {
-          "openIdIssuer": "https://login.microsoftonline.com/common/v2.0",
-          "clientIdSettingName": "AAD_CLIENT_ID",
-          "clientSecretSettingName": "AAD_CLIENT_SECRET"
-        }
-      },
-      "google": {
-        "registration": {
-          "clientIdSettingName": "GOOGLE_CLIENT_ID",
-          "clientSecretSettingName": "GOOGLE_CLIENT_SECRET"
-        }
-      }
-    }
-  },
   "globalHeaders": {
     "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
     "X-Frame-Options": "DENY",
