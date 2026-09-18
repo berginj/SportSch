@@ -37,6 +37,19 @@ public class RateLimitingMiddleware : IFunctionsWorkerMiddleware
             return;
         }
 
+        // End-to-end tests run against an isolated local Functions host and
+        // explicitly opt out so shared browser setup traffic cannot exhaust
+        // the production limiter. The bypass is opt-in and environment based;
+        // production has no such setting.
+        if (string.Equals(
+                Environment.GetEnvironmentVariable("GAME_SWAP_DISABLE_RATE_LIMITING"),
+                "true",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            await next(context);
+            return;
+        }
+
         // Get identifier (user ID or IP address)
         var identifier = GetIdentifier(requestData);
 

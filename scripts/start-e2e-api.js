@@ -17,6 +17,10 @@ build.on("exit", (code) => {
       "AzureWebJobs.SendGameReminders.Disabled": "true",
       "AzureWebJobs.CleanupOrphanedRequests.Disabled": "true",
       "AzureWebJobs.CleanupOldNotifications.Disabled": "true",
+      // Browser tests intentionally share one local Functions host. Disable
+      // the production limiter so the suite cannot turn its own setup and
+      // navigation traffic into session/API failures.
+      GAME_SWAP_DISABLE_RATE_LIMITING: "true",
       APPLICATIONINSIGHTS_CONNECTION_STRING: "",
       SENDGRID_API_KEY: "",
     },
