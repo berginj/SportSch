@@ -93,6 +93,36 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId, theme =
   return (
     <header className="topnav">
       <div className="topnav__inner">
+        <div className="topnav__brand" aria-label="SportSch league scheduling">
+          <span className="topnav__brand-mark" aria-hidden="true">S</span>
+          <div>
+            <div className="topnav__brand-name">SportSch</div>
+            <div className="topnav__brand-subtitle">League scheduling</div>
+          </div>
+        </div>
+
+        <div className="topnav__league topnav__league--context">
+          <span className="topnav__context-label">Current league</span>
+          <select
+            className="topnav__league-select"
+            value={leagueId || ""}
+            onChange={(e) => pickLeague(e.target.value)}
+            disabled={!hasLeagues}
+            aria-label="Select league"
+          >
+            {!hasLeagues ? (
+              <option value="">No leagues</option>
+            ) : (
+              leagueOptions.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.label}
+                </option>
+              ))
+            )}
+          </select>
+          {globalErr && <div className="topnav__error">{globalErr}</div>}
+        </div>
+
         <nav className="topnav__nav" aria-label="Primary navigation">
           <button
             className={tab === "home" ? "tab tab--active" : "tab"}
@@ -181,26 +211,6 @@ export default function TopNav({ tab, setTab, me, leagueId, setLeagueId, theme =
           <Suspense fallback={null}>
             <NotificationBell leagueId={leagueId} />
           </Suspense>
-          <div className="topnav__league">
-            <select
-              className="topnav__league-select"
-              value={leagueId || ""}
-              onChange={(e) => pickLeague(e.target.value)}
-              disabled={!hasLeagues}
-              aria-label="Select league"
-            >
-              {!hasLeagues ? (
-                <option value="">No leagues</option>
-              ) : (
-                leagueOptions.map((opt) => (
-                  <option key={opt.id} value={opt.id}>
-                    {opt.label}
-                  </option>
-                ))
-              )}
-            </select>
-            {globalErr && <div className="topnav__error">{globalErr}</div>}
-          </div>
         </div>
       </div>
     </header>

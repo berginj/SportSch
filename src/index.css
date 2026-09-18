@@ -4,13 +4,15 @@
 
 @layer base {
   :root {
-    /* Softball-aligned neumorphic palette */
-    --bg: #dfe7ef;
-    --panel: #e9eff5;
-    --card: #eef3f8;
-    --text: #17324a;
-    --muted: #607489;
-    --border: rgba(255, 255, 255, 0.78);
+    /* Calm operations palette: neutral surfaces, one primary accent, clear status colors. */
+    --bg: #f4f6f8;
+    --panel: #ffffff;
+    --card: #ffffff;
+    --text: #17212b;
+    --muted: #647180;
+    --border: #d9e0e7;
+    --shadow-sm: 0 1px 2px rgba(23, 33, 43, 0.06), 0 4px 12px rgba(23, 33, 43, 0.04);
+    --shadow-md: 0 8px 24px rgba(23, 33, 43, 0.09);
 
     /* Softball gold - primary accent */
     --accent: #f3c24f;
@@ -41,11 +43,11 @@
     --neo-inset: inset 4px 4px 10px rgba(148, 163, 184, 0.16), inset -4px -4px 10px rgba(255, 255, 255, 0.88);
 
     /* Shared themed surfaces */
-    --surface-raised: linear-gradient(145deg, #edf3f8, #e3eaf1);
-    --surface-raised-strong: linear-gradient(145deg, #eef4fa, #e4ebf3);
-    --surface-panel: linear-gradient(145deg, rgba(243, 247, 251, 0.94), rgba(230, 237, 245, 0.92));
-    --surface-panel-hover: linear-gradient(145deg, rgba(247, 250, 253, 0.96), rgba(233, 240, 247, 0.94));
-    --surface-inset-bg: linear-gradient(145deg, #e3eaf1, #f3f7fb);
+    --surface-raised: #ffffff;
+    --surface-raised-strong: #ffffff;
+    --surface-panel: #ffffff;
+    --surface-panel-hover: #f8fafb;
+    --surface-inset-bg: #f4f6f8;
 
     /* Shared status tones */
     --status-open-bg: linear-gradient(145deg, #fff3d7, #fde7a4);
@@ -221,14 +223,14 @@
   .container { @apply max-w-[1200px] mx-auto p-4 max-[420px]:p-3; }
 
   .card {
-    @apply rounded-2xl border-2 border-border bg-white p-3.5;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-    transition: all 0.3s ease;
+    @apply rounded-xl border bg-white p-4;
+    border-color: var(--border);
+    box-shadow: var(--shadow-sm);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
   }
   .card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(251, 191, 36, 0.12), 0 2px 6px rgba(0, 0, 0, 0.06);
-    border-color: rgba(251, 191, 36, 0.3);
+    box-shadow: var(--shadow-md);
+    border-color: #c4ced8;
   }
   .card.error { @apply border-red-300 bg-red-50; }
   .cardHeader {
@@ -539,13 +541,45 @@
   }
 
   .topNav, .topnav {
-    @apply sticky top-0 z-10 border-b-2 border-border backdrop-blur-md;
-    background: rgba(255, 255, 255, 0.95);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    @apply sticky top-0 z-10 border-b backdrop-blur-md;
+    background: rgba(255, 255, 255, 0.96);
+    border-color: var(--border);
+    box-shadow: 0 1px 3px rgba(23, 33, 43, 0.05);
   }
 
   .topNavInner, .topnav__inner {
-    @apply max-w-[1200px] mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-3;
+    @apply max-w-[1280px] mx-auto px-5 py-3 flex flex-wrap items-center gap-4;
+  }
+
+  .topnav__brand {
+    @apply flex items-center gap-2.5 mr-2;
+    min-width: 170px;
+  }
+
+  .topnav__brand-mark {
+    @apply inline-flex items-center justify-center rounded-lg text-white font-bold;
+    width: 32px;
+    height: 32px;
+    background: var(--green);
+  }
+
+  .topnav__brand-name {
+    @apply text-sm font-bold tracking-tight;
+    color: var(--text);
+  }
+
+  .topnav__brand-subtitle {
+    @apply text-[10px] uppercase tracking-[0.08em];
+    color: var(--muted);
+  }
+
+  .topnav__league--context {
+    @apply mr-2;
+  }
+
+  .topnav__context-label {
+    @apply text-[10px] uppercase tracking-[0.08em];
+    color: var(--muted);
   }
 
   .topnav__nav {
@@ -570,13 +604,73 @@
   }
 
   .topnav__league-select {
-    @apply text-xs py-2 px-2.5 rounded-lg border-2 border-border bg-white;
+    @apply text-sm py-2 px-2.5 rounded-lg border bg-white;
+    border-color: var(--border);
     @apply hover:border-gray-300 focus:border-accent focus:ring-2 focus:ring-amber-400 focus:ring-offset-1;
     transition: all 0.2s ease;
   }
 
+  .topnav__league--context .topnav__league-select {
+    min-width: 190px;
+  }
+
+  .topnav__nav .tab {
+    @apply rounded-lg border-transparent bg-transparent px-3 py-2 text-sm font-medium;
+    color: var(--muted);
+    box-shadow: none;
+  }
+
+  .topnav__nav .tab:hover:not(:disabled) {
+    @apply bg-gray-100;
+    color: var(--text);
+  }
+
+  .topnav__nav .tab.tab--active {
+    @apply bg-blue-50;
+    color: var(--blue);
+    border-color: rgba(46, 111, 174, 0.2);
+  }
+
   .topnav__error {
     @apply text-[10px] text-red-600;
+  }
+
+  @media (max-width: 768px) {
+    .topnav__inner {
+      @apply px-3 py-2.5 gap-2;
+    }
+    .topnav__brand {
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+    .topnav__brand-subtitle,
+    .topnav__user,
+    .topnav__theme-toggle {
+      display: none;
+    }
+    .topnav__league--context {
+      order: 3;
+      flex: 1 1 100%;
+      margin: 0;
+    }
+    .topnav__league--context .topnav__league-select {
+      width: 100%;
+    }
+    .topnav__nav {
+      order: 4;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      width: 100%;
+      gap: 0.25rem;
+    }
+    .topnav__nav .tab {
+      min-width: 0;
+      padding-inline: 0.5rem;
+      font-size: 0.75rem;
+    }
+    .topnav__account {
+      margin-left: 0;
+    }
   }
 
   .hint { @apply inline-flex items-center justify-center w-4 h-4 rounded-full border border-border text-[11px] text-muted cursor-help; }
