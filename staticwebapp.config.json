@@ -21,12 +21,6 @@
       "allowedRoles": ["authenticated"]
     }
   ],
-  "responseOverrides": {
-    "401": {
-      "redirect": "/",
-      "statusCode": 302
-    }
-  },
   "platform": {
     "apiRuntime": "dotnet-isolated:8.0"
   },
