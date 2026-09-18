@@ -1644,6 +1644,20 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
         </div>
       ) : null}
 
+      <section className="calendarHero" aria-labelledby="calendar-page-title">
+        <div>
+          <div className="eyebrow">Schedule workspace</div>
+          <h1 id="calendar-page-title" className="calendarHero__title">Calendar</h1>
+          <p className="calendarHero__description">
+            See what is scheduled, find open game opportunities, and resolve conflicts for {leagueId || "your league"}.
+          </p>
+        </div>
+        <div className="calendarHero__meta" aria-label="Calendar context">
+          <span className="contextChip">{role || "Viewer"}</span>
+          <span className="contextChip">{dateFrom || "Season start"} – {dateTo || "Season end"}</span>
+        </div>
+      </section>
+
       {(role === "Coach" || canManage) ? (
         <div className="card row row--wrap gap-2" aria-label="Schedule actions">
           {role === "Coach" ? <button className="btn btn--primary" onClick={() => openPracticeRequest()}>Request Practice Space</button> : null}
@@ -1700,6 +1714,28 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
           </div>
         ) : null}
 
+        {quickViews.length > 0 ? (
+          <div className="calendarCommandBar" aria-label="Schedule shortcuts">
+            <div>
+              <div className="calendarCommandBar__title">Start with a view</div>
+              <div className="subtle">Jump to the work that matters most right now.</div>
+            </div>
+            <div className="calendarCommandBar__actions">
+              {quickViews.map((view) => (
+                <button
+                  key={view.id}
+                  className="btn btn--ghost"
+                  type="button"
+                  onClick={() => applyQuickView(view.state)}
+                  title={view.title}
+                >
+                  {view.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         <details className="card calendarFilters" open={typeof window !== "undefined" && window.matchMedia?.("(min-width: 980px)").matches}>
         <summary className="cardTitle">
           Calendar filters
@@ -1710,22 +1746,6 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
             ?
           </span>
         </summary>
-        {quickViews.length > 0 ? (
-          <div className="row row--wrap mt-2">
-            <div className="pill">Quick views</div>
-            {quickViews.map((view) => (
-              <button
-                key={view.id}
-                className="btn btn--ghost"
-                type="button"
-                onClick={() => applyQuickView(view.state)}
-                title={view.title}
-              >
-                {view.label}
-              </button>
-            ))}
-          </div>
-        ) : null}
         <div className="row filterRow row--wrap">
           <LeaguePicker leagueId={leagueId} setLeagueId={setLeagueId} me={me} label="League" />
           <label title="Limit the calendar to one division, or show all.">

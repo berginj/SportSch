@@ -712,6 +712,68 @@
   .layoutPill--link { @apply transition hover:border-accent hover:text-amber-700; }
   .layoutBadge { @apply inline-flex items-center rounded-full border-2 border-accent bg-amber-50 px-2 py-1 text-xs text-amber-700 font-medium; }
   .layoutBadge--confirm { @apply border-green-400 bg-green-50 text-green-700; }
+
+  .eyebrow {
+    @apply text-[11px] font-semibold uppercase tracking-[0.12em];
+    color: var(--blue);
+  }
+
+  .calendarHero {
+    @apply flex flex-wrap items-end justify-between gap-4;
+    padding: 0.5rem 0 0.25rem;
+  }
+
+  .calendarHero__title {
+    @apply mt-1 text-2xl font-bold tracking-tight;
+    color: var(--text);
+  }
+
+  .calendarHero__description {
+    @apply mt-1 max-w-2xl text-sm;
+    color: var(--muted);
+  }
+
+  .calendarHero__meta {
+    @apply flex flex-wrap items-center gap-2;
+  }
+
+  .contextChip {
+    @apply inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium;
+    border-color: var(--border);
+    color: var(--muted);
+    background: var(--surface-inset-bg);
+  }
+
+  .calendarCommandBar {
+    @apply flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-white p-3;
+    border-color: var(--border);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .calendarCommandBar__title {
+    @apply text-sm font-semibold;
+    color: var(--text);
+  }
+
+  .calendarCommandBar__actions {
+    @apply flex flex-wrap gap-2;
+  }
+
+  @media (max-width: 640px) {
+    .calendarHero {
+      @apply items-start;
+      padding-top: 0;
+    }
+    .calendarHero__title {
+      @apply text-xl;
+    }
+    .calendarCommandBar__actions {
+      width: 100%;
+    }
+    .calendarCommandBar__actions .btn {
+      flex: 1 1 auto;
+    }
+  }
   .layoutBadge--event { @apply border-blue-400 bg-blue-50 text-blue-700; }
 
   .layoutStatRow { @apply grid gap-2.5 grid-cols-[repeat(auto-fit,minmax(120px,1fr))]; }
