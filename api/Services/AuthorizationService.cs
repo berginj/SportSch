@@ -1,4 +1,5 @@
 using Azure.Data.Tables;
+using System.Collections.Concurrent;
 using GameSwap.Functions.Repositories;
 using GameSwap.Functions.Storage;
 using Microsoft.Extensions.Logging;
@@ -13,6 +14,8 @@ public class AuthorizationService : IAuthorizationService
     private readonly IMembershipRepository _membershipRepo;
     private readonly ISlotRepository _slotRepo;
     private readonly ILogger<AuthorizationService> _logger;
+    private readonly ConcurrentDictionary<(string userId, string leagueId), Lazy<Task<TableEntity?>>> _memberships = new();
+    private readonly ConcurrentDictionary<string, Lazy<Task<bool>>> _globalAdmins = new();
 
     public AuthorizationService(
         IMembershipRepository membershipRepo,
@@ -30,38 +33,24 @@ public class AuthorizationService : IAuthorizationService
     private async Task<TableEntity?> GetMembershipWithCacheAsync(
         string userId, string leagueId, CorrelationContext? context = null)
     {
-        // Check request-scoped cache first
-        if (context != null)
-        {
-            var cached = context.GetCachedMembership(userId, leagueId);
-            if (cached != null)
-            {
-                return cached;
-            }
-        }
-
-        // Query repository
-        var membership = await _membershipRepo.GetMembershipAsync(userId, leagueId);
-
-        // Cache for rest of request
-        if (context != null)
-        {
-            context.SetCachedMembership(userId, leagueId, membership);
-        }
-
-        return membership;
+        var lookup = _memberships.GetOrAdd((userId, leagueId), key =>
+            new Lazy<Task<TableEntity?>>(() => _membershipRepo.GetMembershipAsync(key.userId, key.leagueId)));
+        return await lookup.Value;
     }
 
     public async Task<string> GetUserRoleAsync(string userId, string leagueId)
     {
         // Check if global admin first
-        if (await _membershipRepo.IsGlobalAdminAsync(userId))
+        if (string.IsNullOrWhiteSpace(userId) || userId == "UNKNOWN")
+            return Constants.Roles.Viewer;
+        var globalLookup = _globalAdmins.GetOrAdd(userId, key => new Lazy<Task<bool>>(() => _membershipRepo.IsGlobalAdminAsync(key)));
+        if (await globalLookup.Value)
         {
             return Constants.Roles.LeagueAdmin;
         }
 
         // Get membership
-        var membership = await _membershipRepo.GetMembershipAsync(userId, leagueId);
+        var membership = await GetMembershipWithCacheAsync(userId, leagueId);
         if (membership == null)
         {
             return Constants.Roles.Viewer; // No membership = viewer
@@ -74,10 +63,10 @@ public class AuthorizationService : IAuthorizationService
     {
         var role = await GetUserRoleAsync(userId, leagueId);
 
-        if (role == Constants.Roles.Viewer)
+        if (role != Constants.Roles.Coach && role != Constants.Roles.LeagueAdmin)
         {
             throw new ApiGuards.HttpError(403, ErrorCodes.FORBIDDEN, 
-                "Viewers cannot modify content. Contact an admin for access.");
+                "A coach or league administrator role is required for this action.");
         }
     }
 
@@ -92,10 +81,10 @@ public class AuthorizationService : IAuthorizationService
         }
 
         // Viewers cannot modify
-        if (role == Constants.Roles.Viewer)
+        if (role != Constants.Roles.Coach)
         {
             throw new ApiGuards.HttpError(403, ErrorCodes.FORBIDDEN,
-                "Viewers cannot modify content. Contact an admin for access.");
+                "A coach or league administrator role is required for this action.");
         }
 
         // Coaches must provide a team
@@ -108,7 +97,7 @@ public class AuthorizationService : IAuthorizationService
             }
 
             // Validate coach is assigned to this division and team
-            var membership = await _membershipRepo.GetMembershipAsync(userId, leagueId);
+            var membership = await GetMembershipWithCacheAsync(userId, leagueId);
             if (membership == null)
             {
                 throw new ApiGuards.HttpError(403, ErrorCodes.FORBIDDEN,
@@ -169,7 +158,7 @@ public class AuthorizationService : IAuthorizationService
             // Coaches can cancel their own slots
             if (role == Constants.Roles.Coach)
             {
-                var membership = await _membershipRepo.GetMembershipAsync(userId, leagueId);
+                var membership = await GetMembershipWithCacheAsync(userId, leagueId);
                 if (membership == null)
                 {
                     return false;
@@ -201,28 +190,6 @@ public class AuthorizationService : IAuthorizationService
             if (role == Constants.Roles.LeagueAdmin)
             {
                 return true;
-            }
-
-            // Coaches can only update their own slots
-            if (role == Constants.Roles.Coach)
-            {
-                var slot = await _slotRepo.GetSlotAsync(leagueId, division, slotId);
-                if (slot == null)
-                {
-                    return false;
-                }
-
-                var membership = await _membershipRepo.GetMembershipAsync(userId, leagueId);
-                if (membership == null)
-                {
-                    return false;
-                }
-
-                var coachTeamId = ReadMembershipTeamId(membership);
-                var offeringTeamId = slot.GetString("OfferingTeamId") ?? "";
-
-                // Coach must own the slot
-                return coachTeamId == offeringTeamId;
             }
 
             return false;

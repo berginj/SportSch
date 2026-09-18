@@ -149,6 +149,7 @@ When status changes from `Confirmed` to `Cancelled`, cancellation notifications 
 `PATCH /slots/{division}/{slotId}` MUST:
 
 - be admin/global only,
+- require `If-Match` with the `etag` returned by `GET /slots`; missing/wildcard versions return `428 VERSION_REQUIRED`, and stale versions return `409 STALE_SLOT`,
 - reject edits to `Cancelled` slots,
 - validate date/time/field values,
 - reject conflicts with non-cancelled overlapping slots on the same field,
@@ -172,8 +173,17 @@ When status changes from `Confirmed` to `Cancelled`, cancellation notifications 
 
 - Slot ids and request ids MUST remain immutable after creation.
 - `ConfirmedTeamId` and `ConfirmedRequestId` MUST represent the accepted opponent when status is `Confirmed`.
+- For a game moved by a reschedule request, acceptance history remains on the original slot/request partition. The destination records `MovedFromSlotId` and `MovedFromConfirmedRequestId`, keeps `ConfirmedTeamId`, and leaves its own `ConfirmedRequestId` empty rather than pointing into the wrong partition.
 - Field key values MUST be normalized to canonical `parkCode/fieldCode`.
 - Time values MUST remain `HH:MM` local time fields and date values MUST remain `YYYY-MM-DD`.
+
+### Reschedule safety (September 2026)
+
+- The replacement must be open game availability in the same division. The picker queries available slots independently from the calendar's booked-event list.
+- Coach authorization includes both division and team, including approval/rejection/finalization.
+- Finalization replaces the original and destination slot rows in one conditional Table transaction. Both rows record `RescheduleOperationId`; a retry can finish updating the request without moving the game twice.
+- Once both teams have approved, cancellation of the request is rejected. A failed finalization must be retried/recovered, not converted into a cancelled request while a game may already have moved.
+- The request row lives in another table and is **not** part of the slot transaction. Durable cross-table recovery, competing bookings on different slot rows, and guaranteed notification delivery remain open implementation work.
 
 ## 9. Known Intentional Compatibility Behavior
 

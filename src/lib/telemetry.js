@@ -38,6 +38,8 @@ function enqueueOrRun(callback) {
     callback(appInsights);
     return;
   }
+  if (!getConnectionString()) return;
+  if (pending.length >= 100) pending.shift();
   pending.push(callback);
   void ensureTelemetry();
 }

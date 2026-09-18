@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiFetch } from "../lib/api";
+import { useLeagueApi } from "../lib/useLeagueApi";
 import { LEAGUE_HEADER_NAME } from "../lib/constants";
 import { readLocationSearchParams, subscribeToLocationChanges, updateLocationSearch } from "../lib/locationState";
 import { trackEvent } from "../lib/telemetry";
@@ -20,6 +20,7 @@ function getAccessStatusBadgeClass(status) {
 }
 
 export default function AccessPage({ me, leagueId, setLeagueId }) {
+  const apiFetch = useLeagueApi(leagueId);
   const [leagues, setLeagues] = useState([]);
   const [role, setRole] = useState("Coach");
   const [notes, setNotes] = useState("");
@@ -76,7 +77,7 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
     } catch (e) {
       setErr(e?.message || "Failed to load.");
     }
-  }, [signedIn]);
+  }, [apiFetch, signedIn]);
 
   const submitRequest = useCallback(async (roleOverride, source = "manual") => {
     setErr("");
@@ -114,7 +115,7 @@ export default function AccessPage({ me, leagueId, setLeagueId }) {
     } finally {
       setBusy(false);
     }
-  }, [notes, refresh, requestLeagueId, role, signedIn]);
+  }, [apiFetch, notes, refresh, requestLeagueId, role, signedIn]);
 
   useEffect(() => {
     refresh();

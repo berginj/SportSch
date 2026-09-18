@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "./api";
 import { ErrorCodes, LEAGUE_STORAGE_KEY } from "./constants";
 
@@ -91,13 +91,22 @@ export function useSession() {
   const hasMemberships = memberships.length > 0;
   const isGlobalAdmin = !!me?.isGlobalAdmin;
 
-  const [leagueId, setLeagueId] = useState(() => {
+  const [leagueId, updateLeagueId] = useState(() => {
     try {
       return (localStorage.getItem(LEAGUE_STORAGE_KEY) || "").trim();
     } catch {
       return "";
     }
   });
+
+  const leagueRef = useRef(leagueId);
+  const setLeagueId = useCallback((value) => {
+    const next = typeof value === "function" ? value(leagueRef.current) : value;
+    leagueRef.current = String(next || "").trim();
+    // Child requests must see the new scope before React renders them.
+    persistLeagueId(leagueRef.current);
+    updateLeagueId(leagueRef.current);
+  }, []);
 
   // Pick an initial leagueId once `me` loads.
   useEffect(() => {
@@ -106,7 +115,7 @@ export function useSession() {
     if (initial) {
       setLeagueId((prev) => prev || initial);
     }
-  }, [me]);
+  }, [me, setLeagueId]);
 
   // Validate leagueId is in user's memberships; clear if invalid or user removed from league
   useEffect(() => {
@@ -118,7 +127,7 @@ export function useSession() {
       const fallback = getInitialLeagueId(me, { includeStored: false });
       setLeagueId(fallback || "");
     }
-  }, [me, leagueId]);
+  }, [me, leagueId, setLeagueId]);
 
   // Persist league changes
   useEffect(() => {

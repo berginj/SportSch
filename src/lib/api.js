@@ -1,4 +1,5 @@
 // src/lib/api.js
+import { trackEvent } from "./telemetry";
 import { LEAGUE_HEADER_NAME, LEAGUE_STORAGE_KEY, ErrorCodes, ERROR_MESSAGES } from "./constants";
 
 export function apiBase() {
@@ -27,13 +28,19 @@ function getResponseHeader(res, name) {
 }
 
 export async function apiFetch(path, options = {}) {
+  const { leagueId: requestedLeague, ...fetchOptions } = options;
+  const selectedLeague = (localStorage.getItem(LEAGUE_STORAGE_KEY) || "").trim();
+  const sessionRequest = path === "/api/me";
+  if (!sessionRequest && requestedLeague && selectedLeague && requestedLeague !== selectedLeague) {
+    throw new DOMException("The selected league changed. Reload this view.", "AbortError");
+  }
   const base = apiBase();
   const url = base ? `${base}${path}` : path;
 
   const headers = new Headers(options.headers || {});
 
   // Always attach the selected league id
-  const leagueId = (localStorage.getItem(LEAGUE_STORAGE_KEY) || "").trim();
+  const leagueId = requestedLeague ?? selectedLeague;
   if (leagueId && !headers.has(LEAGUE_HEADER_NAME)) {
     headers.set(LEAGUE_HEADER_NAME, leagueId);
   }
@@ -45,13 +52,29 @@ export async function apiFetch(path, options = {}) {
     headers.set("Content-Type", "application/json");
   }
 
-  const res = await fetch(url, {
-    ...options,
+  const started = performance.now();
+  const correlationId = globalThis.crypto?.randomUUID?.();
+  if (correlationId) headers.set("x-correlation-id", correlationId);
+  let res;
+  try {
+    res = await fetch(url, {
+    ...fetchOptions,
     headers,
-    credentials: "include",
-  });
+      credentials: "include",
+    });
+  } catch (error) {
+    trackEvent("api_request", { endpoint: path.split("?")[0].split("/").slice(0, 3).join("/"),
+      method: fetchOptions.method || "GET", outcome: error.name === "AbortError" ? "aborted" : "network_error", correlationId },
+      { durationMs: performance.now() - started });
+    throw error;
+  }
 
   const text = await res.text();
+  if (!sessionRequest && selectedLeague !== (localStorage.getItem(LEAGUE_STORAGE_KEY) || "").trim()) {
+    throw new DOMException("Discarded a response from the previous league.", "AbortError");
+  }
+  trackEvent("api_request", { endpoint: path.split("?")[0].split("/").slice(0, 3).join("/"),
+    method: fetchOptions.method || "GET", status: res.status, correlationId }, { durationMs: performance.now() - started });
   let data = null;
   try {
     data = text ? JSON.parse(text) : null;
@@ -62,7 +85,7 @@ export async function apiFetch(path, options = {}) {
   if (!res.ok) {
     const err = data?.error;
     const responseText = typeof data === "string" ? data : text || "";
-    const requestId = err?.details?.requestId || getResponseHeader(res, "x-ms-request-id") || null;
+    const requestId = err?.details?.requestId || getResponseHeader(res, "x-correlation-id") || getResponseHeader(res, "x-ms-request-id") || null;
     const middlewareRequestId = getResponseHeader(res, "x-ms-middleware-request-id") || null;
 
     // Extract error code and message

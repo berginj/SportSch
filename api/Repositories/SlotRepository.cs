@@ -176,6 +176,17 @@ public class SlotRepository : ISlotRepository
         _logger.LogInformation("Deleted slot: {LeagueId}/{Division}/{SlotId}", leagueId, division, slotId);
     }
 
+    public async Task UpdateSlotsAtomicallyAsync(IReadOnlyList<TableEntity> slots)
+    {
+        if (slots.Count is < 1 or > 100 || slots.Select(x => x.PartitionKey).Distinct().Count() != 1)
+            throw new ArgumentException("A slot transaction requires 1–100 rows in the same partition.");
+        if (slots.Any(slot => string.IsNullOrEmpty(slot.ETag.ToString()) || slot.ETag == ETag.All))
+            throw new ArgumentException("A slot transaction requires the version read for every row.");
+        var table = await TableClients.GetTableAsync(_tableService, TableName);
+        await table.SubmitTransactionAsync(slots.Select(slot =>
+            new TableTransactionAction(TableTransactionActionType.UpdateReplace, slot, slot.ETag)));
+    }
+
     public async Task CancelSlotAsync(string leagueId, string division, string slotId)
     {
         // Use retry logic for concurrent cancellation operations

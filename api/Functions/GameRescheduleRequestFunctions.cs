@@ -1,4 +1,5 @@
 using System.Net;
+using Azure.Data.Tables;
 using GameSwap.Functions.Models;
 using GameSwap.Functions.Services;
 using GameSwap.Functions.Storage;
@@ -16,10 +17,12 @@ namespace GameSwap.Functions.Functions;
 public class GameRescheduleRequestFunctions
 {
     private readonly IGameRescheduleRequestService _service;
+    private readonly TableServiceClient _tables;
 
-    public GameRescheduleRequestFunctions(IGameRescheduleRequestService service)
+    public GameRescheduleRequestFunctions(IGameRescheduleRequestService service, TableServiceClient tables)
     {
         _service = service;
+        _tables = tables;
     }
 
     [Function("CreateGameRescheduleRequest")]
@@ -129,6 +132,7 @@ public class GameRescheduleRequestFunctions
         => await ExecuteAsync(req, async () =>
         {
             var leagueId = ApiGuards.RequireLeagueId(req);
+            await ApiGuards.RequireMemberAsync(_tables, IdentityUtil.GetMe(req), leagueId);
             var division = ApiGuards.GetQueryParam(req, "division");
             var originalSlotId = ApiGuards.GetQueryParam(req, "originalSlotId");
             var proposedSlotId = ApiGuards.GetQueryParam(req, "proposedSlotId");

@@ -57,7 +57,7 @@ function readSystemPrefersDark() {
 }
 
 export default function App() {
-  const { me, memberships, leagueId, setLeagueId, refreshMe } = useSession();
+  const { me, memberships, leagueId, setLeagueId, refreshMe, loading: sessionLoading, error: sessionError } = useSession();
   const [tab, setTab] = useState(() => readTabFromHash());
   const [invite, setInvite] = useState(() => readInviteFromUrl());
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -158,12 +158,19 @@ export default function App() {
     });
   }
 
-  if (!me) {
+  if (sessionLoading) {
     return (
       <div className="appShell">
         <StatusCard title="Loading" message="Loading your session..." />
       </div>
     );
+  }
+
+  if (sessionError && !me?.userId) {
+    return <div className="appShell" role="alert">
+      <StatusCard title="Could not load your session" message={sessionError} />
+      <button className="btn" onClick={() => window.location.reload()}>Try again</button>
+    </div>;
   }
 
   if (invite) {
@@ -233,11 +240,11 @@ export default function App() {
 
   return (
     <div className="app">
-      <a href="#main-content" className="skip-link">
+      <a href="#main-content" className="skip-link" onClick={(event) => { event.preventDefault(); document.getElementById("main-content")?.focus(); }}>
         Skip to main content
       </a>
       <Suspense fallback={null}>
-        <TopNav
+        <TopNav key={leagueId}
           tab={effectiveTab}
           setTab={setTab}
           me={me}
@@ -249,7 +256,7 @@ export default function App() {
         />
       </Suspense>
 
-      <main id="main-content" className="main">
+      <main key={leagueId} id="main-content" className="main" tabIndex={-1}>
         <Suspense fallback={pageFallback}>
           {effectiveTab === "home" && (
             <HomePage

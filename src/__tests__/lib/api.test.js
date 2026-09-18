@@ -32,6 +32,23 @@ describe('api', () => {
   });
 
   describe('apiFetch', () => {
+    it('discards a response after the selected league changes', async () => {
+      let league = 'league-a';
+      localStorage.getItem.mockImplementation(() => league);
+      let finish;
+      global.fetch.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+      const pending = apiFetch('/api/slots', { leagueId: 'league-a' });
+      league = 'league-b';
+      finish({ ok: true, text: async () => JSON.stringify({ data: ['old-game'] }) });
+      await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    });
+
+    it('does not start an old workflow follow-up request in the new league', async () => {
+      localStorage.getItem.mockReturnValue('league-b');
+      await expect(apiFetch('/api/slots', { leagueId: 'league-a' })).rejects.toMatchObject({ name: 'AbortError' });
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
     it('should attach x-league-id header from localStorage', async () => {
       localStorage.getItem.mockReturnValue('test-league-123');
 

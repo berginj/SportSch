@@ -53,6 +53,9 @@ public class RequestService : IRequestService
         var isLeagueAdmin = string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase);
         var isGlobalAdmin = await _membershipRepo.IsGlobalAdminAsync(context.UserId);
 
+        if (!isGlobalAdmin && !isLeagueAdmin && role != Constants.Roles.Coach)
+            throw new ApiGuards.HttpError(403, ErrorCodes.FORBIDDEN, "Only coaches and league administrators can accept games.");
+
         // Determine requesting team
         var myDivisionRaw = ReadMembershipDivision(membership);
         var myTeamIdRaw = ReadMembershipTeamId(membership);
@@ -371,9 +374,9 @@ public class RequestService : IRequestService
             PageSize = 100
         };
 
-        var result = await _slotRepo.QuerySlotsAsync(filter, null);
+        var matchingSlots = await _slotRepo.QueryAllSlotsAsync(filter);
 
-        foreach (var e in result.Items)
+        foreach (var e in matchingSlots)
         {
             var conflictSlotId = e.RowKey;
             if (!string.IsNullOrWhiteSpace(excludeSlotId) &&

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { apiFetch } from "../lib/api";
+import { useLeagueApi } from "../lib/useLeagueApi";
 
 const ROLE_OPTIONS = ["", "LeagueAdmin", "Coach", "Viewer"];
 const PRACTICE_REQUEST_LIMIT = 3;
@@ -126,6 +126,7 @@ function csvCell(value) {
 }
 
 export default function DebugPage({ leagueId, me }) {
+  const apiFetch = useLeagueApi(leagueId);
   const isGlobalAdmin = !!me?.isGlobalAdmin;
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");

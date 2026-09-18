@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { apiFetch } from "../lib/api";
+import { useLeagueApi } from "../lib/useLeagueApi";
+import { useModalFocus } from "../lib/useModalFocus";
+import { bookingLeadTime } from "../lib/scheduleTime";
 import { fetchAllPagedItems } from "../lib/pagedResults";
 import { getDefaultRangeFallback, getSeasonRange } from "../lib/season";
 import { SLOT_STATUS } from "../lib/constants";
@@ -221,6 +223,7 @@ function readCalendarFiltersFromQuery(params, defaults, context) {
 }
 
 export default function CalendarPage({ me, leagueId, setLeagueId }) {
+  const apiFetch = useLeagueApi(leagueId);
   const isGlobalAdmin = !!me?.isGlobalAdmin;
   const memberships = useMemo(
     () => (Array.isArray(me?.memberships) ? me.memberships : []),
@@ -277,8 +280,10 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
   const [savingEdit, setSavingEdit] = useState(false);
   const [reschedulingSlot, setReschedulingSlot] = useState(null);
   const [rescheduleProposedDate, setRescheduleProposedDate] = useState("");
-  const [rescheduleProposedTime, setRescheduleProposedTime] = useState("");
-  const [rescheduleProposedField, setRescheduleProposedField] = useState("");
+  const [rescheduleCandidates, setRescheduleCandidates] = useState([]);
+  const [rescheduleCandidateId, setRescheduleCandidateId] = useState("");
+  const [loadingCandidates, setLoadingCandidates] = useState(false);
+  const [candidateError, setCandidateError] = useState("");
   const [rescheduleReason, setRescheduleReason] = useState("");
   const [rescheduleRequests, setRescheduleRequests] = useState([]);
   const [submittingReschedule, setSubmittingReschedule] = useState(false);
@@ -322,9 +327,9 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
   const handlePracticeRequestSuccess = async (result) => {
     setToast({
       message: result.autoApproved
-        ? "Practice space confirmed! No conflicts detected."
-        : `Practice request submitted. ${result.conflicts?.length || 0} conflict(s) require admin approval.`,
-      type: result.autoApproved ? "success" : "info"
+        ? "Practice space confirmed."
+        : "Practice request submitted for commissioner review.",
+      tone: result.autoApproved ? "success" : "info"
     });
 
     // Reload data to show new practice request
@@ -389,6 +394,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
   async function loadData(overrides = null) {
     const current = overrides ? buildServerFilters(overrides) : currentServerFilters;
     const requestId = ++loadRequestIdRef.current;
+    const started = performance.now();
     setErr("");
     setLoading(true);
     try {
@@ -413,9 +419,12 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
       if (requestId !== loadRequestIdRef.current) return;
       setEvents(Array.isArray(ev) ? ev : []);
       setSlots(Array.isArray(sl) ? sl : []);
+      trackEvent("calendar_load", { leagueId, outcome: "success" },
+        { durationMs: performance.now() - started, slots: sl?.length || 0, events: ev?.length || 0 });
     } catch (e) {
       if (requestId !== loadRequestIdRef.current) return;
       setErr(e?.message || String(e));
+      trackEvent("calendar_load", { leagueId, outcome: "error" }, { durationMs: performance.now() - started });
     } finally {
       if (requestId === loadRequestIdRef.current) {
         setLoading(false);
@@ -877,7 +886,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     if (!slot) return false;
     if (isGlobalAdmin) return true;
     if (role === "LeagueAdmin") return true;
-    if (role !== "Coach") return false;
+    if (role !== "Coach" || bookingLeadTime(slot.gameDate, slot.startTime).withinLeadTime) return false;
     const my = (myCoachTeamId || "").trim();
     if (!my) return false;
     const offering = (slot.offeringTeamId || "").trim();
@@ -894,17 +903,6 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
 
     // Admins can edit any slot
     if (isGlobalAdmin || role === "LeagueAdmin") return true;
-
-    // Coaches can only edit their own team's Open slots
-    if (role === "Coach") {
-      const my = (myCoachTeamId || "").trim();
-      if (!my) return false;
-      const offering = (slot.offeringTeamId || "").trim();
-      const slotStatus = (slot.status || "").trim();
-
-      // Only allow editing Open slots that belong to the coach's team
-      return slotStatus === "Open" && offering === my;
-    }
 
     return false;
   }
@@ -935,8 +933,8 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     }
   }
 
-  function closeEditSlot() {
-    if (savingEdit) return;
+  function closeEditSlot(force = false) {
+    if (savingEdit && force !== true) return;
     setEditingSlot(null);
     setEditGameDate("");
     setEditStartTime("");
@@ -1013,7 +1011,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     try {
       await apiFetch(`/api/slots/${encodeURIComponent(editingSlot.division)}/${encodeURIComponent(editingSlot.slotId)}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "If-Match": editingSlot.etag || "" },
         body: JSON.stringify({
           gameDate: editGameDate.trim(),
           startTime: editStartTime.trim(),
@@ -1021,7 +1019,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
           fieldKey: editFieldKey.trim(),
         }),
       });
-      closeEditSlot();
+      closeEditSlot(true);
       await loadData();
       setToast({ tone: "success", message: "Game updated." });
       trackEvent("ui_calendar_slot_edit", {
@@ -1040,10 +1038,33 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     }
   }
 
+  const editModalRef = useModalFocus(!!editingSlot, () => { if (!savingEdit) closeEditSlot(); });
+  const rescheduleModalRef = useModalFocus(!!reschedulingSlot, () => { if (!submittingReschedule) closeRescheduleModal(); });
+
+  useEffect(() => {
+    if (!reschedulingSlot || !rescheduleProposedDate) return;
+    let active = true;
+    setLoadingCandidates(true);
+    setCandidateError("");
+    setRescheduleCandidates([]);
+    setRescheduleCandidateId("");
+    const params = new URLSearchParams({ division: reschedulingSlot.division, dateFrom: rescheduleProposedDate,
+      dateTo: rescheduleProposedDate, status: "Open", pageSize: "250" });
+    fetchAllPagedItems((token) => {
+      if (token) params.set("continuationToken", token);
+      return apiFetch(`/api/slots?${params}`);
+    }).then((rows) => {
+      if (active) setRescheduleCandidates(rows.filter((slot) => slot.isAvailability &&
+        slot.allocationSlotType !== "Practice" && slot.gameType !== "Practice"));
+    }).catch((error) => { if (active) setCandidateError(error.message); })
+      .finally(() => { if (active) setLoadingCandidates(false); });
+    return () => { active = false; };
+  }, [apiFetch, reschedulingSlot, rescheduleProposedDate]);
+
   function canRequestReschedule(slot) {
     if (!slot || slot.status !== "Confirmed") return false;
     if (!slot.homeTeamId || !slot.awayTeamId) return false;
-    if (role !== "Coach") return false;
+    if (role !== "Coach" || bookingLeadTime(slot.gameDate, slot.startTime).withinLeadTime) return false;
     const my = (myCoachTeamId || "").trim();
     return my === slot.homeTeamId || my === slot.awayTeamId;
   }
@@ -1051,17 +1072,18 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
   function openRescheduleModal(slot) {
     setReschedulingSlot(slot);
     setRescheduleProposedDate("");
-    setRescheduleProposedTime("");
-    setRescheduleProposedField("");
+    setRescheduleCandidateId("");
+    setRescheduleCandidates([]);
     setRescheduleReason("");
     setErr("");
   }
 
-  function closeRescheduleModal() {
+  function closeRescheduleModal(force = false) {
+    if (submittingReschedule && force !== true) return;
     setReschedulingSlot(null);
     setRescheduleProposedDate("");
-    setRescheduleProposedTime("");
-    setRescheduleProposedField("");
+    setRescheduleCandidateId("");
+    setRescheduleCandidates([]);
     setRescheduleReason("");
   }
 
@@ -1072,14 +1094,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
       return;
     }
 
-    // Find the proposed slot ID based on selected date/time/field
-    const proposedSlot = slots.find(
-      (s) =>
-        s.status === "Open" &&
-        s.gameDate === rescheduleProposedDate &&
-        s.startTime === rescheduleProposedTime &&
-        s.fieldKey === rescheduleProposedField
-    );
+    const proposedSlot = rescheduleCandidates.find((slot) => slot.slotId === rescheduleCandidateId);
 
     if (!proposedSlot) {
       setErr("Could not find the selected slot. Please refresh and try again.");
@@ -1104,7 +1119,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
         message: "Reschedule request sent to opponent team for approval.",
       });
 
-      closeRescheduleModal();
+      closeRescheduleModal(true);
       await loadData();
     } catch (e) {
       setErr(e?.message || "Failed to create reschedule request.");
@@ -1390,10 +1405,11 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
     return item.raw?.status || "Open";
   }
 
-  if (loading) return <StatusCard title="Loading" message="Loading calendar..." />;
+  if (loading && !initializedRef.current) return <StatusCard title="Loading" message="Loading calendar..." />;
 
   return (
-    <div className="stack">
+    <div className="stack" aria-busy={loading}>
+      {loading ? <p role="status">Updating schedule…</p> : null}
       {err ? <StatusCard tone="error" title="Unable to load calendar" message={err} /> : null}
       <Toast
         open={!!toast}
@@ -1424,6 +1440,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
         onCancel={handleCancel}
       />
       <PracticeRequestModal
+        leagueId={leagueId}
         isOpen={showPracticeModal}
         onClose={() => setShowPracticeModal(false)}
         initialData={practiceModalData}
@@ -1438,6 +1455,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
             role="dialog"
             aria-modal="true"
             aria-label="Edit scheduled game"
+            ref={editModalRef} tabIndex={-1}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="modal__header">Edit scheduled game</div>
@@ -1550,6 +1568,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
             role="dialog"
             aria-modal="true"
             aria-label="Request game reschedule"
+            ref={rescheduleModalRef} tabIndex={-1}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="modal__header">Request Game Reschedule</div>
@@ -1573,24 +1592,17 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
                     />
                   </label>
                   <label>
-                    Field
-                    <select value={rescheduleProposedField} onChange={(e) => setRescheduleProposedField(e.target.value)}>
-                      <option value="">Select field</option>
-                      {fields.map((f) => (
-                        <option key={f.fieldKey} value={f.fieldKey}>
-                          {f.displayName || f.fieldKey}
-                        </option>
-                      ))}
+                    Available game time and field
+                    <select value={rescheduleCandidateId} onChange={(e) => setRescheduleCandidateId(e.target.value)} disabled={loadingCandidates || !rescheduleProposedDate}>
+                      <option value="">{loadingCandidates ? "Loading available slots..." : "Select a replacement"}</option>
+                      {rescheduleCandidates.map((slot) => <option key={slot.slotId} value={slot.slotId}>
+                        {slot.startTime}–{slot.endTime} · {slot.displayName || slot.fieldName || slot.fieldKey}
+                      </option>)}
                     </select>
                   </label>
-                  <label>
-                    Start Time
-                    <input
-                      type="time"
-                      value={rescheduleProposedTime}
-                      onChange={(e) => setRescheduleProposedTime(e.target.value)}
-                    />
-                  </label>
+                  {candidateError ? <p role="alert">{candidateError}</p> : null}
+                  {rescheduleProposedDate && !loadingCandidates && !candidateError && !rescheduleCandidates.length ?
+                    <p>No open game availability on this date. Choose another date or ask your commissioner for space.</p> : null}
                 </div>
               </div>
               <div className="mt-3">
@@ -1623,7 +1635,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
                 className="btn btn--primary"
                 type="button"
                 onClick={submitRescheduleRequest}
-                disabled={submittingReschedule || !rescheduleReason.trim() || !rescheduleProposedDate || !rescheduleProposedTime || !rescheduleProposedField}
+                disabled={submittingReschedule || !rescheduleReason.trim() || !rescheduleProposedDate || !rescheduleCandidateId || loadingCandidates}
               >
                 {submittingReschedule ? "Sending..." : "Send Request to Opponent"}
               </button>
@@ -1632,9 +1644,17 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
         </div>
       ) : null}
 
+      {(role === "Coach" || canManage) ? (
+        <div className="card row row--wrap gap-2" aria-label="Schedule actions">
+          {role === "Coach" ? <button className="btn btn--primary" onClick={() => openPracticeRequest()}>Request Practice Space</button> : null}
+          <a className="btn" href="#offers">Create Game Slot</a>
+          {canManage ? <a className="btn" href="#manage">Manage league scheduling</a> : null}
+        </div>
+      ) : null}
+
       <div className="calendarSplit">
         {rescheduleRequests.filter((r) => r.status === "PendingOpponent" && r.opponentTeamId === myCoachTeamId).length > 0 ? (
-          <div className="card card--warning">
+          <div className="card card--warning calendarPending">
             <div className="cardTitle">⚠️ Reschedule Requests Needing Your Approval</div>
             <div className="stack gap-3 mt-2">
               {rescheduleRequests
@@ -1680,8 +1700,8 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
           </div>
         ) : null}
 
-        <div className="card">
-        <div className="cardTitle">
+        <details className="card calendarFilters" open={typeof window !== "undefined" && window.matchMedia?.("(min-width: 980px)").matches}>
+        <summary className="cardTitle">
           Calendar filters
           <span
             className="hint"
@@ -1689,7 +1709,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
           >
             ?
           </span>
-        </div>
+        </summary>
         {quickViews.length > 0 ? (
           <div className="row row--wrap mt-2">
             <div className="pill">Quick views</div>
@@ -1816,7 +1836,7 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
         <div className="muted mt-2">
           Calendar updates automatically when filters change. Schedule exports follow league, division, date, slots/events, and status filters. Slot type and team only affect the current page view.
         </div>
-        </div>
+        </details>
 
         <div className="card">
           <div className="row row--between items-center mb-2">
@@ -1824,9 +1844,9 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
             <button
               className="btn btn--ghost"
               onClick={toggleCalendarView}
-              title={useNewCalendarView ? "Switch to classic list view" : "Switch to DayPilot calendar view"}
+              title={useNewCalendarView ? "Switch to classic list view" : "Switch to calendar grid"}
             >
-              {useNewCalendarView ? "Classic View" : "DayPilot View"}
+              {useNewCalendarView ? "Classic View" : "Calendar grid"}
             </button>
           </div>
           {role === "Coach" && !myCoachTeamId ? (
@@ -1933,29 +1953,6 @@ export default function CalendarPage({ me, leagueId, setLeagueId }) {
         </div>
       </div>
 
-      {(role === "Coach" || role === "LeagueAdmin") ? (
-        <div className="card">
-          <div className="row row--between mb-3">
-            <h3 className="font-bold">Quick Actions</h3>
-          </div>
-          <div className="row gap-2">
-            <button
-              className="btn btn--primary"
-              onClick={() => openPracticeRequest()}
-            >
-              🏃 Request Practice Space
-            </button>
-            {role === "LeagueAdmin" && (
-              <button
-                className="btn"
-                onClick={() => {/* Could add quick game creation here */}}
-              >
-                ⚽ Create Game Slot
-              </button>
-            )}
-          </div>
-        </div>
-      ) : null}
 
       {canCreateEvents ? (
         <div className="card">

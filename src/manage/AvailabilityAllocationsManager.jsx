@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { apiFetch } from "../lib/api";
+import { useLeagueApi } from "../lib/useLeagueApi";
 import { validateIsoDates } from "../lib/date";
 import { getDefaultRangeFallback, getSeasonRange } from "../lib/season";
 import { trackEvent } from "../lib/telemetry";
@@ -139,6 +139,7 @@ function getAllocationTypeBadgeClass(slotType) {
 }
 
 export default function AvailabilityAllocationsManager({ leagueId }) {
+  const apiFetch = useLeagueApi(leagueId);
   const [divisions, setDivisions] = useState([]);
   const [fields, setFields] = useState([]);
   const [leagueSeason, setLeagueSeason] = useState(null);
@@ -207,7 +208,7 @@ export default function AvailabilityAllocationsManager({ leagueId }) {
         setLeagueSeason(null);
       }
     })();
-  }, [leagueId]);
+  }, [apiFetch, leagueId]);
 
   const seasonRange = useMemo(() => {
     const fallback = getDefaultRangeFallback();

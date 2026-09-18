@@ -16,13 +16,11 @@ public static class TableClients
     }
 
     /// <summary>
-    /// Always ensures the target table exists before returning a client.
-    /// Safe to call on every request.
+    /// Returns a client without a network call. TableStartup/provisioning owns table creation.
     /// </summary>
-    public static async Task<TableClient> GetTableAsync(TableServiceClient svc, string tableName)
+    public static Task<TableClient> GetTableAsync(TableServiceClient svc, string tableName)
     {
         var client = svc.GetTableClient(tableName);
-        await client.CreateIfNotExistsAsync();
-        return client;
+        return Task.FromResult(client);
     }
 }

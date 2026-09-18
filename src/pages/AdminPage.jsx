@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { apiFetch } from "../lib/api";
+import { useLeagueApi } from "../lib/useLeagueApi";
 import Toast from "../components/Toast";
 import { PromptDialog } from "../components/Dialogs";
 import { usePromptDialog } from "../lib/useDialogs";
@@ -26,6 +26,7 @@ const GLOBAL_ADMIN_SECTION = "global";
 const ADMIN_HASH = "#admin";
 
 export default function AdminPage({ me, leagueId, setLeagueId }) {
+  const apiFetch = useLeagueApi(leagueId);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [items, setItems] = useState([]);

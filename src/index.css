@@ -763,6 +763,8 @@
   .layoutPhone__section { @apply grid gap-2.5; }
   .layoutPhone__nav { @apply mt-3 grid gap-1.5 grid-cols-4; }
 
+  .calendarPending { grid-column: 1 / -1; }
+  .calendarFilters > summary { cursor: pointer; min-height: 44px; }
   .calendarSplit { @apply grid gap-3 min-[980px]:grid-cols-[320px_1fr] items-start; }
 
   .seasonWeekGrid {

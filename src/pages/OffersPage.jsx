@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { apiFetch } from "../lib/api";
+import { useLeagueApi } from "../lib/useLeagueApi";
 import { readLocationSearchParams, updateLocationSearch } from "../lib/locationState";
 import { fetchAllPagedItems } from "../lib/pagedResults";
 import { getSlotMatchupLabel, getSlotOpponentTeamId } from "../lib/slotTeams";
@@ -91,6 +91,7 @@ function resolvePreferredDivision(selectedDivision, divisions, coachDivision, ca
 }
 
 export default function OffersPage({ me, leagueId, setLeagueId }) {
+  const apiFetch = useLeagueApi(leagueId);
   const email = me?.email || "";
   const isGlobalAdmin = !!me?.isGlobalAdmin;
   const memberships = useMemo(
@@ -192,7 +193,7 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
       if (continuationToken) params.set("continuationToken", continuationToken);
       return apiFetch(`/api/slots?${params.toString()}`);
     });
-  }, []);
+  }, [apiFetch]);
 
   const loadAll = useCallback(async (selectedDivision) => {
     setErr("");
@@ -223,7 +224,7 @@ export default function OffersPage({ me, leagueId, setLeagueId }) {
     } finally {
       setLoading(false);
     }
-  }, [canPickTeam, coachDivision, fetchDivisionSlots]);
+  }, [apiFetch, canPickTeam, coachDivision, fetchDivisionSlots]);
 
   useEffect(() => {
     const preferred = applyFiltersFromUrl();

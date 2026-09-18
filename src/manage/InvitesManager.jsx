@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { apiFetch } from "../lib/api";
+import { useLeagueApi } from "../lib/useLeagueApi";
 import { LEAGUE_HEADER_NAME, ROLE } from "../lib/constants";
 import { PromptDialog } from "../components/Dialogs";
 import { usePromptDialog } from "../lib/useDialogs";
@@ -10,6 +10,7 @@ function normalizeRole(role) {
 }
 
 export default function InvitesManager({ leagueId, me }) {
+  const apiFetch = useLeagueApi(leagueId);
   const memberships = useMemo(
     () => (Array.isArray(me?.memberships) ? me.memberships : []),
     [me]
@@ -56,7 +57,7 @@ export default function InvitesManager({ leagueId, me }) {
         setLoading(false);
       }
     })();
-  }, [leagueId]);
+  }, [apiFetch, leagueId]);
 
   const divisionOptions = useMemo(() => {
     return (divisions || [])

@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
-import { apiFetch } from "../lib/api";
+import { useLeagueApi } from "../lib/useLeagueApi";
 import { logError } from "../lib/errorLogger";
 import StatusCard from "../components/StatusCard";
 import UmpireAssignmentCard from "../components/UmpireAssignmentCard";
 import Toast from "../components/Toast";
 
 export default function UmpireDashboard({ leagueId }) {
+  const apiFetch = useLeagueApi(leagueId);
   const [dashboard, setDashboard] = useState(null);
   const [pendingAssignments, setPendingAssignments] = useState([]);
   const [upcomingAssignments, setUpcomingAssignments] = useState([]);
@@ -31,7 +32,7 @@ export default function UmpireDashboard({ leagueId }) {
       logError("Failed to load umpire dashboard", err, { leagueId });
       setToast({ message: "Failed to load dashboard", tone: "error" });
     }
-  }, [leagueId]);
+  }, [apiFetch, leagueId]);
 
   const loadAssignments = useCallback(async () => {
     if (!leagueId) return;
@@ -55,7 +56,7 @@ export default function UmpireDashboard({ leagueId }) {
     } finally {
       setLoading(false);
     }
-  }, [leagueId]);
+  }, [apiFetch, leagueId]);
 
   async function handleAccept(assignmentId) {
     try {

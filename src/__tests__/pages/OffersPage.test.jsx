@@ -150,7 +150,7 @@ describe("OffersPage", () => {
     await waitFor(() => expect(screen.getByText("Open offers & requests")).toBeInTheDocument());
 
     expect(api.apiFetch).toHaveBeenCalledWith(
-      expect.stringContaining("/api/slots?division=AAA&status=Open&pageSize=250")
+      expect.stringContaining("/api/slots?division=AAA&status=Open&pageSize=250"), expect.objectContaining({ leagueId: "league-1" })
     );
     expect(screen.getByLabelText(/Slot type/i)).toHaveValue("offer");
 
@@ -183,7 +183,7 @@ describe("OffersPage", () => {
     await waitFor(() => expect(screen.getByText("Open offers & requests")).toBeInTheDocument());
 
     expect(api.apiFetch).toHaveBeenCalledWith(
-      expect.stringContaining("/api/slots?division=BBB&status=Open&pageSize=250")
+      expect.stringContaining("/api/slots?division=BBB&status=Open&pageSize=250"), expect.objectContaining({ leagueId: "league-1" })
     );
     expect(screen.getByLabelText(/Division/i)).toHaveValue("BBB");
     expect(screen.getByText("2026-03-20")).toBeInTheDocument();

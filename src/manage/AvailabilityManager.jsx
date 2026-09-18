@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { apiFetch } from "../lib/api";
+import { useLeagueApi } from "../lib/useLeagueApi";
 import { validateIsoDates } from "../lib/date";
 import { getDefaultRangeFallback, getSeasonRange } from "../lib/season";
 import AvailabilityAllocationsManager from "./AvailabilityAllocationsManager";
@@ -28,6 +28,7 @@ const emptyException = {
 };
 
 export default function AvailabilityManager({ leagueId }) {
+  const apiFetch = useLeagueApi(leagueId);
   const [fields, setFields] = useState([]);
   const [divisions, setDivisions] = useState([]);
   const [leagueSeason, setLeagueSeason] = useState(null);
@@ -77,7 +78,7 @@ export default function AvailabilityManager({ leagueId }) {
         setLeagueSeason(null);
       }
     })();
-  }, [leagueId]);
+  }, [apiFetch, leagueId]);
 
   const seasonRange = useMemo(() => {
     const fallback = getDefaultRangeFallback();

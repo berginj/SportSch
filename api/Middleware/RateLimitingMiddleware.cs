@@ -9,8 +9,8 @@ using Microsoft.Extensions.Logging;
 namespace GameSwap.Functions.Middleware;
 
 /// <summary>
-/// Rate limiting middleware using distributed Redis-based sliding window algorithm.
-/// Tracks requests per user across multiple instances and enforces configurable rate limits.
+/// Rate limiting middleware using the configured request limiter.
+/// Tracks requests per user/IP and enforces configurable rate limits.
 /// </summary>
 public class RateLimitingMiddleware : IFunctionsWorkerMiddleware
 {
@@ -40,7 +40,7 @@ public class RateLimitingMiddleware : IFunctionsWorkerMiddleware
         // Get identifier (user ID or IP address)
         var identifier = GetIdentifier(requestData);
 
-        // Check rate limit using distributed service
+        // Check rate limit using the configured service
         var isAllowed = await _rateLimitService.IsAllowedAsync(identifier);
 
         if (!isAllowed)

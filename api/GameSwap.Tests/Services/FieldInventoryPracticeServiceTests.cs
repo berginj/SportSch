@@ -763,6 +763,17 @@ public class FieldInventoryPracticeServiceTests
             return Task.CompletedTask;
         }
 
+        public Task UpdateSlotsAtomicallyAsync(IReadOnlyList<TableEntity> slots)
+        {
+            foreach (var slot in slots)
+            {
+                var clone = Clone(slot);
+                clone.ETag = new Azure.ETag(Guid.NewGuid().ToString("N"));
+                _slots[BuildKeyFromEntity(clone)] = clone;
+            }
+            return Task.CompletedTask;
+        }
+
         public Task DeleteSlotAsync(string leagueId, string division, string slotId)
         {
             _slots.Remove(BuildKey(leagueId, division, slotId));

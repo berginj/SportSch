@@ -577,12 +577,11 @@ describe("SeasonWizard", () => {
     await renderWizard();
 
     expect(screen.getByText(/applies the current preview into slots for the selected division and season window/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Reset existing non-practice game, guest, and request slots in this season window before each new Preview run/i)).toBeChecked();
-    expect(document.body.textContent).toContain("rerunning Preview first resets existing non-practice game, guest, and request rows");
-    expect(document.body.textContent).toContain("does not clear recurring allocations or field blackouts");
+    expect(document.body.textContent).toContain("Preview does not change existing games");
+    expect(screen.queryByLabelText(/Reset existing/)).not.toBeInTheDocument();
   });
 
-  it("resets prior wizard-generated slots before preview when enabled", async () => {
+  it("never resets live slots when previewing", async () => {
     await advanceToRules();
 
     fireEvent.click(screen.getByRole("button", { name: "Preview schedule" }));
@@ -591,15 +590,13 @@ describe("SeasonWizard", () => {
 
     const resetCallIndex = api.apiFetch.mock.calls.findIndex(([path]) => path === "/api/schedule/wizard/reset-generated");
     const previewCallIndex = api.apiFetch.mock.calls.findIndex(([path]) => path === "/api/schedule/wizard/preview");
-    expect(resetCallIndex).toBeGreaterThanOrEqual(0);
-    expect(previewCallIndex).toBeGreaterThan(resetCallIndex);
+    expect(resetCallIndex).toBe(-1);
+    expect(previewCallIndex).toBeGreaterThanOrEqual(0);
   });
 
-  it("sends the reset-before-apply toggle with the apply request", async () => {
+  it("never resets live slots during apply", async () => {
     await advanceToPreview();
 
-    const resetToggle = screen.getByLabelText(/Reset existing non-practice game, guest, and request slots in this season window before each new Preview run/i);
-    fireEvent.click(resetToggle);
     const resetCallsBeforeApply = api.apiFetch.mock.calls.filter(([path]) => path === "/api/schedule/wizard/reset-generated").length;
 
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);

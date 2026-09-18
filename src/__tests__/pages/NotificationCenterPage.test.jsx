@@ -50,7 +50,7 @@ describe("NotificationCenterPage", () => {
     fireEvent.keyDown(notificationButton, { key: "Enter" });
 
     await waitFor(() => {
-      expect(api.apiFetch).toHaveBeenCalledWith("/api/notifications/notif-1/read", { method: "PATCH" });
+      expect(api.apiFetch).toHaveBeenCalledWith("/api/notifications/notif-1/read", { method: "PATCH", leagueId: "league-1" });
     });
     expect(window.location.hash).toBe("#calendar");
   });

@@ -32,12 +32,14 @@
                     "Content-Type",
                     "Authorization",
                     "x-league-id",
-                    "x-correlation-id"
+                    "x-correlation-id",
+                    "If-Match"
                 ],
                 "exposedHeaders": [
                     "X-RateLimit-Limit",
                     "X-RateLimit-Remaining",
-                    "X-RateLimit-Reset"
+                    "X-RateLimit-Reset",
+                    "x-correlation-id"
                 ],
                 "allowCredentials": true,
                 "maxAge": 3600

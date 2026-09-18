@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { apiFetch } from "../lib/api";
+import { useLeagueApi } from "../lib/useLeagueApi";
 import Toast from "../components/Toast";
 
 /**
@@ -13,6 +13,7 @@ import Toast from "../components/Toast";
  * - Filter by division or onboarding status
  */
 export default function CoachLinksGenerator({ leagueId }) {
+  const apiFetch = useLeagueApi(leagueId);
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -34,7 +35,7 @@ export default function CoachLinksGenerator({ leagueId }) {
     } finally {
       setLoading(false);
     }
-  }, [leagueId]);
+  }, [apiFetch, leagueId]);
 
   useEffect(() => {
     loadTeams();

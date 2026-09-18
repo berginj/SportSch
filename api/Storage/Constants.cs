@@ -55,6 +55,7 @@ public static class Constants
         public const string UmpireProfiles = "GameSwapUmpireProfiles";
         public const string UmpireAvailability = "GameSwapUmpireAvailability";
         public const string GameUmpireAssignments = "GameSwapGameUmpireAssignments";
+        public const string UmpireClaims = "GameSwapUmpireClaims";
 
         // Field inventory import
         public const string FieldInventoryImportRuns = "GameSwapFieldInventoryImportRuns";
@@ -135,6 +136,10 @@ public static class Constants
         public static string FieldInventoryDivisionAliases(string leagueId) => $"FINVDIVALIAS|{leagueId}";
         public static string FieldInventoryTeamAliases(string leagueId) => $"FINVTEAMALIAS|{leagueId}";
         public static string FieldInventoryGroupPolicies(string leagueId) => $"FINVGROUPPOLICY|{leagueId}";
+
+        // Umpire offering claims (1.1): PK = UMPIRECLAIM|{leagueId}|{division}|{slotId}, RK = claimId
+        public static string UmpireClaims(string leagueId, string division, string slotId)
+            => $"UMPIRECLAIM|{leagueId}|{division}|{slotId}";
     }
 
     public static class FieldAvailabilityColumns

@@ -410,11 +410,11 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
         if (!TimeUtil.TryParseMinutes(targetStart, out var targetStartMin) ||
             !TimeUtil.TryParseMinutes(targetEnd, out var targetEndMin))
         {
-            return new PracticeConflictCheckResponse(false, conflicts);
+            throw new ApiGuards.HttpError(400, ErrorCodes.INVALID_TIME_RANGE, "Practice inventory has an invalid time range.");
         }
 
         // Query all slots for the team on the same date
-        var slotsOnDate = await _slotRepository.QuerySlotsAsync(new SlotQueryFilter
+        var slotsOnDate = await _slotRepository.QueryAllSlotsAsync(new SlotQueryFilter
         {
             LeagueId = context.LeagueId,
             Division = membership.TeamDivision,
@@ -426,7 +426,7 @@ public class FieldInventoryPracticeService : IFieldInventoryPracticeService
         });
 
         // Check each slot for time overlap
-        foreach (var slot in slotsOnDate.Items)
+        foreach (var slot in slotsOnDate)
         {
             var slotStatus = (slot.GetString("Status") ?? "").Trim();
             if (string.Equals(slotStatus, Constants.Status.SlotCancelled, StringComparison.OrdinalIgnoreCase))

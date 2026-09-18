@@ -20,6 +20,10 @@ This contract applies to the field-inventory practice workflow exposed by:
 
 Legacy `/api/practice-requests`, `practice-portal/settings`, and direct practice-slot claim routes have been removed. The field-inventory practice endpoints above are the only supported coach/admin contract.
 
+`POST /api/practice/requests` and `POST /api/practice/check-conflicts` are retired and return `410 PRACTICE_WORKFLOW_RETIRED` without writing data. The calendar uses the field-inventory context, availability options, and request endpoints. Approval follows the server's booking policy; absence of a reported conflict is not itself an approval policy. Existing incompatible `PRACTICE|...` records require an explicit reconciliation process; no fallback read is introduced.
+
+Practice moves require at least 72 elapsed hours before the original practice's Eastern time (`America/New_York`). Exactly 72 hours is allowed. Past, invalid, nonexistent, and ambiguous local times cannot be moved. Server validation is authoritative; the browser uses the same zone and boundary.
+
 ## 2. Canonical Data Model
 
 - Committed field inventory is the upstream source of practice availability.

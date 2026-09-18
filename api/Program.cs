@@ -2,6 +2,8 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Azure.Functions.Worker.ApplicationInsights;
+using Microsoft.Azure.Functions.Worker;
+using Microsoft.Extensions.Logging;
 using GameSwap.Functions.Repositories;
 using GameSwap.Functions.Services;
 using GameSwap.Functions.Middleware;
@@ -9,20 +11,26 @@ using GameSwap.Functions.Middleware;
 var host = new HostBuilder()
     .ConfigureFunctionsWorkerDefaults(builder =>
     {
+        builder.UseMiddleware<RequestTelemetryMiddleware>();
         // Register rate limiting middleware
         builder.UseMiddleware<RateLimitingMiddleware>();
     })
     .ConfigureServices((context, services) =>
     {
         services.AddApplicationInsightsTelemetryWorkerService();
+        services.ConfigureFunctionsApplicationInsights();
+        services.Configure<LoggerFilterOptions>(options => options.Rules.Add(new LoggerFilterRule(
+            "Microsoft.Extensions.Logging.ApplicationInsights.ApplicationInsightsLoggerProvider",
+            "GameSwap.Functions", LogLevel.Information, null)));
         services.AddHttpClient();
+        services.AddSingleton(TimeProvider.System);
 
         // Table Storage client
         var tableServiceClient = GameSwap.Functions.Storage.TableClients.CreateServiceClient(context.Configuration);
         services.AddSingleton(tableServiceClient);
 
-        // Rate Limiting Service (singleton for distributed rate limiting)
-        services.AddSingleton<IRateLimitService, RedisRateLimitService>();
+        // Rate Limiting Service (singleton for local low-cost MVP stack)
+        services.AddSingleton<IRateLimitService, InMemoryRateLimitService>();
 
         // Register Repositories (scoped for per-request lifetime)
         services.AddScoped<ISlotRepository, SlotRepository>();
@@ -67,7 +75,7 @@ var host = new HostBuilder()
         services.AddScoped<UmpireNotificationService>();
 
         // Table creation on startup (if configured)
-        if (context.Configuration.GetValue<bool>("GAMESWAP_CREATE_TABLES"))
+        if (context.Configuration.GetValue<bool>("GAMESWAP_CREATE_TABLES", true))
         {
             services.AddHostedService<GameSwap.Functions.Storage.TableStartup>();
         }

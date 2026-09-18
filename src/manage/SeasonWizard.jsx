@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { apiFetch } from "../lib/api";
+import { useLeagueApi } from "../lib/useLeagueApi";
 import { validateIsoDates } from "../lib/date";
 import { trackEvent } from "../lib/telemetry";
 import { logError } from "../lib/errorLogger";
@@ -971,6 +971,7 @@ function StepButton({ active, status = "neutral", onClick, children, title = "" 
 }
 
 export default function SeasonWizard({ leagueId, tableView = "A" }) {
+  const apiFetch = useLeagueApi(leagueId);
   const [division, setDivision] = useState("");
   const [divisions, setDivisions] = useState([]);
   const [leagueSeasonConfig, setLeagueSeasonConfig] = useState({});
@@ -988,7 +989,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
   const [poolGamesPerTeam, setPoolGamesPerTeam] = useState(2);
   const [guestGamesPerWeek, setGuestGamesPerWeek] = useState(0);
   const [maxExternalOffersPerTeamSeason, setMaxExternalOffersPerTeamSeason] = useState(0);
-  const [resetGeneratedSlotsBeforeApply, setResetGeneratedSlotsBeforeApply] = useState(true);
+  const resetGeneratedSlotsBeforeApply = false;
   const [blockSpringBreak, setBlockSpringBreak] = useState(false);
   const [blockedHolidays, setBlockedHolidays] = useState(new Set());
   const [maxGamesPerWeek, setMaxGamesPerWeek] = useState(2);
@@ -1061,7 +1062,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         setErr(e?.message || "Failed to load wizard data.");
       }
     })();
-  }, [leagueId]);
+  }, [apiFetch, leagueId]);
 
   useEffect(() => {
     const previousDefaults = autoPostseasonDefaultsRef.current;
@@ -1882,7 +1883,7 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         setDivisionTeams([]);
       }
     })();
-  }, [leagueId, division]);
+  }, [leagueId, division, apiFetch]);
 
   const applyAvailabilityPayload = useCallback((payload) => {
     const availability = Array.isArray(payload?.availability) ? payload.availability : [];
@@ -2003,34 +2004,11 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
         setAvailabilityLoading(false);
       }
     }
-  }, [applyAvailabilityPayload, bracketEnd, division, leagueId, seasonEnd, seasonStart]);
+  }, [apiFetch, applyAvailabilityPayload, bracketEnd, division, leagueId, seasonEnd, seasonStart]);
 
   async function resetGeneratedSlotsForRerun() {
-    if (!resetGeneratedSlotsBeforeApply) return undefined;
-
-    const resetPayload = {
-      division,
-      seasonStart,
-      seasonEnd,
-      bracketEnd: bracketEnd || undefined,
-    };
-    const result = await apiFetch("/api/schedule/wizard/reset-generated", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(resetPayload),
-    });
-
-    availabilityCacheRef.current.clear();
-    const refreshedSlotPlan = await loadAvailabilityIntoSlotPlan({ forceRefresh: true });
-    if (!Array.isArray(refreshedSlotPlan)) {
-      throw new Error("Reset completed, but the refreshed availability could not be loaded. Try again.");
-    }
-    setPreview(null);
-    setToast({
-      tone: "success",
-      message: `Reset ${Number(result?.resetCount || 0)} existing non-practice game/guest slot${Number(result?.resetCount || 0) === 1 ? "" : "s"} and reloaded availability.`,
-    });
-    return refreshedSlotPlan;
+    // Preview never changes live slots. Refresh only the planning input.
+    return loadAvailabilityIntoSlotPlan({ forceRefresh: true });
   }
 
   useEffect(() => {
@@ -4869,26 +4847,8 @@ export default function SeasonWizard({ leagueId, tableView = "A" }) {
 
       <div className="callout callout--warning seasonWizard__heroCallout">
         <strong>Important:</strong> This wizard applies the current preview into slots for the selected division and season window when you click "Apply schedule."
-        {resetGeneratedSlotsBeforeApply ? (
-          <>
-            {" "}
-            When enabled below, rerunning <strong>Preview</strong> first resets existing non-practice game, guest, and request rows in this same window before rebuilding the run.
-          </>
-        ) : (
-          <>
-            {" "}
-            It will <strong>not</strong> run that preview reset step before rebuilding a new run.
-          </>
-        )}{" "}
-        It does <strong>not</strong> clear recurring allocations or field blackouts. If you need a different slot pool, edit availability first, then rerun the wizard.
-        <label className="inlineCheck mt-3">
-          <input
-            type="checkbox"
-            checked={resetGeneratedSlotsBeforeApply}
-            onChange={(e) => setResetGeneratedSlotsBeforeApply(e.target.checked)}
-          />
-          Reset existing non-practice game, guest, and request slots in this season window before each new Preview run
-        </label>
+        {" "}Preview does not change existing games, requests, recurring allocations, or field blackouts.
+        Edit availability to change the planning pool before generating another preview.
       </div>
 
       <div className="row row--wrap gap-2 seasonWizard__stepStrip">

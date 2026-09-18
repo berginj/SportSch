@@ -14,46 +14,9 @@ public sealed class TableStartup : IHostedService
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        var tableNames = new[]
-        {
-            Constants.Tables.Leagues,
-            Constants.Tables.Memberships,
-            Constants.Tables.GlobalAdmins,
-            Constants.Tables.Users,
-            Constants.Tables.AccessRequests,
-            Constants.Tables.Fields,
-            Constants.Tables.Divisions,
-            Constants.Tables.Events,
-            Constants.Tables.Slots,
-            Constants.Tables.SlotRequests,
-            Constants.Tables.ScheduleRuns,
-            Constants.Tables.FieldAvailabilityRules,
-            Constants.Tables.FieldAvailabilityExceptions,
-            Constants.Tables.FieldAvailabilityAllocations,
-            Constants.Tables.Teams,
-            Constants.Tables.TeamContacts,
-            Constants.Tables.Seasons,
-            Constants.Tables.SeasonDivisions,
-            Constants.Tables.LeagueInvites,
-            Constants.Tables.LeagueBackups,
-            Constants.Tables.Notifications,
-            Constants.Tables.NotificationPreferences,
-            Constants.Tables.ReminderDispatch,
-            Constants.Tables.EmailQueue,
-            Constants.Tables.FieldInventoryImportRuns,
-            Constants.Tables.FieldInventoryStagedRecords,
-            Constants.Tables.FieldInventoryFieldAliases,
-            Constants.Tables.FieldInventoryTabClassifications,
-            Constants.Tables.FieldInventoryWorkbookUploads,
-            Constants.Tables.FieldInventoryImportWarnings,
-            Constants.Tables.FieldInventoryReviewQueueItems,
-            Constants.Tables.FieldInventoryDiagnostics,
-            Constants.Tables.FieldInventoryLiveRecords,
-            Constants.Tables.FieldInventoryCommitRuns,
-            Constants.Tables.FieldInventoryDivisionAliases,
-            Constants.Tables.FieldInventoryTeamAliases,
-            Constants.Tables.FieldInventoryGroupPolicies
-        };
+        var tableNames = typeof(Constants.Tables).GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+            .Where(field => field.IsLiteral && field.FieldType == typeof(string))
+            .Select(field => (string)field.GetRawConstantValue()!).Distinct(StringComparer.Ordinal);
 
         foreach (var tableName in tableNames)
         {

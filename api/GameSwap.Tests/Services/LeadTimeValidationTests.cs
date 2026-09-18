@@ -37,7 +37,7 @@ public class LeadTimeValidationTests
             mockMembershipRepo.Object,
             mockSlotRepo.Object,
             mockTeamRepo.Object,
-            mockLogger.Object);
+            mockLogger.Object, new FixedClock());
 
         var leagueId = "league-1";
         var userId = "coach-1";
@@ -45,7 +45,7 @@ public class LeadTimeValidationTests
         var targetSlotId = "slot-2";
 
         // Practice happening in 48 hours (within 72h lead time)
-        var futureDate = DateTime.UtcNow.AddHours(48);
+        var futureDate = FixedClock.EasternNow.AddHours(48);
         var practiceDate = futureDate.ToString("yyyy-MM-dd");
         var practiceTime = futureDate.ToString("HH:mm");
 
@@ -93,14 +93,13 @@ public class LeadTimeValidationTests
         Assert.Equal(409, ex.Status);
         Assert.Equal(ErrorCodes.LEAD_TIME_VIOLATION, ex.Code);  // New error code!
         Assert.Contains("72 hours", ex.Message);  // Updated from 48 hours
-        Assert.Contains("48", ex.Message);  // Shows hours until practice
     }
 
     [Fact]
-    public async Task PracticeMove_Exactly72Hours_Blocked()
+    public async Task PracticeMove_JustInside72Hours_Blocked()
     {
         // TEST: Verifies 72h is the boundary (not 72h+ or 73h+)
-        // Exactly 72.0 hours should be blocked
+        // One minute inside the boundary must be blocked; exact boundary is covered by ReviewSafetyTests.
 
         // Arrange
         var mockPracticeRequestRepo = new Mock<IPracticeRequestRepository>();
@@ -114,10 +113,10 @@ public class LeadTimeValidationTests
             mockMembershipRepo.Object,
             mockSlotRepo.Object,
             mockTeamRepo.Object,
-            mockLogger.Object);
+            mockLogger.Object, new FixedClock());
 
         // Practice happening in exactly 72 hours
-        var futureDate = DateTime.UtcNow.AddHours(72);
+        var futureDate = FixedClock.EasternNow.AddHours(72).AddMinutes(-1);
         var practiceDate = futureDate.ToString("yyyy-MM-dd");
         var practiceTime = futureDate.ToString("HH:mm");
 
@@ -157,7 +156,7 @@ public class LeadTimeValidationTests
             .Setup(x => x.GetSlotAsync("league-1", "10U", "slot-1"))
             .ReturnsAsync(sourceSlot);
 
-        // Act & Assert - should be blocked (72h is not "more than 72h")
+        // Act & Assert - just inside the minimum lead time
         var ex = await Assert.ThrowsAsync<ApiGuards.HttpError>(() =>
             service.CreateMoveRequestAsync("league-1", "coach-1", "req-1", "slot-2", "reason"));
 
@@ -182,10 +181,10 @@ public class LeadTimeValidationTests
             mockMembershipRepo.Object,
             mockSlotRepo.Object,
             mockTeamRepo.Object,
-            mockLogger.Object);
+            mockLogger.Object, new FixedClock());
 
         // Practice happening in 73 hours (outside lead time)
-        var futureDate = DateTime.UtcNow.AddHours(73);
+        var futureDate = FixedClock.EasternNow.AddHours(73);
         var practiceDate = futureDate.ToString("yyyy-MM-dd");
         var practiceTime = futureDate.ToString("HH:mm");
 
@@ -292,7 +291,7 @@ public class LeadTimeValidationTests
             mockSlotRepo.Object,
             mockMembershipRepo.Object,
             mockNotificationService.Object,
-            mockLogger.Object);
+            mockLogger.Object, new FixedClock());
 
         var leagueId = "league-1";
         var userId = "coach-1";
@@ -301,13 +300,14 @@ public class LeadTimeValidationTests
         var proposedSlotId = "proposed-slot";
 
         // Game happening in 48 hours (within 72h lead time)
-        var futureDate = DateTime.UtcNow.AddHours(48);
+        var futureDate = FixedClock.EasternNow.AddHours(48);
         var gameDate = futureDate.ToString("yyyy-MM-dd");
         var gameTime = futureDate.ToString("HH:mm");
 
         var membership = new TableEntity(userId, leagueId)
         {
             { "Role", Constants.Roles.Coach },
+            { "Division", division },
             { "TeamId", "Tigers" }
         };
 
@@ -325,7 +325,8 @@ public class LeadTimeValidationTests
         var proposedSlot = new TableEntity($"SLOT|{leagueId}|{division}", proposedSlotId)
         {
             { "Status", Constants.Status.SlotOpen },
-            { "GameDate", DateTime.UtcNow.AddDays(7).ToString("yyyy-MM-dd") },
+            { "IsAvailability", true },
+            { "GameDate", FixedClock.EasternNow.AddDays(7).ToString("yyyy-MM-dd") },
             { "StartTime", "18:00" }
         };
 
@@ -373,16 +374,16 @@ public class LeadTimeValidationTests
             mockMembershipRepo.Object,
             mockSlotRepo.Object,
             mockTeamRepo.Object,
-            mockLogger.Object);
+            mockLogger.Object, new FixedClock());
 
         var leagueId = "league-1";
         var userId = "coach-1";
 
         // ORIGINAL practice: 24 hours away (violates 72h lead time)
-        var originalPracticeDate = DateTime.UtcNow.AddHours(24);
+        var originalPracticeDate = FixedClock.EasternNow.AddHours(24);
 
         // NEW practice: 7 days away (would be OK if this was what we checked)
-        var newPracticeDate = DateTime.UtcNow.AddDays(7);
+        var newPracticeDate = FixedClock.EasternNow.AddDays(7);
 
         var membership = new TableEntity(userId, leagueId)
         {
@@ -435,14 +436,12 @@ public class LeadTimeValidationTests
         // Should be blocked even though NEW time is 7 days away
         // Because ORIGINAL time is only 24h away
         Assert.Equal(ErrorCodes.LEAD_TIME_VIOLATION, ex.Code);
-        Assert.Contains("24", ex.Message);  // Shows time until ORIGINAL practice
     }
 
     [Fact]
-    public async Task LeadTime_PastPractice_Allowed()
+    public async Task LeadTime_PastPractice_Rejected()
     {
-        // TEST: Verifies lead time check only applies to future practices
-        // If practice was in the past, hoursUntilPractice is negative - should not block
+        // A historical booking cannot be moved into the future.
 
         // Arrange
         var mockPracticeRequestRepo = new Mock<IPracticeRequestRepository>();
@@ -456,13 +455,13 @@ public class LeadTimeValidationTests
             mockMembershipRepo.Object,
             mockSlotRepo.Object,
             mockTeamRepo.Object,
-            mockLogger.Object);
+            mockLogger.Object, new FixedClock());
 
         var leagueId = "league-1";
         var userId = "coach-1";
 
         // ORIGINAL practice was YESTERDAY (past)
-        var pastDate = DateTime.UtcNow.AddHours(-24);
+        var pastDate = FixedClock.EasternNow.AddHours(-24);
         var pastDateStr = pastDate.ToString("yyyy-MM-dd");
         var pastTimeStr = pastDate.ToString("HH:mm");
 
@@ -492,7 +491,7 @@ public class LeadTimeValidationTests
         {
             { "Status", Constants.Status.SlotOpen },
             { "IsAvailability", true },
-            { "GameDate", DateTime.UtcNow.AddDays(7).ToString("yyyy-MM-dd") },
+            { "GameDate", FixedClock.EasternNow.AddDays(7).ToString("yyyy-MM-dd") },
             { "StartTime", "18:00" }
         };
 
@@ -511,11 +510,9 @@ public class LeadTimeValidationTests
         mockSlotRepo.Setup(x => x.UpdateSlotAsync(It.IsAny<TableEntity>(), It.IsAny<ETag>())).Returns(Task.CompletedTask);
         mockPracticeRequestRepo.Setup(x => x.CreateRequestAsync(It.IsAny<TableEntity>())).Returns(Task.CompletedTask);
 
-        // Act - should succeed (past practice, hoursUntilPractice is negative)
-        var result = await service.CreateMoveRequestAsync(leagueId, userId, "req-1", "slot-future", "reason");
-
-        // Assert
-        Assert.NotNull(result);
-        mockPracticeRequestRepo.Verify(x => x.CreateRequestAsync(It.IsAny<TableEntity>()), Times.Once);
+        var error = await Assert.ThrowsAsync<ApiGuards.HttpError>(() =>
+            service.CreateMoveRequestAsync(leagueId, userId, "req-1", "slot-future", "reason"));
+        Assert.Equal(ErrorCodes.LEAD_TIME_VIOLATION, error.Code);
+        mockPracticeRequestRepo.Verify(x => x.CreateRequestAsync(It.IsAny<TableEntity>()), Times.Never);
     }
 }

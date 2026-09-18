@@ -363,6 +363,28 @@ public class ApiContractHardeningTests
         return new TestHttpRequestData(context.Object, new Uri(url), new HttpHeadersCollection());
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RetiredPracticeRoutesCannotWriteIncompatibleReservations(bool create)
+    {
+        var request = CreateLeagueScopedRequest("https://example.test/api/practice/requests", "coach", "league");
+        var function = new SimplePracticeRequestFunctions();
+        var response = create ? await function.CreateSimpleRequest(request) : await function.CheckConflicts(request);
+        Assert.Equal(HttpStatusCode.Gone, response.StatusCode);
+        response.Body.Position = 0;
+        using var json = await JsonDocument.ParseAsync(response.Body);
+        Assert.Equal("PRACTICE_WORKFLOW_RETIRED", json.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public void LeagueRouteAndHeaderMustAgree()
+    {
+        var request = CreateLeagueScopedRequest("https://example.test/api/global/leagues/other/season", "admin", "league");
+        var error = Assert.Throws<ApiGuards.HttpError>(() => ApiGuards.RequireMatchingLeagueId(request, "other"));
+        Assert.Equal(400, error.Status);
+    }
+
     private static HttpRequestData CreateAuthenticatedRequest(string url, string userId)
     {
         var context = new Mock<FunctionContext>();

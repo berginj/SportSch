@@ -1,91 +1,40 @@
-import { defineConfig, devices } from '@playwright/test';
+import { defineConfig, devices } from "@playwright/test";
 
-/**
- * Playwright E2E Test Configuration
- * @see https://playwright.dev/docs/test-configuration
- */
 export default defineConfig({
-  testDir: './e2e',
-
-  /* Run tests in files in parallel */
-  fullyParallel: true,
-
-  /* Fail the build on CI if you accidentally left test.only in the source code. */
+  testDir: "./e2e",
+  globalSetup: "./e2e/setup.js",
+  fullyParallel: false,
   forbidOnly: !!process.env.CI,
-
-  /* Retry on CI only */
-  retries: process.env.CI ? 2 : 0,
-
-  /* Opt out of parallel tests on CI. */
-  workers: process.env.CI ? 1 : undefined,
-
-  /* Reporter to use. See https://playwright.dev/docs/test-reporters */
-  reporter: [
-    ['html'],
-    ['list'],
-    ...(process.env.CI ? [['github']] : []),
-  ],
-
-  /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
+  retries: process.env.CI ? 1 : 0,
+  workers: 1,
+  reporter: [["html", { open: "never" }], ["list"]],
   use: {
-    /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: process.env.BASE_URL || 'http://localhost:5173',
-
-    /* API base URL */
-    apiURL: process.env.API_URL || 'http://localhost:7071',
-
-    /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
-    trace: 'on-first-retry',
-
-    /* Screenshot on failure */
-    screenshot: 'only-on-failure',
-
-    /* Video on failure */
-    video: 'retain-on-failure',
+    baseURL: "http://localhost:5173",
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
   },
-
-  /* Configure projects for major browsers */
   projects: [
-    {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
-    },
-
-    {
-      name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
-    },
-
-    {
-      name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
-    },
-
-    /* Test against mobile viewports. */
-    {
-      name: 'Mobile Chrome',
-      use: { ...devices['Pixel 5'] },
-    },
-    {
-      name: 'Mobile Safari',
-      use: { ...devices['iPhone 12'] },
-    },
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    { name: "mobile-chromium", use: { ...devices["Pixel 5"] } },
   ],
-
-  /* Run your local dev server before starting the tests */
   webServer: [
     {
-      command: 'npm run dev',
-      url: 'http://localhost:5173',
-      reuseExistingServer: !process.env.CI,
-      timeout: 120 * 1000,
+      command: "npx --yes --package=azurite@3.35.0 azurite --silent --blobHost 127.0.0.1 --queueHost 127.0.0.1 --tableHost 127.0.0.1 --location .artifacts/e2e-azurite",
+      port: 10002,
+      reuseExistingServer: true,
+      timeout: 120000,
     },
-    // Uncomment to auto-start API for E2E tests
-    // {
-    //   command: 'cd api && func start',
-    //   url: 'http://localhost:7071/api/ping',
-    //   reuseExistingServer: !process.env.CI,
-    //   timeout: 120 * 1000,
-    // },
+    {
+      command: "node scripts/start-e2e-api.js",
+      url: "http://localhost:7072/api/me",
+      reuseExistingServer: false,
+      timeout: 120000,
+    },
+    {
+      command: "npm run dev -- --port 5173 --strictPort",
+      url: "http://localhost:5173",
+      reuseExistingServer: false,
+      timeout: 30000,
+    },
   ],
 });

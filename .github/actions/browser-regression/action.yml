@@ -1,0 +1,12 @@
+name: Browser regression
+description: Run desktop and mobile workflows against the Functions host and Azurite.
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        npm install --prefix "$RUNNER_TEMP/func-tools" --no-package-lock azure-functions-core-tools@4.5.0
+        echo "$RUNNER_TEMP/func-tools/node_modules/.bin" >> "$GITHUB_PATH"
+        npx playwright install --with-deps chromium
+    - shell: bash
+      run: npm run test:e2e

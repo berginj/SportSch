@@ -1,4 +1,5 @@
 using System.Net;
+using Azure;
 using Azure.Data.Tables;
 using GameSwap.Functions.Repositories;
 using GameSwap.Functions.Services;
@@ -56,14 +57,14 @@ public class UpdateSlot
     );
 
     [Function("UpdateSlot")]
-    [OpenApiOperation(operationId: "UpdateSlot", tags: new[] { "Slots" }, Summary = "Update slot schedule details", Description = "Updates game date/time/field for an existing slot, including availability slots, with conflict checks. LeagueAdmin/GlobalAdmin can edit any slot. Coaches can only edit their own team's Open slots.")]
+    [OpenApiOperation(operationId: "UpdateSlot", tags: new[] { "Slots" }, Summary = "Update slot schedule details", Description = "Updates game date/time/field for an existing slot, including availability slots, with conflict checks. LeagueAdmin/GlobalAdmin only.")]
     [OpenApiSecurity("league_id_header", SecuritySchemeType.ApiKey, In = OpenApiSecurityLocationType.Header, Name = "x-league-id")]
     [OpenApiParameter(name: "division", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Division code")]
     [OpenApiParameter(name: "slotId", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Slot identifier")]
     [OpenApiRequestBody(contentType: "application/json", bodyType: typeof(UpdateSlotReq), Required = true, Description = "Updated schedule fields")]
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(object), Description = "Slot updated")]
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.Conflict, contentType: "application/json", bodyType: typeof(object), Description = "Field/time conflict detected")]
-    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "User not authorized to edit this slot (coaches can only edit their own Open slots)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.Forbidden, contentType: "application/json", bodyType: typeof(object), Description = "League administrator permission required")]
     public async Task<HttpResponseData> Run(
         [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "slots/{division}/{slotId}")] HttpRequestData req,
         string division,
@@ -96,33 +97,17 @@ public class UpdateSlot
             var originalStartTime = slot.GetString("StartTime") ?? "";
             var originalFieldKey = slot.GetString("FieldKey") ?? "";
 
-            // Authorization: Admin can edit any slot, Coach can only edit their own Open slots
-            var isAdmin = await IsLeagueAdminAsync(me.UserId, leagueId);
-            if (!isAdmin)
-            {
-                var membership = await _membershipRepo.GetMembershipAsync(me.UserId, leagueId);
-                var role = (membership?.GetString("Role") ?? "").Trim();
-                var isCoach = string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase);
+            if (!await IsLeagueAdminAsync(me.UserId, leagueId))
+                return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
+                    "Only league administrators can edit schedule details.");
 
-                if (!isCoach)
-                {
-                    return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN, "Only league admins and coaches can edit slots.");
-                }
-
-                var coachTeamId = (membership?.GetString("TeamId") ?? membership?.GetString("CoachTeamId") ?? "").Trim();
-                var offeringTeamId = (slot.GetString("OfferingTeamId") ?? "").Trim();
-                var slotStatus = (slot.GetString("Status") ?? Constants.Status.SlotOpen).Trim();
-
-                if (string.IsNullOrWhiteSpace(coachTeamId) || !string.Equals(coachTeamId, offeringTeamId, StringComparison.OrdinalIgnoreCase))
-                {
-                    return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN, "Coaches can only edit slots offered by their own team.");
-                }
-
-                if (!string.Equals(slotStatus, Constants.Status.SlotOpen, StringComparison.OrdinalIgnoreCase))
-                {
-                    return ApiResponses.Error(req, HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN, "Coaches can only edit Open slots. Confirmed or Cancelled slots require admin approval or a reschedule request.");
-                }
-            }
+            if (!req.Headers.TryGetValues("If-Match", out var versions) ||
+                string.IsNullOrWhiteSpace(versions.FirstOrDefault()) || versions.First() == "*")
+                return ApiResponses.Error(req, (HttpStatusCode)428, "VERSION_REQUIRED",
+                    "Reload this game before editing. Its current version is required.");
+            if (!string.Equals(versions.First(), slot.ETag.ToString(), StringComparison.Ordinal))
+                return ApiResponses.Error(req, HttpStatusCode.Conflict, "STALE_SLOT",
+                    "This game changed since you opened it. Refresh and review the latest schedule before saving.");
 
             var currentStatus = (slot.GetString("Status") ?? Constants.Status.SlotOpen).Trim();
             if (string.Equals(currentStatus, Constants.Status.SlotCancelled, StringComparison.OrdinalIgnoreCase))
@@ -262,6 +247,11 @@ public class UpdateSlot
         {
             return ApiResponses.FromHttpError(req, ex);
         }
+        catch (RequestFailedException ex) when (ex.Status == 412)
+        {
+            return ApiResponses.Error(req, HttpStatusCode.Conflict, "STALE_SLOT",
+                "This game changed while saving. Refresh and review the latest schedule.");
+        }
         catch (Exception ex)
         {
             _log.LogError(ex, "UpdateSlot failed");
@@ -346,11 +336,11 @@ public class UpdateSlot
             PageSize = 100
         };
 
-        var result = await _slotRepo.QuerySlotsAsync(filter, null);
+        var matchingSlots = await _slotRepo.QueryAllSlotsAsync(filter);
 
         foreach (var teamId in teamsToCheck)
         {
-            foreach (var otherSlot in result.Items)
+            foreach (var otherSlot in matchingSlots)
             {
                 if (string.Equals(otherSlot.RowKey, slotIdToExclude, StringComparison.OrdinalIgnoreCase))
                     continue;

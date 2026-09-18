@@ -233,6 +233,6 @@ describe("CoachOnboardingPage", () => {
     expect(upcomingGamesStat).toHaveTextContent("2");
     expect(screen.getByText("2026-04-19 - 17:30")).toBeInTheDocument();
     expect(screen.getByText("@ TEAM-3 - Diamond 2")).toBeInTheDocument();
-    expect(api.apiFetch).toHaveBeenCalledWith(expect.stringContaining("continuationToken=page-2"));
+    expect(api.apiFetch).toHaveBeenCalledWith(expect.stringContaining("continuationToken=page-2"), expect.objectContaining({ leagueId: "league-1" }));
   });
 });

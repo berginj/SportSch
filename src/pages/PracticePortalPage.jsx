@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { apiFetch } from "../lib/api";
+import { useLeagueApi } from "../lib/useLeagueApi";
 import StatusCard from "../components/StatusCard";
 import Toast from "../components/Toast";
+import { bookingLeadTime } from "../lib/scheduleTime";
 
 function getTodayDate() {
   return new Date().toISOString().slice(0, 10);
@@ -80,38 +81,11 @@ function getSharePartnerName(teamOptions, teamId) {
 }
 
 function isWithinLeadTime(request) {
-  if (!request) return { withinLeadTime: false };
-
-  const MINIMUM_LEAD_TIME_HOURS = 48;
-  const dateStr = request.date;
-  const timeStr = request.startTime;
-
-  if (!dateStr || !timeStr) return { withinLeadTime: false };
-
-  try {
-    const [hours, minutes] = timeStr.split(":").map(Number);
-    const practiceDate = new Date(dateStr);
-    practiceDate.setHours(hours, minutes, 0, 0);
-
-    const now = new Date();
-    const hoursUntil = (practiceDate - now) / (1000 * 60 * 60);
-
-    if (hoursUntil > 0 && hoursUntil < MINIMUM_LEAD_TIME_HOURS) {
-      return {
-        withinLeadTime: true,
-        hoursUntil: Math.round(hoursUntil * 10) / 10,
-        minimumHours: MINIMUM_LEAD_TIME_HOURS,
-      };
-    }
-  } catch {
-    // Invalid date/time, allow move
-    return { withinLeadTime: false };
-  }
-
-  return { withinLeadTime: false };
+  return bookingLeadTime(request?.date, request?.startTime);
 }
 
 export default function PracticePortalPage({ me, leagueId }) {
+  const apiFetch = useLeagueApi(leagueId);
   const [data, setData] = useState(null);
   const [teamOptions, setTeamOptions] = useState([]);
   const [availabilityData, setAvailabilityData] = useState(null);
@@ -218,7 +192,7 @@ export default function PracticePortalPage({ me, leagueId }) {
     return () => {
       cancelled = true;
     };
-  }, [leagueId, seasonLabel, availabilityDate, availabilityStartTime, availabilityEndTime, exactWindowRequested, availabilityRefreshKey]);
+  }, [leagueId, seasonLabel, availabilityDate, availabilityStartTime, availabilityEndTime, exactWindowRequested, availabilityRefreshKey, apiFetch]);
 
   useEffect(() => {
     if (!openToShareField) {
@@ -295,7 +269,8 @@ export default function PracticePortalPage({ me, leagueId }) {
   async function initiateMove(request, slot) {
     // Check for conflicts first
     const conflictData = await checkConflicts(slot);
-    if (conflictData && conflictData.hasConflicts) {
+    if (!conflictData) return;
+    if (conflictData.hasConflicts) {
       // Show conflicts and ask for confirmation
       setConflicts(conflictData.conflicts);
       setPendingMoveSlot(slot);
@@ -389,45 +364,9 @@ export default function PracticePortalPage({ me, leagueId }) {
       {availabilityError ? <div className="callout callout--error">{availabilityError}</div> : null}
 
       {/* Migration Banner - New Simplified Practice Requests */}
-      <div className="card border-2 border-blue-500 dark:border-blue-600">
-        <div className="card__body">
-          <div className="flex items-start gap-3">
-            <div className="text-3xl">✨</div>
-            <div className="flex-1">
-              <h3 className="font-bold text-lg text-blue-700 dark:text-blue-400 mb-2">
-                Practice Requests Just Got Easier!
-              </h3>
-              <p className="text-gray-700 dark:text-gray-300 mb-3">
-                You can now request practice space directly from the <strong>Calendar</strong> page in just 4 steps (20 seconds):
-              </p>
-              <ol className="list-decimal list-inside space-y-1 text-sm text-gray-600 dark:text-gray-400 mb-4">
-                <li>Go to the Calendar page</li>
-                <li>Click the "🏃 Request Practice Space" button</li>
-                <li>Select your field, date, and time</li>
-                <li>Submit - <strong>Auto-approved if no conflicts!</strong></li>
-              </ol>
-              <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-md mb-3">
-                <div className="flex items-center gap-2">
-                  <svg className="h-5 w-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                  <span className="text-sm font-medium text-green-800 dark:text-green-200">
-                    70-80% of requests are now auto-approved instantly!
-                  </span>
-                </div>
-              </div>
-              <a
-                href="#calendar"
-                className="btn btn--primary inline-block"
-              >
-                Try the New Practice Requests →
-              </a>
-              <p className="text-xs text-gray-500 dark:text-gray-500 mt-3">
-                Note: This page will remain available for 2 more weeks, then redirect to Calendar automatically.
-              </p>
-            </div>
-          </div>
-        </div>
+      <div className="callout">
+        Choose league-provided practice inventory below or <a href="#calendar">request practice from the calendar</a>.
+        Approval follows the league policy shown for each available time.
       </div>
 
       {movingRequest ? (

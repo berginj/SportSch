@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { apiFetch } from "../lib/api";
+import { useLeagueApi } from "../lib/useLeagueApi";
 import Toast from "../components/Toast";
 import PracticeSpaceComparisonCalendar from "../components/PracticeSpaceComparisonCalendar";
 import { buildPracticeSpaceComparison, derivePracticeSpaceDateRange, filterPracticeSpaceComparison } from "../lib/practiceSpaceCompare";
@@ -95,6 +95,7 @@ function buildAvailabilityQuery({ seasonLabel, date, startTime, endTime, divisio
 }
 
 export default function PracticeSpaceManager({ leagueId }) {
+  const apiFetch = useLeagueApi(leagueId);
   const [data, setData] = useState(null);
   const [seasonLabel, setSeasonLabel] = useState("");
   const [loading, setLoading] = useState(true);

@@ -30,10 +30,20 @@ jobs:
           dotnet-version: "8.0.x"
       - name: Install UI dependencies
         run: npm ci
-      - name: Scheduler UI guard tests
-        run: npm run test -- src/__tests__/manage/SeasonWizard.test.jsx --run
-      - name: Scheduler engine guard tests
-        run: dotnet test api/GameSwap.Tests/GameSwap.Tests.csproj --filter "FullyQualifiedName~Schedule"
+      - name: Lint application
+        run: npm run lint
+      - name: Full UI regression suite
+        run: npm run test:ci
+      - name: Start local storage emulator
+        uses: ./.github/actions/start-test-storage
+      - name: Full backend regression suite
+        run: dotnet test api/GameSwap.Tests/GameSwap.Tests.csproj
+        env:
+          GAMESWAP_STORAGE_TESTS: "1"
+      - name: Verify production UI build
+        run: npm run build
+      - name: Browser regression
+        uses: ./.github/actions/browser-regression
       - name: Build And Deploy
         id: builddeploy
         uses: Azure/static-web-apps-deploy@v1

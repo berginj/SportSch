@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiFetch } from "../lib/api";
+import { useLeagueApi } from "../lib/useLeagueApi";
 import { fetchAllPagedItems } from "../lib/pagedResults";
 import StatusCard from "../components/StatusCard";
 import Toast from "../components/Toast";
@@ -31,6 +31,7 @@ function describePracticeSharing(request) {
 }
 
 export default function CoachOnboardingPage({ me, leagueId, setTab }) {
+  const apiFetch = useLeagueApi(leagueId);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [toast, setToast] = useState(null);
@@ -69,7 +70,7 @@ export default function CoachOnboardingPage({ me, leagueId, setTab }) {
       if (continuationToken) params.set("continuationToken", continuationToken);
       return apiFetch(`/api/slots?${params.toString()}`);
     });
-  }, [division]);
+  }, [apiFetch, division]);
 
   const loadAll = useCallback(async () => {
     if (!division || !teamId) {
@@ -117,7 +118,7 @@ export default function CoachOnboardingPage({ me, leagueId, setTab }) {
     } finally {
       setLoading(false);
     }
-  }, [division, loadUpcomingGames, teamId]);
+  }, [apiFetch, division, loadUpcomingGames, teamId]);
 
   const openFullSchedule = useCallback(() => {
     navigateToCalendarTab(setTab, {

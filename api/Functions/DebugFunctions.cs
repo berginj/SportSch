@@ -30,7 +30,7 @@ public class DebugFunctions
             var me = IdentityUtil.GetMe(req);
             await ApiGuards.RequireGlobalAdminAsync(_svc, me.UserId);
 
-            leagueId = (leagueId ?? "").Trim();
+            leagueId = ApiGuards.RequireMatchingLeagueId(req, leagueId);
             if (string.IsNullOrWhiteSpace(leagueId))
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "leagueId is required");
 
@@ -77,7 +77,7 @@ public class DebugFunctions
             var me = IdentityUtil.GetMe(req);
             await ApiGuards.RequireGlobalAdminAsync(_svc, me.UserId);
 
-            leagueId = (leagueId ?? "").Trim();
+            leagueId = ApiGuards.RequireMatchingLeagueId(req, leagueId);
             if (string.IsNullOrWhiteSpace(leagueId))
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "leagueId is required");
 

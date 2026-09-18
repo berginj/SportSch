@@ -44,8 +44,23 @@ public class LeaguesFunctions
     );
     public record LeagueDto(string leagueId, string name, string timezone, string status, LeagueContact contact, SeasonConfig season);
     public record PublicLeagueDto(string leagueId, string name);
+    public record LeagueSettingsDto(
+        string leagueId,
+        string publicSlug,
+        bool publicScheduleEnabled,
+        bool publicCalendarEnabled,
+        string publicDisplayName,
+        string timezone,
+        string umpireOrganizationEmail);
     public record CreateLeagueReq(string? leagueId, string? name, string? timezone);
     public record PatchLeagueReq(string? name, string? timezone, string? status, LeagueContact? contact);
+    public record PatchLeagueSettingsReq(
+        string? publicSlug,
+        bool? publicScheduleEnabled,
+        bool? publicCalendarEnabled,
+        string? publicDisplayName,
+        string? timezone,
+        string? umpireOrganizationEmail);
     public record PatchSeasonReq(SeasonConfig? season);
 
     private const string SeasonSpringStart = "SeasonSpringStart";
@@ -90,6 +105,21 @@ public class LeaguesFunctions
                 gameLengthMinutes: gameLengthMinutes,
                 blackouts: blackouts
             )
+        );
+    }
+
+    private static LeagueSettingsDto ToSettingsDto(TableEntity e)
+    {
+        var timezone = (e.GetString("Timezone") ?? "America/New_York").Trim();
+        var name = (e.GetString("Name") ?? e.RowKey).Trim();
+        return new LeagueSettingsDto(
+            leagueId: e.RowKey,
+            publicSlug: (e.GetString("PublicSlug") ?? "").Trim(),
+            publicScheduleEnabled: e.GetBoolean("PublicScheduleEnabled") ?? false,
+            publicCalendarEnabled: e.GetBoolean("PublicCalendarEnabled") ?? false,
+            publicDisplayName: (e.GetString("PublicDisplayName") ?? name).Trim(),
+            timezone: timezone,
+            umpireOrganizationEmail: (e.GetString("UmpireOrganizationEmail") ?? "").Trim()
         );
     }
 
@@ -228,6 +258,94 @@ public class LeaguesFunctions
         {
             _log.LogError(ex, "PatchLeague failed");
             return ApiResponses.Error(req, HttpStatusCode.InternalServerError, "INTERNAL", "Internal Server Error");
+        }
+    }
+
+    [Function("GetLeagueSettings")]
+    public async Task<HttpResponseData> GetLeagueSettings(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "league/settings")] HttpRequestData req)
+    {
+        try
+        {
+            var leagueId = ApiGuards.RequireLeagueId(req);
+            var me = IdentityUtil.GetMe(req);
+            await ApiGuards.RequireLeagueAdminAsync(_tableService, me.UserId, leagueId);
+
+            var e = await _leagueRepo.GetLeagueAsync(leagueId);
+            if (e is null)
+            {
+                return ApiResponses.Error(req, HttpStatusCode.NotFound, ErrorCodes.NOT_FOUND, $"league not found: {leagueId}");
+            }
+
+            return ApiResponses.Ok(req, ToSettingsDto(e));
+        }
+        catch (ApiGuards.HttpError ex)
+        {
+            return ApiResponses.FromHttpError(req, ex);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "GetLeagueSettings failed");
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, ErrorCodes.INTERNAL_ERROR, "Internal Server Error");
+        }
+    }
+
+    [Function("PatchLeagueSettings")]
+    public async Task<HttpResponseData> PatchLeagueSettings(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "league/settings")] HttpRequestData req)
+    {
+        try
+        {
+            var leagueId = ApiGuards.RequireLeagueId(req);
+            var me = IdentityUtil.GetMe(req);
+            await ApiGuards.RequireLeagueAdminAsync(_tableService, me.UserId, leagueId);
+
+            var body = await HttpUtil.ReadJsonAsync<PatchLeagueSettingsReq>(req);
+            if (body is null)
+                return ApiResponses.Error(req, HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST, "Invalid JSON body");
+
+            var e = await _leagueRepo.GetLeagueAsync(leagueId);
+            if (e is null)
+            {
+                return ApiResponses.Error(req, HttpStatusCode.NotFound, ErrorCodes.NOT_FOUND, $"league not found: {leagueId}");
+            }
+
+            if (body.publicSlug is not null)
+            {
+                var slug = body.publicSlug.Trim();
+                if (!string.IsNullOrWhiteSpace(slug))
+                {
+                    ValidatePublicSlug(slug);
+                    await EnsurePublicSlugAvailableAsync(slug, leagueId);
+                }
+
+                e["PublicSlug"] = slug;
+            }
+
+            if (body.publicScheduleEnabled.HasValue)
+                e["PublicScheduleEnabled"] = body.publicScheduleEnabled.Value;
+            if (body.publicCalendarEnabled.HasValue)
+                e["PublicCalendarEnabled"] = body.publicCalendarEnabled.Value;
+            if (body.publicDisplayName is not null)
+                e["PublicDisplayName"] = body.publicDisplayName.Trim();
+            if (body.timezone is not null)
+                e["Timezone"] = NormalizeTimezone(body.timezone);
+            if (body.umpireOrganizationEmail is not null)
+                e["UmpireOrganizationEmail"] = body.umpireOrganizationEmail.Trim();
+
+            e["UpdatedUtc"] = DateTimeOffset.UtcNow;
+            await _leagueRepo.UpdateLeagueAsync(e);
+
+            return ApiResponses.Ok(req, ToSettingsDto(e));
+        }
+        catch (ApiGuards.HttpError ex)
+        {
+            return ApiResponses.FromHttpError(req, ex);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "PatchLeagueSettings failed");
+            return ApiResponses.Error(req, HttpStatusCode.InternalServerError, ErrorCodes.INTERNAL_ERROR, "Internal Server Error");
         }
     }
 
@@ -374,7 +492,7 @@ public class LeaguesFunctions
                     "Only global admins can delete leagues");
             }
 
-            leagueId = (leagueId ?? "").Trim();
+            leagueId = ApiGuards.RequireMatchingLeagueId(req, leagueId);
             if (string.IsNullOrWhiteSpace(leagueId))
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, "BAD_REQUEST", "leagueId is required");
             ApiGuards.EnsureValidTableKeyPart("leagueId", leagueId);
@@ -407,7 +525,7 @@ public class LeaguesFunctions
     {
         try
         {
-            leagueId = (leagueId ?? "").Trim();
+            leagueId = ApiGuards.RequireMatchingLeagueId(req, leagueId);
             ApiGuards.EnsureValidTableKeyPart("leagueId", leagueId);
 
             var me = IdentityUtil.GetMe(req);
@@ -569,5 +687,41 @@ public class LeaguesFunctions
         }
 
         return deleted;
+    }
+
+    private static void ValidatePublicSlug(string slug)
+    {
+        if (slug.Length < 3 || slug.Length > 80)
+        {
+            throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST,
+                "publicSlug must be between 3 and 80 characters.");
+        }
+
+        if (slug.StartsWith('-') || slug.EndsWith('-') ||
+            slug.Any(c => !(char.IsAsciiLetterOrDigit(c) || c == '-')))
+        {
+            throw new ApiGuards.HttpError((int)HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST,
+                "publicSlug may contain only letters, numbers, and hyphens, and cannot start or end with a hyphen.");
+        }
+    }
+
+    private async Task EnsurePublicSlugAvailableAsync(string slug, string currentLeagueId)
+    {
+        var leagues = await _leagueRepo.QueryLeaguesAsync(includeAll: true);
+        var conflict = leagues.Any(e =>
+            !string.Equals(e.RowKey, currentLeagueId, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals((e.GetString("PublicSlug") ?? "").Trim(), slug, StringComparison.OrdinalIgnoreCase));
+
+        if (conflict)
+        {
+            throw new ApiGuards.HttpError((int)HttpStatusCode.Conflict, ErrorCodes.CONFLICT,
+                "publicSlug is already in use.");
+        }
+    }
+
+    private static string NormalizeTimezone(string? timezone)
+    {
+        var value = (timezone ?? "").Trim();
+        return string.IsNullOrWhiteSpace(value) ? "America/New_York" : value;
     }
 }

@@ -34,7 +34,7 @@ public class PracticeRequestServiceTests
             _mockMembershipRepo.Object,
             _mockSlotRepo.Object,
             _mockTeamRepo.Object,
-            _mockLogger.Object);
+            _mockLogger.Object, new FixedClock());
     }
 
     [Fact]
@@ -335,6 +335,13 @@ public class PracticeRequestServiceTests
             .Setup(x => x.CreateRequestAsync(It.IsAny<TableEntity>()))
             .Returns(Task.CompletedTask);
 
+        _mockSlotRepo.Setup(x => x.GetSlotAsync("league-1", "10U", "slot-1"))
+            .ReturnsAsync(new TableEntity("SLOT|league-1|10U", "slot-1")
+            {
+                ["GameDate"] = FixedClock.EasternNow.AddDays(7).ToString("yyyy-MM-dd"),
+                ["StartTime"] = "18:00"
+            });
+
         // Act
         var result = await _service.CreateMoveRequestAsync(
             leagueId: "league-1",
@@ -406,6 +413,13 @@ public class PracticeRequestServiceTests
         _mockPracticeRequestRepo
             .Setup(x => x.CreateRequestAsync(It.IsAny<TableEntity>()))
             .Returns(Task.CompletedTask);
+
+        _mockSlotRepo.Setup(x => x.GetSlotAsync("league-1", "10U", "slot-1"))
+            .ReturnsAsync(new TableEntity("SLOT|league-1|10U", "slot-1")
+            {
+                ["GameDate"] = FixedClock.EasternNow.AddDays(7).ToString("yyyy-MM-dd"),
+                ["StartTime"] = "18:00"
+            });
 
         // Act
         var result = await _service.CreateMoveRequestAsync(
@@ -544,7 +558,7 @@ public class PracticeRequestServiceTests
         var membership = BuildMembership(Constants.Roles.Coach, "10U", "Panthers");
 
         // Practice happening in 24 hours (within 48-hour lead time)
-        var tomorrow = DateTime.UtcNow.AddHours(24);
+        var tomorrow = FixedClock.EasternNow.AddHours(24);
         var practiceDate = tomorrow.ToString("yyyy-MM-dd");
         var practiceTime = tomorrow.ToString("HH:mm");
 
@@ -585,7 +599,6 @@ public class PracticeRequestServiceTests
         Assert.Equal(409, ex.Status);
         Assert.Equal(ErrorCodes.LEAD_TIME_VIOLATION, ex.Code);
         Assert.Contains("72 hours", ex.Message);
-        Assert.Contains("24", ex.Message); // Hours until practice
         _mockPracticeRequestRepo.Verify(x => x.CreateRequestAsync(It.IsAny<TableEntity>()), Times.Never);
     }
 
@@ -596,7 +609,7 @@ public class PracticeRequestServiceTests
         var membership = BuildMembership(Constants.Roles.Coach, "10U", "Panthers");
 
         // Practice happening in 96 hours (outside 72-hour lead time)
-        var futureDate = DateTime.UtcNow.AddHours(96);
+        var futureDate = FixedClock.EasternNow.AddHours(96);
         var practiceDate = futureDate.ToString("yyyy-MM-dd");
         var practiceTime = futureDate.ToString("HH:mm");
 

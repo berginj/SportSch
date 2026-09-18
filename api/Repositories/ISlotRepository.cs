@@ -34,6 +34,9 @@ public interface ISlotRepository
     /// </summary>
     Task UpdateSlotAsync(TableEntity slot, ETag etag);
 
+    /// <summary>Conditionally replace slots in one partition as one storage transaction.</summary>
+    Task UpdateSlotsAtomicallyAsync(IReadOnlyList<TableEntity> slots);
+
     /// <summary>
     /// Deletes a slot.
     /// </summary>

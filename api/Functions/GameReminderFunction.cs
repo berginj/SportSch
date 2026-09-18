@@ -25,6 +25,7 @@ public class GameReminderFunction
     private readonly INotificationPreferencesService _preferencesService;
     private readonly IEmailService _emailService;
     private readonly ILogger _log;
+    private readonly TimeProvider _clock;
 
     private readonly record struct ReminderWindow(string Type, TimeSpan WindowStart, TimeSpan WindowEnd);
     private readonly record struct CoachRecipient(string UserId, string Email);
@@ -34,13 +35,14 @@ public class GameReminderFunction
         IMembershipRepository membershipRepo,
         INotificationPreferencesService preferencesService,
         IEmailService emailService,
-        ILoggerFactory lf)
+        ILoggerFactory lf, TimeProvider? clock = null)
     {
         _tableService = tableService;
         _membershipRepo = membershipRepo;
         _preferencesService = preferencesService;
         _emailService = emailService;
         _log = lf.CreateLogger<GameReminderFunction>();
+        _clock = clock ?? TimeProvider.System;
     }
 
     /// <summary>
@@ -50,7 +52,7 @@ public class GameReminderFunction
     [Function("SendGameReminders")]
     public async Task SendGameReminders([TimerTrigger("0 0 * * * *")] TimerInfo timerInfo)
     {
-        var nowUtc = DateTime.UtcNow;
+        var nowUtc = _clock.GetUtcNow().UtcDateTime;
         _log.LogInformation("Game reminder function started at {TimeUtc}", nowUtc);
 
         try
@@ -87,8 +89,8 @@ public class GameReminderFunction
     {
         var earliestWindow = nowUtc.Add(ReminderWindows.Min(w => w.WindowStart));
         var latestWindow = nowUtc.Add(ReminderWindows.Max(w => w.WindowEnd));
-        var fromDate = DateOnly.FromDateTime(earliestWindow);
-        var toDate = DateOnly.FromDateTime(latestWindow);
+        var fromDate = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(earliestWindow, ScheduleTime.Eastern));
+        var toDate = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(latestWindow, ScheduleTime.Eastern));
 
         var recipientsByTeam = await LoadCoachRecipientsByTeamAsync(leagueId);
         var slotsTable = await TableClients.GetTableAsync(_tableService, Constants.Tables.Slots);
@@ -290,12 +292,8 @@ public class GameReminderFunction
     private static bool TryParseGameDateTime(string gameDate, string startTime, out DateTime gameDateTime)
     {
         gameDateTime = default;
-        if (!DateOnly.TryParse(gameDate, out var parsedDate))
-            return false;
-        if (!TryParseTime(startTime, out var parsedTime))
-            return false;
-
-        gameDateTime = parsedDate.ToDateTime(parsedTime);
+        if (!ScheduleTime.TryGetUtc(gameDate, startTime, out var instant)) return false;
+        gameDateTime = instant.UtcDateTime;
         return true;
     }
 

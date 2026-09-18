@@ -23,19 +23,21 @@ public class GameRescheduleRequestService : IGameRescheduleRequestService
     private readonly IMembershipRepository _membershipRepo;
     private readonly INotificationService _notificationService;
     private readonly ILogger<GameRescheduleRequestService> _logger;
+    private readonly TimeProvider _clock;
 
     public GameRescheduleRequestService(
         IGameRescheduleRequestRepository requestRepo,
         ISlotRepository slotRepo,
         IMembershipRepository membershipRepo,
         INotificationService notificationService,
-        ILogger<GameRescheduleRequestService> logger)
+        ILogger<GameRescheduleRequestService> logger, TimeProvider? clock = null)
     {
         _requestRepo = requestRepo;
         _slotRepo = slotRepo;
         _membershipRepo = membershipRepo;
         _notificationService = notificationService;
         _logger = logger;
+        _clock = clock ?? TimeProvider.System;
     }
 
     public async Task<TableEntity> CreateRescheduleRequestAsync(
@@ -93,7 +95,7 @@ public class GameRescheduleRequestService : IGameRescheduleRequestService
 
         // Verify user owns this game (HomeTeam or AwayTeam)
         var homeTeamId = (originalSlot.GetString("HomeTeamId") ?? "").Trim();
-        var awayTeamId = (originalSlot.GetString("AwayTeamId") ?? "").Trim();
+        var awayTeamId = SlotEntityUtil.ReadOpponentTeamId(originalSlot);
 
         if (string.IsNullOrWhiteSpace(homeTeamId) || string.IsNullOrWhiteSpace(awayTeamId))
         {
@@ -109,7 +111,8 @@ public class GameRescheduleRequestService : IGameRescheduleRequestService
         var isHomeTeam = string.Equals(userTeamId, homeTeamId, StringComparison.OrdinalIgnoreCase);
         var isAwayTeam = string.Equals(userTeamId, awayTeamId, StringComparison.OrdinalIgnoreCase);
 
-        if (!isAdmin && !isHomeTeam && !isAwayTeam)
+        if (!isAdmin && (!string.Equals(membership?.GetString("Role"), Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(membership?.GetString("Division"), division, StringComparison.OrdinalIgnoreCase) || (!isHomeTeam && !isAwayTeam)))
         {
             throw new ApiGuards.HttpError((int)HttpStatusCode.Forbidden, ErrorCodes.NOT_GAME_PARTICIPANT,
                 "Only teams involved in the game can request a reschedule.");
@@ -148,7 +151,8 @@ public class GameRescheduleRequestService : IGameRescheduleRequestService
         }
 
         var proposedStatus = (proposedSlot.GetString("Status") ?? "").Trim();
-        if (!string.Equals(proposedStatus, Constants.Status.SlotOpen, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(proposedStatus, Constants.Status.SlotOpen, StringComparison.OrdinalIgnoreCase) ||
+            !(proposedSlot.GetBoolean("IsAvailability") ?? false) || SlotEntityUtil.IsPractice(proposedSlot))
         {
             throw new ApiGuards.HttpError((int)HttpStatusCode.Conflict, ErrorCodes.SLOT_NOT_OPEN,
                 $"Proposed slot must be Open (current status: {proposedStatus}).");
@@ -164,7 +168,7 @@ public class GameRescheduleRequestService : IGameRescheduleRequestService
         }
 
         // Create reschedule request
-        var now = DateTimeOffset.UtcNow;
+        var now = _clock.GetUtcNow();
         var requestId = Guid.NewGuid().ToString();
         var request = new TableEntity($"GAMERESCHEDULE|{leagueId}", requestId)
         {
@@ -201,7 +205,7 @@ public class GameRescheduleRequestService : IGameRescheduleRequestService
             requestId, originalSlotId, proposedSlotId);
 
         // Notify opponent team (fire and forget - don't block response)
-        _ = Task.Run(async () =>
+        await SendNotificationsAsync(async () =>
         {
             try
             {
@@ -264,6 +268,12 @@ public class GameRescheduleRequestService : IGameRescheduleRequestService
                 "Reschedule request not found.");
         }
 
+        var opponentTeamId = (request.GetString("OpponentTeamId") ?? "").Trim();
+        await EnsureOpponentAuthorization(userId, leagueId, request.GetString("Division") ?? "", opponentTeamId);
+        if (request.GetString("Status") == GameRescheduleRequestStatuses.Finalized) return request;
+        if (request.GetString("Status") == GameRescheduleRequestStatuses.ApprovedByBothTeams)
+            return await FinalizeAsync(leagueId, userId, requestId);
+
         var status = (request.GetString("Status") ?? "").Trim();
         if (!string.Equals(status, GameRescheduleRequestStatuses.PendingOpponent, StringComparison.OrdinalIgnoreCase))
         {
@@ -271,26 +281,22 @@ public class GameRescheduleRequestService : IGameRescheduleRequestService
                 $"Request cannot be approved (current status: {status}).");
         }
 
-        // Verify user is opponent team coach or admin
-        var opponentTeamId = (request.GetString("OpponentTeamId") ?? "").Trim();
-        await EnsureOpponentAuthorization(userId, leagueId, opponentTeamId);
-
         // Update request status
         request["Status"] = GameRescheduleRequestStatuses.ApprovedByBothTeams;
-        request["OpponentApprovedUtc"] = DateTimeOffset.UtcNow;
+        request["OpponentApprovedUtc"] = _clock.GetUtcNow();
         request["OpponentApprovedBy"] = userId;
         request["OpponentResponse"] = response ?? "";
-        request["UpdatedUtc"] = DateTimeOffset.UtcNow;
+        request["UpdatedUtc"] = _clock.GetUtcNow();
 
         await _requestRepo.UpdateRequestAsync(request, request.ETag);
 
-        // Notify requesting team of approval (fire and forget)
-        _ = Task.Run(async () =>
+        // Notify requesting team of approval (awaited)
+        await SendNotificationsAsync(async () =>
         {
             try
             {
                 var requestingTeamId = (request.GetString("RequestingTeamId") ?? "").Trim();
-                var coaches = await GetCoachesForTeamAsync(leagueId, requestingTeamId);
+                var coaches = await GetCoachesForTeamAsync(leagueId, request.GetString("Division") ?? "", requestingTeamId);
                 var proposedDate = request.GetString("ProposedGameDate") ?? "";
                 var proposedTime = request.GetString("ProposedStartTime") ?? "";
                 var proposedField = request.GetString("ProposedFieldName") ?? "";
@@ -336,24 +342,24 @@ public class GameRescheduleRequestService : IGameRescheduleRequestService
 
         // Verify user is opponent team coach or admin
         var opponentTeamId = (request.GetString("OpponentTeamId") ?? "").Trim();
-        await EnsureOpponentAuthorization(userId, leagueId, opponentTeamId);
+        await EnsureOpponentAuthorization(userId, leagueId, request.GetString("Division") ?? "", opponentTeamId);
 
         // Update request status
         request["Status"] = GameRescheduleRequestStatuses.Rejected;
-        request["OpponentApprovedUtc"] = DateTimeOffset.UtcNow;
+        request["OpponentApprovedUtc"] = _clock.GetUtcNow();
         request["OpponentApprovedBy"] = userId;
         request["OpponentResponse"] = response ?? "";
-        request["UpdatedUtc"] = DateTimeOffset.UtcNow;
+        request["UpdatedUtc"] = _clock.GetUtcNow();
 
         await _requestRepo.UpdateRequestAsync(request, request.ETag);
 
-        // Notify requesting team of rejection (fire and forget)
-        _ = Task.Run(async () =>
+        // Notify requesting team of rejection (awaited)
+        await SendNotificationsAsync(async () =>
         {
             try
             {
                 var requestingTeamId = (request.GetString("RequestingTeamId") ?? "").Trim();
-                var coaches = await GetCoachesForTeamAsync(leagueId, requestingTeamId);
+                var coaches = await GetCoachesForTeamAsync(leagueId, request.GetString("Division") ?? "", requestingTeamId);
                 var originalDate = request.GetString("OriginalGameDate") ?? "";
                 var originalTime = request.GetString("OriginalStartTime") ?? "";
                 var opponentResponse = (response ?? "No reason given").Trim();
@@ -386,6 +392,9 @@ public class GameRescheduleRequestService : IGameRescheduleRequestService
                 "Reschedule request not found.");
         }
 
+        await EnsureOpponentAuthorization(userId, leagueId, request.GetString("Division") ?? "", request.GetString("OpponentTeamId") ?? "");
+        if (request.GetString("Status") == GameRescheduleRequestStatuses.Finalized) return request;
+
         var status = (request.GetString("Status") ?? "").Trim();
         if (!string.Equals(status, GameRescheduleRequestStatuses.ApprovedByBothTeams, StringComparison.OrdinalIgnoreCase))
         {
@@ -400,66 +409,52 @@ public class GameRescheduleRequestService : IGameRescheduleRequestService
         // CRITICAL: Atomic operation to cancel original and confirm proposed
         try
         {
-            await RetryUtil.WithEtagRetryAsync(async () =>
+            var originalSlot = await _slotRepo.GetSlotAsync(leagueId, division, originalSlotId)
+                ?? throw new ApiGuards.HttpError(404, ErrorCodes.SLOT_NOT_FOUND, "Original game slot not found.");
+            var proposedSlot = await _slotRepo.GetSlotAsync(leagueId, division, proposedSlotId)
+                ?? throw new ApiGuards.HttpError(404, ErrorCodes.SLOT_NOT_FOUND, "Proposed slot not found.");
+            var alreadyMoved = originalSlot.GetString("RescheduleOperationId") == requestId
+                && proposedSlot.GetString("RescheduleOperationId") == requestId;
+            if (!alreadyMoved)
             {
-                // Step 1: Cancel original game
-                var originalSlot = await _slotRepo.GetSlotAsync(leagueId, division, originalSlotId);
-                if (originalSlot is null)
-                {
-                    throw new ApiGuards.HttpError((int)HttpStatusCode.NotFound, ErrorCodes.SLOT_NOT_FOUND,
-                        "Original game slot not found.");
-                }
-
-                var originalStatus = (originalSlot.GetString("Status") ?? "").Trim();
-                if (!string.Equals(originalStatus, Constants.Status.SlotConfirmed, StringComparison.OrdinalIgnoreCase))
-                {
-                    throw new ApiGuards.HttpError((int)HttpStatusCode.Conflict, ErrorCodes.CONFLICT,
-                        $"Original game is no longer confirmed (status: {originalStatus}).");
-                }
-
+                if (originalSlot.GetString("Status") != Constants.Status.SlotConfirmed)
+                    throw new ApiGuards.HttpError(409, ErrorCodes.CONFLICT, "The original game changed. Review the request again.");
+                if (proposedSlot.GetString("Status") != Constants.Status.SlotOpen || !(proposedSlot.GetBoolean("IsAvailability") ?? false))
+                    throw new ApiGuards.HttpError(409, ErrorCodes.SLOT_NOT_OPEN, "The replacement is no longer available. The original game has not changed.");
+                ValidateLeadTime(originalSlot, MinimumLeadTimeHours);
+                var currentConflicts = await CheckConflictsAsync(leagueId, division, originalSlotId, proposedSlotId);
+                if (currentConflicts.HomeTeamHasConflicts || currentConflicts.AwayTeamHasConflicts)
+                    throw new ApiGuards.HttpError(409, ErrorCodes.RESCHEDULE_CONFLICT_DETECTED,
+                        "A team now has a conflicting booking. The original game has not changed.");
                 originalSlot["Status"] = Constants.Status.SlotCancelled;
-                originalSlot["CancelledReason"] = $"Rescheduled to {request.GetString("ProposedGameDate")} {request.GetString("ProposedStartTime")} at {request.GetString("ProposedFieldName")}";
-                originalSlot["UpdatedUtc"] = DateTimeOffset.UtcNow;
+                originalSlot["CancelledReason"] = $"Rescheduled by request {requestId}";
+                originalSlot["UpdatedUtc"] = _clock.GetUtcNow();
                 originalSlot["UpdatedBy"] = userId;
-
-                await _slotRepo.UpdateSlotAsync(originalSlot, originalSlot.ETag);
-
-                // Step 2: Confirm proposed slot with game metadata
-                var proposedSlot = await _slotRepo.GetSlotAsync(leagueId, division, proposedSlotId);
-                if (proposedSlot is null)
-                {
-                    throw new ApiGuards.HttpError((int)HttpStatusCode.NotFound, ErrorCodes.SLOT_NOT_FOUND,
-                        "Proposed slot not found.");
-                }
-
-                var proposedStatus = (proposedSlot.GetString("Status") ?? "").Trim();
-                if (!string.Equals(proposedStatus, Constants.Status.SlotOpen, StringComparison.OrdinalIgnoreCase))
-                {
-                    throw new ApiGuards.HttpError((int)HttpStatusCode.Conflict, ErrorCodes.SLOT_NOT_OPEN,
-                        $"Proposed slot is no longer available (status: {proposedStatus}).");
-                }
-
-                // Copy game metadata from original to proposed
+                originalSlot["RescheduleOperationId"] = requestId;
+                foreach (var property in new[] { "OfferingTeamId", "HomeTeamId", "AwayTeamId", "ConfirmedTeamId", "ConfirmedBy", "ConfirmedUtc", "GameType", "OfferingEmail" })
+                    if (originalSlot.TryGetValue(property, out var value)) proposedSlot[property] = value;
+                proposedSlot["MovedFromSlotId"] = originalSlotId;
+                proposedSlot["MovedFromConfirmedRequestId"] = originalSlot.GetString("ConfirmedRequestId") ?? "";
+                proposedSlot["ConfirmedRequestId"] = "";
                 proposedSlot["Status"] = Constants.Status.SlotConfirmed;
-                proposedSlot["HomeTeamId"] = originalSlot.GetString("HomeTeamId");
-                proposedSlot["AwayTeamId"] = originalSlot.GetString("AwayTeamId");
-                proposedSlot["GameType"] = originalSlot.GetString("GameType");
-                proposedSlot["Notes"] = $"Rescheduled from {request.GetString("OriginalGameDate")}";
-                proposedSlot["UpdatedUtc"] = DateTimeOffset.UtcNow;
+                proposedSlot["IsAvailability"] = false;
+                proposedSlot["IsExternalOffer"] = false;
+                proposedSlot["Notes"] = $"{originalSlot.GetString("Notes")} | Rescheduled from {request.GetString("OriginalGameDate")}";
+                proposedSlot["UpdatedUtc"] = _clock.GetUtcNow();
                 proposedSlot["UpdatedBy"] = userId;
-
-                await _slotRepo.UpdateSlotAsync(proposedSlot, proposedSlot.ETag);
-            });
+                proposedSlot["RescheduleOperationId"] = requestId;
+                await _slotRepo.UpdateSlotsAtomicallyAsync(new[] { originalSlot, proposedSlot });
+            }
 
             // Step 3: Update request status
             request["Status"] = GameRescheduleRequestStatuses.Finalized;
-            request["FinalizedUtc"] = DateTimeOffset.UtcNow;
-            request["UpdatedUtc"] = DateTimeOffset.UtcNow;
+            request["FinalizedUtc"] = _clock.GetUtcNow();
+            request["UpdatedUtc"] = _clock.GetUtcNow();
 
-            await _requestRepo.UpdateRequestAsync(request, ETag.All);
+            await _requestRepo.UpdateRequestAsync(request, request.ETag);
 
-            // Notify both teams of finalization (fire and forget)
-            _ = Task.Run(async () =>
+            // Notify both teams of finalization (awaited)
+            await SendNotificationsAsync(async () =>
             {
                 try
                 {
@@ -470,9 +465,9 @@ public class GameRescheduleRequestService : IGameRescheduleRequestService
                     var proposedField = request.GetString("ProposedFieldName") ?? "";
 
                     var allCoaches = new List<(string userId, string team)>();
-                    foreach (var coachId in await GetCoachesForTeamAsync(leagueId, requestingTeamId))
+                    foreach (var coachId in await GetCoachesForTeamAsync(leagueId, request.GetString("Division") ?? "", requestingTeamId))
                         allCoaches.Add((coachId, requestingTeamId));
-                    foreach (var coachId in await GetCoachesForTeamAsync(leagueId, opponentTeamId))
+                    foreach (var coachId in await GetCoachesForTeamAsync(leagueId, request.GetString("Division") ?? "", opponentTeamId))
                         allCoaches.Add((coachId, opponentTeamId));
 
                     var tasks = allCoaches.Select(c =>
@@ -491,6 +486,12 @@ public class GameRescheduleRequestService : IGameRescheduleRequestService
             _logger.LogInformation("Game reschedule finalized: {RequestId}", requestId);
 
             return request;
+        }
+        catch (ApiGuards.HttpError) { throw; }
+        catch (RequestFailedException ex) when (ex.Status is 409 or 412)
+        {
+            throw new ApiGuards.HttpError(409, ErrorCodes.CONFLICT,
+                "The game or replacement changed while this request was being finalized. Refresh and review before retrying.");
         }
         catch (Exception ex)
         {
@@ -513,29 +514,26 @@ public class GameRescheduleRequestService : IGameRescheduleRequestService
         }
 
         var status = (request.GetString("Status") ?? "").Trim();
-        if (string.Equals(status, GameRescheduleRequestStatuses.Finalized, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new ApiGuards.HttpError((int)HttpStatusCode.Conflict, ErrorCodes.INVALID_STATUS_TRANSITION,
-                "Cannot cancel a finalized reschedule request.");
-        }
+        if (status != GameRescheduleRequestStatuses.PendingOpponent)
+            throw new ApiGuards.HttpError(409, ErrorCodes.INVALID_STATUS_TRANSITION,
+                "Only requests awaiting opponent approval can be cancelled. An approved move must finish or be recovered.");
 
-        // Verify user is requesting team or admin
         var requestingTeamId = (request.GetString("RequestingTeamId") ?? "").Trim();
-        await EnsureRequestingTeamAuthorization(userId, leagueId, requestingTeamId);
+        await EnsureRequestingTeamAuthorization(userId, leagueId, request.GetString("Division") ?? "", requestingTeamId);
 
         // Update request status
         request["Status"] = GameRescheduleRequestStatuses.Cancelled;
-        request["UpdatedUtc"] = DateTimeOffset.UtcNow;
+        request["UpdatedUtc"] = _clock.GetUtcNow();
 
         await _requestRepo.UpdateRequestAsync(request, request.ETag);
 
-        // Notify opponent team of cancellation (fire and forget)
-        _ = Task.Run(async () =>
+        // Notify opponent team of cancellation (awaited)
+        await SendNotificationsAsync(async () =>
         {
             try
             {
                 var opponentTeamId = (request.GetString("OpponentTeamId") ?? "").Trim();
-                var coaches = await GetCoachesForTeamAsync(leagueId, opponentTeamId);
+                var coaches = await GetCoachesForTeamAsync(leagueId, request.GetString("Division") ?? "", opponentTeamId);
                 var originalDate = request.GetString("OriginalGameDate") ?? "";
                 var originalTime = request.GetString("OriginalStartTime") ?? "";
 
@@ -601,7 +599,7 @@ public class GameRescheduleRequestService : IGameRescheduleRequestService
         }
 
         var homeTeamId = (originalSlot.GetString("HomeTeamId") ?? "").Trim();
-        var awayTeamId = (originalSlot.GetString("AwayTeamId") ?? "").Trim();
+        var awayTeamId = SlotEntityUtil.ReadOpponentTeamId(originalSlot);
         var proposedDate = (proposedSlot.GetString("GameDate") ?? "").Trim();
         var proposedStartTime = (proposedSlot.GetString("StartTime") ?? "").Trim();
         var proposedEndTime = (proposedSlot.GetString("EndTime") ?? "").Trim();
@@ -609,12 +607,12 @@ public class GameRescheduleRequestService : IGameRescheduleRequestService
         if (!TimeUtil.TryParseMinutes(proposedStartTime, out var proposedStartMin) ||
             !TimeUtil.TryParseMinutes(proposedEndTime, out var proposedEndMin))
         {
-            return new GameRescheduleConflictCheckResponse(false, false, new(), new());
+            throw new ApiGuards.HttpError(400, ErrorCodes.INVALID_TIME_RANGE, "The replacement slot has an invalid time range.");
         }
 
         // Check conflicts for both teams
-        var homeTeamConflicts = await FindTeamConflicts(leagueId, division, homeTeamId, proposedDate, proposedStartMin, proposedEndMin, proposedSlotId);
-        var awayTeamConflicts = await FindTeamConflicts(leagueId, division, awayTeamId, proposedDate, proposedStartMin, proposedEndMin, proposedSlotId);
+        var homeTeamConflicts = await FindTeamConflicts(leagueId, division, homeTeamId, proposedDate, proposedStartMin, proposedEndMin, proposedSlotId, originalSlotId);
+        var awayTeamConflicts = await FindTeamConflicts(leagueId, division, awayTeamId, proposedDate, proposedStartMin, proposedEndMin, proposedSlotId, originalSlotId);
 
         return new GameRescheduleConflictCheckResponse(
             homeTeamConflicts.Count > 0,
@@ -630,26 +628,28 @@ public class GameRescheduleRequestService : IGameRescheduleRequestService
         string proposedDate,
         int proposedStartMin,
         int proposedEndMin,
-        string excludeSlotId)
+        string excludeSlotId,
+        string originalSlotId)
     {
         var conflicts = new List<GameRescheduleConflictDto>();
 
         // Query all confirmed slots for this team on the proposed date
-        var slotsOnDate = await _slotRepo.QuerySlotsAsync(new SlotQueryFilter
+        var slotsOnDate = await _slotRepo.QueryAllSlotsAsync(new SlotQueryFilter
         {
             LeagueId = leagueId,
             Division = division,
             FromDate = proposedDate,
             ToDate = proposedDate,
-            Statuses = new List<string> { Constants.Status.SlotConfirmed },
+            Statuses = new List<string> { Constants.Status.SlotOpen, Constants.Status.SlotConfirmed },
             ExcludeAvailability = true,
             PageSize = 100
         });
 
-        foreach (var slot in slotsOnDate.Items)
+        foreach (var slot in slotsOnDate)
         {
             // Skip the proposed slot itself
-            if (string.Equals(slot.RowKey, excludeSlotId, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(slot.RowKey, excludeSlotId, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(slot.RowKey, originalSlotId, StringComparison.OrdinalIgnoreCase))
                 continue;
 
             // Check if team is involved in this slot
@@ -703,29 +703,12 @@ public class GameRescheduleRequestService : IGameRescheduleRequestService
         return conflicts;
     }
 
+    private static Task SendNotificationsAsync(Func<Task> send) => send();
+
     private void ValidateLeadTime(TableEntity slot, int minimumHours)
-    {
-        var gameDate = (slot.GetString("GameDate") ?? "").Trim();
-        var startTime = (slot.GetString("StartTime") ?? "").Trim();
+        => ScheduleTime.RequireLeadTime(slot.GetString("GameDate"), slot.GetString("StartTime"), minimumHours, _clock.GetUtcNow());
 
-        if (string.IsNullOrWhiteSpace(gameDate) || string.IsNullOrWhiteSpace(startTime))
-            return;
-
-        if (DateTime.TryParseExact(gameDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedDate) &&
-            TimeUtil.TryParseMinutes(startTime, out var startMin))
-        {
-            var gameDateTime = parsedDate.AddMinutes(startMin);
-            var hoursUntil = (gameDateTime - DateTime.UtcNow).TotalHours;
-
-            if (hoursUntil < minimumHours && hoursUntil > 0)
-            {
-                throw new ApiGuards.HttpError((int)HttpStatusCode.Conflict, ErrorCodes.LEAD_TIME_VIOLATION,
-                    $"Game cannot be rescheduled within {minimumHours} hours of the scheduled time. This game is in {Math.Round(hoursUntil, 1)} hours.");
-            }
-        }
-    }
-
-    private async Task EnsureOpponentAuthorization(string userId, string leagueId, string opponentTeamId)
+    private async Task EnsureOpponentAuthorization(string userId, string leagueId, string division, string opponentTeamId)
     {
         var isAdmin = await _membershipRepo.IsGlobalAdminAsync(userId);
         if (isAdmin) return;
@@ -739,14 +722,15 @@ public class GameRescheduleRequestService : IGameRescheduleRequestService
         var userTeamId = (membership?.GetString("TeamId") ?? membership?.GetString("CoachTeamId") ?? "").Trim();
 
         if (!string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(userTeamId, opponentTeamId, StringComparison.OrdinalIgnoreCase))
+            !string.Equals(userTeamId, opponentTeamId, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(membership?.GetString("Division"), division, StringComparison.OrdinalIgnoreCase))
         {
             throw new ApiGuards.HttpError((int)HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
                 "Only the opponent team coach can approve or reject this request.");
         }
     }
 
-    private async Task EnsureRequestingTeamAuthorization(string userId, string leagueId, string requestingTeamId)
+    private async Task EnsureRequestingTeamAuthorization(string userId, string leagueId, string division, string requestingTeamId)
     {
         var isAdmin = await _membershipRepo.IsGlobalAdminAsync(userId);
         if (isAdmin) return;
@@ -760,14 +744,15 @@ public class GameRescheduleRequestService : IGameRescheduleRequestService
         var userTeamId = (membership?.GetString("TeamId") ?? membership?.GetString("CoachTeamId") ?? "").Trim();
 
         if (!string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(userTeamId, requestingTeamId, StringComparison.OrdinalIgnoreCase))
+            !string.Equals(userTeamId, requestingTeamId, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(membership?.GetString("Division"), division, StringComparison.OrdinalIgnoreCase))
         {
             throw new ApiGuards.HttpError((int)HttpStatusCode.Forbidden, ErrorCodes.FORBIDDEN,
                 "Only the requesting team coach can cancel this request.");
         }
     }
 
-    private async Task<List<string>> GetCoachesForTeamAsync(string leagueId, string teamId)
+    private async Task<List<string>> GetCoachesForTeamAsync(string leagueId, string division, string teamId)
     {
         if (string.IsNullOrWhiteSpace(teamId)) return new List<string>();
 
@@ -778,7 +763,8 @@ public class GameRescheduleRequestService : IGameRescheduleRequestService
                 var role = (m.GetString("Role") ?? "").Trim();
                 var coachTeamId = (m.GetString("TeamId") ?? m.GetString("CoachTeamId") ?? "").Trim();
                 return string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase) &&
-                       string.Equals(coachTeamId, teamId, StringComparison.OrdinalIgnoreCase);
+                       string.Equals(coachTeamId, teamId, StringComparison.OrdinalIgnoreCase) &&
+                       string.Equals(m.GetString("Division"), division, StringComparison.OrdinalIgnoreCase);
             })
             .Select(m => m.PartitionKey)
             .Distinct()

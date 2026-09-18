@@ -24,8 +24,12 @@ jobs:
       - name: Build
         run: dotnet build api/GameSwap.Tests/GameSwap.Tests.csproj --no-restore
 
+      - name: Start local storage emulator
+        uses: ./.github/actions/start-test-storage
       - name: Test
         run: dotnet test api/GameSwap.Tests/GameSwap.Tests.csproj --no-build --verbosity normal
+        env:
+          GAMESWAP_STORAGE_TESTS: "1"
 
   frontend-tests:
     name: Frontend Tests
@@ -47,3 +51,26 @@ jobs:
 
       - name: Test
         run: npm run test:ci
+
+  browser-tests:
+    name: API and browser workflows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: npm ci
+      - uses: ./.github/actions/start-test-storage
+      - uses: ./.github/actions/browser-regression
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-failures
+          path: |
+            playwright-report
+            test-results

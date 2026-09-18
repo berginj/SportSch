@@ -1,8 +1,7 @@
 namespace GameSwap.Functions.Services;
 
 /// <summary>
-/// Service for distributed rate limiting using Redis.
-/// Implements a sliding window algorithm to track request rates across multiple instances.
+/// Service for request rate limiting.
 /// </summary>
 public interface IRateLimitService
 {

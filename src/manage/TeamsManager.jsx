@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { apiFetch } from "../lib/api";
+import { useLeagueApi } from "../lib/useLeagueApi";
 import { ROLE } from "../lib/constants";
 import { buildTeamsTemplateCsv, downloadCsv } from "../lib/csvUtils";
 import { trackEvent } from "../lib/telemetry";
 import Toast from "../components/Toast";
 
 export default function TeamsManager({ leagueId, tableView = "A" }) {
+  const apiFetch = useLeagueApi(leagueId);
   const [teams, setTeams] = useState([]);
   const [divisions, setDivisions] = useState([]);
   const [memberships, setMemberships] = useState([]);

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { apiFetch } from "../lib/api";
+import { useLeagueApi } from "../lib/useLeagueApi";
 import { readLocationSearchParams, subscribeToLocationChanges, updateLocationSearch } from "../lib/locationState";
-import { readPagedItems } from "../lib/pagedResults";
+import { readPagedItems, fetchAllPagedItems } from "../lib/pagedResults";
 import StatusCard from "../components/StatusCard";
 import CoachDashboard from "./CoachDashboard";
 import { SLOT_STATUS } from "../lib/constants";
@@ -77,6 +77,7 @@ function parseStatusFilter(params) {
 
 // eslint-disable-next-line no-unused-vars
 export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
+  const apiFetch = useLeagueApi(leagueId);
   const isMobile = useIsMobile();
   const memberships = useMemo(
     () => (Array.isArray(me?.memberships) ? me.memberships : []),
@@ -139,7 +140,7 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
       applyFiltersFromUrl(defaults);
       initializedRef.current = true;
     })();
-  }, [leagueId, applyFiltersFromUrl]);
+  }, [leagueId, applyFiltersFromUrl, apiFetch]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -189,7 +190,12 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
 
       const reqs = [];
       reqs.push(apiFetch("/api/divisions"));
-      reqs.push(showSlots && activeStatuses.length ? apiFetch(`/api/slots?${slotsQuery.toString()}`) : Promise.resolve([]));
+      reqs.push(showSlots && activeStatuses.length ? fetchAllPagedItems((token) => {
+        const query = new URLSearchParams(slotsQuery);
+        query.set("pageSize", "250");
+        if (token) query.set("continuationToken", token);
+        return apiFetch(`/api/slots?${query}`);
+      }) : Promise.resolve([]));
       reqs.push(showEvents ? apiFetch(`/api/events?${baseQuery.toString()}`) : Promise.resolve([]));
       if (isAdmin) reqs.push(apiFetch("/api/accessrequests?status=Pending"));
       const [divs, slotList, eventList, accessList] = await Promise.all(reqs);

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import PracticePortalPage from "../../pages/PracticePortalPage";
 import * as api from "../../lib/api";
@@ -6,6 +6,12 @@ import * as api from "../../lib/api";
 vi.mock("../../lib/api", () => ({
   apiFetch: vi.fn(),
 }));
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-04-01T12:00:00Z"));
+});
+afterEach(() => vi.useRealTimers());
 
 vi.mock("../../components/StatusCard", () => ({
   default: function StatusCard({ title, message }) {
@@ -294,6 +300,7 @@ describe("PracticePortalPage", () => {
           ],
         });
       }
+      if (path.startsWith("/api/field-inventory/practice/check-conflicts?")) return Promise.resolve({ hasConflicts: false, conflicts: [] });
       throw new Error(`Unexpected apiFetch call: ${path}`);
     });
   });

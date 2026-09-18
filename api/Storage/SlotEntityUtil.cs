@@ -9,6 +9,12 @@ namespace GameSwap.Functions.Storage;
 /// </summary>
 public static class SlotEntityUtil
 {
+    public static string ReadOpponentTeamId(TableEntity slot)
+    {
+        var away = (slot.GetString("AwayTeamId") ?? "").Trim();
+        return !string.IsNullOrEmpty(away) ? away : (slot.GetString("ConfirmedTeamId") ?? "").Trim();
+    }
+
     public static void ApplyTimeRange(TableEntity entity, string startTime, string endTime)
     {
         entity["StartTime"] = startTime;

@@ -20,7 +20,7 @@ public class GameReminderFunctionTests
     [Fact]
     public async Task SendGameReminders_UsesConfirmedTeamWhenAwayTeamIsBlank()
     {
-        var now = DateTime.UtcNow;
+        var now = FixedClock.EasternNow;
         var gameTime = now.AddHours(24);
         var leagueId = "LEAGUE-1";
         var division = "AAA";
@@ -98,7 +98,7 @@ public class GameReminderFunctionTests
             membershipRepo.Object,
             preferencesService.Object,
             emailService.Object,
-            CreateLoggerFactory());
+            CreateLoggerFactory(), new FixedClock());
 
         await function.SendGameReminders(null!);
 

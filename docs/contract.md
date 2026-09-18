@@ -14,36 +14,42 @@ Use these alongside this API contract for workflow-critical behavior:
 ## Cross-cutting rules
 
 ### Auth
-- All calls assume the user is authenticated via Azure Static Web Apps EasyAuth.
+- Non-public `/api/*` calls assume the user is authenticated via Azure Static Web Apps EasyAuth.
 - The API may return 401 when the user is not signed in.
-- Current product scope is authenticated league members only. Public or tokenized view-only calendar pages are not part of this contract today.
+- Public schedule and public calendar endpoints live under `/api/public/*`, require no auth, do not use cookies, and return only the public-safe schedule projection defined in this contract.
 
 ### Base path
 - In Azure Static Web Apps, the API is exposed under `/api`. UI calls should use `/api/<route>` unless a different `VITE_API_BASE_URL` is configured.
+- Production API traffic is routed through Azure Static Web Apps. Direct Function App access must be blocked or rejected for private endpoints.
 
 ### League scoping (non-negotiable)
 - Every league-scoped endpoint requires header: x-league-id: <leagueId>
 - Backend validates header presence and authorization (membership or global admin where specified).
 - UI persists the selected league id under localStorage key `gameswap_leagueId` and attaches it on every league-scoped request.
+- Header-scoped private APIs must not accept route or query `leagueId` fallbacks. If a route contains a league id and it differs from `x-league-id`, reject the request.
+- Public endpoints are scoped by `publicSlug`, not `x-league-id`.
 
 ### Canonical data shapes (non-negotiable)
 - Division DTOs use `code`, `name`, and `isActive`.
 - Membership coach assignment uses nested `team: { division, teamId }`.
 - Fields use `FieldName`; `displayName` is the UI-facing composite label when present.
 - Practice portal one-off enablement is division-scoped.
-- Public slot browsing and external subscribe-link flows are outside the current product contract.
+- Public schedule/calendar DTOs must use an allow-list projection only. Never return private table entities directly from public JSON.
 
 ### Roles (locked)
 League role strings:
 - LeagueAdmin: can manage league setup (fields, divisions/templates, teams), update league contact, and perform all scheduler actions. Second only to global admin.
 - Coach: can be approved before a team is assigned. A LeagueAdmin can assign (or change) the coach's team later. Coaches can offer slots and accept open game opportunities. Some actions require a team assignment.
-- Viewer: read-only. Can view available games/slots and upcoming schedule views. Cannot offer, accept, or manage setup.
+- Viewer: read-only if present. Viewer is not an MVP user persona and must either be hidden from MVP UI or strictly prevented from write actions.
 
 Global admin:
 - isGlobalAdmin is returned by /me. Global admins can create leagues and can perform any league-scoped admin action.
 
+### MVP scope boundary
+MVP user-facing scope is league admins and coaches, with anonymous public schedule/calendar views. Registration, payments, parent workflows, public youth/person data, GameChanger sync, and full umpire management are deferred. Umpire 1.1 is limited to the public offering/claim workflow documented below, not authenticated umpire self-service.
+
 ### Standard response envelope (non-negotiable)
-All endpoints return JSON with one of:
+All JSON endpoints return one of:
 - Success: { "data": ... }
 - Success with pagination: { "data": { "items": [...], "continuationToken": string, "pageSize": number } }
 - Failure: { "error": { "code": string, "message": string, "details"?: any } }
@@ -432,10 +438,12 @@ Canonical table names (do not introduce new variants):
 - GameSwapSeasonDivisions
 - GameSwapGlobalAdmins
 - GameSwapLeagueBackups
+- GameSwapUmpireClaims
 
 PartitionKey/RowKey conventions (canonical):
+- Leagues: PK = `LEAGUE`, RK = `<leagueId>`
 - Memberships: PK = `<userId>`, RK = `<leagueId>`
-- Fields: PK = `FIELD|{leagueId}|{parkCode}`, RK = `<fieldCode>` (display name is `DisplayName`, defaults to `ParkName > FieldName`)
+- Fields: PK = `FIELD|{leagueId}|{parkCode}`, RK = `<fieldCode>` (field display name is `FieldName`; `displayName` is the UI-facing composite label when present)
 - Slots: PK = `SLOT|{leagueId}|{division}`, RK = deterministic slot id (SafeKey of offeringTeamId + date + start + end + fieldKey)
 - Slot Requests: PK = `SLOTREQ|{leagueId}|{division}|{slotId}`, RK = `<requestId GUID>`
 - Access Requests: PK = `ACCESSREQ|{leagueId}`, RK = `<userId>`
@@ -444,6 +452,15 @@ PartitionKey/RowKey conventions (canonical):
 - Availability Allocations: PK = `ALLOC|{leagueId}|{scope}|{fieldKeySafe}`, RK = `<allocationId>` (fieldKeySafe replaces `/` with `|`)
 - Users: PK = `USER`, RK = `<userId>`
 - League Backups: PK = `LEAGUEBACKUP`, RK = `<leagueId>`
+- Umpire Claims (1.1): PK = `UMPIRECLAIM|{leagueId}|{division}|{slotId}`, RK = `<claimId>`
+
+League public settings stored on `GameSwapLeagues`:
+- `PublicSlug`
+- `PublicScheduleEnabled`
+- `PublicCalendarEnabled`
+- `PublicDisplayName`
+- `Timezone`
+- `UmpireOrganizationEmail` (1.1)
 
 Legacy compatibility:
 - This contract does not promise legacy PK, field-name, route, or DTO fallbacks.
@@ -511,6 +528,8 @@ the notes for required headers or roles.
 | GET | /leagues | `Functions/LeaguesFunctions.cs` | List leagues for current user. |
 | GET | /league | `Functions/LeaguesFunctions.cs` | Get current league details (requires `x-league-id`). |
 | PATCH | /league | `Functions/LeaguesFunctions.cs` | Update current league (requires `x-league-id`, LeagueAdmin). |
+| GET | /league/settings | `Functions/LeagueSettingsFunctions.cs` | Get current league public settings (requires `x-league-id`, LeagueAdmin). |
+| PATCH | /league/settings | `Functions/LeagueSettingsFunctions.cs` | Update current league public settings (requires `x-league-id`, LeagueAdmin). |
 | GET | /league/backup | `Functions/LeagueBackupFunctions.cs` | Get backup summary (requires `x-league-id`, LeagueAdmin). |
 | POST | /league/backup | `Functions/LeagueBackupFunctions.cs` | Save/overwrite league backup (requires `x-league-id`, LeagueAdmin). |
 | POST | /league/backup/restore | `Functions/LeagueBackupFunctions.cs` | Restore fields/divisions/season from backup (requires `x-league-id`, LeagueAdmin). |
@@ -580,6 +599,10 @@ the notes for required headers or roles.
 | POST | /schedule/slots/apply | `Functions/SlotGenerationFunctions.cs` | Generate availability slots (requires `x-league-id`, LeagueAdmin). |
 | POST | /availability-slots/clear | `Functions/ClearAvailabilitySlots.cs` | Delete availability slots for a division/date range (requires `x-league-id`, LeagueAdmin). |
 | GET | /calendar/ics | `Functions/CalendarFeed.cs` | Authenticated calendar ICS feed (requires `x-league-id`). |
+| GET | /public/leagues/{publicSlug}/schedule | `Functions/PublicScheduleFunctions.cs` | Anonymous public-safe schedule projection. |
+| GET | /public/leagues/{publicSlug}/calendar.ics | `Functions/PublicScheduleFunctions.cs` | Anonymous public-safe calendar subscription feed. |
+| GET | /public/leagues/{publicSlug}/umpire-offers | `Functions/PublicUmpireOfferFunctions.cs` | 1.1 anonymous public-safe umpire needs projection. |
+| POST | /public/leagues/{publicSlug}/umpire-offers/{offerId}/claims | `Functions/PublicUmpireOfferFunctions.cs` | 1.1 anonymous umpire claim submission. |
 | GET | /events | `Functions/GetEvents.cs` | List events (requires `x-league-id`). |
 | POST | /events | `Functions/CreateEvent.cs` | Create event (requires `x-league-id`, LeagueAdmin). |
 | PATCH | /events/{eventId} | `Functions/PatchEvent.cs` | Update event (requires `x-league-id`, LeagueAdmin). |
@@ -590,7 +613,7 @@ the notes for required headers or roles.
 ## 3) Leagues
 
 ### GET /leagues
-Public list of active leagues (used before membership).
+List of active leagues available to the signed-in user before membership selection.
 
 Response
 ```json
@@ -635,6 +658,50 @@ Response
 ```json
 { "data": { "leagueId": "ARL", "name": "Arlington", "timezone": "America/New_York", "status": "Active", "contact": { "name": "...", "email": "...", "phone": "..." } } }
 ```
+
+### GET /league/settings (league-scoped)
+Requires: LeagueAdmin or global admin.
+
+Returns league-level public schedule/calendar settings and 1.1 umpire contact configuration.
+
+Response
+```json
+{
+  "data": {
+    "leagueId": "ARL",
+    "publicSlug": "arlington-spring-2026",
+    "publicScheduleEnabled": true,
+    "publicCalendarEnabled": true,
+    "publicDisplayName": "Arlington Girls Softball",
+    "timezone": "America/New_York",
+    "umpireOrganizationEmail": "assignor@example.org"
+  }
+}
+```
+
+### PATCH /league/settings (league-scoped)
+Requires: LeagueAdmin or global admin.
+
+Body
+```json
+{
+  "publicSlug": "arlington-spring-2026",
+  "publicScheduleEnabled": true,
+  "publicCalendarEnabled": true,
+  "publicDisplayName": "Arlington Girls Softball",
+  "timezone": "America/New_York",
+  "umpireOrganizationEmail": "assignor@example.org"
+}
+```
+
+Rules
+- `publicSlug` must be unique across active leagues and safe for URLs.
+- `publicScheduleEnabled=false` means public schedule endpoints must not return schedule data.
+- `publicCalendarEnabled=false` means the public ICS endpoint must not return schedule data.
+- `timezone` controls public display and ICS timezone behavior.
+- `umpireOrganizationEmail` is stored for 1.1 and does not make umpire workflows MVP scope.
+
+Response: same shape as `GET /league/settings`.
 
 ### League backup (league-scoped)
 Backups capture fields, divisions, and league season settings for restore.
@@ -1696,6 +1763,8 @@ Scheduler export formats
 - Internal CSV: division, gameDate, startTime, endTime, fieldKey, homeTeamId, awayTeamId, isExternalOffer
 - SportsEngine CSV template (`docs/sportsenginetemplate.csv`): Event Type, Date, Start Time, End Time, Duration (minutes), Home Team, Away Team, Venue, Status (other event-only columns left blank)
 
+SportsEngine export remains authenticated, league-scoped, and LeagueAdmin/global-admin only for MVP.
+
 Validation + apply rules
 - `/schedule/wizard/preview` returns warnings/issues plus `ruleHealth` summaries.
 - `/schedule/wizard/apply` writes the full preview run when apply succeeds; failures roll back and return a conflict.
@@ -1784,7 +1853,120 @@ Query (all optional):
 - `includeCancelled` (true/false, default false when `status` omitted)
 
 Returns iCalendar (ICS) with slots + events.
-Current scope: authenticated member/API access only. External calendar-app subscription links are disabled until tokenized feeds exist.
+This authenticated feed remains header-scoped and unchanged by the public calendar feature.
+
+## 8bb) Public schedule and calendar
+
+Public endpoints are anonymous, slug-scoped, and must not require `x-league-id`, cookies, EasyAuth, or invite tokens. Public JSON uses the standard response envelope. Public ICS returns `text/calendar`.
+
+Public schedule projection allow-list:
+- league display name
+- division
+- public team names
+- event date
+- start and end time
+- field name
+- park/venue name
+- status
+- event type
+- last updated timestamp
+
+Public schedule projection deny-list:
+- player names
+- parent data
+- coach names
+- email addresses
+- phone numbers
+- invite/access data
+- private notes or notes containing personal details
+- internal audit fields
+- internal IDs unless required for stable calendar subscription identity
+
+### GET /public/leagues/{publicSlug}/schedule
+Requires: anonymous allowed.
+
+Query (all optional):
+- `division`
+- `team`
+- `from` (YYYY-MM-DD)
+- `to` (YYYY-MM-DD)
+
+Rules
+- Returns data only when `PublicScheduleEnabled=true` for the league.
+- Resolves `{publicSlug}` through `GameSwapLeagues.PublicSlug`.
+- Returns DTOs only; never return raw slot, event, team, membership, user, invite, or access-request rows.
+- Public team names are allowed. Person/contact data is not.
+
+Response
+```json
+{
+  "data": {
+    "league": {
+      "displayName": "Arlington Girls Softball",
+      "publicSlug": "arlington-spring-2026",
+      "timezone": "America/New_York"
+    },
+    "items": [
+      {
+        "eventId": "evt_stable_public_id",
+        "eventType": "Game",
+        "division": "10U",
+        "homeTeamName": "Tigers",
+        "awayTeamName": "Eagles",
+        "eventDate": "2026-04-10",
+        "startTime": "18:00",
+        "endTime": "20:00",
+        "parkName": "Gunston",
+        "fieldName": "Turf",
+        "status": "Confirmed",
+        "lastUpdatedUtc": "2026-03-01T12:00:00Z"
+      }
+    ]
+  }
+}
+```
+
+### GET /public/leagues/{publicSlug}/calendar.ics
+Requires: anonymous allowed.
+
+Query (all optional):
+- `division`
+- `team`
+
+Rules
+- Returns calendar data only when both `PublicScheduleEnabled=true` and `PublicCalendarEnabled=true`.
+- Uses stable `UID` values so Google Calendar treats moved games as updates, not duplicate events.
+- Sets correct timezone behavior using league `Timezone`.
+- Updates `SEQUENCE` and/or `LAST-MODIFIED` when event date, time, teams, status, or field changes.
+- Omits all person/contact/private data from event summary, location, and description.
+
+Response: `text/calendar`.
+
+### GET /public/leagues/{publicSlug}/umpire-offers
+Version: 1.1, after MVP stabilization.
+
+Requires: anonymous allowed.
+
+Returns only safe public schedule data for games/practices flagged `NeedsUmpire=true`.
+
+### POST /public/leagues/{publicSlug}/umpire-offers/{offerId}/claims
+Version: 1.1, after MVP stabilization.
+
+Requires: anonymous allowed.
+
+Creates an umpire claim record. It does not create an app user account and must prevent duplicate claims with optimistic concurrency.
+
+Body
+```json
+{
+  "umpireName": "Alex Smith",
+  "umpireEmail": "alex@example.org",
+  "umpirePhone": "555-0100",
+  "organizationNote": "Available if still needed"
+}
+```
+
+Public umpire pages must never expose umpire personal contact data after a claim is submitted.
 
 ## 8c) Practice portal configuration
 
@@ -1946,6 +2128,7 @@ Legend: R = read, W = write/modify, A = approve/deny/admin action.
 | Access requests (self) | W | W | W | W |
 | Access requests (admin) | - | - | A | A |
 | Memberships list/update | - | - | W | W |
+| League settings/public publishing | - | - | W | W |
 | Divisions | R | R | W | W |
 | Fields | R | R | W | W |
 | League backups | - | - | W | W |
@@ -1956,5 +2139,8 @@ Legend: R = read, W = write/modify, A = approve/deny/admin action.
 | Approve slot requests | - | W (own slot) | W | W |
 | Schedule preview/apply | - | - | W | W |
 | Schedule validate | - | - | W | W |
+| SportsEngine export | - | - | W | W |
 | Events | R | R | W | W |
 | Users (home league) | - | - | - | W |
+
+Anonymous public visitors can read enabled public schedule/calendar endpoints only. They have no private API permissions.

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { apiFetch } from "../lib/api";
+import { useLeagueApi } from "../lib/useLeagueApi";
 import CalendarView from "../components/CalendarView";
 
 const PARSER_OPTIONS = [
@@ -16,6 +16,7 @@ const ACTION_OPTIONS = [
 ];
 
 export default function FieldInventoryImportManager({ leagueId }) {
+  const apiFetch = useLeagueApi(leagueId);
   const [sourceWorkbookUrl, setSourceWorkbookUrl] = useState("");
   const [workbookFile, setWorkbookFile] = useState(null);
   const [seasonLabel, setSeasonLabel] = useState("");
@@ -119,7 +120,7 @@ async function parsePreview() {
       setSeasonLabel(result?.run?.seasonLabel || seasonLabel);
       setMessage("Preview parsed and stored in staging.");
     } catch (e) {
-      const diagnostics = await loadPreviewDiagnostics(clientRequestId);
+      const diagnostics = await loadPreviewDiagnostics(clientRequestId, apiFetch);
       setError(buildImportError(e, diagnostics));
     } finally {
       setBusy("");
@@ -671,7 +672,7 @@ function SummaryCard({ label, value }) {
   );
 }
 
-async function loadPreviewDiagnostics(clientRequestId) {
+async function loadPreviewDiagnostics(clientRequestId, apiFetch) {
   if (!clientRequestId) return [];
   try {
     const diagnostics = await apiFetch(`/api/field-inventory/diagnostics/${encodeURIComponent(clientRequestId)}`);

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { apiFetch } from "../lib/api";
+import { useLeagueApi } from "../lib/useLeagueApi";
 
 export default function DivisionsManager({ leagueId }) {
+  const apiFetch = useLeagueApi(leagueId);
   const [divisions, setDivisions] = useState([]);
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");

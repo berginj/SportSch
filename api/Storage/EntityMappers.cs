@@ -17,11 +17,12 @@ public static class EntityMappers
         return new
         {
             slotId = e.RowKey,
+            etag = e.ETag.ToString(),
             leagueId = ReadString(e, "LeagueId"),
             division = ReadString(e, "Division"),
             offeringTeamId = ReadString(e, "OfferingTeamId"),
             homeTeamId = ReadString(e, "HomeTeamId"),
-            awayTeamId = ReadString(e, "AwayTeamId"),
+            awayTeamId = SlotEntityUtil.ReadOpponentTeamId(e),
             confirmedTeamId = ReadString(e, "ConfirmedTeamId"),
             isExternalOffer = ReadBool(e, "IsExternalOffer", false),
             isAvailability = ReadBool(e, "IsAvailability", false),

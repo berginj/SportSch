@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { apiFetch } from "../lib/api";
+import { useLeagueApi } from "../lib/useLeagueApi";
 import { validateIsoDates } from "../lib/date";
 import { buildAvailabilityInsights } from "../lib/availabilityInsights";
 import { getDefaultRangeFallback, getSeasonRange } from "../lib/season";
@@ -101,6 +101,7 @@ function extractSlotItems(payload) {
 }
 
 export default function LeagueSettings({ leagueId }) {
+  const apiFetch = useLeagueApi(leagueId);
   const [divisions, setDivisions] = useState([]);
   const [fields, setFields] = useState([]);
   const [division, setDivision] = useState("");
@@ -183,7 +184,7 @@ export default function LeagueSettings({ leagueId }) {
         setToast({ tone: "error", message: e?.message || "Failed to load division season settings." });
       }
     })();
-  }, [leagueId, division]);
+  }, [leagueId, division, apiFetch]);
 
   useEffect(() => {
     if (!fieldKey) return;

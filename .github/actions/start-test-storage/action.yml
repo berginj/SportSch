@@ -1,0 +1,17 @@
+name: Start test storage
+description: Start a loopback-only Azurite instance for real Table Storage regression tests.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+    - shell: bash
+      run: |
+        npm exec --yes --package=azurite@3.35.0 -- azurite --silent --blobHost 127.0.0.1 --queueHost 127.0.0.1 --tableHost 127.0.0.1 --location "$RUNNER_TEMP/azurite" > "$RUNNER_TEMP/azurite.log" 2>&1 &
+        for attempt in $(seq 1 60); do
+          if curl --silent http://127.0.0.1:10002/ > /dev/null; then exit 0; fi
+          sleep 1
+        done
+        cat "$RUNNER_TEMP/azurite.log"
+        exit 1

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { apiFetch } from "../lib/api";
+import { useLeagueApi } from "../lib/useLeagueApi";
 import { logError } from "../lib/errorLogger";
 
 function getNotificationTypeBadgeClass(type) {
@@ -21,6 +21,7 @@ function formatNotificationType(type) {
 }
 
 export default function NotificationCenterPage({ leagueId }) {
+  const apiFetch = useLeagueApi(leagueId);
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -55,7 +56,7 @@ export default function NotificationCenterPage({ leagueId }) {
     } finally {
       setLoading(false);
     }
-  }, [leagueId]);
+  }, [apiFetch, leagueId]);
 
   useEffect(() => {
     loadNotifications(false);

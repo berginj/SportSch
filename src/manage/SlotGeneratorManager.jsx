@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiFetch } from "../lib/api";
+import { useLeagueApi } from "../lib/useLeagueApi";
 import { validateIsoDates } from "../lib/date";
 import Toast from "../components/Toast";
 import { getDefaultRangeFallback, getSeasonRange, getSlotsDefaultRange } from "../lib/season";
@@ -206,6 +206,7 @@ function collectInterruptionDates(firstDate, lastDate, weekday, existingDates) {
 }
 
 export default function SlotGeneratorManager({ leagueId }) {
+  const apiFetch = useLeagueApi(leagueId);
   const [divisions, setDivisions] = useState([]);
   const [fields, setFields] = useState([]);
   const [leagueSeason, setLeagueSeason] = useState(null);
@@ -272,7 +273,7 @@ export default function SlotGeneratorManager({ leagueId }) {
         setLeagueSeason(null);
       }
     })();
-  }, [leagueId]);
+  }, [apiFetch, leagueId]);
 
   const seasonRange = useMemo(() => {
     const fallback = getDefaultRangeFallback();
@@ -442,7 +443,7 @@ export default function SlotGeneratorManager({ leagueId }) {
     } finally {
       setAvailListLoading(false);
     }
-  }, [availDateFrom, availDateTo, availDivision, availFieldKey]);
+  }, [apiFetch, availDateFrom, availDateTo, availDivision, availFieldKey]);
 
   useEffect(() => {
     if (!leagueId || !availDateFrom || !availDateTo) return;

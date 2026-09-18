@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { apiFetch } from "../lib/api";
+import { useLeagueApi } from "../lib/useLeagueApi";
 import { FIELD_STATUS } from "../lib/constants";
 import { trackEvent } from "../lib/telemetry";
 import Toast from "../components/Toast";
@@ -14,6 +14,7 @@ tuckahoe/field-2,Tuckahoe Park,Field 2,12U,Tuckahoe Park > Field 2,123 Park Ave,
 `;
 
 export default function FieldsImport({ leagueId, tableView = "A" }) {
+  const apiFetch = useLeagueApi(leagueId);
   const [fields, setFields] = useState([]);
   const [fieldEdits, setFieldEdits] = useState({});
   const [newField, setNewField] = useState({

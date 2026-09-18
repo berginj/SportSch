@@ -17,7 +17,7 @@ const vitestGlobals = {
 }
 
 export default defineConfig([
-  globalIgnores(['dist', 'playwright-report', 'test-results']),
+  globalIgnores(['dist', 'playwright-report', 'test-results', 'coverage', '.artifacts', '_cleanup_backup', 'api/**/bin', 'api/**/obj']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [

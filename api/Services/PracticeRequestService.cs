@@ -21,19 +21,21 @@ public class PracticeRequestService : IPracticeRequestService
     private readonly ISlotRepository _slotRepo;
     private readonly ITeamRepository _teamRepo;
     private readonly ILogger<PracticeRequestService> _logger;
+    private readonly TimeProvider _clock;
 
     public PracticeRequestService(
         IPracticeRequestRepository practiceRequestRepo,
         IMembershipRepository membershipRepo,
         ISlotRepository slotRepo,
         ITeamRepository teamRepo,
-        ILogger<PracticeRequestService> logger)
+        ILogger<PracticeRequestService> logger, TimeProvider? clock = null)
     {
         _practiceRequestRepo = practiceRequestRepo;
         _membershipRepo = membershipRepo;
         _slotRepo = slotRepo;
         _teamRepo = teamRepo;
         _logger = logger;
+        _clock = clock ?? TimeProvider.System;
     }
 
     public async Task<TableEntity> CreateRequestAsync(
@@ -103,31 +105,9 @@ public class PracticeRequestService : IPracticeRequestService
                 "Choose a different practice slot when moving a request.");
         }
 
-        // Lead time validation - ensure move is not within 48 hours of the original practice
-        var sourceSlot = await _slotRepo.GetSlotAsync(leagueId, division, sourceSlotId);
-        if (sourceSlot is not null)
-        {
-            var practiceDate = (sourceSlot.GetString("GameDate") ?? "").Trim();
-            var practiceStartTime = (sourceSlot.GetString("StartTime") ?? "").Trim();
-
-            if (!string.IsNullOrWhiteSpace(practiceDate) && !string.IsNullOrWhiteSpace(practiceStartTime))
-            {
-                if (DateTime.TryParseExact(practiceDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedDate) &&
-                    TimeUtil.TryParseMinutes(practiceStartTime, out var startMin))
-                {
-                    var practiceDateTime = parsedDate.AddMinutes(startMin);
-                    var hoursUntilPractice = (practiceDateTime - DateTime.UtcNow).TotalHours;
-
-                    const int minimumLeadTimeHours = 72; // Standardized with game reschedule policy
-                    if (hoursUntilPractice < minimumLeadTimeHours && hoursUntilPractice > 0)
-                    {
-                        var deadline = DateTime.UtcNow.AddHours(hoursUntilPractice);
-                        throw new ApiGuards.HttpError((int)HttpStatusCode.Conflict, ErrorCodes.LEAD_TIME_VIOLATION,
-                            $"Practice cannot be moved within {minimumLeadTimeHours} hours of the scheduled time. This practice is in {Math.Round(hoursUntilPractice, 1)} hours.");
-                    }
-                }
-            }
-        }
+        var sourceSlot = await _slotRepo.GetSlotAsync(leagueId, division, sourceSlotId)
+            ?? throw new ApiGuards.HttpError(409, ErrorCodes.PRACTICE_MOVE_NOT_ALLOWED, "The original practice slot is missing.");
+        ScheduleTime.RequireLeadTime(sourceSlot.GetString("GameDate"), sourceSlot.GetString("StartTime"), 72, _clock.GetUtcNow());
 
         var extraProperties = new Dictionary<string, object?>
         {
@@ -321,7 +301,7 @@ public class PracticeRequestService : IPracticeRequestService
                 "Slot already has an active practice request.");
         }
 
-        var now = DateTimeOffset.UtcNow;
+        var now = _clock.GetUtcNow();
         var requestId = Guid.NewGuid().ToString();
         var requestEntity = new TableEntity(PracticeRequestPk(leagueId), requestId)
         {
@@ -481,7 +461,7 @@ public class PracticeRequestService : IPracticeRequestService
                 "Request is missing division or slotId.");
         }
 
-        var now = DateTimeOffset.UtcNow;
+        var now = _clock.GetUtcNow();
         var rejectedRequest = await UpdateRequestStatusAsync(
             leagueId: leagueId,
             requestId: requestId,
@@ -590,7 +570,7 @@ public class PracticeRequestService : IPracticeRequestService
                 "Request is missing division, teamId, or slotId.");
         }
 
-        var now = DateTimeOffset.UtcNow;
+        var now = _clock.GetUtcNow();
         var approvedRequest = await UpdateRequestStatusAsync(
             leagueId: leagueId,
             requestId: requestId,
@@ -620,7 +600,7 @@ public class PracticeRequestService : IPracticeRequestService
                 approvedRequest["ReviewedUtc"] = null;
                 approvedRequest["ReviewedBy"] = "";
                 approvedRequest["ReviewReason"] = "";
-                approvedRequest["UpdatedUtc"] = DateTimeOffset.UtcNow;
+                approvedRequest["UpdatedUtc"] = _clock.GetUtcNow();
                 await _practiceRequestRepo.UpdateRequestAsync(approvedRequest, ETag.All);
             }
             catch { }
@@ -642,7 +622,7 @@ public class PracticeRequestService : IPracticeRequestService
         TableEntity? request)
     {
         var reviewReason = string.IsNullOrWhiteSpace(reason) ? "Cancelled" : reason.Trim();
-        var now = DateTimeOffset.UtcNow;
+        var now = _clock.GetUtcNow();
         TableEntity? cancelledRequest = null;
 
         await RetryUtil.WithEtagRetryAsync(async () =>

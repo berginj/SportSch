@@ -47,6 +47,14 @@ public static class ApiGuards
         return headerLeagueId;
     }
 
+    public static string RequireMatchingLeagueId(HttpRequestData req, string routeLeagueId)
+    {
+        var leagueId = RequireLeagueId(req);
+        if (!string.Equals(leagueId, routeLeagueId?.Trim(), StringComparison.Ordinal))
+            throw new HttpError(400, ErrorCodes.BAD_REQUEST, "Route leagueId must match x-league-id.");
+        return leagueId;
+    }
+
     // ==== Membership gates ====
     public static async Task RequireMemberAsync(TableServiceClient svc, string userId, string leagueId)
     {
@@ -122,9 +130,10 @@ public static class ApiGuards
 
         var mem = await GetMembershipAsync(svc, userId, leagueId);
         var role = GetRole(mem);
-        if (string.Equals(role, Constants.Roles.Viewer, StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(role))
+        if (!string.Equals(role, Constants.Roles.Coach, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(role, Constants.Roles.LeagueAdmin, StringComparison.OrdinalIgnoreCase))
             throw new HttpError((int)HttpStatusCode.Forbidden,
-                "Access denied: Viewer role cannot perform this action. Ask a LeagueAdmin to upgrade your role.");
+                "Access denied: Coach or LeagueAdmin role required for this action.");
     }
 
     public static async Task RequireLeagueAdminAsync(TableServiceClient svc, string userId, string leagueId)
@@ -207,6 +216,8 @@ public static class ApiGuards
 
     public static void EnsureValidTableKeyPart(string name, string value)
     {
+        if ((name == "leagueId" || name == "division" || name == "divisionCode") && value.Contains('|'))
+            throw new HttpError(400, ErrorCodes.BAD_REQUEST, $"{name} cannot contain the reserved | separator.");
         if (HasInvalidTableKeyChars(value))
             throw new HttpError((int)HttpStatusCode.BadRequest,
                 $"{name} contains invalid characters. Table keys cannot contain: {InvalidTableKeyCharsMessage}.");

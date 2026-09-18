@@ -24,6 +24,9 @@ This contract is the authoritative behavioral specification for scheduling.
 - The engine MUST schedule in three phases: Regular Season, Pool Play, Championship Bracket.
 - Championship Bracket MUST use a fixed top-4 template.
 - The engine MUST produce a full-season plan as one run; partial apply is not allowed.
+- Generating a preview MUST NOT reset, cancel, or otherwise change live bookings. The UI no longer calls the generated-slot reset endpoint before preview.
+
+Implementation status: persisted immutable drafts, exact-draft commit, and durable full-season recovery are not implemented yet. Existing apply still re-runs the solver and uses sequential writes with compensation; this remains a contract gap, not an atomicity guarantee. See `REVIEW_IMPLEMENTATION_STATUS.md`.
 
 ## 4. Slot Priority and Ordering
 
