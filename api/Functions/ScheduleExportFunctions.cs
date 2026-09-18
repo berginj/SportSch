@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using Azure.Data.Tables;
 using GameSwap.Functions.Storage;
+using GameSwap.Functions.Services;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
@@ -13,11 +14,13 @@ namespace GameSwap.Functions.Functions;
 public class ScheduleExportFunctions
 {
     private readonly TableServiceClient _svc;
+    private readonly IAuditLogger _auditLogger;
     private readonly ILogger _log;
 
-    public ScheduleExportFunctions(ILoggerFactory lf, TableServiceClient svc)
+    public ScheduleExportFunctions(ILoggerFactory lf, TableServiceClient svc, IAuditLogger auditLogger)
     {
         _svc = svc;
+        _auditLogger = auditLogger;
         _log = lf.CreateLogger<ScheduleExportFunctions>();
     }
 
@@ -59,6 +62,9 @@ public class ScheduleExportFunctions
 
             var fieldNames = await LoadFieldDisplayNamesAsync(leagueId);
             var rows = await LoadExportRowsAsync(leagueId, division, statusFilter, dateFrom, dateTo, fieldNames);
+
+            var correlation = CorrelationContext.FromRequest(req, leagueId);
+            _auditLogger.LogDataExport(me.UserId, leagueId, format, rows.Count, correlation.CorrelationId);
 
             var csv = format switch
             {

@@ -35,6 +35,7 @@ The work packages above remain open until their full scope is delivered. These s
 - Startup-only table provisioning, paginated slot reads, responsive calendar action placement, modal keyboard focus handling, loading/error telemetry, and correlation IDs.
 - Conditional two-slot Table transaction for game rescheduling, idempotent operation marker/replay, division-aware coach authorization, and tests for stale replacement/concurrent safety.
 - Local Azurite Table tests, seeded authenticated desktop/mobile Playwright tests, full CI lint/build/unit/backend/browser gates, and operational baseline documentation.
+- Structured audit events now cover bulk access-request outcomes and schedule exports, grouped by league and correlated to the originating request.
 
 The following remain deliberately open: persisted immutable wizard drafts, exact draft commit, cross-table operation journal/recovery, an outbox/worker for notifications, a bounded calendar projection, production latency baselines, and complete backup/restore readiness.
 

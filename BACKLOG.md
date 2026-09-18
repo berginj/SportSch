@@ -6,11 +6,9 @@ Consolidated from prior planning docs. Last updated: 2026-05-08.
 
 ## Feature Gaps
 
-### Guest Game Auto-Balancer
-- **Priority:** Medium
-- **Status:** Foundation exists (balance validation + warnings), auto-balancing algorithm not implemented
-- **Effort:** ~1 day
-- Post-processing balancer in ScheduleEngine to redistribute guest games when spread > 1
+### ~~Guest Game Auto-Balancer~~ ✅
+- Implemented in `ScheduleEngine.BalanceExternalOffers` with bounded redistribution and deterministic scoring.
+- Covered by `ScheduleEngineTests` for guest distribution and reassignment behavior.
 
 ### ~~Smart Schedule Reminders~~ ✅
 - Already implemented: `GameReminderFunction.cs` with 24h/2h windows, deduplication, preference checking

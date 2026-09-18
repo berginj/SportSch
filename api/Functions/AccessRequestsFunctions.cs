@@ -2,6 +2,7 @@ using System.Net;
 using Azure;
 using Azure.Data.Tables;
 using GameSwap.Functions.Repositories;
+using GameSwap.Functions.Services;
 using GameSwap.Functions.Storage;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
@@ -18,17 +19,20 @@ public class AccessRequestsFunctions
     private readonly IAccessRequestRepository _accessRequestRepo;
     private readonly IMembershipRepository _membershipRepo;
     private readonly TableServiceClient _tableService; // Still needed for league existence check
+    private readonly IAuditLogger _auditLogger;
     private readonly ILogger _log;
 
     public AccessRequestsFunctions(
         IAccessRequestRepository accessRequestRepo,
         IMembershipRepository membershipRepo,
         TableServiceClient tableService,
+        IAuditLogger auditLogger,
         ILoggerFactory lf)
     {
         _accessRequestRepo = accessRequestRepo;
         _membershipRepo = membershipRepo;
         _tableService = tableService;
+        _auditLogger = auditLogger;
         _log = lf.CreateLogger<AccessRequestsFunctions>();
     }
 
@@ -533,6 +537,7 @@ public class AccessRequestsFunctions
                 return ApiResponses.Error(req, HttpStatusCode.BadRequest, ErrorCodes.BAD_REQUEST, "items cannot exceed 250 per request");
 
             var isGlobalAdmin = await _membershipRepo.IsGlobalAdminAsync(me.UserId);
+            var correlation = CorrelationContext.FromRequest(req);
             var authorizedLeagues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var results = new List<BulkAccessResult>();
             var succeeded = 0;
@@ -606,6 +611,22 @@ public class AccessRequestsFunctions
                         status: "Error",
                         error: "Internal error"));
                 }
+            }
+
+            // Record one structured audit event per affected league. This
+            // preserves the operation boundary without logging every request
+            // payload or exposing user-provided notes in telemetry.
+            foreach (var group in results
+                .Where(result => string.Equals(result.status, Constants.Status.AccessRequestApproved, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(result.status, Constants.Status.AccessRequestDenied, StringComparison.OrdinalIgnoreCase))
+                .GroupBy(result => result.leagueId, StringComparer.OrdinalIgnoreCase))
+            {
+                _auditLogger.LogBulkOperation(
+                    me.UserId,
+                    group.Key,
+                    $"ACCESS_REQUEST_{action.ToUpperInvariant()}",
+                    group.Count(),
+                    correlation.CorrelationId);
             }
 
             return ApiResponses.Ok(req, new
