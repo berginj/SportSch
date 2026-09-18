@@ -10,9 +10,9 @@ test("unauthenticated API requests return a standard error", async ({ request })
 test("real session survives refresh and scopes league selection", async ({ page, context }) => {
   await signIn(context);
   await page.goto(calendarUrl);
-  await expect(page.getByText("HOME vs AWAY").first()).toBeVisible();
+  await expect(page.getByText("Showing calendar items for e2e-league-a")).toBeVisible();
   await page.reload();
-  await expect(page.getByText("HOME vs AWAY").first()).toBeVisible();
+  await expect(page.getByText("Showing calendar items for e2e-league-a")).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem("gameswap_leagueId"))).toBe("e2e-league-a");
 });
 
