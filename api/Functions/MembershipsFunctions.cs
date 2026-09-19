@@ -2,6 +2,7 @@ using System.Net;
 using Azure;
 using Azure.Data.Tables;
 using GameSwap.Functions.Repositories;
+using GameSwap.Functions.Services;
 using GameSwap.Functions.Storage;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
@@ -21,15 +22,18 @@ public class MembershipsFunctions
 {
     private readonly IMembershipRepository _membershipRepo;
     private readonly TableServiceClient _tableService; // Still needed for league existence check
+    private readonly IAuditLogger _auditLogger;
     private readonly ILogger _log;
 
     public MembershipsFunctions(
         IMembershipRepository membershipRepo,
         TableServiceClient tableService,
+        IAuditLogger auditLogger,
         ILoggerFactory lf)
     {
         _membershipRepo = membershipRepo;
         _tableService = tableService;
+        _auditLogger = auditLogger;
         _log = lf.CreateLogger<MembershipsFunctions>();
     }
 
@@ -215,6 +219,8 @@ public class MembershipsFunctions
                     ApiGuards.EnsureValidTableKeyPart("teamId", teamId);
             }
 
+            var existing = await _membershipRepo.GetMembershipAsync(userId, leagueId);
+            var priorRole = (existing?.GetString("Role") ?? "").Trim();
             var entity = new TableEntity(userId, leagueId)
             {
                 ["Role"] = normalizedRole,
@@ -224,6 +230,15 @@ public class MembershipsFunctions
                 ["UpdatedUtc"] = DateTimeOffset.UtcNow
             };
             await SaveCanonicalMembershipAsync(entity);
+            var correlation = CorrelationContext.FromRequest(req, leagueId);
+            if (!string.IsNullOrWhiteSpace(priorRole) && !string.Equals(priorRole, normalizedRole, StringComparison.OrdinalIgnoreCase))
+            {
+                _auditLogger.LogRoleChange(me.UserId, userId, leagueId, priorRole, normalizedRole, "membership-admin-update", correlation.CorrelationId);
+            }
+            else if (string.IsNullOrWhiteSpace(priorRole))
+            {
+                _auditLogger.LogMembershipApproved(me.UserId, userId, leagueId, normalizedRole, correlation.CorrelationId);
+            }
             return ApiResponses.Ok(req, new MembershipDto(userId, email, normalizedRole,
                 string.IsNullOrWhiteSpace(division) || string.IsNullOrWhiteSpace(teamId)
                     ? null

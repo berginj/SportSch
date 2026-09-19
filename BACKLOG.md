@@ -75,11 +75,11 @@ Consolidated from prior planning docs. Last updated: 2026-05-08.
 - ~~Remove deprecated `UNAUTHORIZED` constant~~ ✅ Already deprecated with `[Obsolete]` and `@deprecated`
 - ~~Add `aria-busy` to loading buttons~~ ✅ Added across 5 files (8 buttons)
 - ~~Component extraction (AdminPage sections)~~ ✅ Already extracted to `src/pages/admin/` (7 sections)
-- Guest slot counting verification test
-- Back-to-front scheduling order verification test
-- Orphaned request cleanup job (daily timer function)
-- Rate-limit bulk operations (bulk approve/deny, imports)
-- Enhance audit logging (role changes, bulk ops, exports)
+- ~~Guest slot counting verification test~~ ✅ Covered by `ScheduleEngineTests.AssignMatchups_SpreadsExternalOffersAcrossTeams_BeforeRepeatingWhenCapacityAllows` and season-cap coverage.
+- ~~Back-to-front scheduling order verification test~~ ✅ Covered by `ScheduleEngineTests.AssignMatchups_UsesProvidedSlotOrder_SoBackwardOrderedSlotsFillLateDatesFirst`.
+- ~~Orphaned request cleanup job (daily timer function)~~ ✅ Implemented by `CleanupOrphanedRequests` on the 02:00 UTC timer.
+- ~~Rate-limit bulk operations (bulk approve/deny, imports)~~ ✅ Global request limiter applies to bulk routes and bulk access requests are capped at 250 items per call.
+- ~~Enhance audit logging (role changes, bulk ops, exports)~~ ✅ Membership creation/role changes, bulk access-request outcomes, and schedule exports emit correlated audit events.
 - E2E test expansion (slot management, team/league, schedule generation)
 - Custom hooks extraction (useCoachAssignments, useGlobalAdminData, useCsvImport)
 - Application Insights dashboards and alerts

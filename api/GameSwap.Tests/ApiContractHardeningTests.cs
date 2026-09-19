@@ -14,6 +14,7 @@ using Azure.Data.Tables;
 using Azure.Data.Tables.Models;
 using GameSwap.Functions.Functions;
 using GameSwap.Functions.Repositories;
+using GameSwap.Functions.Services;
 using GameSwap.Functions.Storage;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
@@ -98,6 +99,7 @@ public class ApiContractHardeningTests
         var functions = new MembershipsFunctions(
             memberships.Object,
             Mock.Of<TableServiceClient>(),
+            Mock.Of<IAuditLogger>(),
             CreateLoggerFactory());
 
         var response = await functions.List(
@@ -142,6 +144,7 @@ public class ApiContractHardeningTests
         var functions = new MembershipsFunctions(
             memberships.Object,
             Mock.Of<TableServiceClient>(),
+            Mock.Of<IAuditLogger>(),
             CreateLoggerFactory());
 
         var response = await functions.List(
