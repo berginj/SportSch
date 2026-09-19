@@ -22,7 +22,7 @@ foreach (var league in new[] { "e2e-league-a", "e2e-league-b" })
     foreach (var team in new[] { "HOME", "AWAY" })
         await Save(Constants.Tables.Teams, new TableEntity("TEAM|" + league + "|10U", team)
             { ["TeamId"] = team, ["Division"] = "10U", ["Name"] = team, ["IsActive"] = true });
-    await Save(Constants.Tables.Fields, new TableEntity("FIELD|" + league + "|PARK", "ONE")
+    await Save(Constants.Tables.Fields, new TableEntity(Constants.Pk.Fields(league, "park"), "one")
         { ["ParkName"] = "Test park", ["FieldName"] = "Diamond 1", ["IsActive"] = true });
     await Save(Constants.Tables.Slots, new TableEntity(Constants.Pk.Slots(league, "10U"), "e2e-game")
     {
