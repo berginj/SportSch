@@ -188,22 +188,37 @@ export default function HomePage({ me, leagueId, setLeagueId, setTab }) {
       const slotsQuery = new URLSearchParams(baseQuery);
       if (activeStatuses.length) slotsQuery.set("status", activeStatuses.join(","));
 
-      const reqs = [];
-      reqs.push(apiFetch("/api/divisions"));
-      reqs.push(showSlots && activeStatuses.length ? fetchAllPagedItems((token) => {
+      const requests = [];
+      requests.push({ key: "divisions", promise: apiFetch("/api/divisions") });
+      requests.push({ key: "slots", promise: showSlots && activeStatuses.length ? fetchAllPagedItems((token) => {
         const query = new URLSearchParams(slotsQuery);
         query.set("pageSize", "250");
         if (token) query.set("continuationToken", token);
         return apiFetch(`/api/slots?${query}`);
-      }) : Promise.resolve([]));
-      reqs.push(showEvents ? apiFetch(`/api/events?${baseQuery.toString()}`) : Promise.resolve([]));
-      if (isAdmin) reqs.push(apiFetch("/api/accessrequests?status=Pending"));
-      const [divs, slotList, eventList, accessList] = await Promise.all(reqs);
+      }) : Promise.resolve([]) });
+      requests.push({ key: "events", promise: showEvents ? apiFetch(`/api/events?${baseQuery.toString()}`) : Promise.resolve([]) });
+      if (isAdmin) requests.push({ key: "accessRequests", promise: apiFetch("/api/accessrequests?status=Pending") });
 
-      setDivisions(Array.isArray(divs) ? divs : []);
-      setSlots(readPagedItems(slotList));
-      setEvents(Array.isArray(eventList) ? eventList : []);
-      setAccessRequests(Array.isArray(accessList) ? accessList : []);
+      // Keep the dashboard usable when an optional surface (events or access
+      // requests) is unavailable. Divisions and slots are the critical data;
+      // only their failures should replace the page with an error state.
+      const settled = await Promise.all(requests.map(({ key, promise }) =>
+        promise.then(
+          (value) => ({ key, status: "fulfilled", value }),
+          (reason) => ({ key, status: "rejected", reason })
+        )
+      ));
+      const criticalFailure = settled.find((result) =>
+        result.status === "rejected" && (result.key === "divisions" || result.key === "slots")
+      );
+      if (criticalFailure) throw criticalFailure.reason;
+      const values = Object.fromEntries(
+        settled.filter((result) => result.status === "fulfilled").map((result) => [result.key, result.value])
+      );
+      setDivisions(Array.isArray(values.divisions) ? values.divisions : []);
+      setSlots(readPagedItems(values.slots));
+      setEvents(Array.isArray(values.events) ? values.events : []);
+      setAccessRequests(Array.isArray(values.accessRequests) ? values.accessRequests : []);
     } catch (e) {
       setErr(e?.message || "Failed to load.");
     } finally {
