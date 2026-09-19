@@ -55,11 +55,20 @@ export function useSession() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const markSignedOut = (message) => {
+  const markSignedOut = useCallback((message) => {
     setMe({ userId: "UNKNOWN", email: "UNKNOWN", memberships: [] });
     persistLeagueId(""); // Clear invalid leagueId on logout
     if (message) setError(message);
-  };
+  }, []);
+
+  useEffect(() => {
+    const onSessionExpired = (event) => {
+      markSignedOut(event?.detail?.message || "Your session expired. Please sign in again.");
+      setLoading(false);
+    };
+    window.addEventListener("gameswap:session-expired", onSessionExpired);
+    return () => window.removeEventListener("gameswap:session-expired", onSessionExpired);
+  }, [markSignedOut]);
 
   useEffect(() => {
     let cancelled = false;

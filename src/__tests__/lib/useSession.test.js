@@ -119,4 +119,17 @@ describe("useSession hook", () => {
     expect(result.current.error).toBe("Please sign in to continue.");
     expect(localStorage.removeItem).toHaveBeenCalledWith(LEAGUE_STORAGE_KEY);
   });
+
+  it("clears tenant state when an authenticated request reports an expired session", async () => {
+    api.apiFetch.mockImplementation(() => new Promise(() => {}));
+
+    const { result } = renderHook(() => useSession());
+    window.dispatchEvent(new CustomEvent("gameswap:session-expired", {
+      detail: { message: "Your session expired." },
+    }));
+
+    await waitFor(() => expect(result.current.me.userId).toBe("UNKNOWN"));
+    expect(result.current.error).toBe("Your session expired.");
+    expect(localStorage.removeItem).toHaveBeenCalledWith(LEAGUE_STORAGE_KEY);
+  });
 });

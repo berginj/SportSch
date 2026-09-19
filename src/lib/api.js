@@ -109,6 +109,15 @@ export async function apiFetch(path, options = {}) {
     error.responseText = responseText;
     error.response = data;
 
+    // Any authenticated request can discover that the EasyAuth session has
+    // expired. Notify the session boundary so the shell can clear stale
+    // tenant state instead of leaving the user on a broken dashboard.
+    if (res.status === 401 && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("gameswap:session-expired", {
+        detail: { message: friendlyMessage, requestId },
+      }));
+    }
+
     throw error;
   }
 

@@ -142,6 +142,23 @@ describe('api', () => {
       await expect(apiFetch('/api/fields/invalid')).rejects.toThrow();
     });
 
+    it('broadcasts session expiry for authenticated 401 responses', async () => {
+      const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+      global.fetch.mockResolvedValue({
+        ok: false,
+        status: 401,
+        text: () => Promise.resolve(JSON.stringify({
+          error: { code: 'UNAUTHENTICATED', message: 'Please sign in to continue.' },
+        })),
+      });
+
+      await expect(apiFetch('/api/slots')).rejects.toMatchObject({ status: 401 });
+      expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({
+        type: 'gameswap:session-expired',
+      }));
+      dispatchSpy.mockRestore();
+    });
+
     it('should handle error responses without error codes', async () => {
       global.fetch.mockResolvedValue({
         ok: false,
